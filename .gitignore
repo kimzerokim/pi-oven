@@ -1,0 +1,34 @@
+# pi-oven runtime state (machine-readable, regeneratable)
+.pi-oven/
+
+# omp local session state (Claude Code / OMC artifacts during bootstrap phase)
+.omc/
+
+# Node / Bun
+node_modules/
+dist/
+.bun-cache/
+*.log
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# Eval intermediate (per-run, transient)
+evals/.runs/
+evals/.tmp/
+
+# Build artifacts
+*.tsbuildinfo
+coverage/

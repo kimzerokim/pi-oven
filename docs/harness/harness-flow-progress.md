@@ -2,6 +2,23 @@
 
 Meta cycle tracking. Each entry = one self-improvement / build cycle of pi-oven.
 
+## 2026-05-28 — Spec B: Setup wizard (post-v0.1.0)
+
+- Cycle: continues the post-v0.1.0 model routing + subagent consolidation initiative (Spec A's successor).
+- Branch: `feature/standard-expansion` (push deferred).
+- Spec: `docs/specs/2026-05-28-pi-oven-setup-wizard.md` (993 lines, ACCEPT cycle 4)
+- Critic cycles: 4 (REJECT 1 CRITICAL + 9 MAJOR — interactive subprocess UX incompat + APIs surface fabrication; REJECT 5 new BLOCKERs — pi.getPluginSettings / plugin_upgraded / install-cache-empty / version-segment / omp --status all verified non-existent or false-premise; REJECT 2 BLOCKERs — plugin.json `"agents"` patch was no-op + compareSemver undefined; ACCEPT). Verdicts at `docs/research/codex-reviews/2026-05-28-pi-oven-setup-wizard-critic-review{,-2,-3,-4}.md`.
+- Implementation status: COMPLETE (pending commit).
+- Deliverables:
+  - `commands/pi-oven-setup.md` — 210-line English LLM prompt template (no stdin subprocess; LLM dispatches batch CLI via Bash tool).
+  - `scripts/pi-oven-setup.ts` — main CLI dispatcher.
+  - `scripts/pi-oven-setup/` (11 modules): profiles, cache-resolver, auth-detect, agent-rewriter, persist, status, import, reset, validate, apply, reapply.
+  - `.omp/extensions/pi-oven.ts` — refactored: agent-file-presence dynamic ALLOWED_PREFIXES (no `pi.getPluginSettings` call from extension), `session_start` drift detection + parent-session model capture.
+  - 127 new tests (24 + 19 + 68 + 16 across phases 1–4); total bun test = 145 / lint:agents exit 0 / typecheck + build clean.
+- Profile A (release default): opencode-zen + openai-codex only. Profile B (anthropic opt-in): anthropic/claude-{sonnet-4-6, opus-4-7, haiku-4-5} for reasoning-heavy roles; explorer + librarian keep `opencode-zen/glm-5` (1M context preserved). Source of truth = agent file; plugin config = informational state.
+- Open items deferred to Spec C: 12 SKILL.md English rewrite + new skills (deep-init, deep-dive, team), autonomous-loop boost (autopilot/ralph/ultrawork), debugger boost SKILL.md alignment, fresh-verifier boost from verify.
+- Status: spec ACCEPT; implementation done; semantic commit pending.
+
 ## 2026-05-28 — Spec A: Agent registry (post-v0.1.0)
 
 - Cycle: pi-oven v0.1.0 → (toward v0.1.0 after Spec A+B+C complete)

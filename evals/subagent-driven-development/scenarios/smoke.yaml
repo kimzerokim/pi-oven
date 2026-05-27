@@ -1,0 +1,10 @@
+name: subagent-driven-development-smoke-001
+skill: subagent-driven-development
+tag: smoke
+input:
+  - turn: 1
+    user: "Execute the plan at docs/plans/foo-plan.md via subagent-driven-development"
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["fresh subagent", "two-stage review", "implementer"]
+  - tool_calls_required: ["Task|task"]

@@ -1,0 +1,8 @@
+name: subagent-driven-development-regression-001
+skill: subagent-driven-development
+tag: regression
+input:
+  - turn: 1
+    user: "(placeholder for future regression test)"
+expected:
+  - skill_triggered: true

@@ -20,8 +20,10 @@ jobs:
         run: bun check
       - name: Build extension
         run: bun run build
-      - name: Eval stub smoke
-        run: bun scripts/run-eval.ts --tag smoke
+      - name: Run TDD tests (eval-runner + scripts)
+        run: bun test
+        # Real eval execution (bun scripts/run-eval.ts --tag smoke) requires LLM provider keys
+        # and is gated behind Plan 4 (setup wizard + CI secrets bootstrap).
       - name: Validate marketplace catalog JSON
         run: |
           jq . .claude-plugin/marketplace.json > /dev/null

@@ -10,11 +10,9 @@ describe("run-eval CLI", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("loads scenario YAML and reports verdict format", () => {
-    const result = spawnSync({
-      cmd: ["bun", "scripts/run-eval.ts", "--skill", "code-quality-discipline", "--tag", "smoke"],
-      cwd: process.cwd(),
-    });
-    expect([0, 1, 2]).toContain(result.exitCode);
-  });
+  // Removed: "loads scenario YAML and reports verdict format" —
+  // CLI smoke that invoked the real LLM hangs without an API key (CI has none),
+  // and the exit-code assertion `[0, 1, 2].toContain` was a tautology
+  // (cycle-2 critic-review NIT 5). Real scenario evaluation lives behind
+  // Plan 4 (LLM key bootstrap + CI secrets).
 });

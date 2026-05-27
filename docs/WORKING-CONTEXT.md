@@ -1,6 +1,6 @@
 # Working Context
 
-Last updated: 2026-05-27
+Last updated: 2026-05-28
 
 ## Purpose
 
@@ -8,7 +8,11 @@ pi-oven v1 build. omp marketplace plugin as single successor for 5 frozen source
 
 ## Current Sprint
 
-- **Plan 1 — Bootstrap 12 core skills** — **COMPLETE**. 12/12 skills shipped + eval-runner real impl + canary dogfood scenario + tag v0.1.0. spec-and-review Pattern loop = ACCEPT cycle 2. Dogfood switch threshold met (`docs/decisions/0001-dogfood-switch.md`). Eval execution deferred to Plan 4 (LLM key bootstrap).
+- **Model routing + subagent consolidation initiative** (post-v0.1.0). 3-spec split + per-spec semantic commit + autonomous overnight run on `feature/standard-expansion`:
+  - **Spec A — Agent registry** — **ACCEPT cycle 4** + IMPL complete: 23 pi-oven-prefixed agent files (`agents/pi-oven-*.md`), load-time validator in `.omp/extensions/pi-oven.ts`, CI-time hard lint (`scripts/lint-agents.ts` + `package.json scripts.lint:agents`), 18 tests pass.
+  - **Spec B — Setup wizard** — pending (draft → critic → impl).
+  - **Spec C — Skill rewrite + new skills (deep-init, deep-dive, team)** — pending (draft → critic → impl).
+- **Push deferred** — overnight commits stay local; user wake review per `docs/harness/user-queue.md` Q-NIGHTLY-AB-C-REVIEW-001.
 
 ## Active Queues
 
@@ -24,6 +28,7 @@ pi-oven v1 build. omp marketplace plugin as single successor for 5 frozen source
 
 ## Latest Execution Notes
 
+- 2026-05-28: **Spec A (agent registry) ACCEPT + IMPL complete**. 4-cycle critic loop (cycle 1 REJECT 5 BLOCKERs → cycle 2 REJECT 2 new BLOCKERs → cycle 3 REJECT 1 structural BLOCKER → cycle 4 ACCEPT). Impl: 23 agent files `agents/pi-oven-*.md` (omc + omo source absorbed, English bodies), load-time validator in `.omp/extensions/pi-oven.ts` (Profile A guarantee soft-error logging), CI-time hard lint at `scripts/lint-agents.ts`, 18 bun tests pass (5 existing + 7 lint-agents + 6 pi-oven extension). Provider whitelist = opencode-zen + openai-codex + anthropic (opt-in). All defaults = opencode-zen + openai-codex only (anthropic opt-in for user environments). flat layout `agents/pi-oven-<role>.md` with frontmatter `name: pi-oven:<role>` (omp discovery is flat-only, folder layout fallback unused).
 - 2026-05-27: **Plan 1 v0.1.0 published — 12 core skills shipped + dogfood switch met**. Task 12 commit a8327a8 (autonomous-loop meta orchestrator — ralph + Sisyphus + boundary merge). Task 13 acceptance: 12 SKILL.md verified, plugin.json count 12, canary dogfood scenario authored (`evals/dogfood/scenarios/v0.1.0-end-to-end.yaml`), `docs/decisions/0001-dogfood-switch.md` written. Tag v0.1.0 + gh release published. Eval execution deferred to Plan 4 (LLM provider key bootstrap).
 - 2026-05-27: **Plan 1 Tasks 1-11 complete** (commits 5a83781 → 20125d4 → cab27eb → 3d3a9d3 → ed23632 → a2dd356 → f22f502 → 4186086 → 932ff79 → 3330b3b → 107ae99). 11 skills ported: code-quality-discipline / eval-runner / tdd-strict / brainstorming / writing-plans / codebase-survey / spec-and-review / large-task-delegation / fresh-verifier / pre-commit-gate / subagent-driven-development. Task 2 = eval-runner real impl (TDD-tested, omp SDK subscribe-pattern, 6 tests pass).
 - 2026-05-27: **Plan 1 spec-and-review cycle 2 ACCEPT** (commit 56d535b) — cycle 1 10 BLOCKERs resolved with SDK type evidence; cycle 2 9 NITs optional non-blocking.

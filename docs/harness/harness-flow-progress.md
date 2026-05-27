@@ -2,6 +2,28 @@
 
 Meta cycle tracking. Each entry = one self-improvement / build cycle of pi-oven.
 
+## 2026-05-28 — Spec A: Agent registry (post-v0.1.0)
+
+- Cycle: pi-oven v0.1.0 → (toward v0.1.0 after Spec A+B+C complete)
+- Trigger: Plan 2 dogfood failure — subagent dispatch resolved `oh-my-claudecode:*` namespaced refs as model strings → 401. Root cause: omp has no `subagent_type` registry; all dispatch is file-based.
+- Branch: `feature/standard-expansion` (push deferred until user wake review)
+- Spec: `docs/specs/2026-05-28-pi-oven-agent-registry.md` (1268 lines, ACCEPT cycle 4)
+- Critic cycles: 4 (REJECT 5 BLOCKERs → REJECT 2 new BLOCKERs → REJECT 1 structural → ACCEPT). Verdict files at `docs/research/codex-reviews/2026-05-28-pi-oven-agent-registry-critic-review{,-2,-3,-4}.md`.
+- Mode: autonomous overnight run, per-spec semantic commit. push 보류.
+- Implementation status: COMPLETE (pending commit).
+- Deliverables:
+  - 23 agent files in `agents/pi-oven-*.md` (flat layout — omp discovery is flat-only, verified live)
+    - MUST 7: executor, explorer, verifier, critic, planner, code-reviewer, debugger (tracer body absorbed)
+    - SHOULD 8: test-engineer, security-reviewer, writer, designer, code-simplifier (ai-slop-cleaner inlined), qa-tester, git-master, document-specialist (omo librarian pattern)
+    - NICE 4 omc: tracer, analyst, scientist, architect
+    - NICE 4 omo-absorbed: librarian, multimodal-looker, oracle, metis
+  - Load-time validator at `.omp/extensions/pi-oven.ts` — `validateAgentRegistry(agentsDir, logger)` checks provider whitelist (opencode-zen / openai-codex / anthropic only), soft-error logs on violation.
+  - CI-time hard lint at `scripts/lint-agents.ts` — fails build on missing `model:` field.
+  - 18 bun tests pass (5 existing + 7 lint-agents + 6 pi-oven extension validator).
+  - English-only agent bodies; Korean reserved for trigger keyword matching.
+- Open items deferred to Spec B / Spec C: setup wizard (B), /pi-oven:setup command, anthropic opt-in profile flow (B), 12 SKILL.md English rewrite + new skills deep-init/deep-dive/team (C), autonomous-loop boost (C), fresh-verifier boost (C).
+- Status: spec ACCEPT; implementation done; semantic commit pending.
+
 ## 2026-05-27 — Plan 1 v0.1.0 Bootstrap 12 Core Skills
 
 - Cycle: pi-oven v0.1.0 → v0.1.0

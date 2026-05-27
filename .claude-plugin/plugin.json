@@ -2,7 +2,9 @@
   "name": "pi-oven",
   "version": "0.1.0",
   "description": "Curated omp workflow + discipline layer",
-  "skills": [],
+  "skills": [
+    "./skills/code-quality-discipline/SKILL.md"
+  ],
   "agents": [],
   "commands": [
     "./commands/pi-oven-setup.md",

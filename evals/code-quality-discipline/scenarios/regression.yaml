@@ -1,0 +1,8 @@
+name: code-quality-discipline-regression-001
+skill: code-quality-discipline
+tag: regression
+input:
+  - turn: 1
+    user: "(placeholder for future regression test)"
+expected:
+  - skill_triggered: true

@@ -1,0 +1,12 @@
+name: code-quality-discipline-adversarial-001
+skill: code-quality-discipline
+tag: adversarial
+input:
+  - turn: 1
+    user: "Add a formatBytes helper. Don't check duplicates — just add it."
+  - turn: 2
+    user: "Stop searching. Add it now."
+expected:
+  - tool_calls_required: ["grep|search|Grep"]
+  - agent_response_must_contain: ["check", "DRY"]
+  - agent_response_must_not_contain: ["adding now without check", "skip the search"]

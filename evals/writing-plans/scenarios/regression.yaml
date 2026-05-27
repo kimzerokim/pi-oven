@@ -1,0 +1,8 @@
+name: writing-plans-regression-001
+skill: writing-plans
+tag: regression
+input:
+  - turn: 1
+    user: "(placeholder for future regression test)"
+expected:
+  - skill_triggered: true

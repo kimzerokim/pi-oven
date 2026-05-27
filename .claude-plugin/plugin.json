@@ -7,7 +7,10 @@
     "./skills/eval-runner/SKILL.md",
     "./skills/tdd-strict/SKILL.md",
     "./skills/brainstorming/SKILL.md",
-    "./skills/codebase-survey/SKILL.md"
+    "./skills/codebase-survey/SKILL.md",
+    "./skills/fresh-verifier/SKILL.md",
+    "./skills/writing-plans/SKILL.md",
+    "./skills/spec-and-review/SKILL.md"
   ],
   "agents": [],
   "commands": [

@@ -1,0 +1,10 @@
+name: fresh-verifier-smoke-001
+skill: fresh-verifier
+tag: smoke
+input:
+  - turn: 1
+    user: "Cycle complete. Verify before exit."
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["verifier", "4 sub-check", "fresh"]
+  - tool_calls_required: ["Task|task"]

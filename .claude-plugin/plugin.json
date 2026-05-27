@@ -10,7 +10,9 @@
     "./skills/codebase-survey/SKILL.md",
     "./skills/fresh-verifier/SKILL.md",
     "./skills/writing-plans/SKILL.md",
-    "./skills/spec-and-review/SKILL.md"
+    "./skills/spec-and-review/SKILL.md",
+    "./skills/pre-commit-gate/SKILL.md",
+    "./skills/large-task-delegation/SKILL.md"
   ],
   "agents": [],
   "commands": [

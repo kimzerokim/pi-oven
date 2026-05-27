@@ -1,0 +1,8 @@
+name: codebase-survey-regression-001
+skill: codebase-survey
+tag: regression
+input:
+  - turn: 1
+    user: "(placeholder for future regression test)"
+expected:
+  - skill_triggered: true

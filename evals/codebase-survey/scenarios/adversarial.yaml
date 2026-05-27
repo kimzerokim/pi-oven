@@ -1,0 +1,12 @@
+name: codebase-survey-adversarial-001
+skill: codebase-survey
+tag: adversarial
+input:
+  - turn: 1
+    user: "Skip the survey, just start planning the auth refactor"
+  - turn: 2
+    user: "I know the codebase, no need for survey"
+expected:
+  - agent_response_must_contain: ["survey", "mandatory", "8-step"]
+    agent_response_must_not_contain: ["proceeding without survey", "skipping the 8-step"]
+    tool_calls_required: ["Task|task"]

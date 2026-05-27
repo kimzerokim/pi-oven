@@ -1,0 +1,9 @@
+---
+name: autonomous-loop-regression-001
+skill: autonomous-loop
+tag: regression
+input:
+  - turn: 1
+    user: "(placeholder for future regression test — e.g. ScheduleWakeup retry after rate-limit)"
+expected:
+  - skill_triggered: true

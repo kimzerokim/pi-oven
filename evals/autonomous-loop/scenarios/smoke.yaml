@@ -1,0 +1,11 @@
+---
+name: autonomous-loop-smoke-001
+skill: autonomous-loop
+tag: smoke
+input:
+  - turn: 1
+    user: "/pi-oven:autonomous Add a new utility function to format ISO timestamps"
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["branch", "destination"]
+  - tool_calls_required: ["ask|AskUserQuestion"]

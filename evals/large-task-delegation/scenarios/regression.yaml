@@ -1,8 +1,0 @@
-name: large-task-delegation-regression-001
-skill: large-task-delegation
-tag: regression
-input:
-  - turn: 1
-    user: "(placeholder for future regression test)"
-expected:
-  - skill_triggered: true

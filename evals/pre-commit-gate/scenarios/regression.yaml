@@ -1,8 +1,0 @@
-name: pre-commit-gate-regression-001
-skill: pre-commit-gate
-tag: regression
-# Placeholder — populate when a regression is observed in the wild.
-# Pattern: one scenario per distinct regression; include the exact user
-# phrase that triggered the incorrect behavior and the expected correction.
-input: []
-expected: []

@@ -35,7 +35,7 @@ Per-gate procedure, failure protocol, and skill integration map.
 
 **Trigger**: every commit. Skip if the diff is a trivial 1-line flag change (must state `ai-slop-cleaner skipped (trivial)` in commit body).
 
-**Procedure**: invoke `oh-my-claudecode:ai-slop-cleaner` on the changed files. Removes dead code, duplicate logic, needless abstraction, and boundary leaks.
+**Procedure**: invoke `pi-oven:code-simplifier` on the changed files. Removes dead code, duplicate logic, needless abstraction, and boundary leaks.
 
 **Failure**: apply cleaner output, re-stage, new commit.
 

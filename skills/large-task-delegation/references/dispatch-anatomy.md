@@ -35,19 +35,19 @@ Task body:
 Rules:
 
 [ANTI-SELF-VERIFICATION RULE — test-coverage §Anti-pattern]
-TDD red 단계 (failing test 작성) 진입 시점:
-- 허용 read: spec / acceptance criteria / 사용자 prompt / public API 시그니처 / hook·install 인프라 코드
-- 금지 read: 지금 작성하려는 함수 본문, 같은 파일 sibling 함수 본문, 기존 test 파일
-- 자가 점검: "이 test 가 spec 에서 도출됐는가? implementation 의 현재 모양에서 추론한 것 아닌가?"
-위반 시 task BLOCKED 반환 + plan revision 요청.
+TDD red phase (writing failing test) entry:
+- Allowed reads: spec / acceptance criteria / user prompt / public API signatures / hook·install infra code
+- Forbidden reads: body of the function being written, sibling function bodies in the same file, existing test files
+- Self-check: "Is this test derived from the spec? Not inferred from the current shape of the implementation?"
+Return task BLOCKED + request plan revision on violation.
 
 [PRODUCTION-CODE-FIRST RULE — production-access §Production state changes (rev2)]
-이 task 가 production state mutation (DB schema / IAM policy / S3 lifecycle / IaC-managed Lambda env / CloudFront 등) 을 포함한다면:
-- AI 직접 실행 금지 (사용자 explicit instruction 있어도). script (migration / IaC) 작성 → 사용자 review → 사용자/CI 실행
-- read-only inspection (aws s3 ls, describe-*, \dt) 만 AI 직접 실행 OK — 단 사용자 explicit instruction 필요
-- 멱등성 의무: IF NOT EXISTS / ON CONFLICT DO NOTHING / --if-not-exists
-- Drift 발견 시 forward-only migration (production state rollback X. code commit git revert 는 OK)
-위반 시 task BLOCKED 반환 + plan revision 요청.
+If this task involves production state mutation (DB schema / IAM policy / S3 lifecycle / IaC-managed Lambda env / CloudFront, etc.):
+- AI direct execution forbidden (even with explicit user instruction). Author script (migration / IaC) → user review → user/CI execution
+- Read-only inspection (aws s3 ls, describe-*, \dt) OK for AI direct execution — requires explicit user instruction
+- Idempotency mandatory: IF NOT EXISTS / ON CONFLICT DO NOTHING / --if-not-exists
+- On drift: forward-only migration (no production state rollback; code commit git revert is OK)
+Return task BLOCKED + request plan revision on violation.
 
 [CODE-QUALITY-DISCIPLINE — DRY/YAGNI/KISS]
 - Delete code before adding: if the new implementation makes existing code unreachable, delete it in the same commit.

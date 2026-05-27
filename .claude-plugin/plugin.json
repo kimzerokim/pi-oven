@@ -14,7 +14,10 @@
     "./skills/pre-commit-gate/SKILL.md",
     "./skills/large-task-delegation/SKILL.md",
     "./skills/subagent-driven-development/SKILL.md",
-    "./skills/autonomous-loop/SKILL.md"
+    "./skills/autonomous-loop/SKILL.md",
+    "./skills/deep-init/SKILL.md",
+    "./skills/deep-dive/SKILL.md",
+    "./skills/team/SKILL.md"
   ],
   "agents": [],
   "commands": [

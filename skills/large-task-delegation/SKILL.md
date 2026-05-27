@@ -29,20 +29,20 @@ All reads, writes, and test execution happen inside subagents.
 If mid-execution main reads 5+ files → halt immediately, re-route via `explore` subagent.
 If mid-execution scope expands to 3+ files → halt, restart with executor dispatch.
 
-User override accepted with one line ("그냥 메인이 직접 해"). Hard rules survive the override:
+User override accepted with one line ("just do it from main" / "just proceed"). Hard rules survive the override:
 mid-execution 5+ file reads → halt + re-route regardless of prior override.
 
 ## Routing table
 
 | Phase | Subagent type | Model |
 |---|---|---|
-| Deep read / file search | `oh-my-claudecode:explore` | `model="sonnet"` (deep) / `model="haiku"` (targeted) |
-| Plan authoring | `oh-my-claudecode:planner` | omit model (inherits parent version) |
-| Critic / code review | `oh-my-claudecode:critic` | omit model (inherits parent version) |
-| Semantic verification | `oh-my-claudecode:verifier` | omit model (inherits parent version) |
-| Implementation (substantive) | `oh-my-claudecode:executor` | `model="sonnet"` |
-| Implementation (mechanical) | `oh-my-claudecode:executor` | `model="haiku"` |
-| Documentation | `oh-my-claudecode:writer` | `model="sonnet"` |
+| Deep read / file search | `pi-oven:explorer` | `model="sonnet"` (deep) / `model="haiku"` (targeted) |
+| Plan authoring | `pi-oven:planner` | omit model (inherits parent version) |
+| Critic / code review | `pi-oven:critic` | omit model (inherits parent version) |
+| Semantic verification | `pi-oven:verifier` | omit model (inherits parent version) |
+| Implementation (substantive) | `pi-oven:executor` | `model="sonnet"` |
+| Implementation (mechanical) | `pi-oven:executor` | `model="haiku"` |
+| Documentation | `pi-oven:writer` | `model="sonnet"` |
 
 `model="opus"` MUST NOT be specified in any dispatch. Omit model for critic/verifier/planner — this inherits the parent version and avoids version mismatch.
 
@@ -90,7 +90,7 @@ Halt entry if survey skipped: `Q-SURVEY-MISSING`.
 
 ## Override handling
 
-User override ("그냥 메인이 직접 해", "haiku로 진행", "spec 먼저 잡자") accepted immediately.
+User override ("just do it from main", "proceed with haiku", "write the spec first") accepted immediately.
 Hard rules that survive any override:
 - Mid-execution 5+ file reads → halt + re-route
 - Mid-execution scope expands to 3+ files → halt + re-route

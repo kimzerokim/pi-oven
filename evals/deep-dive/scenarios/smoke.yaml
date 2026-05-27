@@ -1,0 +1,10 @@
+name: deep-dive-smoke-001
+skill: deep-dive
+tag: smoke
+input:
+  - turn: 1
+    user: "deep dive into why our auth token expires early"
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["hypothesis", "lane"]
+  - tool_calls_required: ["ask|AskUserQuestion"]

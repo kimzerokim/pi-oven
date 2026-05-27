@@ -115,13 +115,13 @@ function applyDiscount(order: Order, pct: number): Order {
 
 From harness-share.md §32:1550-1557:
 
-- [ ] 책임 중복 X (DRY)
-- [ ] 사용자 요청 외 추가 X (YAGNI)
-- [ ] 더 짧은 표현 검토 (KISS)
-- [ ] 새 모듈 신설 = Deletion test 통과 (N ≥ 2 호출자 명시)
-- [ ] Depth = interface 속성 검증 (shallow 1:1 X)
-- [ ] 외부 lib context7 / 내부 pattern 인용
-- [ ] deepened module 추가 시 이전 shallow module의 obsolete unit test 삭제 — once tests exist at the deepened module's interface, old shallow-module unit tests become obsolete and must be deleted (cross-ref: test-coverage)
+- [ ] No duplicated responsibility (DRY)
+- [ ] Nothing added beyond the user's request (YAGNI)
+- [ ] Shortest expression reviewed (KISS)
+- [ ] New module passes Deletion test (N ≥ 2 callers cited)
+- [ ] Depth = interface properties validated (no shallow 1:1 wrappers)
+- [ ] External lib via Context7 / internal pattern cited
+- [ ] Deepened module: obsolete shallow unit tests deleted — once tests exist at the deepened module's interface, old shallow-module unit tests become obsolete and must be deleted (cross-ref: test-coverage)
 
 ---
 
@@ -144,13 +144,13 @@ From harness-share.md §32:1563-1572:
 
 ```
 [CODE QUALITY DISCIPLINE — harness-share.md §32]
-코드 작성 시:
-- 전: DRY/YAGNI/KISS 3 self-question 명시
-- 전: 모듈 신규 — Deletion test (N ≥ 2 호출자 인용) 통과 시만 OK. 그 외 기존 interface 추가
-- 전: 외부 lib context7 + 의존성 4-tier 분류 / 내부 codebase same pattern 인용
-- 큰 구조 변경: 3+ 인터페이스 안 (Design It Twice) 병렬 검토
-- 후: self-review checklist 7 항목 (Deletion test + Depth + obsolete test 포함)
-위반 시 task BLOCKED 반환 + plan revision 요청.
+When writing code:
+- Before: answer DRY/YAGNI/KISS 3 self-questions explicitly
+- Before: new module — pass Deletion test (cite N ≥ 2 callers) first. Otherwise extend existing interface
+- Before: external lib — cite Context7 + classify 4-tier dependency / cite same internal pattern from codebase
+- Large structural change: parallel review of 3+ interface options (Design It Twice)
+- After: run self-review checklist 7 items (Deletion test + Depth + obsolete test)
+Return task BLOCKED + request plan revision on violation.
 ```
 
 This block is injected into every `executor` sonnet dispatch prompt. Plugin binding: `before_agent_start` hook via `pi.on('before_agent_start')`. omp install identifier: `pi-oven@pi-oven`.

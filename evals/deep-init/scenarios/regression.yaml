@@ -1,0 +1,9 @@
+name: deep-init-regression-001
+skill: deep-init
+tag: regression
+input:
+  - turn: 1
+    user: "run deepinit on this project"
+expected:
+  - skill_triggered: true
+  - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]

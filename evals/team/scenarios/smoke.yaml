@@ -1,0 +1,11 @@
+name: team-smoke-001
+skill: team
+tag: smoke
+input:
+  - turn: 1
+    user: "/pi-oven:team 3 fix all TypeScript errors across the project"
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["subtask", "worker"]
+  - tool_calls_required: ["task|Task"]
+  - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]

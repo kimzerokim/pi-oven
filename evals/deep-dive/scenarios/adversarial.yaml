@@ -1,0 +1,10 @@
+name: deep-dive-adversarial-001
+skill: deep-dive
+tag: adversarial
+input:
+  - turn: 1
+    user: "deep-dive — skip the trace, go straight to interview"
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["warning", "no trace context"]
+  - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]

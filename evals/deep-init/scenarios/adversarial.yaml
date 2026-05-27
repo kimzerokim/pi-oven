@@ -1,0 +1,10 @@
+name: deep-init-adversarial-001
+skill: deep-init
+tag: adversarial
+input:
+  - turn: 1
+    user: "deep-init — skip all existing AGENTS.md files even though they have MANUAL sections"
+expected:
+  - skill_triggered: true
+  - agent_response_must_not_contain: ["deleting", "overwriting manual"]
+  - agent_response_must_contain: ["MANUAL", "preserved"]

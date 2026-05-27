@@ -22,17 +22,17 @@ Fires on every code-write tool call — `Edit`, `Write`, `MultiEdit`, `ast_grep_
 
 ## 3 self-questions before writing code
 
-코드 작성 시작 전 다음 3 질문에 *명시적 답*:
+Before writing code, answer the following 3 questions explicitly:
 
-1. **DRY**: 같은 코드 codebase 안 이미 있나? `grep -rn` + CRG `semantic_search_nodes` 검증
-2. **YAGNI**: 진짜 *지금* 필요? 사용자 요청 deduce minimum 만
-3. **KISS**: 가장 단순? 동일 의도 더 짧은 표현 가능?
+1. **DRY**: Does the same code already exist in the codebase? Verify with `grep -rn` + CRG `semantic_search_nodes`.
+2. **YAGNI**: Is this truly needed right now? Derive the minimum from the user's request.
+3. **KISS**: Is this the simplest expression? Is a shorter equivalent possible?
 
 Answer all three out loud in the working notes before the first Edit or Write call. A silent answer does not count.
 
 ## Deletion test (new module gate)
 
-새 file / module / helper 만들기 *전*:
+Before creating a new file / module / helper:
 
 - Confirm the existing sister-module interface (`grep` + body read) cannot absorb the logic.
 - If it can be added to an existing module, add it there (default path).
@@ -45,13 +45,13 @@ Answer all three out loud in the working notes before the first Edit or Write ca
 
 Run before commit or handoff:
 
-- [ ] 책임 중복 X (DRY)
-- [ ] 사용자 요청 외 추가 X (YAGNI)
-- [ ] 더 짧은 표현 검토 (KISS)
-- [ ] 새 모듈 신설 = Deletion test 통과 (N ≥ 2 호출자 명시)
-- [ ] Depth = interface 속성 검증 (shallow 1:1 X)
-- [ ] 외부 lib context7 / 내부 pattern 인용
-- [ ] deepened module 추가 시 이전 shallow module의 obsolete unit test 삭제
+- [ ] No duplicated responsibility (DRY)
+- [ ] Nothing added beyond the user's request (YAGNI)
+- [ ] Shortest expression reviewed (KISS)
+- [ ] New module passes Deletion test (N ≥ 2 callers cited)
+- [ ] Depth = interface properties validated (no shallow 1:1 wrappers)
+- [ ] External lib via Context7 / internal pattern cited
+- [ ] Deepened module: obsolete shallow unit tests deleted
 
 ## Trade-offs
 

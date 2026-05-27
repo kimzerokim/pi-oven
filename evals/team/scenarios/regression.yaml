@@ -1,0 +1,10 @@
+name: team-regression-001
+skill: team
+tag: regression
+input:
+  - turn: 1
+    user: "multi-agent: build the auth module"
+expected:
+  - skill_triggered: true
+  - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]
+  - tool_calls_required: ["task|Task"]

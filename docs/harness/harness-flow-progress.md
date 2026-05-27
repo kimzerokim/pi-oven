@@ -2,6 +2,22 @@
 
 Meta cycle tracking. Each entry = one self-improvement / build cycle of pi-oven.
 
+## 2026-05-28 — Spec C: Skill rewrite + new skills (post-v0.1.0 → v0.1.0 ready)
+
+- Cycle: completes the 3-spec model routing + subagent consolidation initiative.
+- Branch: `feature/standard-expansion` (push deferred).
+- Spec: `docs/specs/2026-05-28-pi-oven-skill-rewrite-and-new-skills.md` (1160 lines, ACCEPT cycle 3)
+- Critic cycles: 3 (REJECT 3 BLOCKERs incomplete grep + unanchored paths + undefended parallel; REJECT 3 BLOCKERs pi-oven.ts path drift + Korean table empirically false + references/* scope contradiction; ACCEPT). Verdicts at `docs/research/codex-reviews/2026-05-28-pi-oven-skill-rewrite-and-new-skills-critic-review{,-2,-3}.md`.
+- Implementation status: COMPLETE (pending commit).
+- Deliverables (4 phases):
+  - Phase 1 — SKILL.md sweep: 12 files updated; omc + omo refs replaced with pi-oven:* (including `pre-commit-gate/references/gate-detail.md:38` ai-slop-cleaner → pi-oven:code-simplifier); `code-quality-discipline/SKILL.md` + references narrative Korean → English; `large-task-delegation/SKILL.md` lines 32/93 + references/dispatch-anatomy.md narrative Korean → English. 2 new tests: `skill-omc-refs.test.ts` (recursive grep), `skill-english.test.ts` (Hangul prose check with fenced-block + frontmatter skip).
+  - Phase 2 — 3 new skills: `deep-init` (hierarchical AGENTS.md generation, pi-oven:explorer + pi-oven:writer dispatch), `deep-dive` (3 parallel pi-oven:tracer lanes + Socratic interview), `team` (N-agent orchestration on shared task list). 9 scenario YAML files.
+  - Phase 3 — 2 skill boosts: `autonomous-loop` 129→192 lines (autopilot + ralph + ultrawork patterns); `fresh-verifier` 80→135 lines (verify + verification-before-completion patterns; explicit no-self-verification rule).
+  - Phase 4 — version bump: `plugin.json` skills 12→15 + version 0.1.0→0.1.0; `marketplace.json plugins[0].version` 0.1.0→0.1.0; `.omp/extensions/pi-oven.ts pi.setLabel("pi-oven v0.1.0")`. 2 new tests: `skill-count.test.ts` + `deep-dive-parallel.test.ts`.
+- Final state: bun test 152 pass / lint:agents exit 0 / typecheck + build clean. 0 `oh-my-claudecode:*` / `omo:*` refs anywhere under `skills/`.
+- v0.1.0 BASELINE ACHIEVED: 23 pi-oven agents + /pi-oven:setup wizard + 15 self-contained skills + provider whitelist (opencode-zen + openai-codex + anthropic opt-in). Zero external dispatch dependency.
+- Status: spec ACCEPT; implementation done; semantic commit pending; push deferred until user wake review.
+
 ## 2026-05-28 — Spec B: Setup wizard (post-v0.1.0)
 
 - Cycle: continues the post-v0.1.0 model routing + subagent consolidation initiative (Spec A's successor).

@@ -1,0 +1,10 @@
+name: deep-init-smoke-001
+skill: deep-init
+tag: smoke
+input:
+  - turn: 1
+    user: "deepinit"
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["AGENTS.md", "directory"]
+  - tool_calls_required: ["task|Task"]

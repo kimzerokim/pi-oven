@@ -1,0 +1,28 @@
+{
+  "name": "pi-oven",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Curated omp workflow + discipline layer (5-source successor)",
+  "type": "module",
+  "license": "MIT",
+  "author": "kimzerokim <ky200223@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kimzerokim/pi-oven.git"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "bun build .omp/extensions/pi-oven.ts --outdir dist --target bun --format esm",
+    "eval": "bun scripts/run-eval.ts"
+  },
+  "dependencies": {
+    "@oh-my-pi/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "bun-types": "*",
+    "typescript": "^5.5.0"
+  },
+  "omp": {
+    "extensions": ["./.omp/extensions/pi-oven.ts"]
+  }
+}

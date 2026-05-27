@@ -1,0 +1,14 @@
+{
+  "name": "pi-oven",
+  "version": "0.1.0",
+  "description": "Curated omp workflow + discipline layer",
+  "skills": [],
+  "agents": [],
+  "commands": [
+    "./commands/pi-oven-setup.md",
+    "./commands/pi-oven-doctor.md",
+    "./commands/pi-oven-autonomous.md"
+  ],
+  "hooks": [],
+  "mcpServers": {}
+}

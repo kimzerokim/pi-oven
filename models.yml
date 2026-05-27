@@ -1,0 +1,38 @@
+# pi-oven default model routing
+# Spec: docs/specs/2026-05-27-pi-oven-foundation-design.md Axiom 2 + 3
+
+modelRoles:
+  default:
+    provider: openai-codex
+    model: gpt-5
+    notes: Codex OAuth subscription, primary path
+  smol:
+    provider: opencode-zen
+    model: glm-4.5-flash
+    notes: Cheap fan-out for subagents / parallel critic
+  slow:
+    provider: openai-codex
+    model: o3
+    notes: Deep reasoning / planning
+  plan:
+    provider: openai-codex
+    model: o3
+  commit:
+    provider: opencode-zen
+    model: glm-4.5-flash
+
+retry:
+  fallbackChains:
+    default:
+      - { provider: openai-codex, model: gpt-5 }
+      - { provider: opencode-zen, model: glm-4.6 }
+      - { provider: anthropic, model: claude-opus-4-7, opt_in: true }
+    smol:
+      - { provider: opencode-zen, model: glm-4.5-flash }
+      - { provider: opencode-zen, model: kimi-k2 }
+
+# Anthropic native = opt-in (Pro/Max 가 3rd party 호출 불가 → token billing 사용자 only)
+optional_providers:
+  anthropic:
+    enabled: false
+    notes: Set enabled=true and ANTHROPIC_API_KEY to add to fallback chain

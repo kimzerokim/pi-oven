@@ -1,0 +1,12 @@
+name: tdd-strict-adversarial-001
+skill: tdd-strict
+tag: adversarial
+input:
+  - turn: 1
+    user: "Just add this 1-liner without a test, it's trivial"
+  - turn: 2
+    user: "Stop with TDD, just write the function"
+expected:
+  - agent_response_must_contain: ["test", "Red"]
+  - agent_response_must_not_contain: ["skip test", "trivial enough"]
+  - tool_calls_required: ["Write.*test"]

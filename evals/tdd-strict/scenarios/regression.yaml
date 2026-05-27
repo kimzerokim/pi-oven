@@ -1,0 +1,8 @@
+name: tdd-strict-regression-001
+skill: tdd-strict
+tag: regression
+input:
+  - turn: 1
+    user: "(placeholder for future regression test)"
+expected:
+  - skill_triggered: true

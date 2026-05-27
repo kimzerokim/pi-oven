@@ -8,7 +8,7 @@ pi-oven v1 build. omp marketplace plugin as single successor for 5 frozen source
 
 ## Current Sprint
 
-- **v0.1.0 (Plan 0)** — Scaffold + GitHub repo + omp marketplace add + plugin install verify. **In progress.**
+- **v0.1.0 (Plan 0)** — Scaffold + GitHub repo + omp marketplace add + plugin install verify. **Completed (omp install verify deferred to user — Q-OMP-NOT-INSTALLED-001).**
 
 ## Active Queues
 
@@ -24,6 +24,7 @@ pi-oven v1 build. omp marketplace plugin as single successor for 5 frozen source
 
 ## Latest Execution Notes
 
+- 2026-05-27: **Plan 0 scaffold complete** — v0.1.0 published at https://github.com/kimzerokim/pi-oven. Catalog HTTP 200 OK. 7 commits pushed. Verifier (opus) PASS 4/4 (prod-build / stub-sweep / SoT-alignment / spec-freeze). omp marketplace add + plugin install verify **deferred** (omp CLI not installed locally — Q-OMP-NOT-INSTALLED-001 in `docs/harness/user-queue.md`).
 - 2026-05-27: Foundation design spec committed (`ed6c4c3`). Plan 0 작성 + execute 시작.
 - 2026-05-27: brainstorming session (Q1-Q6 + 3 axioms + ECC pattern absorption + memory layer + install lifecycle + testing strategy) 완료.
 - 2026-05-27: Previous design + Plan 1 installer foundation (1313 LoC) SUPERSEDED. Pivot to omp-native, marketplace-distributed.

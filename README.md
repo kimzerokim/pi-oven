@@ -6,7 +6,7 @@
 
 ```sh
 omp plugin marketplace add kimzerokim/pi-oven
-omp plugin install pi-oven@pi-oven-marketplace
+omp plugin install pi-oven@pi-oven
 ```
 
 Pre-requisites: omp ≥ requirement, bun ≥ 1.3.14, git, **provider key 1개 이상** (OpenAI Codex OAuth / OpenCode Zen / Anthropic native).

@@ -11,7 +11,7 @@
 
 **pi-oven v1 = single omp marketplace plugin** that re-implements a curated subset of workflow patterns from 5 frozen sources (oh-my-claudecode, oh-my-openagent, Matt Pocock skills, superpowers, pi-oven) as an **omp-native discipline + workflow orchestration layer**.
 
-Value proposition: **omp tool ceiling × omo/omc/superpowers/pi-oven workflow ceiling**. The new project is the single successor for all five sources (they are frozen). Distribution = `omp plugin install pi-oven@pi-oven-marketplace`. No commercial layer, no marketplace operator role; we are a single plugin publisher.
+Value proposition: **omp tool ceiling × omo/omc/superpowers/pi-oven workflow ceiling**. The new project is the single successor for all five sources (they are frozen). Distribution = `omp plugin install pi-oven@pi-oven`. No commercial layer, no marketplace operator role; we are a single plugin publisher.
 
 ---
 
@@ -295,7 +295,7 @@ Layer 4: docs/                          (human-readable SoT, git-tracked)
 
 ```sh
 omp plugin marketplace add kimzerokim/pi-oven
-omp plugin install pi-oven@pi-oven-marketplace
+omp plugin install pi-oven@pi-oven
 ```
 
 ### Catalog (`.claude-plugin/marketplace.json`)
@@ -317,16 +317,16 @@ omp plugin install pi-oven@pi-oven-marketplace
 
 ### Scope strategy
 
-- **Default user** (`~/.omp/plugins/pi-oven/`) — 모든 프로젝트에서 사용 가능. pi-oven 권장.
-- **Opt-in project** (`.omp/plugins/pi-oven/`) — 특정 프로젝트 격리. omp 표준대로 project scope 가 user scope 의 동일 plugin shadow.
+- **Default user** (omp v15.5.3 observed: `~/.omp/plugins/cache/plugins/pi-oven___pi-oven___<version>/`) — 모든 프로젝트에서 사용 가능. pi-oven 권장.
+- **Opt-in project** (project-scope install — omp 가 `.omp/plugins/` 의 사용자 plugin 디렉토리에 cache) — 특정 프로젝트 격리. omp 표준대로 project scope 가 user scope 의 동일 plugin shadow.
 
 ### Upgrade / Uninstall / Idempotency
 
 - **Upgrade**: 같은 명령 재실행 → omp 가 catalog 새 sha 감지 → bun install → lockfile 갱신 → migration hook (state schema forward migrate)
 - **State schema**: 항상 forward-compatible (additive only)
-- **Rollback**: `omp plugin install pi-oven@1.0.0@pi-oven-marketplace` (version pin)
+- **Rollback**: `omp plugin install pi-oven@1.0.0@pi-oven` (version pin)
 - **Uninstall**: omp 표준. `.pi-oven/` 자동 삭제 X (사용자 직접). `docs/` 그대로 (git-tracked 자산)
-- **Idempotency**: omp lockfile + SKILL.md version 비교 + atomic install + idempotent setup wizard
+- **Idempotency**: `~/.omp/plugins/installed_plugins.json` (v2 schema, observed in omp v15.5.3 — `omp-plugins.lock.json` 가정은 outdated docs 의 npm-style plugin manager path) + SKILL.md version 비교 + atomic install + idempotent setup wizard. 자세한 layout: `docs/instincts/omp-install-layout.md`.
 
 ### Cross-harness 부산물 (maintenance 책임 X)
 

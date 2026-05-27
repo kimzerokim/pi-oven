@@ -8,7 +8,7 @@ pi-oven v1 build. omp marketplace plugin as single successor for 5 frozen source
 
 ## Current Sprint
 
-- **v0.1.0 (Plan 0)** — Scaffold + GitHub repo + omp marketplace add + plugin install verify. **Completed (omp install verify deferred to user — Q-OMP-NOT-INSTALLED-001).**
+- **v0.1.0 (Plan 0 + rename patch)** — Scaffold + GitHub repo + omp marketplace add + plugin install verify + identifier rename. **Completed.** STOP for user check-in before Plan 1 (Bootstrap 12 core skills).
 
 ## Active Queues
 
@@ -24,7 +24,9 @@ pi-oven v1 build. omp marketplace plugin as single successor for 5 frozen source
 
 ## Latest Execution Notes
 
-- 2026-05-27: **Plan 0 scaffold complete** — v0.1.0 published at https://github.com/kimzerokim/pi-oven. Catalog HTTP 200 OK. 7 commits pushed. Verifier (opus) PASS 4/4 (prod-build / stub-sweep / SoT-alignment / spec-freeze). omp marketplace add + plugin install verify **deferred** (omp CLI not installed locally — Q-OMP-NOT-INSTALLED-001 in `docs/harness/user-queue.md`).
+- 2026-05-27: **v0.1.0 rename + republish complete** — pi-oven@pi-oven-marketplace → **pi-oven@pi-oven**. GitHub repo renamed `pi-oven` → `pi-oven`. Old omp install uninstalled + new added/installed (installPath: `~/.omp/plugins/cache/plugins/pi-oven___pi-oven___0.1.0`). Tag v0.1.0 + GitHub release published. Surgical rename (identifier only; project codename "pi-oven" preserved in spec/SOUL/plan docs).
+- 2026-05-27: **Q-OMP-NOT-INSTALLED-001 RESOLVED** — user installed omp via `curl omp.sh/install | sh` (bun 1.3.12→1.3.14 upgrade). marketplace add + plugin install verified live by main.
+- 2026-05-27: **Plan 0 scaffold complete** — v0.1.0 published at https://github.com/kimzerokim/pi-oven. Catalog HTTP 200 OK. 7 commits pushed. Verifier (opus) PASS 4/4 (prod-build / stub-sweep / SoT-alignment / spec-freeze).
 - 2026-05-27: Foundation design spec committed (`ed6c4c3`). Plan 0 작성 + execute 시작.
 - 2026-05-27: brainstorming session (Q1-Q6 + 3 axioms + ECC pattern absorption + memory layer + install lifecycle + testing strategy) 완료.
 - 2026-05-27: Previous design + Plan 1 installer foundation (1313 LoC) SUPERSEDED. Pivot to omp-native, marketplace-distributed.

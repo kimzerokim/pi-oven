@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Create the omp marketplace plugin skeleton, publish to GitHub, register with omp, and verify a no-op `omp plugin install pi-oven@pi-oven-marketplace` succeeds. Stop condition = end of this plan (user check-in before Plan 1).
+**Goal:** Create the omp marketplace plugin skeleton, publish to GitHub, register with omp, and verify a no-op `omp plugin install pi-oven@pi-oven` succeeds. Stop condition = end of this plan (user check-in before Plan 1).
 
 **Architecture:** Single Bun/TypeScript package. `.claude-plugin/marketplace.json` self-references its own GitHub repo as the only plugin entry (Q1 successor / Q2 omp-only / Q6 Approach B). TS extension entry is a no-op factory (hooks wired in Plan 3). Skills/agents are empty stubs (filled in Plan 1+). CI is typecheck-only at this stage.
 
@@ -134,7 +134,7 @@ git commit -m "build: bun package + ts config (Plan 0 Task 1)"
 ```json
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "pi-oven-marketplace",
+  "name": "pi-oven",
   "owner": { "name": "kimzerokim", "email": "ky200223@gmail.com" },
   "description": "omp marketplace catalog for pi-oven (single successor layer)",
   "plugins": [
@@ -477,7 +477,7 @@ git commit -m "ci: eval runner stub + GitHub Actions typecheck pipeline (Plan 0 
 
 ```sh
 omp plugin marketplace add kimzerokim/pi-oven
-omp plugin install pi-oven@pi-oven-marketplace
+omp plugin install pi-oven@pi-oven
 ```
 
 Pre-requisites: omp ≥ requirement, bun ≥ 1.3.14, git, **provider key 1개 이상** (OpenAI Codex OAuth / OpenCode Zen / Anthropic native).
@@ -790,7 +790,7 @@ Expected: `Branch 'main' set up to track 'origin/main'.` + commits pushed.
 - [ ] **Step 6.5: Verify catalog fetchable**
 
 Run: `curl -sf https://raw.githubusercontent.com/kimzerokim/pi-oven/main/.claude-plugin/marketplace.json | jq -r '.name'`
-Expected: `pi-oven-marketplace`
+Expected: `pi-oven`
 
 ---
 
@@ -808,21 +808,21 @@ If `omp` CLI not on PATH: skip with warning + manual verification log; continue 
 - [ ] **Step 7.2: List marketplaces (verify registration)**
 
 Run: `omp plugin marketplace list 2>&1`
-Expected: `pi-oven-marketplace` 표시.
+Expected: `pi-oven` 표시.
 
 - [ ] **Step 7.3: Install pi-oven plugin**
 
-Run: `omp plugin install pi-oven@pi-oven-marketplace 2>&1`
-Expected: bun install 실행 → `~/.omp/plugins/pi-oven/` 디렉토리 생성 → lockfile entry 추가.
+Run: `omp plugin install pi-oven@pi-oven 2>&1`
+Expected (v15.5.3 observed): plugin cache 디렉토리 생성 (`~/.omp/plugins/cache/plugins/pi-oven___pi-oven___0.1.0/`) → `~/.omp/plugins/installed_plugins.json` (v2 schema) 에 entry 추가.
 
 - [ ] **Step 7.4: Verify install on disk**
 
 Run:
 ```bash
-ls -la ~/.omp/plugins/pi-oven/ 2>&1 | head -20
-cat ~/.omp/plugins/omp-plugins.lock.json 2>&1 | jq '.plugins."pi-oven" // .config.plugins."pi-oven"' | head
+ls -la ~/.omp/plugins/cache/plugins/pi-oven___pi-oven___0.1.0/ 2>&1 | head -20
+jq '.plugins."pi-oven@pi-oven"[0]' ~/.omp/plugins/installed_plugins.json
 ```
-Expected: pi-oven 디렉토리 존재 + lockfile 에 version 0.1.0 entry.
+Expected: plugin cache 디렉토리 존재 + installed_plugins.json 에 `{scope, version, installPath, installedAt, lastUpdated}` entry.
 
 - [ ] **Step 7.5: Verify omp loads the plugin (extension log line)**
 
@@ -893,7 +893,7 @@ Wait for user OK before invoking writing-plans for Plan 1.
 | 6.1 `gh repo create` | repo already exists | use existing repo (`gh repo view ...`); skip create |
 | 6.4 `git push` | non-fast-forward / auth | `gh auth status`; pull then push |
 | 7.1 `omp plugin marketplace add` | omp CLI missing | log warning + skip; resume in setup wizard (Plan 4) |
-| 7.3 `omp plugin install` | bun install failure inside omp | check `~/.omp/plugins/omp-plugins.lock.json`; retry |
+| 7.3 `omp plugin install` | bun install failure inside omp | check `~/.omp/plugins/installed_plugins.json` (v2) + plugin cache dir; retry |
 
 ---
 
@@ -909,8 +909,8 @@ Wait for user OK before invoking writing-plans for Plan 1.
 
 - ✓ GitHub repo `kimzerokim/pi-oven` public, main branch, commits + tag v0.1.0 pushed
 - ✓ `.claude-plugin/marketplace.json` fetchable + valid
-- ✓ `omp plugin install pi-oven@pi-oven-marketplace` exit 0, plugin entry in lockfile
-- ✓ `~/.omp/plugins/pi-oven/` 디렉토리 존재 + .claude-plugin + .omp/extensions/pi-oven.ts 모두 present
+- ✓ `omp plugin install pi-oven@pi-oven` exit 0, plugin entry in lockfile
+- ✓ `~/.omp/plugins/cache/plugins/pi-oven___pi-oven___0.1.0/` 디렉토리 존재 + `.claude-plugin/` + `.omp/extensions/pi-oven.ts` 모두 present (v15.5.3 actual layout)
 - ✓ CI run on first push = green (typecheck + extension build + eval stub + JSON validate)
 - ✓ docs/ skeleton (WORKING-CONTEXT / SOUL / contexts / ADR 0001 / harness-flow-progress) 모두 commit
 - ✓ STOP — Plan 1 진입 전 user check-in 대기

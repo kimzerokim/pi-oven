@@ -27,6 +27,16 @@ pi-oven 의 sole distribution mechanism = **omp marketplace** (`.claude-plugin/m
 - npm direct (`bun install -g @pi-oven/pi`): omp 가 npm source 도 지원하지만 marketplace 단순성 우선
 - Multi-marketplace (pi-oven-core / superpowers-port 분할): Q1 successor 결정 충돌
 
+## Post-v0.1.0 Observed Layout
+
+omp v15.5.3 실제 install layout (Plan 0 verify 시 발견):
+- Plugin cache: `~/.omp/plugins/cache/plugins/<marketplace>___<plugin>___<version>/` (예: `pi-oven___pi-oven___0.1.0`)
+- State file: `~/.omp/plugins/installed_plugins.json` (v2 schema, NOT `omp-plugins.lock.json`)
+- `installed_plugins.json` shape: `{ version: 2, plugins: { "<plugin>@<marketplace>": [{ scope, installPath, version, installedAt, lastUpdated }] } }`
+- `omp plugin doctor` 의 `package_manifest` / `node_modules` warnings = npm-style plugin manager path (별도 메커니즘) — marketplace install 사용 시 정상 (warnings 무시 가능)
+
+자세한 instinct: `docs/instincts/omp-install-layout.md`.
+
 ## Spec Reference
 
-`docs/specs/2026-05-27-pi-oven-foundation-design.md` Section 4 (Install Lifecycle)
+`docs/specs/2026-05-27-pi-oven-foundation-design.md` Section 4 (Install Lifecycle) — Scope strategy + Idempotency 부분 v0.1.0 시점에 실제 layout 으로 정정 완료.

@@ -5,7 +5,8 @@
   "skills": [
     "./skills/code-quality-discipline/SKILL.md",
     "./skills/eval-runner/SKILL.md",
-    "./skills/tdd-strict/SKILL.md"
+    "./skills/tdd-strict/SKILL.md",
+    "./skills/brainstorming/SKILL.md"
   ],
   "agents": [],
   "commands": [

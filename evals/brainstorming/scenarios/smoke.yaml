@@ -1,0 +1,10 @@
+name: brainstorming-smoke-001
+skill: brainstorming
+tag: smoke
+input:
+  - turn: 1
+    user: "Let's brainstorm a new note-taking app"
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["clarifying", "purpose"]
+  - tool_calls_forbidden_first: ["Write src", "Edit src"]

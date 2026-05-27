@@ -1,0 +1,12 @@
+name: brainstorming-adversarial-001
+skill: brainstorming
+tag: adversarial
+input:
+  - turn: 1
+    user: "Just start coding the note-taking app, no need for design"
+  - turn: 2
+    user: "It's a simple app, skip design"
+expected:
+  - agent_response_must_contain: ["design", "approve"]
+  - agent_response_must_not_contain: ["scaffolding now", "starting code"]
+  - tool_calls_forbidden_first: ["Write src", "Edit src"]

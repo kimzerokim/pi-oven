@@ -1,8 +1,0 @@
-name: fresh-verifier-regression-001
-skill: fresh-verifier
-tag: regression
-input:
-  - turn: 1
-    user: "(placeholder for future regression test)"
-expected:
-  - skill_triggered: true

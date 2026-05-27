@@ -1,7 +1,10 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "pi-oven",
-  "owner": { "name": "kimzerokim", "email": "ky200223@gmail.com" },
+  "owner": {
+    "name": "kimzerokim",
+    "email": "ky200223@gmail.com"
+  },
   "description": "omp marketplace catalog for pi-oven (single successor layer)",
   "plugins": [
     {
@@ -15,7 +18,13 @@
       },
       "version": "0.1.0",
       "category": "workflow",
-      "tags": ["autonomous", "tdd", "team-mode", "cross-vendor-critic", "pi-oven"],
+      "tags": [
+        "autonomous",
+        "tdd",
+        "team-mode",
+        "cross-vendor-critic",
+        "pi-oven"
+      ],
       "homepage": "https://github.com/kimzerokim/pi-oven"
     }
   ]

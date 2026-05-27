@@ -2,6 +2,23 @@
 
 Meta cycle tracking. Each entry = one self-improvement / build cycle of pi-oven.
 
+## 2026-05-27 — Plan 1 v0.1.0 Bootstrap 12 Core Skills
+
+- Cycle: pi-oven v0.1.0 → v0.1.0
+- Spec: `docs/specs/2026-05-27-pi-oven-foundation-design.md`
+- Plan: `docs/plans/2026-05-27-pi-oven-plan-1-bootstrap-12-core-skills.md` (1986 lines)
+- Pattern loop: cycle 1 REJECT (10 BLOCKERs — eval-runner SDK contract hallucinated) → cycle 2 ACCEPT (all resolved with SDK type evidence at `agent-session.d.ts:337/493`)
+- Mode: autonomous, 3-slot contract (destination=즉시 push / branch=main 직접 / PR mode=없음 / stop=12 skills PASS + tag v0.1.0)
+- Status: **completed (v0.1.0)**
+- Commits: e60c6b2 (Task 0) → 5a83781 → 20125d4 → cab27eb → 3d3a9d3 → ed23632 → a2dd356 → f22f502 → 4186086 → 932ff79 → 3330b3b → 107ae99 (Tasks 1-11) → d5f582b (mid-sprint sync) → a8327a8 (Task 12 autonomous-loop) → Task 13 final commit
+- 12 skills shipped: code-quality-discipline / eval-runner / tdd-strict / brainstorming / writing-plans / codebase-survey / spec-and-review / large-task-delegation / fresh-verifier / pre-commit-gate / subagent-driven-development / autonomous-loop
+- Eval-runner real impl: `scripts/run-eval.ts` + `scripts/lib/eval-runner.ts` (TDD-tested, 6 bun tests pass, omp SDK subscribe-pattern)
+- Subagent execution model: per-task fresh `oh-my-claudecode:explore` (sonnet) + `oh-my-claudecode:writer` (sonnet) dispatch. Main = dispatch + review only.
+- Tag: v0.1.0, gh release published
+- Dogfood switch: threshold met (`docs/decisions/0001-dogfood-switch.md`)
+- Eval execution: deferred to Plan 4 (LLM provider keys not yet provisioned — Codex / Zen / Anthropic-opt-in)
+- Next: STOP — user check-in before Plan 2 (Standard expansion ~33 skills; first cycle to run inside omp + pi-oven instead of Claude Code session)
+
 ## 2026-05-27 — v0.1.0 Identifier Rename Patch
 
 - Cycle: pi-oven v0.1.0 → v0.1.0 (rename only, no functional change)

@@ -12,6 +12,6 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true
   },
-  "include": [".omp/extensions/**/*.ts", "scripts/**/*.ts"],
+  "include": [".omp/extensions/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

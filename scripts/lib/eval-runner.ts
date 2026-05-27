@@ -1,0 +1,135 @@
+import type { Scenario, Verdict } from "./scenario-schema";
+
+const REQUIRED_FIELDS: Array<keyof Scenario> = ["name", "skill", "tag", "input", "expected"];
+
+export function parseScenario(yamlText: string): Scenario {
+  const obj = Bun.YAML.parse(yamlText) as Partial<Scenario>;
+  for (const field of REQUIRED_FIELDS) {
+    if (obj[field] === undefined) {
+      throw new Error(`Scenario missing required field: ${field}`);
+    }
+  }
+  return obj as Scenario;
+}
+
+/** Minimal event shapes the runner cares about.
+ *  Real SDK emits AgentSessionEvent; we only inspect these two variants.
+ */
+export type RunnerEvent =
+  | { type: "tool_execution_start"; toolName: string; toolCallId: string }
+  | { type: "message_update"; delta: string }
+  | { type: "message_end" }
+  | { type: string };  // catch-all for other event types
+
+/** Contract that mirrors real AgentSession subscribe/prompt API.
+ *  Real SDK: session.subscribe(listener) returns unsubscribe fn; session.prompt() returns Promise<void>.
+ */
+export interface SessionLike {
+  subscribe(listener: (event: RunnerEvent) => void): () => void;
+  prompt(message: string): Promise<void>;
+}
+
+/** Per-turn aggregated result collected via subscribe(). */
+interface TurnBuffer {
+  content: string;
+  toolCalls: string[];  // toolName values in invocation order
+}
+
+async function runTurn(session: SessionLike, userMessage: string): Promise<TurnBuffer> {
+  const buf: TurnBuffer = { content: "", toolCalls: [] };
+
+  // Wait for message_end event in addition to prompt() resolving,
+  // since events may arrive asynchronously after prompt() returns.
+  const messageEndPromise = new Promise<void>((resolve) => {
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === "tool_execution_start") {
+        const e = event as { type: "tool_execution_start"; toolName: string };
+        buf.toolCalls.push(e.toolName);
+      } else if (event.type === "message_update") {
+        const e = event as { type: "message_update"; delta: string };
+        buf.content += e.delta;
+      } else if (event.type === "message_end") {
+        unsubscribe();
+        resolve();
+      }
+    });
+  });
+
+  await session.prompt(userMessage);
+  await messageEndPromise;
+  return buf;
+}
+
+export async function runScenario(scenario: Scenario, session: SessionLike): Promise<Verdict> {
+  const t0 = performance.now();
+  const failures: string[] = [];
+  const observations: string[] = [];
+
+  // Aggregate across all turns; evaluations run against the LAST turn's buffer
+  let lastBuf: TurnBuffer = { content: "", toolCalls: [] };
+  for (const turn of scenario.input) {
+    lastBuf = await runTurn(session, turn.user);
+    observations.push(`turn ${turn.turn}: tools=[${lastBuf.toolCalls.join(",")}] content="${lastBuf.content.slice(0, 80)}"`);
+  }
+
+  for (const exp of scenario.expected) {
+    // 1. skill_triggered: check if any tool call name or content contains the skill name
+    if (exp.skill_triggered !== undefined) {
+      const target = typeof exp.skill_triggered === "string" ? exp.skill_triggered : null;
+      const triggered = target
+        ? lastBuf.toolCalls.some((n) => n.includes(target)) || lastBuf.content.includes(target)
+        : lastBuf.toolCalls.length > 0 || lastBuf.content.length > 0;
+      if (exp.skill_triggered === true && !triggered) {
+        failures.push(`skill_triggered: no evidence of skill activation`);
+      }
+    }
+
+    // 2. agent_response_must_contain
+    if (exp.agent_response_must_contain) {
+      for (const phrase of exp.agent_response_must_contain) {
+        if (!lastBuf.content.includes(phrase)) {
+          failures.push(`agent_response_must_contain: missing "${phrase}"`);
+        }
+      }
+    }
+
+    // 3. agent_response_must_not_contain
+    if (exp.agent_response_must_not_contain) {
+      for (const phrase of exp.agent_response_must_not_contain) {
+        if (lastBuf.content.includes(phrase)) {
+          failures.push(`agent_response_must_not_contain: found forbidden "${phrase}"`);
+        }
+      }
+    }
+
+    // 4. tool_calls_required: each pattern must match at least one invoked tool
+    if (exp.tool_calls_required) {
+      for (const pattern of exp.tool_calls_required) {
+        const re = new RegExp(pattern);
+        const matched = lastBuf.toolCalls.some((n) => re.test(n));
+        if (!matched) failures.push(`tool_calls_required: ${pattern} not invoked`);
+      }
+    }
+
+    // 5. tool_calls_forbidden_first: the FIRST tool call must not match any pattern
+    if (exp.tool_calls_forbidden_first && lastBuf.toolCalls.length > 0) {
+      const first = lastBuf.toolCalls[0];
+      for (const pattern of exp.tool_calls_forbidden_first) {
+        if (new RegExp(pattern).test(first)) {
+          failures.push(`tool_calls_forbidden_first: first tool "${first}" matched forbidden pattern "${pattern}"`);
+        }
+      }
+    }
+  }
+
+  return {
+    scenario: scenario.name,
+    skill: scenario.skill,
+    passed: failures.length === 0,
+    failures,
+    observations,
+    latency_ms: Math.round(performance.now() - t0),
+    token_in: 0,   // token counting requires model event not yet standardised
+    token_out: 0,
+  };
+}

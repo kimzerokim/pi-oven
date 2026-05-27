@@ -1,0 +1,8 @@
+name: eval-runner-regression-001
+skill: eval-runner
+tag: regression
+input:
+  - turn: 1
+    user: "(placeholder for future regression test)"
+expected:
+  - skill_triggered: true

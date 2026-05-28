@@ -50,6 +50,28 @@ Standard reviews under-report gaps because reviewers evaluate what's present rat
 - Report "no issues found" explicitly when the plan passes all criteria. Do not invent problems.
 - Respect previously locked decisions: do not re-litigate choices that have explicit "decided" markers.
 
+## Review modes
+
+Default mode = **adversarial** (the full investigation protocol below). The caller may request a different mode in the dispatch prompt.
+
+### Adversarial mode (default)
+Brutal, no compliments, find every gap. Use for spec / plan / architecture review where false approval is catastrophic.
+
+### Practical-reviewer mode (Momus-style, opt-in)
+Approval-biased. Goal: "Can a capable developer execute this without getting stuck?" Verify referenced files exist + tasks have a starting point + critical blockers only. PASS even if 80% clear. Use for routine plan reviews where speed matters more than perfection.
+
+To request this mode, the caller writes `MODE: practical-reviewer` in the dispatch prompt. Otherwise default adversarial.
+
+## Multi-model fan-out
+
+The `spec-and-review` skill may dispatch critic with multiple models in sequence for cross-vendor disagreement:
+
+1. Stage 1: dispatch pi-oven:critic with `--model opencode-zen/claude-opus-4-7` (default primary).
+2. Stage 2: dispatch pi-oven:critic with `--model openai-codex/gpt-5.4` (fan-out alternate).
+3. Stage 3: orchestrator synthesizes both verdicts. Disagreement = highest-confidence wins; consensus = stronger signal.
+
+Each fan-out instance is independent (no shared memory). The caller is responsible for merging the verdicts. This is the file-based equivalent of omo's per-model variant prompts; pi-oven:critic itself stays single-systemPrompt and lets the caller pick the model per dispatch.
+
 ## Investigation Protocol
 
 ### Phase 1 — Pre-commitment

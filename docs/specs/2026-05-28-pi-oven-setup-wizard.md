@@ -130,29 +130,29 @@ Complete 23-role Profile A model map (verified against live `omp --list-models`)
 
 | Role | primary | registry_alternate | thinkingLevel |
 |---|---|---|---|
-| executor | opencode-zen/gpt-5.3-codex | openai-codex/gpt-5.3-codex | high |
+| executor | openai-codex/gpt-5.3-codex | opencode-zen/gpt-5.3-codex | high |
 | explorer | opencode-zen/glm-5 | opencode-zen/claude-haiku-4-5 | medium |
 | verifier | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | medium |
-| critic | opencode-zen/claude-opus-4-7 | opencode-zen/gpt-5.4 | high |
-| planner | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | medium |
+| critic | opencode-zen/claude-opus-4-7 | openai-codex/gpt-5.4 | xhigh |
+| planner | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | high |
 | code-reviewer | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | high |
 | debugger | opencode-zen/gpt-5.3-codex | opencode-zen/claude-sonnet-4-6 | high |
-| test-engineer | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | medium |
-| security-reviewer | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | high |
-| writer | opencode-zen/claude-haiku-4-5 | opencode-zen/claude-sonnet-4-6 | low |
-| designer | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | medium |
-| code-simplifier | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | medium |
-| qa-tester | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-haiku-4-5 | medium |
+| test-engineer | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | high |
+| security-reviewer | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
+| writer | opencode-zen/claude-haiku-4-5 | opencode-zen/claude-sonnet-4-6 | medium |
+| designer | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | high |
+| code-simplifier | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
+| qa-tester | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-haiku-4-5 | high |
 | git-master | opencode-zen/claude-haiku-4-5 | opencode-zen/claude-sonnet-4-6 | minimal |
 | document-specialist | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-haiku-4-5 | medium |
-| tracer | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | medium |
-| analyst | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | high |
-| scientist | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | high |
+| tracer | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | high |
+| analyst | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
+| scientist | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
 | architect | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
-| librarian | opencode-zen/glm-5 | opencode-zen/claude-sonnet-4-6 | minimal |
-| multimodal-looker | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | low |
+| librarian | opencode-zen/glm-5 | opencode-zen/claude-sonnet-4-6 | medium |
+| multimodal-looker | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | medium |
 | oracle | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
-| metis | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | high |
+| metis | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
 
 `registry_alternate` activates only when the primary model is removed from the omp registry (Outcome 3). When primary is simply unauthed (Outcome 2), omp falls back to the parent session model — not the next array entry (Spec A §3.2 / §6.3).
 
@@ -177,26 +177,26 @@ Profile B 23-role model map:
 | executor | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | high |
 | explorer | opencode-zen/glm-5 | anthropic/claude-haiku-4-5 | medium |
 | verifier | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | medium |
-| critic | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | high |
-| planner | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | medium |
+| critic | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
+| planner | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | high |
 | code-reviewer | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | high |
 | debugger | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | high |
-| test-engineer | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | medium |
-| security-reviewer | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | high |
-| writer | anthropic/claude-haiku-4-5 | opencode-zen/claude-haiku-4-5 | low |
-| designer | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | medium |
-| code-simplifier | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | medium |
-| qa-tester | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | medium |
+| test-engineer | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | high |
+| security-reviewer | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
+| writer | anthropic/claude-haiku-4-5 | opencode-zen/claude-haiku-4-5 | medium |
+| designer | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | high |
+| code-simplifier | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
+| qa-tester | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | high |
 | git-master | anthropic/claude-haiku-4-5 | opencode-zen/claude-haiku-4-5 | minimal |
 | document-specialist | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | medium |
-| tracer | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | medium |
-| analyst | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | high |
-| scientist | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | high |
+| tracer | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | high |
+| analyst | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
+| scientist | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
 | architect | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
-| librarian | opencode-zen/glm-5 | anthropic/claude-haiku-4-5 | minimal |
-| multimodal-looker | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | low |
+| librarian | opencode-zen/glm-5 | anthropic/claude-haiku-4-5 | medium |
+| multimodal-looker | anthropic/claude-sonnet-4-6 | opencode-zen/claude-sonnet-4-6 | medium |
 | oracle | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
-| metis | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | high |
+| metis | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
 
 **explorer and librarian rationale**: Profile B promotes Anthropic for reasoning-heavy roles (executor, critic, planner, etc.) while preserving `opencode-zen/glm-5` as primary for context-heavy research roles (explorer, librarian). The 1M token context window is the role-defining capability for these two roles; replacing with 200K anthropic-haiku would degrade large-repo workloads. Power users can override per-role via `--import` partial config (see §7 for sample).
 

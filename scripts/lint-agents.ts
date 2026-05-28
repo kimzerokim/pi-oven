@@ -2,12 +2,14 @@
 /**
  * CI-time hard lint for pi-oven agent files.
  * Usage: bun scripts/lint-agents.ts [agentsDir]
- * Walks agentsDir for pi-oven-*.md files and validates each has a non-empty model: field.
+ * Walks agentsDir for pi-oven-*.md files. Validates each has a non-empty model:
+ * field AND that model/thinkingLevel match profiles.ts PROFILE_A (SoT).
  * Exits 0 on success, 1 on any violation.
  */
 
 import { readdirSync } from "fs";
 import { join } from "path";
+import { PROFILE_A, ROLES, type Role } from "./pi-oven-setup/profiles";
 
 const agentsDir = process.argv[2] ?? join(import.meta.dir, "..", "agents");
 
@@ -24,6 +26,11 @@ function extractModels(frontmatter: Record<string, unknown>): string[] {
   return [];
 }
 
+function extractThinkingLevel(frontmatter: Record<string, unknown>): string | undefined {
+  const raw = frontmatter["thinkingLevel"];
+  return typeof raw === "string" ? raw : undefined;
+}
+
 let files: string[];
 try {
   files = readdirSync(agentsDir).filter(
@@ -35,6 +42,7 @@ try {
 }
 
 let violations = 0;
+const roleSet = new Set<string>(ROLES as readonly string[]);
 
 for (const file of files) {
   const content = await Bun.file(join(agentsDir, file)).text();
@@ -45,6 +53,30 @@ for (const file of files) {
     console.error(
       `lint-agents: ERROR: ${file} has no non-empty model: field. ` +
         `All pi-oven-*.md files must declare model: <provider>/<name>.`
+    );
+    violations++;
+  }
+
+  // SoT alignment: agent file model + thinkingLevel must match PROFILE_A.
+  // profiles.ts is the source of truth; agent files are derived artifacts.
+  const role = file.replace(/^pi-oven-/, "").replace(/\.md$/, "");
+  if (!roleSet.has(role)) continue;
+
+  const expected = PROFILE_A[role as Role];
+  const expectedModels = [expected.primary, expected.registry_alternate];
+  if (models[0] !== expectedModels[0] || models[1] !== expectedModels[1]) {
+    console.error(
+      `lint-agents: ERROR: ${file} model drift from profiles.ts PROFILE_A. ` +
+        `file=[${models.join(", ")}] expected=[${expectedModels.join(", ")}]`
+    );
+    violations++;
+  }
+
+  const thinking = extractThinkingLevel(frontmatter);
+  if (thinking !== expected.thinkingLevel) {
+    console.error(
+      `lint-agents: ERROR: ${file} thinkingLevel="${thinking ?? "(missing)"}" ` +
+        `does not match profiles.ts PROFILE_A.${role}.thinkingLevel="${expected.thinkingLevel}".`
     );
     violations++;
   }

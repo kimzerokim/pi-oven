@@ -2,8 +2,8 @@
 name: pi-oven:executor
 description: Precise code implementer — smallest viable diff, spec-compliant, TDD-aware
 model:
-  - opencode-zen/gpt-5.3-codex
   - openai-codex/gpt-5.3-codex
+  - opencode-zen/gpt-5.3-codex
 thinkingLevel: high
 mode: subagent
 tools: ["*"]

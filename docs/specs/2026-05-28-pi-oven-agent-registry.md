@@ -119,7 +119,7 @@ installPath: /Users/kimzerokim/.omp/plugins/cache/plugins/pi-oven___pi-oven___0.
 ```bash
 # colon-in-name dispatch 검증
 omp --plugin-dir /path/to/pi-oven --print "dispatch pi-oven:executor to say hello"
-# 기대: pi-oven:executor agent 발견 → opencode-zen/gpt-5.3-codex로 실행됨
+# 기대: pi-oven:executor agent 발견 → openai-codex/gpt-5.3-codex로 실행됨
 # 실패 시: "agent not found" 오류 → name 파싱 이슈 조사 필요
 
 # agent list로 colon name 등록 확인
@@ -382,7 +382,7 @@ Profile A는 `opencode-zen/*` 및 `openai-codex/*` 모델만 사용한다. Anthr
 
 **model 배열 의미**: 첫 번째 항목 = primary. 두 번째 항목 = registry-not-found 시 resolution-time alternate (primary가 **registry에 없을 때**만 동작). primary가 registry에 있지만 unauthed이면 두 번째 항목이 아닌 **parent session model**로 fallback된다 (§3.2 Outcome 2 참조). 이는 429 runtime failover가 아니다 (§9 참조).
 
-**executor primary**: `opencode-zen/gpt-5.3-codex` — `omp --list-models`로 확인됨. `openai-codex/gpt-5.3-codex`는 auth 미검증으로 resolution-time alternate 위치로 강등 (§9 Q5 참조).
+**executor primary**: `openai-codex/gpt-5.3-codex` — 사용자 정책: ChatGPT Codex 5.3+ 구독을 release default executor 로 lock. `opencode-zen/gpt-5.3-codex`는 Codex 구독 없는 사용자 환경을 위한 resolution-time alternate (OpenCode Zen wrapper).
 
 > **`registry_alternate` 키 명명 의도**: `registry_alternate`는 "registry-not-found 시에만 동작하는 alternate"임을 키 이름에서 명시한다. primary가 단순 unauthed인 경우(Outcome 2)에는 이 값이 아닌 parent session model로 fallback됨을 Spec C 소비자에게 명확히 전달한다.
 
@@ -390,8 +390,8 @@ Profile A는 `opencode-zen/*` 및 `openai-codex/*` 모델만 사용한다. Anthr
 {
   "pi-oven.models": {
     "executor": {
-      "primary": "opencode-zen/gpt-5.3-codex",
-      "registry_alternate": "openai-codex/gpt-5.3-codex",
+      "primary": "openai-codex/gpt-5.3-codex",
+      "registry_alternate": "opencode-zen/gpt-5.3-codex",
       "thinkingLevel": "high"
     },
     "explorer": {
@@ -518,7 +518,7 @@ Profile A는 `opencode-zen/*` 및 `openai-codex/*` 모델만 사용한다. Anthr
 
 | Role | Model (primary) | thinkingLevel | 지원 여부 |
 |---|---|---|---|
-| executor | opencode-zen/gpt-5.3-codex | high | [S] §14 검증 필요 |
+| executor | openai-codex/gpt-5.3-codex | high | [S] §14 검증 필요 |
 | explorer | opencode-zen/glm-5 | medium | [S] |
 | verifier | opencode-zen/kimi-k2.6 | medium | [L] (`omp --list-models` minimal,low,medium,high,xhigh 확인) |
 | critic | opencode-zen/claude-opus-4-7 | high | [L] |
@@ -543,7 +543,8 @@ Profile A는 `opencode-zen/*` 및 `openai-codex/*` 모델만 사용한다. Anthr
 | metis | opencode-zen/claude-opus-4-7 | high | [L] |
 
 모델 선정 근거:
-- `opencode-zen/gpt-5.3-codex`: executor/debugger 역할에서 코드 생성·편집 능력 최우선
+- `openai-codex/gpt-5.3-codex`: executor primary. ChatGPT Codex 5.3+ subscription. Code generation + edit focus.
+- `opencode-zen/gpt-5.3-codex`: executor alternate + debugger primary. OpenCode Zen wrapper of Codex 5.3.
 - `opencode-zen/glm-5`: explorer/librarian 역할에서 대용량 컨텍스트 처리, 비용 효율
 - `opencode-zen/kimi-k2.6`: verifier 역할에서 논리 검증 및 추론 능력 (262K ctx, thinking 지원 확인)
 - `opencode-zen/claude-opus-4-7`: critic/code-reviewer/architect 역할에서 최고 품질 필요 시
@@ -736,9 +737,9 @@ Network timeout            | -         | hard fail
 
 ### 9.3 pi-oven에서 resolution-time alternate 활용
 
-**executor** (`opencode-zen/gpt-5.3-codex` → `openai-codex/gpt-5.3-codex`):
-- primary: `opencode-zen/gpt-5.3-codex` (auth 확인됨)
-- alternate: `openai-codex/gpt-5.3-codex` (auth 미검증, resolution time에만 사용)
+**executor** (`openai-codex/gpt-5.3-codex` → `opencode-zen/gpt-5.3-codex`):
+- primary: `openai-codex/gpt-5.3-codex` (사용자 정책: ChatGPT Codex 5.3+ 구독 활용)
+- alternate: `opencode-zen/gpt-5.3-codex` (Codex 구독 없는 사용자 환경을 위한 Zen wrapper fallback, resolution time에만 사용)
 - runtime 429 발생 시: omp가 동일 모델로 sleep-backoff retry → maxAttempts 소진 → hard fail
 
 **critic** (`opencode-zen/claude-opus-4-7` → `opencode-zen/gpt-5.4`):
@@ -1022,7 +1023,7 @@ export default function piOvenPi(pi: ExtensionAPI): void {
 ```bash
 # 1. colon-in-name dispatch 검증 (각 MUST agent에 대해)
 omp --plugin-dir /path/to/pi-oven --print "dispatch pi-oven:executor to say hello"
-# 기대: pi-oven:executor → opencode-zen/gpt-5.3-codex 사용
+# 기대: pi-oven:executor → openai-codex/gpt-5.3-codex 사용
 
 omp --plugin-dir /path/to/pi-oven --print "dispatch pi-oven:explorer to list ts files in src/"
 # 기대: pi-oven:explorer → opencode-zen/glm-5 사용
@@ -1081,7 +1082,7 @@ TDD approach:
    - **CI-time (하드)**: `bun run lint:agents` (`scripts/lint-agents.ts`)가 `agents/pi-oven-*.md` 전체를 walk하여 `model:` 필드 없는 파일 발견 시 `exit(1)`로 merge를 차단한다. `.github/workflows/ci.yml` typecheck 스텝 다음에 위치한다
 7. oracle의 `spawns:` 필드가 `[pi-oven:explorer]`만 포함하여 중첩 depth를 2로 제한한다
 8. 23개 모든 agent 파일의 `name:` frontmatter가 `pi-oven:<role>` 패턴을 따른다
-9. executor primary가 unauthed인 상태에서 subagent dispatch 시 omp의 auth-fallback이 parent session model을 사용하며, 이 동작이 정상으로 로그된다 (whitelist 위반 발생 시 §6.3 limitation 문구가 적용됨). **Mock surface**: `modelRegistry`를 `{authed: false}`를 반환하도록 stub (`opencode-zen/gpt-5.3-codex` 입력에 대해); `resolveModelOverrideWithAuthFallback`을 stub하여 `parentActiveModelPattern`으로 dispatch가 전달됨을 assert. 두 번째 배열 항목(`openai-codex/gpt-5.3-codex`)으로 dispatch되지 않음을 명시적으로 확인한다
+9. executor primary가 unauthed인 상태에서 subagent dispatch 시 omp의 auth-fallback이 parent session model을 사용하며, 이 동작이 정상으로 로그된다 (whitelist 위반 발생 시 §6.3 limitation 문구가 적용됨). **Mock surface**: `modelRegistry`를 `{authed: false}`를 반환하도록 stub (`openai-codex/gpt-5.3-codex` 입력에 대해); `resolveModelOverrideWithAuthFallback`을 stub하여 `parentActiveModelPattern`으로 dispatch가 전달됨을 assert. 두 번째 배열 항목(`opencode-zen/gpt-5.3-codex`)으로 dispatch되지 않음을 명시적으로 확인한다
 
 ### TDD 테스트 파일 구조
 
@@ -1101,7 +1102,7 @@ tests/
 - `model-required.test.ts`: `model:` 필드 없는 pi-oven-*.md → load-time validator가 `pi.logger.error` 출력 (소프트); CI lint이 해당 파일을 실패로 표시 (하드)
 - `tools-policy.test.ts`: explorer가 `Write` 툴 없음을 확인
 - `spawns-depth.test.ts`: oracle이 `pi-oven:executor` spawn 시도 → spawns 제한으로 실패
-- `auth-fallback.test.ts`: executor primary(`opencode-zen/gpt-5.3-codex`)가 unauthed인 mock 환경에서 dispatch 시 parent session model로 fallback됨을 확인 (AC#9). Mock: `modelRegistry.getAuthed("opencode-zen/gpt-5.3-codex")` → `{authed: false}`; stub `resolveModelOverrideWithAuthFallback` → assert dispatch target = `parentActiveModelPattern`, NOT `openai-codex/gpt-5.3-codex`
+- `auth-fallback.test.ts`: executor primary(`openai-codex/gpt-5.3-codex`)가 unauthed인 mock 환경에서 dispatch 시 parent session model로 fallback됨을 확인 (AC#9). Mock: `modelRegistry.getAuthed("openai-codex/gpt-5.3-codex")` → `{authed: false}`; stub `resolveModelOverrideWithAuthFallback` → assert dispatch target = `parentActiveModelPattern`, NOT `opencode-zen/gpt-5.3-codex`
 
 ---
 

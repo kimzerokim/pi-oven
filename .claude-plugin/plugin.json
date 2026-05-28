@@ -19,7 +19,6 @@
     "./skills/deep-dive/SKILL.md",
     "./skills/team/SKILL.md"
   ],
-  "agents": [],
   "commands": [
     "./commands/pi-oven-setup.md",
     "./commands/pi-oven-doctor.md",

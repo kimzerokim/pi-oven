@@ -18,8 +18,8 @@ describe("profiles", () => {
   });
 
   describe("PROFILE_A", () => {
-    it("executor.primary is opencode-zen/gpt-5.3-codex", () => {
-      expect(PROFILE_A.executor.primary).toBe("opencode-zen/gpt-5.3-codex");
+    it("executor.primary is openai-codex/gpt-5.3-codex", () => {
+      expect(PROFILE_A.executor.primary).toBe("openai-codex/gpt-5.3-codex");
     });
 
     it("contains all 23 roles", () => {
@@ -77,6 +77,22 @@ describe("profiles", () => {
 
     it("librarian keeps opencode-zen/glm-5 as primary in Profile B", () => {
       expect(PROFILE_B.librarian.primary).toBe("opencode-zen/glm-5");
+    });
+  });
+
+  describe("thinkingLevel invariants", () => {
+    it("PROFILE_A and PROFILE_B share thinkingLevel per role", () => {
+      for (const role of ROLES) {
+        expect(PROFILE_B[role].thinkingLevel).toBe(PROFILE_A[role].thinkingLevel);
+      }
+    });
+
+    it("all thinkingLevel values are in the allowed set", () => {
+      const allowed = new Set(["minimal", "low", "medium", "high", "xhigh"]);
+      for (const role of ROLES) {
+        expect(allowed.has(PROFILE_A[role].thinkingLevel)).toBe(true);
+        expect(allowed.has(PROFILE_B[role].thinkingLevel)).toBe(true);
+      }
     });
   });
 });

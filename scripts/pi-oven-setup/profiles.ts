@@ -48,8 +48,8 @@ export type ProfileMap = Record<Role, ModelEntry>;
  */
 export const PROFILE_A: ProfileMap = {
   executor: {
-    primary: "opencode-zen/gpt-5.3-codex",
-    registry_alternate: "openai-codex/gpt-5.3-codex",
+    primary: "openai-codex/gpt-5.3-codex",
+    registry_alternate: "opencode-zen/gpt-5.3-codex",
     thinkingLevel: "high",
   },
   explorer: {
@@ -64,13 +64,13 @@ export const PROFILE_A: ProfileMap = {
   },
   critic: {
     primary: "opencode-zen/claude-opus-4-7",
-    registry_alternate: "opencode-zen/gpt-5.4",
-    thinkingLevel: "high",
+    registry_alternate: "openai-codex/gpt-5.4",
+    thinkingLevel: "xhigh",
   },
   planner: {
     primary: "opencode-zen/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   "code-reviewer": {
     primary: "opencode-zen/claude-opus-4-7",
@@ -85,32 +85,32 @@ export const PROFILE_A: ProfileMap = {
   "test-engineer": {
     primary: "opencode-zen/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   "security-reviewer": {
     primary: "opencode-zen/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "high",
+    thinkingLevel: "xhigh",
   },
   writer: {
     primary: "opencode-zen/claude-haiku-4-5",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "low",
+    thinkingLevel: "medium",
   },
   designer: {
     primary: "opencode-zen/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   "code-simplifier": {
     primary: "opencode-zen/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "medium",
+    thinkingLevel: "xhigh",
   },
   "qa-tester": {
     primary: "opencode-zen/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-haiku-4-5",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   "git-master": {
     primary: "opencode-zen/claude-haiku-4-5",
@@ -125,17 +125,17 @@ export const PROFILE_A: ProfileMap = {
   tracer: {
     primary: "opencode-zen/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   analyst: {
     primary: "opencode-zen/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "high",
+    thinkingLevel: "xhigh",
   },
   scientist: {
     primary: "opencode-zen/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "high",
+    thinkingLevel: "xhigh",
   },
   architect: {
     primary: "opencode-zen/claude-opus-4-7",
@@ -145,12 +145,12 @@ export const PROFILE_A: ProfileMap = {
   librarian: {
     primary: "opencode-zen/glm-5",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "minimal",
+    thinkingLevel: "medium",
   },
   "multimodal-looker": {
     primary: "opencode-zen/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "low",
+    thinkingLevel: "medium",
   },
   oracle: {
     primary: "opencode-zen/claude-opus-4-7",
@@ -160,7 +160,7 @@ export const PROFILE_A: ProfileMap = {
   metis: {
     primary: "opencode-zen/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "high",
+    thinkingLevel: "xhigh",
   },
 };
 
@@ -189,12 +189,12 @@ export const PROFILE_B: ProfileMap = {
   critic: {
     primary: "anthropic/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "high",
+    thinkingLevel: "xhigh",
   },
   planner: {
     primary: "anthropic/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   "code-reviewer": {
     primary: "anthropic/claude-opus-4-7",
@@ -209,32 +209,32 @@ export const PROFILE_B: ProfileMap = {
   "test-engineer": {
     primary: "anthropic/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   "security-reviewer": {
     primary: "anthropic/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "high",
+    thinkingLevel: "xhigh",
   },
   writer: {
     primary: "anthropic/claude-haiku-4-5",
     registry_alternate: "opencode-zen/claude-haiku-4-5",
-    thinkingLevel: "low",
+    thinkingLevel: "medium",
   },
   designer: {
     primary: "anthropic/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   "code-simplifier": {
     primary: "anthropic/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "medium",
+    thinkingLevel: "xhigh",
   },
   "qa-tester": {
     primary: "anthropic/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   "git-master": {
     primary: "anthropic/claude-haiku-4-5",
@@ -249,17 +249,17 @@ export const PROFILE_B: ProfileMap = {
   tracer: {
     primary: "anthropic/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   analyst: {
     primary: "anthropic/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "high",
+    thinkingLevel: "xhigh",
   },
   scientist: {
     primary: "anthropic/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "high",
+    thinkingLevel: "xhigh",
   },
   architect: {
     primary: "anthropic/claude-opus-4-7",
@@ -269,12 +269,12 @@ export const PROFILE_B: ProfileMap = {
   librarian: {
     primary: "opencode-zen/glm-5",
     registry_alternate: "anthropic/claude-haiku-4-5",
-    thinkingLevel: "minimal",
+    thinkingLevel: "medium",
   },
   "multimodal-looker": {
     primary: "anthropic/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "low",
+    thinkingLevel: "medium",
   },
   oracle: {
     primary: "anthropic/claude-opus-4-7",
@@ -284,6 +284,6 @@ export const PROFILE_B: ProfileMap = {
   metis: {
     primary: "anthropic/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "high",
+    thinkingLevel: "xhigh",
   },
 };

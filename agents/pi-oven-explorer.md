@@ -2,7 +2,7 @@
 name: pi-oven:explorer
 description: Read-only codebase search specialist — files, patterns, relationships
 model:
-  - opencode-zen/glm-5
+  - opencode-zen/gemini-3-flash
   - opencode-zen/claude-haiku-4-5
 thinkingLevel: medium
 mode: subagent

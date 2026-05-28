@@ -2,8 +2,8 @@
 name: pi-oven:multimodal-looker
 description: Vision and image analysis specialist — screenshots, UI mockups, diagrams, PDFs, and visual artifacts. Extracts structured information from visual content. READONLY.
 model:
+  - opencode-zen/gemini-3-flash
   - opencode-zen/claude-sonnet-4-6
-  - opencode-zen/claude-opus-4-7
 thinkingLevel: medium
 mode: subagent
 tools: ["Read", "Grep", "Glob", "Bash"]

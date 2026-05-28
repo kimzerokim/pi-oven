@@ -2,8 +2,8 @@
 name: pi-oven:git-master
 description: Git expert for atomic commits, style-matched messages, rebase operations, and safe branch management
 model:
+  - opencode-zen/gpt-5-nano
   - opencode-zen/claude-haiku-4-5
-  - opencode-zen/claude-sonnet-4-6
 thinkingLevel: minimal
 mode: subagent
 tools: ["Read", "Grep", "Glob", "Bash"]

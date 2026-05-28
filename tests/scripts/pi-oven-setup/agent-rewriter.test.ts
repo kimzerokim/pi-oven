@@ -279,7 +279,7 @@ describe("detectDrift", () => {
     expect(drift.length).toBe(0);
   });
 
-  it("Profile A agent files + PROFILE_B map → returns 23 drifted entries", async () => {
+  it("Profile A agent files + PROFILE_B map → returns drift for every role that actually differs", async () => {
     populateAgentsDir(
       tempDir,
       ROLES,
@@ -289,8 +289,14 @@ describe("detectDrift", () => {
     );
 
     const drift = await detectDrift(tempDir, PROFILE_B);
-    // All roles differ between Profile A and Profile B
-    expect(drift.length).toBe(23);
+    // Drift count is determined by the current PROFILE_A vs PROFILE_B
+    // shape — not pinned to 23 — so routing tuning doesn't break this test.
+    const expectedDrift = ROLES.filter(
+      (r) =>
+        PROFILE_A[r].primary !== PROFILE_B[r].primary ||
+        PROFILE_A[r].registry_alternate !== PROFILE_B[r].registry_alternate
+    ).length;
+    expect(drift.length).toBe(expectedDrift);
   });
 
   it("partial drift: only modified roles appear in drift list", async () => {

@@ -43,8 +43,15 @@ export type ProfileMap = Record<Role, ModelEntry>;
 
 /**
  * Profile A — Release default.
- * Uses opencode-zen and openai-codex models only. No anthropic models.
- * Verbatim from Spec B §4 table.
+ * Benchmark + cost-optimized routing (2026-05-29 OPTIMIZED-MODEL revision).
+ * 3 high-stakes roles (critic, security-reviewer, oracle) use anthropic/ primary.
+ * 6 roles use openai-codex/ subscription as primary
+ * (executor/debugger/test-engineer = gpt-5.3-codex;
+ *  scientist/architect/metis = gpt-5.4; planner alternate = gpt-5.4).
+ * Default fallback policy: opencode-zen/ wrapper of the same model id.
+ * Exception: planner falls back to openai-codex/gpt-5.4 for codex-review
+ * cross-validation per user policy.
+ * Provider mix: anthropic 4 (planner primary + critic + security-reviewer + oracle), openai-codex 6, opencode-zen 13.
  */
 export const PROFILE_A: ProfileMap = {
   executor: {
@@ -53,7 +60,7 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "high",
   },
   explorer: {
-    primary: "opencode-zen/glm-5",
+    primary: "opencode-zen/gemini-3-flash",
     registry_alternate: "opencode-zen/claude-haiku-4-5",
     thinkingLevel: "medium",
   },
@@ -63,103 +70,103 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "medium",
   },
   critic: {
-    primary: "opencode-zen/claude-opus-4-7",
-    registry_alternate: "openai-codex/gpt-5.4",
+    primary: "anthropic/claude-opus-4-7",
+    registry_alternate: "opencode-zen/claude-opus-4-7",
     thinkingLevel: "xhigh",
   },
   planner: {
-    primary: "opencode-zen/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "anthropic/claude-opus-4-7",
+    registry_alternate: "openai-codex/gpt-5.4",
     thinkingLevel: "high",
   },
   "code-reviewer": {
-    primary: "opencode-zen/claude-opus-4-7",
+    primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "high",
   },
   debugger: {
-    primary: "opencode-zen/gpt-5.3-codex",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.3-codex",
+    registry_alternate: "opencode-zen/gpt-5.3-codex",
     thinkingLevel: "high",
   },
   "test-engineer": {
-    primary: "opencode-zen/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "openai-codex/gpt-5.3-codex",
+    registry_alternate: "opencode-zen/gpt-5.3-codex",
     thinkingLevel: "high",
   },
   "security-reviewer": {
-    primary: "opencode-zen/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "anthropic/claude-opus-4-7",
+    registry_alternate: "opencode-zen/claude-opus-4-7",
     thinkingLevel: "xhigh",
   },
   writer: {
-    primary: "opencode-zen/claude-haiku-4-5",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/gemini-3-flash",
+    registry_alternate: "opencode-zen/claude-haiku-4-5",
     thinkingLevel: "medium",
   },
   designer: {
-    primary: "opencode-zen/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "opencode-zen/glm-5.1",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "high",
   },
   "code-simplifier": {
-    primary: "opencode-zen/claude-opus-4-7",
+    primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "xhigh",
   },
   "qa-tester": {
-    primary: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/gemini-3.5-flash",
     registry_alternate: "opencode-zen/claude-haiku-4-5",
     thinkingLevel: "high",
   },
   "git-master": {
-    primary: "opencode-zen/claude-haiku-4-5",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/gpt-5-nano",
+    registry_alternate: "opencode-zen/claude-haiku-4-5",
     thinkingLevel: "minimal",
   },
   "document-specialist": {
-    primary: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/gemini-3-flash",
     registry_alternate: "opencode-zen/claude-haiku-4-5",
     thinkingLevel: "medium",
   },
   tracer: {
-    primary: "opencode-zen/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "opencode-zen/kimi-k2.6",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "high",
   },
   analyst: {
-    primary: "opencode-zen/claude-opus-4-7",
+    primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "xhigh",
   },
   scientist: {
-    primary: "opencode-zen/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "xhigh",
   },
   architect: {
-    primary: "opencode-zen/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "xhigh",
   },
   librarian: {
-    primary: "opencode-zen/glm-5",
+    primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "medium",
   },
   "multimodal-looker": {
-    primary: "opencode-zen/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "opencode-zen/gemini-3-flash",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "medium",
   },
   oracle: {
-    primary: "opencode-zen/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "anthropic/claude-opus-4-7",
+    registry_alternate: "opencode-zen/claude-opus-4-7",
     thinkingLevel: "xhigh",
   },
   metis: {
-    primary: "opencode-zen/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "xhigh",
   },
 };

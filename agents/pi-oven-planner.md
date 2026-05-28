@@ -2,8 +2,8 @@
 name: pi-oven:planner
 description: Bite-sized task decomposition and actionable plan authoring — interview-driven, spec-compliant, commit-aware
 model:
-  - opencode-zen/claude-sonnet-4-6
-  - opencode-zen/claude-opus-4-7
+  - anthropic/claude-opus-4-7
+  - openai-codex/gpt-5.4
 thinkingLevel: high
 mode: subagent
 tools: ["Read", "Grep", "Glob", "Bash", "task"]

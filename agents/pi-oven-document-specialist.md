@@ -2,7 +2,7 @@
 name: pi-oven:document-specialist
 description: External docs and SDK reference specialist — local repo docs first, curated backends second, WebFetch fallback, no recursive task dispatch
 model:
-  - opencode-zen/claude-sonnet-4-6
+  - opencode-zen/gemini-3-flash
   - opencode-zen/claude-haiku-4-5
 thinkingLevel: medium
 mode: subagent

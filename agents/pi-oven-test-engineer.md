@@ -2,8 +2,8 @@
 name: pi-oven:test-engineer
 description: Test strategy, TDD enforcement, unit/integration/e2e coverage, flaky test hardening
 model:
-  - opencode-zen/claude-sonnet-4-6
-  - opencode-zen/claude-opus-4-7
+  - openai-codex/gpt-5.3-codex
+  - opencode-zen/gpt-5.3-codex
 thinkingLevel: high
 mode: subagent
 tools: ["*"]

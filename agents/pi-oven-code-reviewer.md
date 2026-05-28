@@ -2,7 +2,7 @@
 name: pi-oven:code-reviewer
 description: Spec-first code review — severity-rated findings, logic correctness, SOLID checks, security, and regression surface
 model:
-  - opencode-zen/claude-opus-4-7
+  - opencode-zen/kimi-k2.6
   - opencode-zen/claude-sonnet-4-6
 thinkingLevel: high
 mode: subagent

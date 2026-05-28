@@ -6,6 +6,14 @@ import {
   PROFILE_B,
 } from "../../../scripts/pi-oven-setup/profiles";
 
+/**
+ * profiles.test.ts — structural invariants only.
+ * Model IDs and per-role assignments are tuning territory; they MUST NOT be
+ * pinned here, or every routing experiment breaks the test suite. The rules
+ * below describe the policy shape (provider prefixes, fallback wrapper,
+ * thinking-level domain) rather than which model a specific role uses.
+ */
+
 describe("profiles", () => {
   describe("ROLES", () => {
     it("has exactly EXPECTED_AGENT_COUNT entries", () => {
@@ -18,65 +26,50 @@ describe("profiles", () => {
   });
 
   describe("PROFILE_A", () => {
-    it("executor.primary is openai-codex/gpt-5.3-codex", () => {
-      expect(PROFILE_A.executor.primary).toBe("openai-codex/gpt-5.3-codex");
-    });
-
     it("contains all 23 roles", () => {
       for (const role of ROLES) {
         expect(PROFILE_A[role]).toBeDefined();
       }
     });
 
-    it("all entries use opencode-zen/ or openai-codex/ prefix for primary", () => {
+    it("all primaries use opencode-zen/, openai-codex/, or anthropic/ prefix", () => {
       for (const role of ROLES) {
         const p = PROFILE_A[role].primary;
-        const ok = p.startsWith("opencode-zen/") || p.startsWith("openai-codex/");
+        const ok =
+          p.startsWith("opencode-zen/") ||
+          p.startsWith("openai-codex/") ||
+          p.startsWith("anthropic/");
         expect(ok).toBe(true);
       }
     });
 
-    it("all entries use opencode-zen/ or openai-codex/ prefix for registry_alternate", () => {
+    it("all registry_alternates use opencode-zen/ or openai-codex/ prefix", () => {
+      // Default fallback policy is opencode-zen/ wrapper of the same model;
+      // a small number of roles (planner) intentionally cross-route to
+      // openai-codex/ for review/fan-out reasons. anthropic/ is never an
+      // alternate because Anthropic auth is opt-in.
       for (const role of ROLES) {
         const p = PROFILE_A[role].registry_alternate;
-        const ok = p.startsWith("opencode-zen/") || p.startsWith("openai-codex/");
+        const ok =
+          p.startsWith("opencode-zen/") || p.startsWith("openai-codex/");
         expect(ok).toBe(true);
-      }
-    });
-
-    it("no anthropic/ prefix in any Profile A entry", () => {
-      for (const role of ROLES) {
-        expect(PROFILE_A[role].primary).not.toContain("anthropic/");
-        expect(PROFILE_A[role].registry_alternate).not.toContain("anthropic/");
       }
     });
   });
 
   describe("PROFILE_B", () => {
-    it("executor.primary is anthropic/claude-sonnet-4-6", () => {
-      expect(PROFILE_B.executor.primary).toBe("anthropic/claude-sonnet-4-6");
-    });
-
     it("contains all 23 roles", () => {
       for (const role of ROLES) {
         expect(PROFILE_B[role]).toBeDefined();
       }
     });
 
-    it("all entries use anthropic/ or opencode-zen/ prefix for primary (no openai-codex)", () => {
+    it("all primaries use anthropic/ or opencode-zen/ prefix (no openai-codex direct)", () => {
       for (const role of ROLES) {
         const p = PROFILE_B[role].primary;
         const ok = p.startsWith("anthropic/") || p.startsWith("opencode-zen/");
         expect(ok).toBe(true);
       }
-    });
-
-    it("explorer keeps opencode-zen/glm-5 as primary in Profile B", () => {
-      expect(PROFILE_B.explorer.primary).toBe("opencode-zen/glm-5");
-    });
-
-    it("librarian keeps opencode-zen/glm-5 as primary in Profile B", () => {
-      expect(PROFILE_B.librarian.primary).toBe("opencode-zen/glm-5");
     });
   });
 

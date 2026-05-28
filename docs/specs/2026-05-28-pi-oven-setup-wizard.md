@@ -124,37 +124,41 @@ When opencode-zen is absent and Profile A is selected, Spec A §3.2 Outcome 2 ap
 
 ## §4 Profile A — Release Default
 
-Profile A is the full model map defined in Spec A §5. Uses opencode-zen and openai-codex models only. No anthropic models included.
+Profile A is the benchmark-and-cost-optimized model map (2026-05-29 OPTIMIZED-MODEL revision). Three high-stakes advisory roles (critic, security-reviewer, oracle) use `anthropic/` as primary; planner uses `anthropic/claude-opus-4-7` primary with `openai-codex/gpt-5.4` as cross-vendor review alternate per user policy. Six coding/advisory roles (executor, debugger, test-engineer, scientist, architect, metis) use the `openai-codex/` subscription (gpt-5.3-codex / gpt-5.4) — `openai-codex/` is preferred over `anthropic/` whenever benchmark differences are within margin of error, since the OpenAI subscription marginal cost is near zero. The remaining roles use `opencode-zen/` direct (Kimi K2.6 / Gemini / GLM / GPT-5-nano) for cost-down without quality loss, justified by 2026-05 SWE-bench / agent / front-end benchmarks (see `OPTIMIZED-MODEL.md`).
 
-Complete 23-role Profile A model map (verified against live `omp --list-models`):
+Default fallback policy is the `opencode-zen/` wrapper of the same model id. Exception: planner falls back to `openai-codex/gpt-5.4` for codex-review cross-validation, not the same-model wrapper.
+
+Provider mix: 4 anthropic (planner primary, critic, security-reviewer, oracle) / 6 openai-codex / 13 opencode-zen.
+
+Complete 23-role Profile A model map (verified against live `omp --list-models` 2026-05-28):
 
 | Role | primary | registry_alternate | thinkingLevel |
 |---|---|---|---|
 | executor | openai-codex/gpt-5.3-codex | opencode-zen/gpt-5.3-codex | high |
-| explorer | opencode-zen/glm-5 | opencode-zen/claude-haiku-4-5 | medium |
+| explorer | opencode-zen/gemini-3-flash | opencode-zen/claude-haiku-4-5 | medium |
 | verifier | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | medium |
-| critic | opencode-zen/claude-opus-4-7 | openai-codex/gpt-5.4 | xhigh |
-| planner | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | high |
-| code-reviewer | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | high |
-| debugger | opencode-zen/gpt-5.3-codex | opencode-zen/claude-sonnet-4-6 | high |
-| test-engineer | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | high |
-| security-reviewer | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
-| writer | opencode-zen/claude-haiku-4-5 | opencode-zen/claude-sonnet-4-6 | medium |
-| designer | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | high |
-| code-simplifier | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
-| qa-tester | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-haiku-4-5 | high |
-| git-master | opencode-zen/claude-haiku-4-5 | opencode-zen/claude-sonnet-4-6 | minimal |
-| document-specialist | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-haiku-4-5 | medium |
-| tracer | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | high |
-| analyst | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
-| scientist | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
-| architect | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
-| librarian | opencode-zen/glm-5 | opencode-zen/claude-sonnet-4-6 | medium |
-| multimodal-looker | opencode-zen/claude-sonnet-4-6 | opencode-zen/claude-opus-4-7 | medium |
-| oracle | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
-| metis | opencode-zen/claude-opus-4-7 | opencode-zen/claude-sonnet-4-6 | xhigh |
+| critic | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
+| planner | anthropic/claude-opus-4-7 | openai-codex/gpt-5.4 | high |
+| code-reviewer | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | high |
+| debugger | openai-codex/gpt-5.3-codex | opencode-zen/gpt-5.3-codex | high |
+| test-engineer | openai-codex/gpt-5.3-codex | opencode-zen/gpt-5.3-codex | high |
+| security-reviewer | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
+| writer | opencode-zen/gemini-3-flash | opencode-zen/claude-haiku-4-5 | medium |
+| designer | opencode-zen/glm-5.1 | opencode-zen/claude-sonnet-4-6 | high |
+| code-simplifier | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | xhigh |
+| qa-tester | opencode-zen/gemini-3.5-flash | opencode-zen/claude-haiku-4-5 | high |
+| git-master | opencode-zen/gpt-5-nano | opencode-zen/claude-haiku-4-5 | minimal |
+| document-specialist | opencode-zen/gemini-3-flash | opencode-zen/claude-haiku-4-5 | medium |
+| tracer | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | high |
+| analyst | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | xhigh |
+| scientist | openai-codex/gpt-5.4 | opencode-zen/gpt-5.4 | xhigh |
+| architect | openai-codex/gpt-5.4 | opencode-zen/gpt-5.4 | xhigh |
+| librarian | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | medium |
+| multimodal-looker | opencode-zen/gemini-3-flash | opencode-zen/claude-sonnet-4-6 | medium |
+| oracle | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
+| metis | openai-codex/gpt-5.4 | opencode-zen/gpt-5.4 | xhigh |
 
-`registry_alternate` activates only when the primary model is removed from the omp registry (Outcome 3). When primary is simply unauthed (Outcome 2), omp falls back to the parent session model — not the next array entry (Spec A §3.2 / §6.3).
+`registry_alternate` activates only when the primary model is removed from the omp registry (Outcome 3). When primary is simply unauthed (Outcome 2), omp falls back to the parent session model — not the next array entry (Spec A §3.2 / §6.3). The `opencode-zen/` same-model wrapper alternate convention means that `anthropic/`-primary roles degrade to opencode-zen-billed access of the same Claude model when Anthropic auth lapses, and `openai-codex/`-primary roles degrade to opencode-zen-billed Codex access when the ChatGPT subscription is unavailable.
 
 ---
 

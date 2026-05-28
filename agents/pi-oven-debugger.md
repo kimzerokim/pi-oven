@@ -2,8 +2,8 @@
 name: pi-oven:debugger
 description: Root-cause investigation with causal tracing, competing hypotheses, evidence ranking, and minimal-diff fix recommendation
 model:
+  - openai-codex/gpt-5.3-codex
   - opencode-zen/gpt-5.3-codex
-  - opencode-zen/claude-sonnet-4-6
 thinkingLevel: high
 mode: subagent
 tools: ["*"]

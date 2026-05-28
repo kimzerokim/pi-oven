@@ -2,8 +2,8 @@
 name: pi-oven:architect
 description: Cross-cutting architectural analysis — ADR authoring, coupling/cohesion analysis, migration strategy, system design boundaries — READ-ONLY, recommendation only
 model:
-  - opencode-zen/claude-opus-4-7
-  - opencode-zen/claude-sonnet-4-6
+  - openai-codex/gpt-5.4
+  - opencode-zen/gpt-5.4
 thinkingLevel: xhigh
 mode: subagent
 tools: ["Read", "Grep", "Glob", "Bash"]

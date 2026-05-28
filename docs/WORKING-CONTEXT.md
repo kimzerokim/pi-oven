@@ -1,6 +1,6 @@
 # Working Context
 
-Last updated: 2026-05-28
+Last updated: 2026-05-29
 
 ## Purpose
 
@@ -29,6 +29,8 @@ pi-oven v1 build. omp marketplace plugin as single successor for 5 frozen source
 - Codex OAuth + Zen 양대 default. Anthropic native opt-in.
 
 ## Latest Execution Notes
+
+- 2026-05-29: **PROFILE_A benchmark-based routing revision (OPTIMIZED-MODEL.md)**. SWE-bench Verified / Aider polyglot / Atlas Cloud 비교 기반 재구성. Anthropic primary 비중 14/23(61%) → 4/23(17%) — planner(opus+codex review), critic(opus, mechanical fix), security-reviewer(opus), oracle(opus). OpenAI Codex primary 1→6 (executor/debugger/test-engineer=gpt-5.3-codex, scientist/architect/metis=gpt-5.4). 신규 모델 활용: kimi-k2.6 (6 role — verifier/code-reviewer/code-simplifier/tracer/analyst/librarian), gemini-3-flash (4 role — explorer/writer/document-specialist/multimodal-looker), gemini-3.5-flash (qa-tester), glm-5.1 (designer, Code Arena Elo 1530), gpt-5-nano (git-master). Deprecation 처리: opencode-zen/glm-5 (2026-05-14 만료) 사용 role 모두 교체. Fallback 정책: opencode-zen 동일 모델 wrapper (예외: planner alternate = openai-codex/gpt-5.4 codex review). Surface 동기화: profiles.ts PROFILE_A + 23 agent file + setup-wizard.md §4 + agent-registry.md §5/§5.1/§6 + OPTIMIZED-MODEL.md (제안서 → 결정서). PROFILE_B 손대지 않음 (다음 cycle 결정). 사용자 정책: test 의 모델 ID hard-code 제거 (튜닝 자유로움 위해 structural invariant 만), profiles.test.ts + agent-rewriter.test.ts dynamic invariant 로 약화.
 
 - 2026-05-28: **Spec C (skill rewrite + new skills) ACCEPT + IMPL complete**. 3-cycle critic loop (cycle 1 REJECT 3 BLOCKERs — incomplete grep + unanchored omc paths + undefended parallel dispatch → cycle 2 REJECT 3 new BLOCKERs — pi-oven.ts path drift + false per-file Korean assessment + references/* scope contradiction → cycle 3 ACCEPT). Impl 4 phases: SKILL.md sweep (12 files) + 3 new skills + 2 boosts + version bump. v0.1.0 baseline: 15 skills (12 existing + 3 new: deep-init, deep-dive, team), 23 pi-oven-* agents (Spec A), /pi-oven:setup wizard (Spec B). plugin.json + marketplace.json + pi-oven.ts setLabel all → v0.2.0. 152 tests pass.
 - 2026-05-28: **Spec B (setup wizard) ACCEPT + IMPL complete**. 4-cycle critic loop (cycle 1 REJECT 1 CRITICAL + 9 MAJOR → cycle 2 REJECT 5 new BLOCKERs (API-surface verification failures) → cycle 3 REJECT 2 BLOCKERs (false-premise + undefined symbol) → cycle 4 ACCEPT). Impl: `/pi-oven:setup` LLM-driven prompt template + batch CLI dispatcher with 11 submodules (profiles, cache-resolver, auth-detect, agent-rewriter, persist, status, import, reset, validate, apply, reapply) + 127 new tests (Phase 1-3 sum = 24+19+68 = 111; Phase 4 +16; total Spec B addition = 127, bun test = 145 / lint:agents exit 0 / typecheck + build clean). `.omp/extensions/pi-oven.ts` refactored: agent-file-presence dynamic ALLOWED_PREFIXES, session_start drift detection + parent-session model capture to `~/.omp/plugins/pi-oven-session-model.json`. Profile A (release default opencode-zen + openai-codex) / Profile B (anthropic opt-in, sonnet-4-6 + opus-4-7 + haiku-4-5; explorer + librarian keep opencode-zen/glm-5 for 1M context). Source of truth = agent file (`agents/pi-oven-*.md` model:` array); plugin config = wizard state storage.

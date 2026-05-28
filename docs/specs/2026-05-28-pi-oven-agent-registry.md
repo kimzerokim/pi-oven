@@ -374,7 +374,7 @@ leaf agent = `task` tool이 BLOCKED된 agent. 중첩 depth는 최대 2 (main →
 
 ## §5 Default Model Map (Profile A — Release Default)
 
-Profile A는 `opencode-zen/*` 및 `openai-codex/*` 모델만 사용한다. Anthropic 모델은 opt-in (Profile B, Spec B scope).
+Profile A는 벤치마크 + 가성비 기반 라우팅 맵이다 (2026-05-29 OPTIMIZED-MODEL revision). 3 high-stakes 자문 role (critic, security-reviewer, oracle) 이 `anthropic/` primary 유지. planner 는 `anthropic/claude-opus-4-7` primary + `openai-codex/gpt-5.4` codex-review alternate (사용자 정책). 6 role 은 `openai-codex/` subscription primary (executor/debugger/test-engineer=gpt-5.3-codex, scientist/architect/metis=gpt-5.4). 나머지는 `opencode-zen/*` 의 Kimi K2.6 / Gemini / GLM / GPT-5-nano. anthropic 비중 14/23(61%) → 4/23(17%) 으로 축소 — 동일 SWE/agent 벤치마크 차이 미세할 때 ChatGPT subscription marginal cost 0 인 openai-codex 를 우선. 자세한 근거는 `OPTIMIZED-MODEL.md`.
 
 `omp --list-models` 실행 결과로 확인된 모델만 포함.
 
@@ -395,7 +395,7 @@ Profile A는 `opencode-zen/*` 및 `openai-codex/*` 모델만 사용한다. Anthr
       "thinkingLevel": "high"
     },
     "explorer": {
-      "primary": "opencode-zen/glm-5",
+      "primary": "opencode-zen/gemini-3-flash",
       "registry_alternate": "opencode-zen/claude-haiku-4-5",
       "thinkingLevel": "medium"
     },
@@ -405,104 +405,104 @@ Profile A는 `opencode-zen/*` 및 `openai-codex/*` 모델만 사용한다. Anthr
       "thinkingLevel": "medium"
     },
     "critic": {
-      "primary": "opencode-zen/claude-opus-4-7",
-      "registry_alternate": "opencode-zen/gpt-5.4",
-      "thinkingLevel": "high"
+      "primary": "anthropic/claude-opus-4-7",
+      "registry_alternate": "opencode-zen/claude-opus-4-7",
+      "thinkingLevel": "xhigh"
     },
     "planner": {
-      "primary": "opencode-zen/claude-sonnet-4-6",
-      "registry_alternate": "opencode-zen/claude-opus-4-7",
-      "thinkingLevel": "medium"
+      "primary": "anthropic/claude-opus-4-7",
+      "registry_alternate": "openai-codex/gpt-5.4",
+      "thinkingLevel": "high"
     },
     "code-reviewer": {
-      "primary": "opencode-zen/claude-opus-4-7",
+      "primary": "opencode-zen/kimi-k2.6",
       "registry_alternate": "opencode-zen/claude-sonnet-4-6",
       "thinkingLevel": "high"
     },
     "debugger": {
-      "primary": "opencode-zen/gpt-5.3-codex",
-      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
+      "primary": "openai-codex/gpt-5.3-codex",
+      "registry_alternate": "opencode-zen/gpt-5.3-codex",
       "thinkingLevel": "high"
     },
     "test-engineer": {
-      "primary": "opencode-zen/claude-sonnet-4-6",
-      "registry_alternate": "opencode-zen/claude-opus-4-7",
-      "thinkingLevel": "medium"
-    },
-    "security-reviewer": {
-      "primary": "opencode-zen/claude-opus-4-7",
-      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
+      "primary": "openai-codex/gpt-5.3-codex",
+      "registry_alternate": "opencode-zen/gpt-5.3-codex",
       "thinkingLevel": "high"
     },
-    "writer": {
-      "primary": "opencode-zen/claude-haiku-4-5",
-      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
-      "thinkingLevel": "low"
-    },
-    "designer": {
-      "primary": "opencode-zen/claude-sonnet-4-6",
+    "security-reviewer": {
+      "primary": "anthropic/claude-opus-4-7",
       "registry_alternate": "opencode-zen/claude-opus-4-7",
-      "thinkingLevel": "medium"
+      "thinkingLevel": "xhigh"
     },
-    "code-simplifier": {
-      "primary": "opencode-zen/claude-opus-4-7",
-      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
-      "thinkingLevel": "medium"
-    },
-    "qa-tester": {
-      "primary": "opencode-zen/claude-sonnet-4-6",
+    "writer": {
+      "primary": "opencode-zen/gemini-3-flash",
       "registry_alternate": "opencode-zen/claude-haiku-4-5",
       "thinkingLevel": "medium"
     },
-    "git-master": {
-      "primary": "opencode-zen/claude-haiku-4-5",
+    "designer": {
+      "primary": "opencode-zen/glm-5.1",
       "registry_alternate": "opencode-zen/claude-sonnet-4-6",
+      "thinkingLevel": "high"
+    },
+    "code-simplifier": {
+      "primary": "opencode-zen/kimi-k2.6",
+      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
+      "thinkingLevel": "xhigh"
+    },
+    "qa-tester": {
+      "primary": "opencode-zen/gemini-3.5-flash",
+      "registry_alternate": "opencode-zen/claude-haiku-4-5",
+      "thinkingLevel": "high"
+    },
+    "git-master": {
+      "primary": "opencode-zen/gpt-5-nano",
+      "registry_alternate": "opencode-zen/claude-haiku-4-5",
       "thinkingLevel": "minimal"
     },
     "document-specialist": {
-      "primary": "opencode-zen/claude-sonnet-4-6",
+      "primary": "opencode-zen/gemini-3-flash",
       "registry_alternate": "opencode-zen/claude-haiku-4-5",
       "thinkingLevel": "medium"
     },
     "tracer": {
-      "primary": "opencode-zen/claude-sonnet-4-6",
-      "registry_alternate": "opencode-zen/claude-opus-4-7",
-      "thinkingLevel": "medium"
+      "primary": "opencode-zen/kimi-k2.6",
+      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
+      "thinkingLevel": "high"
     },
     "analyst": {
-      "primary": "opencode-zen/claude-opus-4-7",
+      "primary": "opencode-zen/kimi-k2.6",
       "registry_alternate": "opencode-zen/claude-sonnet-4-6",
-      "thinkingLevel": "high"
+      "thinkingLevel": "xhigh"
     },
     "scientist": {
-      "primary": "opencode-zen/claude-opus-4-7",
-      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
-      "thinkingLevel": "high"
+      "primary": "openai-codex/gpt-5.4",
+      "registry_alternate": "opencode-zen/gpt-5.4",
+      "thinkingLevel": "xhigh"
     },
     "architect": {
-      "primary": "opencode-zen/claude-opus-4-7",
-      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
+      "primary": "openai-codex/gpt-5.4",
+      "registry_alternate": "opencode-zen/gpt-5.4",
       "thinkingLevel": "xhigh"
     },
     "librarian": {
-      "primary": "opencode-zen/glm-5",
+      "primary": "opencode-zen/kimi-k2.6",
       "registry_alternate": "opencode-zen/claude-sonnet-4-6",
-      "thinkingLevel": "minimal"
+      "thinkingLevel": "medium"
     },
     "multimodal-looker": {
-      "primary": "opencode-zen/claude-sonnet-4-6",
-      "registry_alternate": "opencode-zen/claude-opus-4-7",
-      "thinkingLevel": "low"
+      "primary": "opencode-zen/gemini-3-flash",
+      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
+      "thinkingLevel": "medium"
     },
     "oracle": {
-      "primary": "opencode-zen/claude-opus-4-7",
-      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
+      "primary": "anthropic/claude-opus-4-7",
+      "registry_alternate": "opencode-zen/claude-opus-4-7",
       "thinkingLevel": "xhigh"
     },
     "metis": {
-      "primary": "opencode-zen/claude-opus-4-7",
-      "registry_alternate": "opencode-zen/claude-sonnet-4-6",
-      "thinkingLevel": "high"
+      "primary": "openai-codex/gpt-5.4",
+      "registry_alternate": "opencode-zen/gpt-5.4",
+      "thinkingLevel": "xhigh"
     }
   }
 }
@@ -518,37 +518,40 @@ Profile A는 `opencode-zen/*` 및 `openai-codex/*` 모델만 사용한다. Anthr
 
 | Role | Model (primary) | thinkingLevel | 지원 여부 |
 |---|---|---|---|
-| executor | openai-codex/gpt-5.3-codex | high | [S] §14 검증 필요 |
-| explorer | opencode-zen/glm-5 | medium | [S] |
-| verifier | opencode-zen/kimi-k2.6 | medium | [L] (`omp --list-models` minimal,low,medium,high,xhigh 확인) |
-| critic | opencode-zen/claude-opus-4-7 | high | [L] |
-| planner | opencode-zen/claude-sonnet-4-6 | medium | [L] |
-| code-reviewer | opencode-zen/claude-opus-4-7 | high | [L] |
-| debugger | opencode-zen/gpt-5.3-codex | high | [S] |
-| test-engineer | opencode-zen/claude-sonnet-4-6 | medium | [L] |
-| security-reviewer | opencode-zen/claude-opus-4-7 | high | [L] |
-| writer | opencode-zen/claude-haiku-4-5 | low | [L] |
-| designer | opencode-zen/claude-sonnet-4-6 | medium | [L] |
-| code-simplifier | opencode-zen/claude-opus-4-7 | medium | [L] |
-| qa-tester | opencode-zen/claude-sonnet-4-6 | medium | [L] |
-| git-master | opencode-zen/claude-haiku-4-5 | minimal | [L] |
-| document-specialist | opencode-zen/claude-sonnet-4-6 | medium | [L] |
-| tracer | opencode-zen/claude-sonnet-4-6 | medium | [L] |
-| analyst | opencode-zen/claude-opus-4-7 | high | [L] |
-| scientist | opencode-zen/claude-opus-4-7 | high | [L] |
-| architect | opencode-zen/claude-opus-4-7 | xhigh | [L] |
-| librarian | opencode-zen/glm-5 | minimal | [S] |
-| multimodal-looker | opencode-zen/claude-sonnet-4-6 | low | [L] |
-| oracle | opencode-zen/claude-opus-4-7 | xhigh | [L] |
-| metis | opencode-zen/claude-opus-4-7 | high | [L] |
+| executor | openai-codex/gpt-5.3-codex | high | [L] |
+| explorer | opencode-zen/gemini-3-flash | medium | [L] |
+| verifier | opencode-zen/kimi-k2.6 | medium | [L] |
+| critic | anthropic/claude-opus-4-7 | xhigh | [L] |
+| planner | anthropic/claude-opus-4-7 | high | [L] |
+| code-reviewer | opencode-zen/kimi-k2.6 | high | [L] |
+| debugger | openai-codex/gpt-5.3-codex | high | [L] |
+| test-engineer | openai-codex/gpt-5.3-codex | high | [L] |
+| security-reviewer | anthropic/claude-opus-4-7 | xhigh | [L] |
+| writer | opencode-zen/gemini-3-flash | medium | [L] |
+| designer | opencode-zen/glm-5.1 | high | [L] |
+| code-simplifier | opencode-zen/kimi-k2.6 | xhigh | [L] |
+| qa-tester | opencode-zen/gemini-3.5-flash | high | [L] |
+| git-master | opencode-zen/gpt-5-nano | minimal | [L] |
+| document-specialist | opencode-zen/gemini-3-flash | medium | [L] |
+| tracer | opencode-zen/kimi-k2.6 | high | [L] |
+| analyst | opencode-zen/kimi-k2.6 | xhigh | [L] |
+| scientist | openai-codex/gpt-5.4 | xhigh | [L] |
+| architect | openai-codex/gpt-5.4 | xhigh | [L] |
+| librarian | opencode-zen/kimi-k2.6 | medium | [L] |
+| multimodal-looker | opencode-zen/gemini-3-flash | medium | [L] |
+| oracle | anthropic/claude-opus-4-7 | xhigh | [L] |
+| metis | openai-codex/gpt-5.4 | xhigh | [L] |
 
-모델 선정 근거:
-- `openai-codex/gpt-5.3-codex`: executor primary. ChatGPT Codex 5.3+ subscription. Code generation + edit focus.
-- `opencode-zen/gpt-5.3-codex`: executor alternate + debugger primary. OpenCode Zen wrapper of Codex 5.3.
-- `opencode-zen/glm-5`: explorer/librarian 역할에서 대용량 컨텍스트 처리, 비용 효율
-- `opencode-zen/kimi-k2.6`: verifier 역할에서 논리 검증 및 추론 능력 (262K ctx, thinking 지원 확인)
-- `opencode-zen/claude-opus-4-7`: critic/code-reviewer/architect 역할에서 최고 품질 필요 시
-- `opencode-zen/claude-haiku-4-5`: writer/git-master에서 속도·비용 우선
+모델 선정 근거 (2026-05-29 벤치마크 기반):
+- `openai-codex/gpt-5.3-codex`: executor/debugger/test-engineer primary. ChatGPT subscription marginal cost 0, SWE-bench 85%.
+- `anthropic/claude-opus-4-7`: planner / critic / security-reviewer / oracle primary. SWE-bench 87.6% top tier, Anthropic Pro/Max subscription extra-usage 활용. critic 은 false-PASS 비용 max 라 mechanical fix (2026-05-29) 로 anthropic 유지.
+- `openai-codex/gpt-5.4`: scientist/architect/metis primary + planner alternate. 1M context, xhigh thinking, $2.5/$15.
+- `anthropic/claude-opus-4-7`: planner/security-reviewer/oracle primary. SWE-bench 87.6%, Anthropic Pro/Max extra-usage 활용.
+- `opencode-zen/kimi-k2.6`: verifier/code-reviewer/code-simplifier/tracer/analyst/librarian primary. SWE-bench 80.2% (Opus 4.6 동급), Terminal-Bench 2.0 66.7%, 13시간 4000+ tool calls 무중단. $0.95/$4.
+- `opencode-zen/gemini-3-flash`: explorer/writer/document-specialist/multimodal-looker primary. 1M context, vision yes, $0.5/$3.
+- `opencode-zen/gemini-3.5-flash`: qa-tester primary. vision yes (Playwright 스크린샷 검증), $1.5/$9.
+- `opencode-zen/glm-5.1`: designer primary. Code Arena Elo 1530 (agentic front-end 3위 글로벌), $1.40/$4.40.
+- `opencode-zen/gpt-5-nano`: git-master primary. $0.05/$0.4. git 명령은 최소 reasoning 충분.
 
 ---
 
@@ -558,9 +561,9 @@ Profile A는 `opencode-zen/*` 및 `openai-codex/*` 모델만 사용한다. Anthr
 
 | Provider ID | 활성화 조건 | `omp --list-models` 확인 |
 |---|---|---|
-| `opencode-zen` | 항상 (Profile A) | 확인됨 (glm-5, kimi-k2.6, claude-* 등 30+ 모델) |
-| `openai-codex` | 항상 (Profile A) | 확인됨 (gpt-5.3-codex, gpt-5.4 등 16개 모델) |
-| `anthropic` | opt-in (Profile B, Spec B scope) | 확인됨 (claude-haiku-4-5, claude-opus-4-7 등) |
+| `opencode-zen` | 항상 (Profile A 의 14 role primary) | 확인됨 (kimi-k2.6, gemini-3-flash, glm-5.1, gpt-5-nano 등 35+ 모델) |
+| `openai-codex` | Profile A 의 6 role primary (executor/debugger/test-engineer/scientist/architect/metis) | 확인됨 (gpt-5.3-codex, gpt-5.4 등 16개 모델) |
+| `anthropic` | Profile A 의 4 role primary (planner, critic, security-reviewer, oracle) | 확인됨 (claude-haiku-4-5, claude-opus-4-7, claude-sonnet-4-6 등). 2026-05-29 OPTIMIZED-MODEL revision 부터 Profile A 도 anthropic 사용 (Anthropic Pro/Max subscription 활용). |
 
 ### 6.2 Plugin load-time 화이트리스트 검증
 

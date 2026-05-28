@@ -2,8 +2,8 @@
 name: pi-oven:oracle
 description: Strategic technical advisor — architecture decisions, codebase knowledge Q&A, hard debugging consultation after 2+ failed attempts, multi-system tradeoff analysis. READONLY, extended thinking.
 model:
+  - anthropic/claude-opus-4-7
   - opencode-zen/claude-opus-4-7
-  - opencode-zen/claude-sonnet-4-6
 thinkingLevel: xhigh
 mode: subagent
 tools: ["Read", "Grep", "Glob", "Bash"]

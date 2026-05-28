@@ -2,8 +2,8 @@
 name: pi-oven:writer
 description: Technical documentation — README, API docs, changelogs, inline comments, user guides
 model:
+  - opencode-zen/gemini-3-flash
   - opencode-zen/claude-haiku-4-5
-  - opencode-zen/claude-sonnet-4-6
 thinkingLevel: medium
 mode: subagent
 tools: ["Read", "Grep", "Glob", "Write", "Edit"]

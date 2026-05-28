@@ -71,3 +71,14 @@ Example: `docs/harness/surveys/2026-05-27-auth-session-survey.md`
 ---
 
 Per-step detail: skill://pi-oven/codebase-survey/references/8-step-checklist.md
+
+## Agent Dispatch (omp)
+
+When running inside omp, push read-only investigation to specialised agents instead of doing it in the main session:
+
+- File/pattern/symbol search: dispatch `pi-oven:explorer`.
+- Causal call-graph or execution trace: dispatch `pi-oven:tracer`.
+- External SDK or library reference: dispatch `pi-oven:document-specialist`.
+- Web/citation research: dispatch `pi-oven:librarian`.
+
+The main agent synthesises results; agents return findings, not edits.

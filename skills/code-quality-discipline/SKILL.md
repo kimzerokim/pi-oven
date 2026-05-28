@@ -64,3 +64,14 @@ Run before commit or handoff:
 ---
 
 Deep rationale + examples: skill://pi-oven/code-quality-discipline/references/principles.md
+
+## Agent Dispatch (omp)
+
+In an omp session, push quality checks to specialised agents:
+
+- Severity-rated code review (SOLID, regression surface): dispatch `pi-oven:code-reviewer`.
+- Deletion-first simplification (behavior-preserving): dispatch `pi-oven:code-simplifier`.
+- Security audit when sensitive surfaces are touched (OWASP, supply chain): dispatch `pi-oven:security-reviewer`.
+- Quantitative metrics analysis when needed: dispatch `pi-oven:analyst`.
+
+Outside omp the main agent runs the same checklist inline.

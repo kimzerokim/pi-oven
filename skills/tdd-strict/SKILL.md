@@ -79,3 +79,14 @@ No other exemptions are recognized. "It's small" and "it's obvious" are not vali
 | 8 | **Mock-all by default (ECC pattern — REJECTED)** — mock every dependency regardless of cost | pi-oven policy overrides ECC: mocks only when the real dependency is unavoidable. Overuse of mocks produces tests that pass against an imaginary system. |
 
 Deeper rationale: skill://pi-oven/tdd-strict/references/anti-patterns.md
+
+## Agent Dispatch (omp)
+
+In an omp session, run TDD via dedicated agents instead of inline:
+
+- Red phase (test design + failing test): dispatch `pi-oven:test-engineer`.
+- Green phase (minimal implementation that makes the test pass): dispatch `pi-oven:executor`.
+- Refactor verification (behavior preserved, test still green): dispatch `pi-oven:verifier`.
+- Diagnose a stubbornly failing test: dispatch `pi-oven:debugger`.
+
+If two consecutive green attempts fail, escalate to `pi-oven:oracle` for a strategic re-think before continuing.

@@ -14,7 +14,8 @@
     "check": "tsc --noEmit",
     "build": "bun build .omp/extensions/pi-oven.ts --outdir dist --target bun --format esm",
     "eval": "bun scripts/run-eval.ts",
-    "lint:agents": "bun scripts/lint-agents.ts"
+    "lint:agents": "bun scripts/lint-agents.ts",
+    "lint:skills": "bun scripts/lint-skills.ts"
   },
   "dependencies": {
     "@oh-my-pi/pi-coding-agent": "*"

@@ -94,3 +94,14 @@ This skill is the **orchestration layer only**. It dispatches and sequences suba
 ---
 
 Dispatch prompt templates: skill://pi-oven/subagent-driven-development/references/prompts.md
+
+## Agent Dispatch (omp)
+
+A single-session implementation flow chains dedicated agents:
+
+- Decomposition into atomic tasks: dispatch `pi-oven:planner`.
+- Per-task code implementation: dispatch `pi-oven:executor`.
+- Evidence-based verification per task: dispatch `pi-oven:verifier`.
+- Severity-rated review after implementation: dispatch `pi-oven:code-reviewer`.
+
+The main agent orchestrates only; it does not write code or evaluate completion itself.

@@ -70,3 +70,15 @@ If the process is not alive or the log tail shows errors, fix the dev server bef
 - **Plan 3**: TypeScript extension hook — `pi.on('tool_call', { tool: 'Bash' })` — intercepts every `git commit`, `git push`, and `gh pr` call at the omp runtime layer. Gates 3.5 and Gate 6 are Plan 3 from day one (they require the hook intercept to be reliable). Gates 0–5 start as Plan 1 skill-layer and gain hard intercept in Plan 3.
 
 Per-gate procedure: skill://pi-oven/pre-commit-gate/references/gate-detail.md
+
+## Agent Dispatch (omp)
+
+Each gate has a default agent in an omp session:
+
+- Gate (code review): `pi-oven:code-reviewer`.
+- Gate (security): `pi-oven:security-reviewer`.
+- Gate (verification, fresh-evidence): `pi-oven:verifier`.
+- Gate (E2E / Playwright when UI changed): `pi-oven:qa-tester`.
+- Gate (commit shaping, message style, atomic split): `pi-oven:git-master`.
+
+If any gate fails twice in a row, escalate the failure to `pi-oven:oracle` before continuing.

@@ -138,3 +138,12 @@ This path is the pi-oven project override. Do not use `docs/superpowers/plans/` 
 ---
 
 Header + task template: skill://pi-oven/writing-plans/references/template.md
+
+## Agent Dispatch (omp)
+
+When authoring an implementation plan inside omp:
+
+- Requirements gathering and ambiguity resolution: dispatch `pi-oven:metis` (which may in turn spawn `pi-oven:explorer` / `pi-oven:librarian` / `pi-oven:document-specialist`).
+- Codebase context confirmation: dispatch `pi-oven:explorer`.
+- Atomic-task decomposition: dispatch `pi-oven:planner`.
+- Architectural risk and migration impact review: dispatch `pi-oven:architect`.

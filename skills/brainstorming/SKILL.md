@@ -61,3 +61,14 @@ Invoke `writing-plans` **only**. No other implementation skill is valid at exit.
 ---
 
 Deeper rationale + checklist detail: skill://pi-oven/brainstorming/references/checklist.md
+
+## Agent Dispatch (omp)
+
+When running this skill inside an omp session, route work to the pi-oven agent registry rather than handling every step inline:
+
+- Intent clarification (one-question-at-a-time interview): dispatch `pi-oven:metis`.
+- Project context exploration (files, recent commits, patterns): dispatch `pi-oven:explorer`.
+- Approach comparison and architectural trade-offs: dispatch `pi-oven:architect`.
+- Spec writing and clear documentation: the main agent owns this, optionally consulting `pi-oven:writer` for prose polish.
+
+Outside omp the same steps run inline.

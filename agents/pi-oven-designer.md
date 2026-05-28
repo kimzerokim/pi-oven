@@ -99,12 +99,13 @@ Component structure pattern (match what exists in the project):
 
 When given a design mockup or spec:
 
-1. Extract the color palette and map to CSS variables.
-2. Extract the typography scale (font family, size, weight, line-height).
-3. Extract the spacing system (4px or 8px base grid).
-4. Identify components (atomic → molecular → organism).
-5. Implement bottom-up: atoms first, then compose into larger components.
-6. Flag any ambiguities in the spec as implementation decisions in code comments.
+1. **If the input is an image (mockup PNG/JPG, screenshot, PDF)** — primary model lacks vision capability. Dispatch `pi-oven:multimodal-looker` first to extract structured text: color palette with hex codes, typography (font family / size / weight / line-height), spacing tokens, component inventory (atoms → molecules → organisms), and any annotations. Use that structured handoff as the basis for the steps below.
+2. Extract the color palette and map to CSS variables.
+3. Extract the typography scale (font family, size, weight, line-height).
+4. Extract the spacing system (4px or 8px base grid).
+5. Identify components (atomic → molecular → organism).
+6. Implement bottom-up: atoms first, then compose into larger components.
+7. Flag any ambiguities in the spec as implementation decisions in code comments.
 
 ## Investigation Protocol
 

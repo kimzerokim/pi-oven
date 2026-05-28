@@ -259,11 +259,12 @@ lint-agents.ts 와 동일 패턴. SKILL.md frontmatter + body 의 `pi-oven:[a-z-
 8. ✅ **AC#3**: 모든 verify command PASS.
 9. ✅ **AC#4**: SKILL.md instruction 정의 완료 (실제 runtime dispatch 동작 보장은 omp 책임).
 
-### 다음 cycle 잔여
+### 다음 cycle 잔여 → 자율 cycle 2 추가 적용 (2026-05-29)
 
-- §7.2 multimodal-looker 의 designer/qa-tester sub-dispatch 실측 적용
-- §7.3 oracle escalation 의 autonomous-loop / fresh-verifier 적용 (현재는 pre-commit-gate + tdd-strict 에 추가됨)
-- CI workflow 에 `lint:skills` 추가 (현재 package.json script 만 존재)
+- ✅ **§7.2 multimodal-looker sub-dispatch** — `agents/pi-oven-designer.md` 의 "Mockup-to-Implementation Handoff" 섹션에 image input → `pi-oven:multimodal-looker` 첫 단계 dispatch instruction 추가; `agents/pi-oven-qa-tester.md` 의 "Playwright Visual Verification" 섹션에 compound visual diff 케이스 (multi-screenshot, multi-viewport, diagram, PDF) 의 `pi-oven:multimodal-looker` sub-dispatch 추가.
+- ✅ **§7.3 oracle escalation 확장** — `skills/autonomous-loop/SKILL.md` Resilience 섹션에 "2 consecutive fix attempts failed → dispatch pi-oven:oracle before third attempt" 명시; `skills/fresh-verifier/SKILL.md` Q-VERIFIER-FAIL action 에 "dispatch pi-oven:oracle for final strategic consultation before halt" 명시. pre-commit-gate + tdd-strict 의 기존 oracle escalation 과 함께 4 surface (pre-commit-gate / tdd-strict / autonomous-loop / fresh-verifier) coverage.
+- ✅ **CI workflow lint:skills 통합** — `.github/workflows/ci.yml` 의 `Lint pi-oven agent files` step 다음에 `Lint pi-oven skill files` step 추가. push/PR 시점에 `bun run lint:agents + lint:skills` 둘 다 강제.
+- ⏸ **PROFILE_B 정의 재고** — 자율 결정 보류. PROFILE_B 의 본질이 "anthropic primary 우선" 인데 새 PROFILE_A 가 anthropic 4 role 사용하면서 차별성 약화. 옵션: (a) PROFILE_B 폐기 (PROFILE_A 만), (b) PROFILE_B = anthropic 100% primary 로 재정의, (c) PROFILE_B = "Pro/Max Heavy" — 모든 advisory + coding role 도 anthropic primary. 코드 변경 영향 큼 (profiles.ts PROFILE_B map + spec B §5 + 23 agent file frontmatter Profile B 분기). 사용자 명시 결정 후 진행. 본 cycle 에서는 spec memo only, profiles.ts PROFILE_B 자체 미변경.
 
 ---
 

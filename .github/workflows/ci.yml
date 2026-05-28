@@ -26,6 +26,8 @@ jobs:
         # and is gated behind Plan 4 (setup wizard + CI secrets bootstrap).
       - name: Lint pi-oven agent files
         run: bun run lint:agents
+      - name: Lint pi-oven skill files
+        run: bun run lint:skills
       - name: Validate marketplace catalog JSON
         run: |
           jq . .claude-plugin/marketplace.json > /dev/null

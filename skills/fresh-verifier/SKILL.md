@@ -105,7 +105,7 @@ Any response that does not match this pattern triggers `Q-VERIFIER-INVALID`.
 
 | Pattern | Trigger condition | Action |
 |---|---|---|
-| `Q-VERIFIER-FAIL` | 2 consecutive BLOCK verdicts on the same cycle | Append to `docs/harness/user-queue.md`; halt cycle |
+| `Q-VERIFIER-FAIL` | 2 consecutive BLOCK verdicts on the same cycle | Dispatch `pi-oven:oracle` for final strategic consultation; if oracle also returns no resolvable path, append to `docs/harness/user-queue.md` and halt cycle |
 | `Q-VERIFIER-INVALID` | Verifier response first line does not match `VERDICT: (PASS\|BLOCK)` | Re-dispatch once; second mismatch appends Q entry |
 | `Q-VERIFIER-DISPATCH-FAIL` | `task` call throws or returns no agent response | Log error + append Q entry; do not self-verify as fallback |
 | `Q-COMPLETION-SELF-VERIFY` | Main agent emits "verification PASS" / "done" / "loop exit" without prior fresh-agent VERDICT | Immediate Q entry; cycle marked incomplete |

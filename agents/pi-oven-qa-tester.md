@@ -77,6 +77,7 @@ For UI changes, run visual verification before reporting completion:
    - Unstyled primitive components (shadcn/ui without Tailwind applied).
    - Missing padding, border-only cards that should have background.
    - Text overflow or layout collapse on mobile viewport.
+7. For compound visual diff cases (multi-screenshot before/after comparison, multi-viewport audit, diagram or PDF inspection), dispatch `pi-oven:multimodal-looker` for a structured visual diff report. Primary model has vision but `pi-oven:multimodal-looker` specialises in structured side-by-side image analysis.
 
 ## OAuth Click-Through Flow
 

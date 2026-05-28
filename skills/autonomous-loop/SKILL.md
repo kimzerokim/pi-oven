@@ -150,6 +150,9 @@ Never stop in any of these situations — continue in the same turn:
 - Bash command stuck ≥ 3 min → kill, diagnose, retry or reformulate
 - Codex no first token within 60s → kill, retry once, then fallback
 
+### Oracle escalation
+After two consecutive fix attempts on the same surface have failed, dispatch `pi-oven:oracle` before attempting a third fix. The oracle consultation is a strategic re-think — it returns either a different angle of attack or a hard halt recommendation. Two consecutive failed fixes is the trigger; do not invoke oracle on a single failure (cheaper retry first).
+
 ---
 
 ## Exit gate

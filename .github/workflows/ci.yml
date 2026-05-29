@@ -32,3 +32,13 @@ jobs:
         run: |
           jq . .claude-plugin/marketplace.json > /dev/null
           jq . .claude-plugin/plugin.json > /dev/null
+      - name: Version parity check (package.json == plugin.json == marketplace.json)
+        run: |
+          PKG=$(jq -r .version package.json)
+          PLG=$(jq -r .version .claude-plugin/plugin.json)
+          MKT=$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)
+          echo "package.json=$PKG plugin.json=$PLG marketplace.json=$MKT"
+          if [ "$PKG" != "$PLG" ] || [ "$PLG" != "$MKT" ]; then
+            echo "::error::Version SoT mismatch across package.json / plugin.json / marketplace.json"
+            exit 1
+          fi

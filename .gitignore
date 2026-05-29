@@ -4,6 +4,9 @@
 # omp local session state (Claude Code / OMC artifacts during bootstrap phase)
 .omc/
 
+# pi-agent local config (machine-local MCP servers etc.)
+.pi/
+
 # Node / Bun
 node_modules/
 dist/

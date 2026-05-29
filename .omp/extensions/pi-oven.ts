@@ -5,6 +5,9 @@ import { fileURLToPath } from "url";
 import * as path from "path";
 import * as os from "os";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { GateStateStore } from "./pi-oven-runtime/gate-state";
+import { createGateHandler } from "./pi-oven-runtime/gate-handler";
+import { RulesInjector } from "./pi-oven-runtime/rules-injector";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -153,6 +156,82 @@ export default function piOvenPi(pi: ExtensionAPI): void {
 
   const sessionModelPath = path.resolve(os.homedir(), ".omp/plugins/pi-oven-session-model.json");
 
+  // -------------------------------------------------------------------------
+  // Plan 3 runtime / discipline layer (Spec F — minimal v1 scope)
+  //   Layer 1: tool_call gate (commit/push/forbidden) — the only hard lever.
+  //   Layer 4: discipline-rule injection + compaction-survival (rules-injector).
+  // The FSM state lives at <repo>/.pi-oven/state/. The repo root is the process
+  // cwd at extension load (omp runs the extension from the workspace root).
+  // -------------------------------------------------------------------------
+  const stateRoot = path.resolve(process.cwd(), ".pi-oven");
+  const store = new GateStateStore(stateRoot);
+  const injector = new RulesInjector();
+
+  // A subagent session is recognized via PI_BLOCKED_AGENT (omp recursion-guard
+  // env, task/index.ts:273). Only the parent session may MUTATE the FSM (B4);
+  // subagents are still gated (read-only) but never write.
+  const isParentSession = !process.env.PI_BLOCKED_AGENT;
+
+  const gateHandler = createGateHandler({
+    store,
+    logger: pi.logger,
+    getEnv: () => process.env,
+    isParentSession,
+  });
+
+  // Layer 1 — the hard tool-boundary gate. The handler self-deadlines (1500 ms)
+  // and throws on overrun; omp converts a throw → {block:true} = fail-CLOSED.
+  // Any unexpected error on the NON-gated path fails OPEN inside the handler so
+  // a normal omp session is never broken.
+  pi.on("tool_call", async (event) => {
+    try {
+      return await gateHandler(event as never);
+    } catch (err) {
+      // A thrown error here is the intentional self-deadline fail-closed: omp
+      // turns it into {block:true}. Re-throw so the gated tool fail-closes.
+      pi.logger.warn(`pi-oven: gate handler self-deadline / fault — fail-closed: ${err}`);
+      throw err;
+    }
+  });
+
+  // Layer 4 — inject the discipline-rule block every turn (dedup key ensures
+  // exactly-once per systemPrompt across re-injection / compaction rehydration).
+  pi.on("before_agent_start", async (event) => {
+    try {
+      const systemPrompt = injector.applyToSystemPrompt(event.systemPrompt ?? []);
+      return { systemPrompt };
+    } catch (err) {
+      pi.logger.debug(`pi-oven: before_agent_start inject skipped: ${err}`);
+      return undefined; // fail-open: never break the turn
+    }
+  });
+
+  // Layer 4 — preserve the FSM phase + active rule IDs across compaction. The
+  // returned preserveData lands in the resulting CompactionEntry.
+  pi.on("session.compacting", async () => {
+    try {
+      return { preserveData: injector.buildPreserveData() };
+    } catch (err) {
+      pi.logger.debug(`pi-oven: session.compacting preserve skipped: ${err}`);
+      return undefined;
+    }
+  });
+
+  // Layer 4 — rehydrate preserved discipline rules from a prior CompactionEntry
+  // surfaced via SessionBeforeCompactEvent.branchEntries (the corrected
+  // data-flow: before_agent_start carries NO branchEntries).
+  pi.on("session_before_compact", async (event) => {
+    try {
+      const entries = (event as unknown as { branchEntries?: unknown[] }).branchEntries;
+      if (Array.isArray(entries)) {
+        injector.rehydrateFromBranchEntries(entries as never);
+      }
+    } catch (err) {
+      pi.logger.debug(`pi-oven: session_before_compact rehydrate skipped: ${err}`);
+    }
+    return undefined; // do not cancel/alter the compaction
+  });
+
   pi.on("session_start", async (_event, ctx) => {
     // Capture parent session model for CLI parent-session check (Spec B §6 Step a.5)
     // ctx.getModel is available at runtime (extensibility/extensions/types.d.ts:800)
@@ -169,6 +248,17 @@ export default function piOvenPi(pi: ExtensionAPI): void {
       } catch (err) {
         pi.logger.debug(`pi-oven: failed to capture parent session model: ${err}`);
       }
+    }
+
+    // Layer 4 — rehydrate discipline rules from session_start hot-context
+    // preserveData (the alternate path to branchEntries).
+    try {
+      const evtAny = _event as unknown as { preserveData?: Record<string, unknown> };
+      if (evtAny.preserveData) {
+        injector.rehydrateFromPreserveData(evtAny.preserveData);
+      }
+    } catch (err) {
+      pi.logger.debug(`pi-oven: session_start rehydrate skipped: ${err}`);
     }
   });
 

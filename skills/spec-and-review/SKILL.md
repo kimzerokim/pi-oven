@@ -118,4 +118,4 @@ When running spec-and-review inside omp:
 - Step 1 (draft authoring): the main agent leads; consult `pi-oven:architect` for system-design decisions and `pi-oven:document-specialist` for SDK accuracy.
 - Step 2 (cross-vendor review): dispatch `pi-oven:critic` as the BLOCKER/NIT quality gate.
 - Step 3 (synthesis and acceptance loop): the main agent owns synthesis.
-- Experiment-style verification (falsifiability) when relevant: dispatch `pi-oven:scientist`.
+- Experiment-style verification (falsifiability) when relevant: dispatch `pi-oven:analyst`.

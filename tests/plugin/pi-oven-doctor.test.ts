@@ -126,15 +126,15 @@ describe("evalMcp", () => {
 
 describe("evalSkills", () => {
   it("PASS when SKILL.md count equals plugin.json skills[] length", () => {
-    const r = evalSkills({ skillMdCount: 20, pluginSkillsCount: 20 });
+    const r = evalSkills({ skillMdCount: 17, pluginSkillsCount: 17 });
     expect(r.status).toBe("PASS");
-    expect(r.detail).toContain("20");
+    expect(r.detail).toContain("17");
   });
 
   it("FAIL when counts mismatch", () => {
-    const r = evalSkills({ skillMdCount: 19, pluginSkillsCount: 20 });
+    const r = evalSkills({ skillMdCount: 16, pluginSkillsCount: 17 });
     expect(r.status).toBe("FAIL");
-    expect(r.detail).toMatch(/19.*20|20.*19/);
+    expect(r.detail).toMatch(/16.*17|17.*16/);
     expect(r.fix).toBeDefined();
   });
 });
@@ -144,19 +144,19 @@ describe("evalSkills", () => {
 // ---------------------------------------------------------------------------
 
 describe("evalAgents", () => {
-  it("PASS when 23 agents and lint clean", () => {
-    const r = evalAgents({ agentCount: 23, expectedCount: 23, lintClean: true });
+  it("PASS when 22 agents and lint clean", () => {
+    const r = evalAgents({ agentCount: 22, expectedCount: 22, lintClean: true });
     expect(r.status).toBe("PASS");
   });
 
   it("FAIL when agent count mismatch", () => {
-    const r = evalAgents({ agentCount: 22, expectedCount: 23, lintClean: true });
+    const r = evalAgents({ agentCount: 21, expectedCount: 22, lintClean: true });
     expect(r.status).toBe("FAIL");
-    expect(r.detail).toMatch(/22.*23|23.*22/);
+    expect(r.detail).toMatch(/21.*22|22.*21/);
   });
 
   it("FAIL when count matches but lint dirty", () => {
-    const r = evalAgents({ agentCount: 23, expectedCount: 23, lintClean: false });
+    const r = evalAgents({ agentCount: 22, expectedCount: 22, lintClean: false });
     expect(r.status).toBe("FAIL");
     expect(r.detail).toMatch(/lint/i);
     expect(r.fix).toBeDefined();
@@ -261,8 +261,8 @@ describe("DoctorFacts → evaluators integration (pure, injected facts)", () => 
       git: { present: true, version: "2.44.0", insideRepo: true },
       auth: { opencode_zen: true, openai_codex: false, anthropic: false },
       mcp: { servers: ["playwright"] },
-      skills: { skillMdCount: 20, pluginSkillsCount: 20 },
-      agents: { agentCount: 23, expectedCount: 23, lintClean: true },
+      skills: { skillMdCount: 17, pluginSkillsCount: 17 },
+      agents: { agentCount: 22, expectedCount: 22, lintClean: true },
       stateDir: { writable: true, path: ".pi-oven" },
       evalRunner: { runnerPresent: true, smokeScenarioCount: 15 },
     };

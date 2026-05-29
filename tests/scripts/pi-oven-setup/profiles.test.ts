@@ -20,13 +20,13 @@ describe("profiles", () => {
       expect(ROLES.length).toBe(EXPECTED_AGENT_COUNT);
     });
 
-    it("EXPECTED_AGENT_COUNT is 23", () => {
-      expect(EXPECTED_AGENT_COUNT).toBe(23);
+    it("EXPECTED_AGENT_COUNT is 22", () => {
+      expect(EXPECTED_AGENT_COUNT).toBe(22);
     });
   });
 
   describe("PROFILE_A", () => {
-    it("contains all 23 roles", () => {
+    it("contains all 22 roles", () => {
       for (const role of ROLES) {
         expect(PROFILE_A[role]).toBeDefined();
       }
@@ -58,7 +58,7 @@ describe("profiles", () => {
   });
 
   describe("PROFILE_B", () => {
-    it("contains all 23 roles", () => {
+    it("contains all 22 roles", () => {
       for (const role of ROLES) {
         expect(PROFILE_B[role]).toBeDefined();
       }

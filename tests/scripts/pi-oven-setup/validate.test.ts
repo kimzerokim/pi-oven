@@ -73,7 +73,7 @@ describe("runValidate", () => {
 
   it("mode=smoke only covers MUST-tier roles — exactly 7 pings when all primaries succeed", async () => {
     // When all primaries succeed, smoke mode issues exactly 7 pings (one per MUST-tier role).
-    // Full mode would issue 23. This verifies smoke scope without model-string reverse lookup
+    // Full mode would issue 22. This verifies smoke scope without model-string reverse lookup
     // (model strings are shared across roles so reverse lookup is unreliable).
     const pingedModels: string[] = [];
     const spawnFn = (_cmd: string, args: string[]) => {
@@ -102,7 +102,7 @@ describe("runValidate", () => {
     }
   });
 
-  it("mode=full pings all 23 roles", async () => {
+  it("mode=full pings all 22 roles", async () => {
     const pingedModels: string[] = [];
     const spawnFn = (_cmd: string, args: string[]) => {
       const modelIdx = args.indexOf("--model");
@@ -111,8 +111,8 @@ describe("runValidate", () => {
     };
 
     await runValidate(PROFILE_A, { mode: "full", spawnFn });
-    // 23 roles, each primary succeeds → 23 pings
-    expect(pingedModels.length).toBe(23);
+    // 22 roles, each primary succeeds → 22 pings
+    expect(pingedModels.length).toBe(22);
   });
 
   it("primary succeeds → role in verified list", async () => {

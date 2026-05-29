@@ -8,14 +8,14 @@
 
 **Goal: build the optimal agentic workflow that runs natively on omp.** Not a Claude Code plugin — Claude Code interop is a by-product, not maintained.
 
-**Core design principle — heterogeneous models.** Agents do NOT all run on Anthropic. PROFILE_A spreads 23 roles across ~8 model families (codex, gemini-flash, kimi, glm, gpt-nano, opus). Each agent's body must inject an **execution context optimized for its specific model**, not a generic prompt. Model-fit is a first-class concern.
+**Core design principle — heterogeneous models.** Agents do NOT all run on Anthropic. PROFILE_A spreads 22 roles across ~8 model families (codex, gemini-flash, kimi, glm, gpt-nano, opus). Each agent's body must inject an **execution context optimized for its specific model**, not a generic prompt. Model-fit is a first-class concern.
 
 ## Layout
 
 | Dir | What | SoT? |
 |---|---|---|
-| `agents/pi-oven-*.md` | 23 subagent definitions. Frontmatter `name: pi-oven:<role>` (colon), `model:` array, `thinkingLevel`, body = system prompt. | body hand-authored; `model`/`thinkingLevel` derived from profiles.ts |
-| `skills/<name>/SKILL.md` | 15 skills (+ `references/`, eval scenarios). Bodies **English-only**. | hand-authored |
+| `agents/pi-oven-*.md` | 22 subagent definitions. Frontmatter `name: pi-oven:<role>` (colon), `model:` array, `thinkingLevel`, body = system prompt. | body hand-authored; `model`/`thinkingLevel` derived from profiles.ts |
+| `skills/<name>/SKILL.md` | 17 skills (+ `references/`, eval scenarios). Bodies **English-only**. | hand-authored |
 | `commands/pi-oven-*.md` | `/pi-oven:setup`, `/pi-oven:doctor`, `/pi-oven:autonomous` (LLM prompt templates). | hand-authored |
 | `scripts/pi-oven-setup/` | Setup-wizard CLI modules (TS, bun). | code |
 | `scripts/lint-{agents,skills}.ts` | CI hard lints. | code |
@@ -26,7 +26,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 195 pass currently
+bun test             # 336 pass currently
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -47,7 +47,7 @@ bun run eval         # scripts/run-eval.ts (needs LLM keys — gated, see Status
 |---|---|---|
 | `anthropic/claude-opus-4-8` | xhigh / high | critic, planner, security-reviewer, oracle |
 | `openai-codex/gpt-5.3-codex` | high | executor, debugger, test-engineer |
-| `openai-codex/gpt-5.4` | xhigh | scientist, architect, metis (+ planner alt) |
+| `openai-codex/gpt-5.4` | xhigh | architect, metis (+ planner alt) |
 | `opencode-zen/kimi-k2.6` | med→xhigh | verifier, code-reviewer, code-simplifier, tracer, analyst, librarian |
 | `opencode-zen/gemini-3-flash` | medium | explorer, writer, document-specialist, multimodal-looker |
 | `opencode-zen/gemini-3.5-flash` | high | qa-tester (vision) |
@@ -73,8 +73,8 @@ Done & local: Plan 0 (v0.1.0) · Plan 1 (v0.1.0, 12 skills) · Spec A (23 agents
 
 **Remaining work (verified):**
 1. **Push to origin** (gated on user) — v0.1.0 is merged to local `main` + tagged locally; `git push origin main --tags` needs explicit consent (still nothing on remote). Release cutover + version-SoT reconciliation = **DONE** (all three manifests at 0.1.0).
-2. **Plan 3 decision** — foundation spec defined Plan 3 = TS orchestration runtime (`foundation-design.md:121`), but `/pi-oven:autonomous` is intentionally LLM-driven, no TS state machine (`pi-oven-autonomous.md:75`). Decide: implement OR close as formal non-goal + ADR.
-3. **Plan 4 remainder** — `/pi-oven:doctor` is still a Plan-0 stub (`pi-oven-doctor.md:8`); real-eval pipeline gated on LLM keys (`ci.yml` comment); key onboarding.
+2. **Plan 3 omp-native runtime — IMPLEMENTED** (commits f61e091/cc71d03: gate FSM + rules-injector + hardened forbidden-floor). Formal ADR for non-goal closure not yet written.
+3. **Plan 4 remainder** — `/pi-oven:doctor` is **fully implemented** (520-line script, 9-check health matrix); real-eval pipeline gated on LLM keys (`ci.yml` comment); key onboarding pending.
 4. **PROFILE_B redefinition** — deferred (`skill-agent-dispatch.md:267`), user decision.
 
 ## docs/ map

@@ -1,9 +1,9 @@
 /**
- * Profile A/B default model maps for all 23 pi-oven roles.
+ * Profile A/B default model maps for all 22 pi-oven roles.
  * Source of truth: Spec B §4 (Profile A) and §5 (Profile B).
  */
 
-export const EXPECTED_AGENT_COUNT = 23; // matches Spec A §4 taxonomy
+export const EXPECTED_AGENT_COUNT = 22; // matches Spec A §4 taxonomy
 
 export const ROLES = [
   "executor",
@@ -23,7 +23,6 @@ export const ROLES = [
   "document-specialist",
   "tracer",
   "analyst",
-  "scientist",
   "architect",
   "librarian",
   "multimodal-looker",
@@ -45,13 +44,13 @@ export type ProfileMap = Record<Role, ModelEntry>;
  * Profile A — Release default.
  * Benchmark + cost-optimized routing (2026-05-29 OPTIMIZED-MODEL revision).
  * 3 high-stakes roles (critic, security-reviewer, oracle) use anthropic/ primary.
- * 6 roles use openai-codex/ subscription as primary
+ * 5 roles use openai-codex/ subscription as primary
  * (executor/debugger/test-engineer = gpt-5.3-codex;
- *  scientist/architect/metis = gpt-5.4; planner alternate = gpt-5.4).
+ *  architect/metis = gpt-5.4; planner alternate = gpt-5.4).
  * Default fallback policy: opencode-zen/ wrapper of the same model id.
  * Exception: planner falls back to openai-codex/gpt-5.4 for codex-review
  * cross-validation per user policy.
- * Provider mix: anthropic 4 (planner primary + critic + security-reviewer + oracle), openai-codex 6, opencode-zen 13.
+ * Provider mix: anthropic 4 (planner primary + critic + security-reviewer + oracle), openai-codex 5, opencode-zen 13.
  */
 export const PROFILE_A: ProfileMap = {
   executor: {
@@ -137,11 +136,6 @@ export const PROFILE_A: ProfileMap = {
   analyst: {
     primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "xhigh",
-  },
-  scientist: {
-    primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "xhigh",
   },
   architect: {
@@ -259,11 +253,6 @@ export const PROFILE_B: ProfileMap = {
     thinkingLevel: "high",
   },
   analyst: {
-    primary: "anthropic/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
-    thinkingLevel: "xhigh",
-  },
-  scientist: {
     primary: "anthropic/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-opus-4-7",
     thinkingLevel: "xhigh",

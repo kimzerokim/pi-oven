@@ -217,7 +217,7 @@ describe("rewriteAllAgents", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("rewrites all 23 agent files to PROFILE_B; subsequent read shows anthropic primary on executor", async () => {
+  it("rewrites all 22 agent files to PROFILE_B; subsequent read shows anthropic primary on executor", async () => {
     // Start with Profile A files
     populateAgentsDir(
       tempDir,
@@ -228,7 +228,7 @@ describe("rewriteAllAgents", () => {
     );
 
     const { rewritten, skipped } = await rewriteAllAgents(tempDir, PROFILE_B);
-    expect(rewritten.length).toBe(23);
+    expect(rewritten.length).toBe(22);
     expect(skipped.length).toBe(0);
 
     // Verify executor now has anthropic primary
@@ -238,7 +238,7 @@ describe("rewriteAllAgents", () => {
   });
 
   it("skips roles whose files do not exist", async () => {
-    // Only create 3 of the 23 files
+    // Only create 3 of the 22 files
     const subset: Role[] = ["executor", "critic", "planner"];
     populateAgentsDir(
       tempDir,
@@ -250,7 +250,7 @@ describe("rewriteAllAgents", () => {
 
     const { rewritten, skipped } = await rewriteAllAgents(tempDir, PROFILE_B);
     expect(rewritten.length).toBe(3);
-    expect(skipped.length).toBe(20);
+    expect(skipped.length).toBe(19);
   });
 });
 

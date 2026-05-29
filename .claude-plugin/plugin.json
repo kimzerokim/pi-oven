@@ -4,7 +4,6 @@
   "description": "Curated omp workflow + discipline layer",
   "skills": [
     "./skills/code-quality-discipline/SKILL.md",
-    "./skills/eval-runner/SKILL.md",
     "./skills/tdd-strict/SKILL.md",
     "./skills/brainstorming/SKILL.md",
     "./skills/codebase-survey/SKILL.md",
@@ -17,12 +16,10 @@
     "./skills/autonomous-loop/SKILL.md",
     "./skills/deep-init/SKILL.md",
     "./skills/deep-dive/SKILL.md",
-    "./skills/team/SKILL.md",
     "./skills/systematic-debugging/SKILL.md",
     "./skills/improve-codebase-architecture/SKILL.md",
     "./skills/receiving-code-review/SKILL.md",
-    "./skills/git-workflow/SKILL.md",
-    "./skills/caveman/SKILL.md"
+    "./skills/git-workflow/SKILL.md"
   ],
   "commands": [
     "./commands/pi-oven-setup.md",

@@ -67,12 +67,12 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 
 ## Status (current — 2026-05-29)
 
-Branch `feature/standard-expansion`. **Nothing pushed.** `origin/main` ships **zero agents** (`agents/.gitkeep` only). Tags: **v0.1.0 only**.
+**v0.1.0 released to local `main`** (FF merge of `feature/standard-expansion`, tag `v0.1.0`). **Not pushed** — `origin/main` still ships zero agents; push deferred pending explicit consent. Version SoT unified at **0.1.0** across `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`.
 
-Done & local: Plan 0 (v0.1.0) · Plan 1 (v0.1.0, 12 skills) · Spec A (23 agents) · Spec B (setup wizard) · Spec C (15 skills) · Spec D (skill↔agent dispatch, both cycles applied) · **Spec E = FROZEN v3 + implemented** (Option C settings-override; 4 commits `72b7b3a`→`05a3662`; dead-spine grep clean). Plan 2 (33-skill expansion) = **SUPERSEDED**.
+Done & local: Plan 0 (v0.1.0) · Plan 1 (v0.1.0, 12 skills) · Spec A (23 agents) · Spec B (setup wizard) · Spec C (15 skills) · Spec D (skill↔agent dispatch, both cycles applied) · **Spec E = FROZEN v3 + implemented** (Option C settings-override; 4 commits `72b7b3a`→`05a3662`; dead-spine grep clean) · **v0.1.0 release (local)**. Plan 2 (33-skill expansion) = **SUPERSEDED**.
 
 **Remaining work (verified):**
-1. **Release cutover** (gated on user) — merge v0.1.0 to `main`, resolve **version SoT split** (`package.json` 0.1.0 vs `plugin.json`/`marketplace.json` 0.1.0), tag v0.1.0, release. Needs push consent + main-merge decision (PR vs direct).
+1. **Push to origin** (gated on user) — v0.1.0 is merged to local `main` + tagged locally; `git push origin main --tags` needs explicit consent (still nothing on remote). Release cutover + version-SoT reconciliation = **DONE** (all three manifests at 0.1.0).
 2. **Plan 3 decision** — foundation spec defined Plan 3 = TS orchestration runtime (`foundation-design.md:121`), but `/pi-oven:autonomous` is intentionally LLM-driven, no TS state machine (`pi-oven-autonomous.md:75`). Decide: implement OR close as formal non-goal + ADR.
 3. **Plan 4 remainder** — `/pi-oven:doctor` is still a Plan-0 stub (`pi-oven-doctor.md:8`); real-eval pipeline gated on LLM keys (`ci.yml` comment); key onboarding.
 4. **PROFILE_B redefinition** — deferred (`skill-agent-dispatch.md:267`), user decision.

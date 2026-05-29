@@ -2,8 +2,8 @@
 name: pi-oven:critic
 description: Brutally honest quality gate — structured gap analysis, multi-perspective review, severity-rated verdicts
 model:
-  - anthropic/claude-opus-4-7
-  - opencode-zen/claude-opus-4-7
+  - anthropic/claude-opus-4-8
+  - opencode-zen/claude-opus-4-8
 thinkingLevel: xhigh
 mode: subagent
 tools: ["Read", "Grep", "Glob"]

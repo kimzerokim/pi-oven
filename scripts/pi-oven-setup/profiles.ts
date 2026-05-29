@@ -70,12 +70,12 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "medium",
   },
   critic: {
-    primary: "anthropic/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "xhigh",
   },
   planner: {
-    primary: "anthropic/claude-opus-4-7",
+    primary: "anthropic/claude-opus-4-8",
     registry_alternate: "openai-codex/gpt-5.4",
     thinkingLevel: "high",
   },
@@ -95,8 +95,8 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "high",
   },
   "security-reviewer": {
-    primary: "anthropic/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "xhigh",
   },
   writer: {
@@ -160,8 +160,8 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "medium",
   },
   oracle: {
-    primary: "anthropic/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "xhigh",
   },
   metis: {

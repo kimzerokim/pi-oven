@@ -137,12 +137,12 @@ Complete 23-role Profile A model map (verified against live `omp --list-models` 
 | executor | openai-codex/gpt-5.3-codex | opencode-zen/gpt-5.3-codex | high |
 | explorer | opencode-zen/gemini-3-flash | opencode-zen/claude-haiku-4-5 | medium |
 | verifier | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | medium |
-| critic | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
-| planner | anthropic/claude-opus-4-7 | openai-codex/gpt-5.4 | high |
+| critic | anthropic/claude-opus-4-8 | opencode-zen/claude-opus-4-8 | xhigh |
+| planner | anthropic/claude-opus-4-8 | openai-codex/gpt-5.4 | high |
 | code-reviewer | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | high |
 | debugger | openai-codex/gpt-5.3-codex | opencode-zen/gpt-5.3-codex | high |
 | test-engineer | openai-codex/gpt-5.3-codex | opencode-zen/gpt-5.3-codex | high |
-| security-reviewer | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
+| security-reviewer | anthropic/claude-opus-4-8 | opencode-zen/claude-opus-4-8 | xhigh |
 | writer | opencode-zen/gemini-3-flash | opencode-zen/claude-haiku-4-5 | medium |
 | designer | opencode-zen/glm-5.1 | opencode-zen/claude-sonnet-4-6 | high |
 | code-simplifier | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | xhigh |
@@ -155,7 +155,7 @@ Complete 23-role Profile A model map (verified against live `omp --list-models` 
 | architect | openai-codex/gpt-5.4 | opencode-zen/gpt-5.4 | xhigh |
 | librarian | opencode-zen/kimi-k2.6 | opencode-zen/claude-sonnet-4-6 | medium |
 | multimodal-looker | opencode-zen/gemini-3-flash | opencode-zen/claude-sonnet-4-6 | medium |
-| oracle | anthropic/claude-opus-4-7 | opencode-zen/claude-opus-4-7 | xhigh |
+| oracle | anthropic/claude-opus-4-8 | opencode-zen/claude-opus-4-8 | xhigh |
 | metis | openai-codex/gpt-5.4 | opencode-zen/gpt-5.4 | xhigh |
 
 `registry_alternate` activates only when the primary model is removed from the omp registry (Outcome 3). When primary is simply unauthed (Outcome 2), omp falls back to the parent session model — not the next array entry (Spec A §3.2 / §6.3). The `opencode-zen/` same-model wrapper alternate convention means that `anthropic/`-primary roles degrade to opencode-zen-billed access of the same Claude model when Anthropic auth lapses, and `openai-codex/`-primary roles degrade to opencode-zen-billed Codex access when the ChatGPT subscription is unavailable.

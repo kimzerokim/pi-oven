@@ -374,7 +374,7 @@ leaf agent = `task` tool이 BLOCKED된 agent. 중첩 depth는 최대 2 (main →
 
 ## §5 Default Model Map (Profile A — Release Default)
 
-Profile A는 벤치마크 + 가성비 기반 라우팅 맵이다 (2026-05-29 OPTIMIZED-MODEL revision). 3 high-stakes 자문 role (critic, security-reviewer, oracle) 이 `anthropic/` primary 유지. planner 는 `anthropic/claude-opus-4-7` primary + `openai-codex/gpt-5.4` codex-review alternate (사용자 정책). 6 role 은 `openai-codex/` subscription primary (executor/debugger/test-engineer=gpt-5.3-codex, scientist/architect/metis=gpt-5.4). 나머지는 `opencode-zen/*` 의 Kimi K2.6 / Gemini / GLM / GPT-5-nano. anthropic 비중 14/23(61%) → 4/23(17%) 으로 축소 — 동일 SWE/agent 벤치마크 차이 미세할 때 ChatGPT subscription marginal cost 0 인 openai-codex 를 우선. 자세한 근거는 `OPTIMIZED-MODEL.md`.
+Profile A는 벤치마크 + 가성비 기반 라우팅 맵이다 (2026-05-29 OPTIMIZED-MODEL revision). 3 high-stakes 자문 role (critic, security-reviewer, oracle) 이 `anthropic/` primary 유지. planner 는 `anthropic/claude-opus-4-8` primary + `openai-codex/gpt-5.4` codex-review alternate (사용자 정책). 6 role 은 `openai-codex/` subscription primary (executor/debugger/test-engineer=gpt-5.3-codex, scientist/architect/metis=gpt-5.4). 나머지는 `opencode-zen/*` 의 Kimi K2.6 / Gemini / GLM / GPT-5-nano. anthropic 비중 14/23(61%) → 4/23(17%) 으로 축소 — 동일 SWE/agent 벤치마크 차이 미세할 때 ChatGPT subscription marginal cost 0 인 openai-codex 를 우선. 자세한 근거는 `OPTIMIZED-MODEL.md`.
 
 `omp --list-models` 실행 결과로 확인된 모델만 포함.
 
@@ -405,12 +405,12 @@ Profile A는 벤치마크 + 가성비 기반 라우팅 맵이다 (2026-05-29 OPT
       "thinkingLevel": "medium"
     },
     "critic": {
-      "primary": "anthropic/claude-opus-4-7",
-      "registry_alternate": "opencode-zen/claude-opus-4-7",
+      "primary": "anthropic/claude-opus-4-8",
+      "registry_alternate": "opencode-zen/claude-opus-4-8",
       "thinkingLevel": "xhigh"
     },
     "planner": {
-      "primary": "anthropic/claude-opus-4-7",
+      "primary": "anthropic/claude-opus-4-8",
       "registry_alternate": "openai-codex/gpt-5.4",
       "thinkingLevel": "high"
     },
@@ -430,8 +430,8 @@ Profile A는 벤치마크 + 가성비 기반 라우팅 맵이다 (2026-05-29 OPT
       "thinkingLevel": "high"
     },
     "security-reviewer": {
-      "primary": "anthropic/claude-opus-4-7",
-      "registry_alternate": "opencode-zen/claude-opus-4-7",
+      "primary": "anthropic/claude-opus-4-8",
+      "registry_alternate": "opencode-zen/claude-opus-4-8",
       "thinkingLevel": "xhigh"
     },
     "writer": {
@@ -495,8 +495,8 @@ Profile A는 벤치마크 + 가성비 기반 라우팅 맵이다 (2026-05-29 OPT
       "thinkingLevel": "medium"
     },
     "oracle": {
-      "primary": "anthropic/claude-opus-4-7",
-      "registry_alternate": "opencode-zen/claude-opus-4-7",
+      "primary": "anthropic/claude-opus-4-8",
+      "registry_alternate": "opencode-zen/claude-opus-4-8",
       "thinkingLevel": "xhigh"
     },
     "metis": {
@@ -521,12 +521,12 @@ Profile A는 벤치마크 + 가성비 기반 라우팅 맵이다 (2026-05-29 OPT
 | executor | openai-codex/gpt-5.3-codex | high | [L] |
 | explorer | opencode-zen/gemini-3-flash | medium | [L] |
 | verifier | opencode-zen/kimi-k2.6 | medium | [L] |
-| critic | anthropic/claude-opus-4-7 | xhigh | [L] |
-| planner | anthropic/claude-opus-4-7 | high | [L] |
+| critic | anthropic/claude-opus-4-8 | xhigh | [L] |
+| planner | anthropic/claude-opus-4-8 | high | [L] |
 | code-reviewer | opencode-zen/kimi-k2.6 | high | [L] |
 | debugger | openai-codex/gpt-5.3-codex | high | [L] |
 | test-engineer | openai-codex/gpt-5.3-codex | high | [L] |
-| security-reviewer | anthropic/claude-opus-4-7 | xhigh | [L] |
+| security-reviewer | anthropic/claude-opus-4-8 | xhigh | [L] |
 | writer | opencode-zen/gemini-3-flash | medium | [L] |
 | designer | opencode-zen/glm-5.1 | high | [L] |
 | code-simplifier | opencode-zen/kimi-k2.6 | xhigh | [L] |
@@ -539,14 +539,14 @@ Profile A는 벤치마크 + 가성비 기반 라우팅 맵이다 (2026-05-29 OPT
 | architect | openai-codex/gpt-5.4 | xhigh | [L] |
 | librarian | opencode-zen/kimi-k2.6 | medium | [L] |
 | multimodal-looker | opencode-zen/gemini-3-flash | medium | [L] |
-| oracle | anthropic/claude-opus-4-7 | xhigh | [L] |
+| oracle | anthropic/claude-opus-4-8 | xhigh | [L] |
 | metis | openai-codex/gpt-5.4 | xhigh | [L] |
 
 모델 선정 근거 (2026-05-29 벤치마크 기반):
 - `openai-codex/gpt-5.3-codex`: executor/debugger/test-engineer primary. ChatGPT subscription marginal cost 0, SWE-bench 85%.
-- `anthropic/claude-opus-4-7`: planner / critic / security-reviewer / oracle primary. SWE-bench 87.6% top tier, Anthropic Pro/Max subscription extra-usage 활용. critic 은 false-PASS 비용 max 라 mechanical fix (2026-05-29) 로 anthropic 유지.
+- `anthropic/claude-opus-4-8`: planner / critic / security-reviewer / oracle primary. SWE-bench 87.6% top tier, Anthropic Pro/Max subscription extra-usage 활용. critic 은 false-PASS 비용 max 라 mechanical fix (2026-05-29) 로 anthropic 유지.
 - `openai-codex/gpt-5.4`: scientist/architect/metis primary + planner alternate. 1M context, xhigh thinking, $2.5/$15.
-- `anthropic/claude-opus-4-7`: planner/security-reviewer/oracle primary. SWE-bench 87.6%, Anthropic Pro/Max extra-usage 활용.
+- `anthropic/claude-opus-4-8`: planner/security-reviewer/oracle primary. SWE-bench 87.6%, Anthropic Pro/Max extra-usage 활용.
 - `opencode-zen/kimi-k2.6`: verifier/code-reviewer/code-simplifier/tracer/analyst/librarian primary. SWE-bench 80.2% (Opus 4.6 동급), Terminal-Bench 2.0 66.7%, 13시간 4000+ tool calls 무중단. $0.95/$4.
 - `opencode-zen/gemini-3-flash`: explorer/writer/document-specialist/multimodal-looker primary. 1M context, vision yes, $0.5/$3.
 - `opencode-zen/gemini-3.5-flash`: qa-tester primary. vision yes (Playwright 스크린샷 검증), $1.5/$9.
@@ -610,7 +610,7 @@ async function validateAgentModels(agentsDir: string): Promise<void> {
 
 omp의 `resolveModelOverrideWithAuthFallback`은 primary 모델이 registry에 있지만 unauthed일 때 배열의 다음 항목이 아닌 **parent session의 active model**로 fallback한다 (§3.2 Outcome 2). 이 동작은 pi-oven가 제어할 수 없는 omp 내부 동작이다.
 
-**함의**: Profile B 환경에서 parent session이 `anthropic/claude-opus-4-7` 같은 Anthropic 모델로 실행 중일 때, pi-oven subagent의 primary가 unauthed 상태이면 해당 subagent는 자신의 `model:` 화이트리스트 선언과 무관하게 Anthropic 모델로 라우팅된다.
+**함의**: Profile B 환경에서 parent session이 `anthropic/claude-opus-4-8` 같은 Anthropic 모델로 실행 중일 때, pi-oven subagent의 primary가 unauthed 상태이면 해당 subagent는 자신의 `model:` 화이트리스트 선언과 무관하게 Anthropic 모델로 라우팅된다.
 
 **채택된 처리 방식 (option b)**: 이 동작을 의도적 제한(known limitation)으로 명시적으로 문서화한다. Profile A는 best-effort 보장이며, Profile B 사용자는 unauthed-primary 조건에서 Claude 라우팅이 발생할 수 있음을 인지해야 한다.
 
@@ -745,8 +745,8 @@ Network timeout            | -         | hard fail
 - alternate: `opencode-zen/gpt-5.3-codex` (Codex 구독 없는 사용자 환경을 위한 Zen wrapper fallback, resolution time에만 사용)
 - runtime 429 발생 시: omp가 동일 모델로 sleep-backoff retry → maxAttempts 소진 → hard fail
 
-**critic** (`opencode-zen/claude-opus-4-7` → `opencode-zen/gpt-5.4`):
-- primary: `opencode-zen/claude-opus-4-7` (확인됨)
+**critic** (`opencode-zen/claude-opus-4-8` → `opencode-zen/gpt-5.4`):
+- primary: `opencode-zen/claude-opus-4-8` (확인됨)
 - alternate: `opencode-zen/gpt-5.4` (claude-opus-4-7이 registry에서 제거될 경우 resolution-time 전환)
 
 **verifier** (`opencode-zen/kimi-k2.6` → `opencode-zen/claude-sonnet-4-6`):
@@ -818,8 +818,8 @@ omo bundled agents 출처: `/Users/kimzerokim/.bun/install/global/node_modules/@
 |---|---|---|---|
 | `pi-oven:librarian` | `librarian.md` (bundled) | 전체 procedure (5단계: classify→locate→investigate→verify→report), output schema 구조, `sources`/`api`/`version` 구조 | name → `pi-oven:librarian`; model → `opencode-zen/glm-5`; `mode: subagent` 추가; `blocked_tools: task, Write, Edit, apply_patch` 추가; pi-oven 네임스페이스 프리픽스 |
 | `pi-oven:multimodal-looker` | omo source (bundled 아님, omo별도) | 이미지/스크린샷 분석 procedure, 구조화 응답 | name → `pi-oven:multimodal-looker`; model → `opencode-zen/claude-sonnet-4-6`; `blocked_tools` 전체 (Bash 포함) 추가 |
-| `pi-oven:oracle` | `oracle.md` (bundled) | 전체 directives, decision-framework, procedure (5단계), scope-discipline | name → `pi-oven:oracle`; model → `opencode-zen/claude-opus-4-7`; `thinkingLevel: xhigh`; `blocking: true` 유지; `spawns: [pi-oven:explorer]` (pi-oven namespace로 변경) |
-| `pi-oven:metis` | omo source (bundled 아님) | 전략적 조율 로직, 멀티스텝 계획 실행 | name → `pi-oven:metis`; model → `opencode-zen/claude-opus-4-7`; spawns 화이트리스트 = pi-oven: 네임스페이스 agents만 |
+| `pi-oven:oracle` | `oracle.md` (bundled) | 전체 directives, decision-framework, procedure (5단계), scope-discipline | name → `pi-oven:oracle`; model → `opencode-zen/claude-opus-4-8`; `thinkingLevel: xhigh`; `blocking: true` 유지; `spawns: [pi-oven:explorer]` (pi-oven namespace로 변경) |
+| `pi-oven:metis` | omo source (bundled 아님) | 전략적 조율 로직, 멀티스텝 계획 실행 | name → `pi-oven:metis`; model → `opencode-zen/claude-opus-4-8`; spawns 화이트리스트 = pi-oven: 네임스페이스 agents만 |
 
 **omp 번들 oracle/librarian 공존 주의**: `pi-oven:oracle` / `pi-oven:librarian`은 name이 다르므로 omp 번들 `oracle` / `librarian`을 shadow하지 않는다. 양쪽 모두 동시에 dispatchable하다 — omp 번들 버전을 그대로 사용하거나 pi-oven-prefixed 버전을 명시적으로 선택할 수 있다.
 
@@ -1101,7 +1101,7 @@ tests/
 
 각 테스트 파일의 Red 케이스 (먼저 작성):
 - `frontmatter-validation.test.ts`: `name:` 없는 파일 → parseAgentFields가 null 반환
-- `model-whitelist.test.ts`: `model: anthropic/claude-opus-4-7` 지정 시 validator가 오류 로그 출력
+- `model-whitelist.test.ts`: `model: anthropic/claude-opus-4-8` 지정 시 validator가 오류 로그 출력
 - `model-required.test.ts`: `model:` 필드 없는 pi-oven-*.md → load-time validator가 `pi.logger.error` 출력 (소프트); CI lint이 해당 파일을 실패로 표시 (하드)
 - `tools-policy.test.ts`: explorer가 `Write` 툴 없음을 확인
 - `spawns-depth.test.ts`: oracle이 `pi-oven:executor` spawn 시도 → spawns 제한으로 실패
@@ -1219,11 +1219,11 @@ primary 모델이 registry에 있지만 unauthed일 때 omp는 `model:` 배열�
 
 ---
 
-### Q4: `opencode-zen/claude-opus-4-7` 실제 availability
+### Q4: `opencode-zen/claude-opus-4-8` 실제 availability
 
-**질문**: `omp --list-models` 결과에서 `opencode-zen/claude-opus-4-7`이 나타나는가? opencode-zen은 wrapper로서 내부 모델을 교체할 수 있다.
+**질문**: `omp --list-models` 결과에서 `opencode-zen/claude-opus-4-8`이 나타나는가? opencode-zen은 wrapper로서 내부 모델을 교체할 수 있다.
 
-**해소 방법**: `omp --list-models opencode-zen` 실행 결과에서 `claude-opus-4-7` 확인. 이미 §2 live verification 시 `claude-opus-4-7 opencode-zen/claude-opus-4-7 2 1M 128K`가 확인됨.
+**해소 방법**: `omp --list-models opencode-zen` 실행 결과에서 `claude-opus-4-7` 확인. 이미 §2 live verification 시 `claude-opus-4-7 opencode-zen/claude-opus-4-8 2 1M 128K`가 확인됨.
 
 **오판 시 영향**: `claude-opus-4-7`이 deprecate되면 해당 모델을 primary/alternate로 사용하는 agents (critic, code-reviewer, architect, oracle, metis 등)가 실패. 해소: Spec B의 setup wizard가 model availability check를 포함하거나, pi-oven.ts load-time validation에서 `omp --list-models` 결과와 대조.
 
@@ -1253,7 +1253,7 @@ primary 모델이 registry에 있지만 unauthed일 때 omp는 `model:` 배열�
 
 **질문**: omp에서 Anthropic 모델을 직접 사용할 때 provider ID가 `anthropic`인가?
 
-**해소 방법**: `omp --list-models anthropic` 실행으로 확인 예정. 정적 분석으로 `anthropic/claude-haiku-4-5`, `anthropic/claude-opus-4-7` 등 다수 모델 존재 예측.
+**해소 방법**: `omp --list-models anthropic` 실행으로 확인 예정. 정적 분석으로 `anthropic/claude-haiku-4-5`, `anthropic/claude-opus-4-8` 등 다수 모델 존재 예측.
 
 **영향**: Spec B setup wizard에서 Profile B 활성화 시 `anthropic/` prefix 모델들을 화이트리스트에 추가하면 된다. §14 구현 검증에서 실증 확인.
 

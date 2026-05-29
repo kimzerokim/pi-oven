@@ -10,7 +10,7 @@
 
 - **벤치마크 기반 재구성** — 이전 제안서 (§1 SWE/tool-calling 데이터 부재 인정) 를 SWE-bench Verified / Aider polyglot / Atlas Cloud 비교에 따라 다시 짰다. Kimi K2.6 (Opus 4.6 동급 SWE 80.2% + 4000+ tool calls 안정), GLM-5.1 (Code Arena Elo 1530, agentic front-end 3위), MiniMax-m2.7 (저비용 multi-agent) 활용.
 - **Anthropic 편향 해소** — 이전 PROFILE_A 의 Claude 비중 14/23 = 61% → 새 PROFILE_A 의 anthropic primary 3/23 = 13%. Claude opus 만 유지하되 high-stakes 자문 role 에 한정 (planner / security-reviewer / oracle). 나머지는 openai-codex (subscription marginal cost 0) + opencode-zen.
-- **OpenAI Codex subscription 적극 활용** — 6 role 이 `openai-codex/*` primary. executor/debugger/test-engineer = gpt-5.3-codex, scientist/architect/metis = gpt-5.4 (cost-efficient frontier). planner alternate 도 gpt-5.4 (codex-review). critic primary 는 사용자 mechanical fix 로 anthropic/claude-opus-4-7 유지 (false PASS 비용 max).
+- **OpenAI Codex subscription 적극 활용** — 6 role 이 `openai-codex/*` primary. executor/debugger/test-engineer = gpt-5.3-codex, scientist/architect/metis = gpt-5.4 (cost-efficient frontier). planner alternate 도 gpt-5.4 (codex-review). critic primary 는 사용자 mechanical fix 로 anthropic/claude-opus-4-8 유지 (false PASS 비용 max).
 - **Deprecation 처리** — `opencode-zen/glm-5` (2026-05-14 만료) 가 사용되던 explorer + librarian primary 교체. explorer → gemini-3-flash (1M ctx vision yes), librarian → kimi-k2.6 (long-horizon citation).
 - **Fallback 정책** — primary 가 `opencode-zen/*` 이 아니면 alternate = `opencode-zen/*` 의 same model id wrapper. 예외: planner = `openai-codex/gpt-5.4` (codex-review cross-validation, 사용자 정책).
 
@@ -29,7 +29,7 @@
 | `openai-codex/gpt-5.5` | low/medium/high/xhigh | yes | 272K+ | 5.00 | 30.00 |
 | `openai-codex/gpt-5.4` | low/medium/high/xhigh | yes | 1M | 2.50 | 15.00 |
 | `openai-codex/gpt-5.3-codex` | low/medium/high/xhigh | yes | 272K | 구독 (marginal 0) | 구독 (marginal 0) |
-| `anthropic/claude-opus-4-7` | minimal/low/medium/high/xhigh | yes | 1M | 5.00 | 25.00 |
+| `anthropic/claude-opus-4-8` | minimal/low/medium/high/xhigh | yes | 1M | 5.00 | 25.00 |
 | `opencode-zen/kimi-k2.6` | minimal/low/medium/high/xhigh | no | 262K | 0.95 | 4.00 |
 | `opencode-zen/gemini-3-flash` | minimal/low/medium/high | yes | 1M | 0.50 | 3.00 |
 | `opencode-zen/gemini-3.5-flash` | minimal/low/medium/high | yes | 1M | 1.50 | 9.00 |
@@ -38,7 +38,7 @@
 | `opencode-zen/gpt-5.5` | low/medium/high/xhigh | yes | 272K+ | 5.00 | 30.00 |
 | `opencode-zen/gpt-5.4` | low/medium/high/xhigh | yes | 1M | 2.50 | 15.00 |
 | `opencode-zen/gpt-5.3-codex` | low/medium/high/xhigh | yes | 272K | 1.75 | 14.00 |
-| `opencode-zen/claude-opus-4-7` | minimal/low/medium/high/xhigh | yes | 1M | 5.00 | 25.00 |
+| `opencode-zen/claude-opus-4-8` | minimal/low/medium/high/xhigh | yes | 1M | 5.00 | 25.00 |
 | `opencode-zen/claude-sonnet-4-6` | minimal/low/medium/high (xhigh 없음) | yes | 1M | 3.00 | 15.00 |
 | `opencode-zen/claude-haiku-4-5` | minimal/low/medium/high/xhigh | yes | 200K | 1.00 | 5.00 |
 
@@ -94,12 +94,12 @@
 | 1 | executor | `openai-codex/gpt-5.3-codex` | `opencode-zen/gpt-5.3-codex` | high | 코드 구현 = Codex 구독 (토큰 0) |
 | 2 | explorer | `opencode-zen/gemini-3-flash` | `opencode-zen/claude-haiku-4-5` | medium | 1M ctx + vision + $0.5 |
 | 3 | verifier | `opencode-zen/kimi-k2.6` | `opencode-zen/claude-sonnet-4-6` | medium | tool calls 4000+ 안정 |
-| 4 | critic | `anthropic/claude-opus-4-7` | `opencode-zen/claude-opus-4-7` | xhigh | false PASS 비용 max → Anthropic subscription Opus 유지 (사용자 mechanical fix 2026-05-29) |
-| 5 | planner | `anthropic/claude-opus-4-7` | `openai-codex/gpt-5.4` | high | 사용자 정책: opus 4.7 + codex review |
+| 4 | critic | `anthropic/claude-opus-4-8` | `opencode-zen/claude-opus-4-8` | xhigh | false PASS 비용 max → Anthropic subscription Opus 유지 (사용자 mechanical fix 2026-05-29) |
+| 5 | planner | `anthropic/claude-opus-4-8` | `openai-codex/gpt-5.4` | high | 사용자 정책: opus 4.7 + codex review |
 | 6 | code-reviewer | `opencode-zen/kimi-k2.6` | `opencode-zen/claude-sonnet-4-6` | high | SWE 80.2% (Opus 4.6 동급), 가격 1/5 |
 | 7 | debugger | `openai-codex/gpt-5.3-codex` | `opencode-zen/gpt-5.3-codex` | high | Codex 구독 (토큰 0) |
 | 8 | test-engineer | `openai-codex/gpt-5.3-codex` | `opencode-zen/gpt-5.3-codex` | high | Codex 구독 (토큰 0) |
-| 9 | security-reviewer | `anthropic/claude-opus-4-7` | `opencode-zen/claude-opus-4-7` | xhigh | OWASP/STRIDE = max reasoning, Anthropic 구독 |
+| 9 | security-reviewer | `anthropic/claude-opus-4-8` | `opencode-zen/claude-opus-4-8` | xhigh | OWASP/STRIDE = max reasoning, Anthropic 구독 |
 | 10 | writer | `opencode-zen/gemini-3-flash` | `opencode-zen/claude-haiku-4-5` | medium | 1M ctx + $0.5 |
 | 11 | designer | `opencode-zen/glm-5.1` | `opencode-zen/claude-sonnet-4-6` | high | Code Arena Elo 1530 (front-end 3위) |
 | 12 | code-simplifier | `opencode-zen/kimi-k2.6` | `opencode-zen/claude-sonnet-4-6` | xhigh | behavior preserve, SWE 80%, 1/5 |
@@ -112,7 +112,7 @@
 | 19 | architect | `openai-codex/gpt-5.4` | `opencode-zen/gpt-5.4` | xhigh | ADR/system design + 구독 |
 | 20 | librarian | `opencode-zen/kimi-k2.6` | `opencode-zen/claude-sonnet-4-6` | medium | long-horizon citation, 262K |
 | 21 | multimodal-looker | `opencode-zen/gemini-3-flash` | `opencode-zen/claude-sonnet-4-6` | medium | vision 강점, 1M ctx |
-| 22 | oracle | `anthropic/claude-opus-4-7` | `opencode-zen/claude-opus-4-7` | xhigh | 2+ 실패 후 마지막 보루 |
+| 22 | oracle | `anthropic/claude-opus-4-8` | `opencode-zen/claude-opus-4-8` | xhigh | 2+ 실패 후 마지막 보루 |
 | 23 | metis | `openai-codex/gpt-5.4` | `opencode-zen/gpt-5.4` | xhigh | 인터뷰 + tool calling + 구독 |
 
 ### 2.1 Provider 분포
@@ -132,15 +132,15 @@
 
 | Role | level | 모델 | 호환 |
 |---|---|---|---|
-| critic | xhigh | anthropic/claude-opus-4-7 | ✓ |
+| critic | xhigh | anthropic/claude-opus-4-8 | ✓ |
 | scientist | xhigh | openai-codex/gpt-5.4 | ✓ |
 | architect | xhigh | openai-codex/gpt-5.4 | ✓ |
 | metis | xhigh | openai-codex/gpt-5.4 | ✓ |
 | analyst | xhigh | opencode-zen/kimi-k2.6 | ✓ |
 | code-simplifier | xhigh | opencode-zen/kimi-k2.6 | ✓ |
-| security-reviewer | xhigh | anthropic/claude-opus-4-7 | ✓ |
-| oracle | xhigh | anthropic/claude-opus-4-7 | ✓ |
-| planner | high | anthropic/claude-opus-4-7 | ✓ |
+| security-reviewer | xhigh | anthropic/claude-opus-4-8 | ✓ |
+| oracle | xhigh | anthropic/claude-opus-4-8 | ✓ |
+| planner | high | anthropic/claude-opus-4-8 | ✓ |
 | designer | high | opencode-zen/glm-5.1 | ✓ |
 | qa-tester | high | opencode-zen/gemini-3.5-flash | ✓ |
 | 나머지 | medium/minimal | (Gemini Flash 등) | ✓ (low/medium/high) |
@@ -157,9 +157,9 @@
 |---|---|
 | `openai-codex/gpt-5.3-codex` | `opencode-zen/gpt-5.3-codex` |
 | `openai-codex/gpt-5.4` | `opencode-zen/gpt-5.4` |
-| `anthropic/claude-opus-4-7` | `opencode-zen/claude-opus-4-7` |
+| `anthropic/claude-opus-4-8` | `opencode-zen/claude-opus-4-8` |
 
-**예외**: planner primary = `anthropic/claude-opus-4-7`, alternate = `openai-codex/gpt-5.4` (사용자 정책: opus 가 plan 만들고 codex 가 review 하는 cross-vendor fan-out 의도. same-model wrapper 가 아닌 codex review).
+**예외**: planner primary = `anthropic/claude-opus-4-8`, alternate = `openai-codex/gpt-5.4` (사용자 정책: opus 가 plan 만들고 codex 가 review 하는 cross-vendor fan-out 의도. same-model wrapper 가 아닌 codex review).
 
 `opencode-zen/*` primary 인 role 의 alternate 는 동일 family 의 안정 wrapper (claude-sonnet-4-6 또는 claude-haiku-4-5).
 

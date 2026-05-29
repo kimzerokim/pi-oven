@@ -67,7 +67,7 @@ export const PROFILE_A: ProfileMap = {
   verifier: {
     primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   critic: {
     primary: "anthropic/claude-opus-4-8",
@@ -120,9 +120,9 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "high",
   },
   "git-master": {
-    primary: "opencode-zen/gpt-5-nano",
-    registry_alternate: "opencode-zen/claude-haiku-4-5",
-    thinkingLevel: "minimal",
+    primary: "opencode-zen/claude-haiku-4-5",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    thinkingLevel: "low",
   },
   "document-specialist": {
     primary: "opencode-zen/gemini-3-flash",
@@ -191,7 +191,7 @@ export const PROFILE_B: ProfileMap = {
   verifier: {
     primary: "anthropic/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
-    thinkingLevel: "medium",
+    thinkingLevel: "high",
   },
   critic: {
     primary: "anthropic/claude-opus-4-7",
@@ -246,7 +246,7 @@ export const PROFILE_B: ProfileMap = {
   "git-master": {
     primary: "anthropic/claude-haiku-4-5",
     registry_alternate: "opencode-zen/claude-haiku-4-5",
-    thinkingLevel: "minimal",
+    thinkingLevel: "low",
   },
   "document-specialist": {
     primary: "anthropic/claude-sonnet-4-6",

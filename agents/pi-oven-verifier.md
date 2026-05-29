@@ -4,7 +4,7 @@ description: Fresh-agent cycle-exit verifier — 4 sub-checks, evidence-based PA
 model:
   - opencode-zen/kimi-k2.6
   - opencode-zen/claude-sonnet-4-6
-thinkingLevel: medium
+thinkingLevel: high
 mode: subagent
 tools: ["Read", "Grep", "Glob", "Bash", "task"]
 blocked_tools: ["Write", "Edit", "apply_patch"]

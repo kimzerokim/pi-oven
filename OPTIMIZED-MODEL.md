@@ -93,7 +93,7 @@
 |---|---|---|---|---|---|
 | 1 | executor | `openai-codex/gpt-5.3-codex` | `opencode-zen/gpt-5.3-codex` | high | 코드 구현 = Codex 구독 (토큰 0) |
 | 2 | explorer | `opencode-zen/gemini-3-flash` | `opencode-zen/claude-haiku-4-5` | medium | 1M ctx + vision + $0.5 |
-| 3 | verifier | `opencode-zen/kimi-k2.6` | `opencode-zen/claude-sonnet-4-6` | medium | tool calls 4000+ 안정 |
+| 3 | verifier | `opencode-zen/kimi-k2.6` | `opencode-zen/claude-sonnet-4-6` | high | tool calls 4000+ 안정; false-PASS 비대칭 방어 위해 medium→high (2026-05-29 재검증) |
 | 4 | critic | `anthropic/claude-opus-4-8` | `opencode-zen/claude-opus-4-8` | xhigh | false PASS 비용 max → Anthropic subscription Opus 유지 (사용자 mechanical fix 2026-05-29) |
 | 5 | planner | `anthropic/claude-opus-4-8` | `openai-codex/gpt-5.4` | high | 사용자 정책: opus 4.7 + codex review |
 | 6 | code-reviewer | `opencode-zen/kimi-k2.6` | `opencode-zen/claude-sonnet-4-6` | high | SWE 80.2% (Opus 4.6 동급), 가격 1/5 |
@@ -104,7 +104,7 @@
 | 11 | designer | `opencode-zen/glm-5.1` | `opencode-zen/claude-sonnet-4-6` | high | Code Arena Elo 1530 (front-end 3위) |
 | 12 | code-simplifier | `opencode-zen/kimi-k2.6` | `opencode-zen/claude-sonnet-4-6` | xhigh | behavior preserve, SWE 80%, 1/5 |
 | 13 | qa-tester | `opencode-zen/gemini-3.5-flash` | `opencode-zen/claude-haiku-4-5` | high | vision + 빠른 응답 |
-| 14 | git-master | `opencode-zen/gpt-5-nano` | `opencode-zen/claude-haiku-4-5` | minimal | $0.05, git 명령 충분 |
+| 14 | git-master | `opencode-zen/claude-haiku-4-5` | `opencode-zen/claude-sonnet-4-6` | low | 커밋 메시지 스타일/언어 추론 + concern 기반 분할 + rebase 안전성은 기계적이지 않음 → nano/minimal 과소용량; haiku/low 로 승격 (2026-05-29 재검증) |
 | 15 | document-specialist | `opencode-zen/gemini-3-flash` | `opencode-zen/claude-haiku-4-5` | medium | 1M ctx + $0.5 |
 | 16 | tracer | `opencode-zen/kimi-k2.6` | `opencode-zen/claude-sonnet-4-6` | high | long-horizon causal, 262K |
 | 17 | analyst | `opencode-zen/kimi-k2.6` | `opencode-zen/claude-sonnet-4-6` | xhigh | tool use + xhigh 지원 |
@@ -206,6 +206,15 @@
 ### 5.4 무료 모델 활용
 
 `opencode-zen/big-pickle` / `deepseek-v4-flash-free` 등 한시 무료 모델. 저위험 role (writer, document-specialist) 임시 routing 테스트 가치 — 다음 cycle 검토.
+
+### 5.5 라우팅 재검증 (2026-05-29)
+
+23 role 전수 재검증 (cluster별 fan-out audit + 합성). 19 role keep (벤치마크·경제성 정당). 2 변경 적용:
+
+- **git-master** `gpt-5-nano`/`minimal` → **`claude-haiku-4-5`/`low`** (alt `claude-sonnet-4-6`). 근거: 이 role 의 실제 작업(EN/KO 혼용 커밋 스타일 추론, concern 기반 diff 분할 3+→2/5+→3/10+→5, rebase 시퀀싱)은 기계적이지 않으며 nano/minimal 로는 과소용량. 호출 빈도 낮음(커밋 시점) → 품질 우선이 합리적. `claude-haiku-4-5` = 카탈로그의 style-match 적임 모델. body 도 nano "mechanical/no-scaffold" 프레이밍에서 haiku/low 의 "두 판단 지점에만 경량 추론" 으로 재튜닝.
+- **verifier** `kimi-k2.6` `medium` → **`high`** (모델 유지). 근거: false-PASS 는 전체 루프를 통과시키는 catastrophic 비대칭(critic/security-reviewer 와 동일 논리). 동일 모델 thinking bump 라 marginal-cost-only.
+
+provider 분포 불변(zen 13 / codex 6 / anthropic 4). PROFILE_B 미변경(deferred).
 
 ---
 

@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 /**
  * pi-oven-setup.ts — Main CLI dispatcher for pi-oven setup wizard.
- * Spec B §2 surface, §10.3 structure.
+ * Spec E §3.3/§3.4 surface, §10.3 structure.
  *
- * Dispatch precedence: --status > --reset > --import > --reapply > default --apply
+ * Dispatch precedence: --override (combined with --status/--validate only)
+ *                      > --status > --reset > --import > default --apply
  *
  * Environment variables for test isolation:
- *   PI_OVEN_LOCK_FILE     — override ~/.omp/plugins/omp-plugins.lock.json path
+ *   PI_OVEN_LOCK_FILE     — override ~/.omp/plugins/omp-plugins.lock.json path (unused post-2a, kept for compat)
  *   PI_OVEN_AGENTS_DIR    — override agents directory path
  *   PI_OVEN_MOCK_SPAWN    — when "1", use a no-op spawn (skip real omp calls)
  *   PI_OVEN_VALIDATE_MODE — override --validate flag value
@@ -17,7 +18,7 @@ import { runStatus } from "./pi-oven-setup/status";
 import { runReset } from "./pi-oven-setup/reset";
 import { runImport } from "./pi-oven-setup/import";
 import { runApply } from "./pi-oven-setup/apply";
-import { runReapply } from "./pi-oven-setup/reapply";
+import { runOverride } from "./pi-oven-setup/override";
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -29,13 +30,11 @@ const { values } = parseArgs({
     status: { type: "boolean", default: false },
     reset: { type: "boolean", default: false },
     import: { type: "string" },
-    reapply: { type: "boolean", default: false },
     apply: { type: "boolean", default: false },
     profile: { type: "string" },
     override: { type: "string", multiple: true },
     validate: { type: "string", default: "smoke" },
     "no-validate": { type: "boolean", default: false },
-    "confirm-auth": { type: "boolean", default: false },
   },
   strict: false,
 });
@@ -44,13 +43,31 @@ const { values } = parseArgs({
 // Resolve shared options from env + flags
 // ---------------------------------------------------------------------------
 
-const lockFilePath = process.env.PI_OVEN_LOCK_FILE ?? undefined;
 const agentsDir = process.env.PI_OVEN_AGENTS_DIR ?? undefined;
 
 const mockSpawn = process.env.PI_OVEN_MOCK_SPAWN === "1";
 const spawnFn = mockSpawn
-  ? (_cmd: string, _args: string[]) =>
-      ({ exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any)
+  ? (_cmd: string, args: string[]) => {
+      // Return valid JSON for `omp config get task.agentModelOverrides --json`
+      if (args[0] === "config" && args[1] === "get") {
+        const payload = JSON.stringify({ key: args[2], value: {}, type: "record", description: "" });
+        return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") } as any;
+      }
+      // Return a minimal list-models fixture for model-id validation
+      if (args[0] === "--list-models") {
+        const fixture = [
+          "Canonical models",
+          "  canonical  selected                              provider",
+          "  1          opencode-zen/gpt-5.3-codex            opencode-zen",
+          "  2          openai-codex/gpt-5.3-codex            openai-codex",
+          "  3          anthropic/claude-opus-4-8             anthropic",
+          "  4          opencode-zen/claude-opus-4-8          opencode-zen",
+          "",
+        ].join("\n");
+        return { exitCode: 0, stdout: Buffer.from(fixture), stderr: Buffer.from("") } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    }
   : undefined;
 
 // --no-validate takes precedence over --validate flag
@@ -60,24 +77,61 @@ const validateMode = (["smoke", "full", "none"].includes(rawValidateMode)
   : "smoke") as "smoke" | "full" | "none";
 
 // ---------------------------------------------------------------------------
-// Dispatch — precedence: --status > --reset > --import > --reapply > --apply (default)
+// Flag-combination mutual-exclusion check (§3.4)
+// --override may NOT combine with --apply / --import / --reset
+// ---------------------------------------------------------------------------
+
+const overrideEntries = (values.override as string[] | undefined) ?? [];
+const hasOverride = overrideEntries.length > 0;
+
+if (hasOverride) {
+  if (values.reset) {
+    process.stderr.write(
+      "--override and --reset are mutually exclusive. Use --override to write individual role overrides, or --reset to clear all pi-oven:* overrides.\n"
+    );
+    process.exit(1);
+  }
+  if (values.import !== undefined) {
+    process.stderr.write(
+      "--override and --import are mutually exclusive. Use --override to write individual role overrides, or --import to load from a file.\n"
+    );
+    process.exit(1);
+  }
+  if (values.apply || values.profile) {
+    process.stderr.write(
+      "--override and --apply/--profile are mutually exclusive. Use --override for personal model overrides, or --apply/--profile for maintainer profile generation.\n"
+    );
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch — precedence per §3.3/§3.4:
+//   --override + --status → override-write first, then status
+//   --status              → status only
+//   --reset               → reset
+//   --import              → import
+//   --profile | --apply   → apply (maintainer generate)
+//   --override standalone → override-write then exit 0
 // ---------------------------------------------------------------------------
 
 let result: { exitCode: number; output: string };
 
 if (values.status) {
-  result = await runStatus({ lockFilePath, agentsDir });
+  // If --override present, apply overrides first (§3.4: write-before-status)
+  if (hasOverride) {
+    const overrideResult = await runOverride({ entries: overrideEntries, spawnFn });
+    if (overrideResult.exitCode !== 0) {
+      process.stderr.write(overrideResult.output);
+      process.exit(overrideResult.exitCode);
+    }
+    process.stdout.write(overrideResult.output);
+  }
+  result = await runStatus({ spawnFn, agentsDir });
 } else if (values.reset) {
-  result = await runReset({ spawnFn, agentsDir });
-} else if (values.import) {
-  result = await runImport(values.import as string, {
-    spawnFn,
-    agentsDir,
-    lockFilePath,
-    validateMode,
-  });
-} else if (values.reapply) {
-  result = await runReapply({ spawnFn, agentsDir, lockFilePath });
+  result = await runReset({ spawnFn });
+} else if (values.import !== undefined) {
+  result = await runImport(values.import as string, { spawnFn });
 } else if (values.profile || values.apply) {
   const profile = (values.profile as string | undefined) ?? "A";
   if (profile !== "A" && profile !== "B") {
@@ -87,29 +141,23 @@ if (values.status) {
     process.exit(1);
   }
 
-  // Parse --override <role>=<model> entries into overrides map
-  type Role = import("./pi-oven-setup/profiles").Role;
-  type ModelEntry = import("./pi-oven-setup/profiles").ModelEntry;
-  const overrides: Partial<Record<Role, Partial<ModelEntry>>> = {};
-  for (const ov of (values.override as string[] | undefined) ?? []) {
-    const eqIdx = ov.indexOf("=");
-    if (eqIdx === -1) continue;
-    const role = ov.slice(0, eqIdx) as Role;
-    const model = ov.slice(eqIdx + 1);
-    overrides[role] = { primary: model };
-  }
-
   result = await runApply({
     profile: profile as "A" | "B",
-    overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
     validateMode,
     spawnFn,
     agentsDir,
-    lockFilePath,
   });
+} else if (hasOverride) {
+  // Standalone --override (no other action flag)
+  const overrideResult = await runOverride({ entries: overrideEntries, spawnFn });
+  result = { exitCode: overrideResult.exitCode, output: overrideResult.output };
+  if (result.exitCode !== 0) {
+    process.stderr.write(result.output);
+    process.exit(result.exitCode);
+  }
 } else {
   process.stderr.write(
-    "No action specified. Use --profile <A|B>, --status, --reset, --import <file>, or --reapply.\n"
+    "No action specified. Use --profile <A|B>, --status, --reset, --import <file>, or --override <role>=<model>.\n"
   );
   process.exit(1);
 }

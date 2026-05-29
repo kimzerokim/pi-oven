@@ -64,27 +64,48 @@ function populateAgents(agentsDir: string, profile: typeof PROFILE_A): void {
 describe("runApply", () => {
   let tempDir: string;
   let agentsDir: string;
-  let lockPath: string;
 
   beforeEach(() => {
     tempDir = makeTempDir();
     agentsDir = join(tempDir, "agents");
-    lockPath = join(tempDir, "omp-plugins.lock.json");
     mkdirSync(agentsDir, { recursive: true });
-    writeFileSync(lockPath, JSON.stringify({ settings: { pi-oven: {} } }), "utf-8");
   });
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("Profile B apply calls writePluginConfig for pi-oven.profile = B", async () => {
-    const setCalls: Array<{ key: string; value: string }> = [];
-    const mockSpawnFn = (_cmd: string, args: string[]) => {
-      // args = ["plugin","config","set","pi-oven",<key>,<value>]
-      if (args[2] === "set") {
-        setCalls.push({ key: args[4], value: args[5] });
-      }
+  // -------------------------------------------------------------------------
+  // Core: no plugin-config writes
+  // -------------------------------------------------------------------------
+
+  it("runApply does NOT call any plugin-config write (no omp plugin config set)", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    populateAgents(agentsDir, PROFILE_A);
+
+    await runApply({
+      profile: "A",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      agentsDir,
+    });
+
+    // Must not have called "plugin config set" with any args
+    const pluginConfigSetCalls = spawnCalls.filter(
+      (c) => c.args.includes("plugin") && c.args.includes("config") && c.args.includes("set")
+    );
+    expect(pluginConfigSetCalls.length).toBe(0);
+  });
+
+  it("runApply does NOT call any plugin-config write for Profile B", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
       return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
     };
 
@@ -95,64 +116,39 @@ describe("runApply", () => {
       validateMode: "none",
       spawnFn: mockSpawnFn,
       agentsDir,
-      lockFilePath: lockPath,
     });
 
-    const profileCall = setCalls.find((c) => c.key === "pi-oven.profile");
-    expect(profileCall).toBeDefined();
-    expect(profileCall!.value).toBe("B");
+    const pluginConfigSetCalls = spawnCalls.filter(
+      (c) => c.args.includes("plugin") && c.args.includes("config") && c.args.includes("set")
+    );
+    expect(pluginConfigSetCalls.length).toBe(0);
   });
 
-  it("Profile B apply persists pi-oven.provider.anthropic.enabled = true", async () => {
-    const setCalls: Array<{ key: string; value: string }> = [];
-    const mockSpawnFn = (_cmd: string, args: string[]) => {
-      // args = ["plugin","config","set","pi-oven",<key>,<value>]
-      if (args[2] === "set") {
-        setCalls.push({ key: args[4], value: args[5] });
-      }
-      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
-    };
+  // -------------------------------------------------------------------------
+  // Maintainer path: agentsDir provided → generates profile frontmatter
+  // -------------------------------------------------------------------------
 
-    populateAgents(agentsDir, PROFILE_A);
+  it("runApply with agentsDir generates Profile A frontmatter (maintainer path)", async () => {
+    const mockSpawnFn = (_cmd: string, _args: string[]) =>
+      ({ exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any);
+
+    populateAgents(agentsDir, PROFILE_B);
 
     await runApply({
-      profile: "B",
+      profile: "A",
       validateMode: "none",
       spawnFn: mockSpawnFn,
       agentsDir,
-      lockFilePath: lockPath,
     });
 
-    const anthropicCall = setCalls.find((c) => c.key === "pi-oven.provider.anthropic.enabled");
-    expect(anthropicCall).toBeDefined();
-    expect(anthropicCall!.value).toBe("true");
+    const entries = await readAgentFiles(agentsDir);
+    expect(entries.length).toBe(23);
+    const executor = entries.find((e) => e.role === "executor")!;
+    expect(executor.currentModel[0]).toBe(PROFILE_A.executor.primary);
+    expect(executor.currentModel[1]).toBe(PROFILE_A.executor.registry_alternate);
   });
 
-  it("Profile B apply persists 71 config keys (23 roles × 3 keys + pi-oven.profile + anthropic.enabled)", async () => {
-    const setCalls: Array<{ key: string; value: string }> = [];
-    const mockSpawnFn = (_cmd: string, args: string[]) => {
-      // args = ["plugin","config","set","pi-oven",<key>,<value>]
-      if (args[2] === "set") {
-        setCalls.push({ key: args[4], value: args[5] });
-      }
-      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
-    };
-
-    populateAgents(agentsDir, PROFILE_A);
-
-    await runApply({
-      profile: "B",
-      validateMode: "none",
-      spawnFn: mockSpawnFn,
-      agentsDir,
-      lockFilePath: lockPath,
-    });
-
-    // pi-oven.profile + pi-oven.provider.anthropic.enabled + 23 × 3 = 71
-    expect(setCalls.length).toBe(71);
-  });
-
-  it("Profile B apply rewrites all 23 agent files to Profile B values", async () => {
+  it("runApply with agentsDir generates Profile B frontmatter (maintainer path)", async () => {
     const mockSpawnFn = (_cmd: string, _args: string[]) =>
       ({ exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any);
 
@@ -163,7 +159,6 @@ describe("runApply", () => {
       validateMode: "none",
       spawnFn: mockSpawnFn,
       agentsDir,
-      lockFilePath: lockPath,
     });
 
     const entries = await readAgentFiles(agentsDir);
@@ -173,71 +168,55 @@ describe("runApply", () => {
     expect(executor.currentModel[1]).toBe(PROFILE_B.executor.registry_alternate);
   });
 
-  it("Profile A apply does NOT persist pi-oven.provider.anthropic.enabled=true", async () => {
-    const setCalls: Array<{ key: string; value: string }> = [];
-    const mockSpawnFn = (_cmd: string, args: string[]) => {
-      // args = ["plugin","config","set","pi-oven",<key>,<value>]
-      if (args[2] === "set") {
-        setCalls.push({ key: args[4], value: args[5] });
-      }
-      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
-    };
+  // -------------------------------------------------------------------------
+  // No agentsDir → validate only, no file mutation
+  // -------------------------------------------------------------------------
 
+  it("runApply without agentsDir runs validate only, no file mutation", async () => {
+    const mockSpawnFn = (_cmd: string, _args: string[]) =>
+      ({ exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any);
+
+    // Populate the dir but do NOT pass it — files must remain untouched
     populateAgents(agentsDir, PROFILE_A);
+
+    const beforeEntries = await readAgentFiles(agentsDir);
+    const beforeModels = beforeEntries.map((e) => ({
+      role: e.role,
+      model: e.currentModel[0],
+    }));
 
     await runApply({
-      profile: "A",
+      profile: "B",
       validateMode: "none",
       spawnFn: mockSpawnFn,
-      agentsDir,
-      lockFilePath: lockPath,
+      // agentsDir intentionally omitted
     });
 
-    const anthropicCall = setCalls.find(
-      (c) => c.key === "pi-oven.provider.anthropic.enabled" && c.value === "true"
-    );
-    expect(anthropicCall).toBeUndefined();
+    const afterEntries = await readAgentFiles(agentsDir);
+    const afterModels = afterEntries.map((e) => ({
+      role: e.role,
+      model: e.currentModel[0],
+    }));
+    expect(afterModels).toEqual(beforeModels);
   });
 
-  it("returns exitCode 1 when validateMode=smoke and all pings fail", async () => {
-    const mockSpawnFn = (_cmd: string, args: string[]) => {
-      // config set calls succeed; omp -p ping calls fail
-      if (args[0] === "-p") {
-        return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("error") } as any;
-      }
-      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
-    };
+  // -------------------------------------------------------------------------
+  // validate integration
+  // -------------------------------------------------------------------------
 
-    populateAgents(agentsDir, PROFILE_A);
-
-    const result = await runApply({
-      profile: "A",
-      validateMode: "smoke",
-      spawnFn: mockSpawnFn,
-      agentsDir,
-      lockFilePath: lockPath,
-    });
-    expect(result.exitCode).toBe(1);
-  });
-
-  it("applies overrides: executor primary overridden to custom model", async () => {
+  it("returns exitCode 0 on successful Profile A apply with validateMode=none", async () => {
     const mockSpawnFn = (_cmd: string, _args: string[]) =>
       ({ exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any);
 
     populateAgents(agentsDir, PROFILE_A);
 
-    await runApply({
+    const result = await runApply({
       profile: "A",
-      overrides: { executor: { primary: "opencode-zen/custom-model" } },
       validateMode: "none",
       spawnFn: mockSpawnFn,
       agentsDir,
-      lockFilePath: lockPath,
     });
-
-    const entries = await readAgentFiles(agentsDir);
-    const executor = entries.find((e) => e.role === "executor")!;
-    expect(executor.currentModel[0]).toBe("opencode-zen/custom-model");
+    expect(result.exitCode).toBe(0);
   });
 
   it("returns exitCode 0 on successful Profile B apply with validateMode=none", async () => {
@@ -251,8 +230,61 @@ describe("runApply", () => {
       validateMode: "none",
       spawnFn: mockSpawnFn,
       agentsDir,
-      lockFilePath: lockPath,
     });
     expect(result.exitCode).toBe(0);
+  });
+
+  it("returns exitCode 1 when validateMode=smoke and all pings fail", async () => {
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      if (args[0] === "-p") {
+        return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("error") } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    populateAgents(agentsDir, PROFILE_A);
+
+    const result = await runApply({
+      profile: "A",
+      validateMode: "smoke",
+      spawnFn: mockSpawnFn,
+      agentsDir,
+    });
+    expect(result.exitCode).toBe(1);
+  });
+
+  it("output message references profile letter on success", async () => {
+    const mockSpawnFn = (_cmd: string, _args: string[]) =>
+      ({ exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any);
+
+    populateAgents(agentsDir, PROFILE_A);
+
+    const result = await runApply({
+      profile: "B",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      agentsDir,
+    });
+    expect(result.output).toContain("B");
+  });
+
+  it("output message references profile letter on validation failure", async () => {
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      if (args[0] === "-p") {
+        return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("error") } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    populateAgents(agentsDir, PROFILE_A);
+
+    const result = await runApply({
+      profile: "A",
+      validateMode: "smoke",
+      spawnFn: mockSpawnFn,
+      agentsDir,
+    });
+    expect(result.output).toContain("A");
+    expect(result.exitCode).toBe(1);
   });
 });

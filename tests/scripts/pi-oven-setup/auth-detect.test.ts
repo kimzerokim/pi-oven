@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { detectAuth, confirmAuthViaPing } from "../../../scripts/pi-oven-setup/auth-detect";
+import { detectAuth } from "../../../scripts/pi-oven-setup/auth-detect";
 
 // ---------------------------------------------------------------------------
 // Stub outputs representing typical `omp --list-models` output
@@ -87,24 +87,3 @@ describe("detectAuth", () => {
   });
 });
 
-describe("confirmAuthViaPing", () => {
-  it("mock spawnFn returning exit 0 → true", async () => {
-    const mockSpawnFn = (_cmd: string, _args: string[]) =>
-      ({ exitCode: 0, stdout: Buffer.from("pong"), stderr: Buffer.from("") } as any);
-
-    const result = await confirmAuthViaPing("anthropic", {
-      spawnFn: mockSpawnFn,
-    });
-    expect(result).toBe(true);
-  });
-
-  it("mock spawnFn returning exit 1 (401-class) → false", async () => {
-    const mockSpawnFn = (_cmd: string, _args: string[]) =>
-      ({ exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("401 Unauthorized") } as any);
-
-    const result = await confirmAuthViaPing("openai-codex", {
-      spawnFn: mockSpawnFn,
-    });
-    expect(result).toBe(false);
-  });
-});

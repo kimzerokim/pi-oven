@@ -1,13 +1,15 @@
 /**
  * --import subcommand for pi-oven setup wizard.
- * Spec B §7 — JSON import with whitelist validation.
+ * Spec E §3.3 / Plan Task 2.5 — JSON import writes whitelisted per-role
+ * model primaries to task.agentModelOverrides as colon keys (pi-oven:<role>).
+ * Does NOT rewrite agent files. Does NOT touch plugin-config namespace.
+ * No 'custom' profile concept.
  */
 
 import { promises as fs } from "node:fs";
-import { ROLES, type Role, type ModelEntry, type ProfileMap, PROFILE_A, PROFILE_B } from "./profiles";
-import { writePluginConfig } from "./persist";
-import { rewriteAllAgents } from "./agent-rewriter";
-import { runValidate } from "./validate";
+import { ROLES, type Role, type ModelEntry } from "./profiles";
+import { setAgentModelOverride } from "./config-yml";
+import { isResolvableModelId } from "./model-id-validator";
 
 const ALLOWED_THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 const ALWAYS_ALLOWED_PREFIXES = ["opencode-zen/", "openai-codex/"];
@@ -15,7 +17,7 @@ const ANTHROPIC_PREFIX = "anthropic/";
 
 export interface ImportInput {
   pi-oven?: {
-    profile?: "A" | "B" | "custom";
+    profile?: "A" | "B";
     models?: Partial<Record<Role, Partial<ModelEntry>>>;
     provider?: { anthropic?: { enabled?: boolean } };
   };
@@ -28,9 +30,8 @@ export interface ValidateImportOpts {
 export interface RunImportOpts {
   allowAnthropic?: boolean;
   spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
-  agentsDir?: string;
-  lockFilePath?: string;
-  validateMode?: "smoke" | "full" | "none";
+  /** Injectable omp --list-models output for EXACT-ID-ONLY validation (tests). */
+  listModelsOutput?: string;
 }
 
 /**
@@ -55,10 +56,10 @@ export function validateImport(
     return { ok: false, errors };
   }
 
-  // Validate profile
+  // Validate profile — 'custom' is no longer a valid profile
   const profile = pi-oven["profile"];
-  if (profile !== undefined && !["A", "B", "custom"].includes(profile as string)) {
-    errors.push(`Invalid profile value "${profile}". Allowed: "A", "B", "custom".`);
+  if (profile !== undefined && !["A", "B"].includes(profile as string)) {
+    errors.push(`Invalid profile value "${profile}". Allowed: "A", "B".`);
   }
 
   // Build allowed prefixes
@@ -93,7 +94,6 @@ export function validateImport(
           }
           const allowed = allowedPrefixes.some((p) => val.startsWith(p));
           if (!allowed) {
-            const prefixList = allowedPrefixes.map((p) => p.replace(/\/$/, "")).join(", ");
             errors.push(
               `"${roleName}.${field}" = "${val}" rejected.\n` +
                 `Provider "${val}" is not in the allowed list: ${allowedPrefixes.join(", ")}`
@@ -118,7 +118,12 @@ export function validateImport(
 }
 
 /**
- * Run the --import flow: read file, parse JSON, validate, persist, rewrite agents.
+ * Run the --import flow: read file, parse JSON, validate whitelist,
+ * validate EXACT-ID-ONLY model ids, then write all-or-nothing to
+ * task.agentModelOverrides as pi-oven:<role> colon keys.
+ *
+ * registry_alternate and thinkingLevel are parsed but NOT written
+ * (override layer supports single model string only — intended limitation).
  */
 export async function runImport(
   filePath: string,
@@ -145,7 +150,7 @@ export async function runImport(
     return { exitCode: 1, output: `JSON parse error: ${msg}\n` };
   }
 
-  // 3. Validate
+  // 3. Whitelist validation (pure, no IO)
   const validation = validateImport(parsed, { allowAnthropic: opts?.allowAnthropic });
   if (!validation.ok) {
     return {
@@ -155,57 +160,60 @@ export async function runImport(
   }
 
   const importInput = (parsed as ImportInput).pi-oven!;
-  const profile = importInput.profile ?? "A";
-  const baseMap: ProfileMap = profile === "B" ? PROFILE_B : PROFILE_A;
+  const models = importInput.models;
 
-  // 4. Merge models: base profile + import overrides
-  const profileMap: ProfileMap = { ...baseMap };
-  if (importInput.models) {
-    for (const [roleName, override] of Object.entries(importInput.models)) {
-      const role = roleName as Role;
-      profileMap[role] = {
-        ...baseMap[role],
-        ...override,
-      } as ModelEntry;
+  // No models block → write 0 entries, succeed
+  if (!models || Object.keys(models).length === 0) {
+    return {
+      exitCode: 0,
+      output: `Import complete. No models specified; 0 overrides written.\nNote: registry_alternate/thinkingLevel ignored (override = single model).\n`,
+    };
+  }
+
+  // 4. Collect role→primary pairs (registry_alternate/thinkingLevel ignored)
+  const toWrite: Array<{ colonKey: string; primary: string }> = [];
+  for (const [roleName, entry] of Object.entries(models)) {
+    if (!entry || typeof entry.primary !== "string") continue;
+    const colonKey = `pi-oven:${roleName}`;
+    toWrite.push({ colonKey, primary: entry.primary });
+  }
+
+  // 5. EXACT-ID-ONLY validation — all roles must resolve before any write
+  const modelIdOpts = {
+    spawnFn: opts?.spawnFn,
+    ...(opts?.listModelsOutput !== undefined
+      ? { listModelsOutput: opts.listModelsOutput }
+      : {}),
+  };
+
+  const unresolvable: string[] = [];
+  for (const { colonKey, primary } of toWrite) {
+    const resolvable = await isResolvableModelId(primary, modelIdOpts);
+    if (!resolvable) {
+      unresolvable.push(`${colonKey}: "${primary}" not found in omp model registry`);
     }
   }
 
-  // 5. Persist
-  const spawnOpts = opts?.spawnFn ? { spawnFn: opts.spawnFn } : undefined;
-
-  await writePluginConfig("pi-oven.profile", profile, spawnOpts);
-  if (importInput.provider?.anthropic?.enabled) {
-    await writePluginConfig("pi-oven.provider.anthropic.enabled", "true", spawnOpts);
-  }
-  for (const role of ROLES) {
-    const entry = profileMap[role];
-    await writePluginConfig(`pi-oven.models.${role}.primary`, entry.primary, spawnOpts);
-    await writePluginConfig(`pi-oven.models.${role}.registry_alternate`, entry.registry_alternate, spawnOpts);
-    await writePluginConfig(`pi-oven.models.${role}.thinkingLevel`, entry.thinkingLevel, spawnOpts);
-  }
-
-  // 6. Rewrite agent files
-  if (opts?.agentsDir) {
-    await rewriteAllAgents(opts.agentsDir, profileMap);
-  }
-
-  // 7. Validate
-  const validateMode = opts?.validateMode ?? "smoke";
-  const validateResult = await runValidate(profileMap, {
-    mode: validateMode,
-    spawnFn: opts?.spawnFn,
-  });
-
-  if (!validateResult.ok) {
-    const unverifiedList = validateResult.unverified.join(", ");
+  if (unresolvable.length > 0) {
     return {
       exitCode: 1,
-      output: `Import applied but validation failed. Unverified roles: ${unverifiedList}\n`,
+      output:
+        `Import rejected — unresolvable model ids (write 0):\n` +
+        unresolvable.join("\n") +
+        `\n`,
     };
+  }
+
+  // 6. All-or-nothing write: setAgentModelOverride for each role
+  const configYmlOpts = opts?.spawnFn ? { spawnFn: opts.spawnFn } : undefined;
+  for (const { colonKey, primary } of toWrite) {
+    await setAgentModelOverride(colonKey, primary, configYmlOpts);
   }
 
   return {
     exitCode: 0,
-    output: `Import complete. Profile ${profile} active. ${validateResult.verified.length + validateResult.alternates.length} roles verified.\n`,
+    output:
+      `Import complete. ${toWrite.length} override(s) written to task.agentModelOverrides.\n` +
+      `Note: registry_alternate/thinkingLevel ignored (override = single model).\n`,
   };
 }

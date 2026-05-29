@@ -212,6 +212,11 @@ export async function deletePiOvenAgentModelOverrides(
     .filter((k) => k.startsWith("pi-oven:"))
     .sort();
 
+  // No-op: nothing to remove, skip the set call entirely
+  if (removedKeys.length === 0) {
+    return removedKeys;
+  }
+
   const merged = mergeOverrideRecord(current, { op: "delete-pi-oven" });
 
   const spawn = opts?.spawnFn ?? defaultSpawn;

@@ -24,8 +24,22 @@ function writeJson(dir: string, name: string, obj: unknown): string {
   return p;
 }
 
+/**
+ * Build a minimal omp --list-models fixture containing the given model ids
+ * in the "Canonical models" section format expected by parseCanonicalModelIds.
+ */
+function makeListModelsFixture(ids: string[]): string {
+  const rows = ids.map((id) => `  * ${id}  true`).join("\n");
+  return `
+Canonical models
+canonical  selected  enabled
+${rows}
+
+`;
+}
+
 // ---------------------------------------------------------------------------
-// validateImport
+// validateImport — 9 existing tests (whitelist logic unchanged)
 // ---------------------------------------------------------------------------
 
 describe("validateImport", () => {
@@ -129,6 +143,18 @@ describe("validateImport", () => {
     const input = {
       pi-oven: {
         profile: "X",
+        models: {},
+      },
+    };
+    const result = validateImport(input);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("profile"))).toBe(true);
+  });
+
+  it("rejects 'custom' profile value", () => {
+    const input = {
+      pi-oven: {
+        profile: "custom",
         models: {},
       },
     };
@@ -248,13 +274,18 @@ describe("runImport", () => {
     expect(result.output).toContain("gpt-4o");
   });
 
-  it("returns exitCode 0 and success message on valid Profile A import (with mocked persist)", async () => {
+  // -------------------------------------------------------------------------
+  // New tests: colon-key writes + validation
+  // -------------------------------------------------------------------------
+
+  it("valid import sets pi-oven:executor via omp config set (colon key)", async () => {
+    const primary = "opencode-zen/gpt-5.3-codex";
     const p = writeJson(tempDir, "config.json", {
       pi-oven: {
         profile: "A",
         models: {
           executor: {
-            primary: "opencode-zen/gpt-5.3-codex",
+            primary,
             registry_alternate: "openai-codex/gpt-5.3-codex",
             thinkingLevel: "high",
           },
@@ -262,22 +293,226 @@ describe("runImport", () => {
       },
     });
 
-    // Use mock spawnFn + mock agentsDir so no real omp calls
-    const agentsDir = join(tempDir, "agents");
-    mkdirSync(agentsDir, { recursive: true });
-    const mockSpawnFn = (_cmd: string, _args: string[]) =>
-      ({ exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") } as any);
-    const lockFilePath = join(tempDir, "omp-plugins.lock.json");
-    writeFileSync(lockFilePath, JSON.stringify({ settings: { pi-oven: {} } }), "utf-8");
+    const spawned: Array<{ cmd: string; args: string[] }> = [];
+    // get returns current empty record; set succeeds
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      spawned.push({ cmd: _cmd, args });
+      const isGet = args.includes("get");
+      if (isGet) {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(
+            JSON.stringify({ type: "record", value: {} })
+          ),
+          stderr: Buffer.from(""),
+        };
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
 
     const result = await runImport(p, {
       allowAnthropic: false,
       spawnFn: mockSpawnFn,
-      agentsDir,
-      lockFilePath,
-      validateMode: "none",
+      listModelsOutput: makeListModelsFixture([primary]),
     });
+
     expect(result.exitCode).toBe(0);
-    expect(result.output).toMatch(/import|success|complete/i);
+
+    // A "config set" call must carry the pi-oven:executor key with the primary value
+    const setCalls = spawned.filter(
+      (s) => s.args[0] === "config" && s.args[1] === "set"
+    );
+    expect(setCalls.length).toBeGreaterThan(0);
+
+    const hasExecutorKey = setCalls.some((s) => {
+      const payload = s.args[3] ?? s.args[2];
+      try {
+        const parsed = JSON.parse(payload ?? "{}") as Record<string, string>;
+        return parsed["pi-oven:executor"] === primary;
+      } catch {
+        return false;
+      }
+    });
+    expect(hasExecutorKey).toBe(true);
+  });
+
+  it("import does NOT touch agents/ files (no agent-rewriter call)", async () => {
+    const primary = "opencode-zen/gpt-5.3-codex";
+    const p = writeJson(tempDir, "config.json", {
+      pi-oven: {
+        profile: "A",
+        models: {
+          executor: { primary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
+        },
+      },
+    });
+
+    // Create a sentinel agent file — must remain unchanged
+    const agentsDir = join(tempDir, "agents");
+    mkdirSync(agentsDir, { recursive: true });
+    const agentFile = join(agentsDir, "pi-oven-executor.md");
+    const originalContent = "---\nname: pi-oven:executor\nmodel: original-model\n---\n";
+    writeFileSync(agentFile, originalContent, "utf-8");
+
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      const isGet = args.includes("get");
+      if (isGet) {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ type: "record", value: {} })),
+          stderr: Buffer.from(""),
+        };
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    await runImport(p, {
+      spawnFn: mockSpawnFn,
+      listModelsOutput: makeListModelsFixture([primary]),
+    });
+
+    // Agent file content must be unchanged
+    const { readFileSync } = await import("fs");
+    const after = readFileSync(agentFile, "utf-8");
+    expect(after).toBe(originalContent);
+  });
+
+  it("import rejects whitelisted-but-unresolvable primary (exit 1, no config set)", async () => {
+    const primary = "opencode-zen/nonexistent-model";
+    const p = writeJson(tempDir, "config.json", {
+      pi-oven: {
+        profile: "A",
+        models: {
+          executor: { primary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
+        },
+      },
+    });
+
+    const setCalls: Array<string[]> = [];
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      const isGet = args.includes("get");
+      if (isGet) {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ type: "record", value: {} })),
+          stderr: Buffer.from(""),
+        };
+      }
+      if (args[0] === "config" && args[1] === "set") {
+        setCalls.push(args);
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    // Fixture has NO nonexistent-model
+    const result = await runImport(p, {
+      spawnFn: mockSpawnFn,
+      listModelsOutput: makeListModelsFixture(["opencode-zen/some-other-model"]),
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toMatch(/unresolvable|not found|invalid|rejected/i);
+    // No config set must have been called
+    expect(setCalls).toHaveLength(0);
+  });
+
+  it("import with no models block writes 0 entries and exits 0", async () => {
+    const p = writeJson(tempDir, "config.json", {
+      pi-oven: {
+        profile: "A",
+      },
+    });
+
+    const setCalls: Array<string[]> = [];
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      if (args[0] === "config" && args[1] === "set") {
+        setCalls.push(args);
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    const result = await runImport(p, {
+      spawnFn: mockSpawnFn,
+      listModelsOutput: makeListModelsFixture([]),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(setCalls).toHaveLength(0);
+  });
+
+  it("import does NOT write plugin-config namespace (no pi-oven.profile or pi-oven.models.* in args)", async () => {
+    const primary = "opencode-zen/gpt-5.3-codex";
+    const p = writeJson(tempDir, "config.json", {
+      pi-oven: {
+        profile: "A",
+        models: {
+          executor: { primary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
+        },
+      },
+    });
+
+    const allArgs: string[][] = [];
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      allArgs.push(args);
+      const isGet = args.includes("get");
+      if (isGet) {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ type: "record", value: {} })),
+          stderr: Buffer.from(""),
+        };
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    await runImport(p, {
+      spawnFn: mockSpawnFn,
+      listModelsOutput: makeListModelsFixture([primary]),
+    });
+
+    // No call must reference the dead plugin-config namespace
+    const pluginConfigCalls = allArgs.filter((a) =>
+      a.some((token) => token.startsWith("pi-oven.profile") || token.startsWith("pi-oven.models."))
+    );
+    expect(pluginConfigCalls).toHaveLength(0);
+  });
+
+  it("partial write rejected: multiple roles, one unresolvable → exit 1, no set calls", async () => {
+    const goodPrimary = "opencode-zen/gpt-5.3-codex";
+    const badPrimary = "opencode-zen/does-not-exist";
+    const p = writeJson(tempDir, "config.json", {
+      pi-oven: {
+        profile: "A",
+        models: {
+          executor: { primary: goodPrimary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
+          planner: { primary: badPrimary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
+        },
+      },
+    });
+
+    const setCalls: Array<string[]> = [];
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      const isGet = args.includes("get");
+      if (isGet) {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ type: "record", value: {} })),
+          stderr: Buffer.from(""),
+        };
+      }
+      if (args[0] === "config" && args[1] === "set") {
+        setCalls.push(args);
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    const result = await runImport(p, {
+      spawnFn: mockSpawnFn,
+      // only goodPrimary is in the fixture
+      listModelsOutput: makeListModelsFixture([goodPrimary]),
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(setCalls).toHaveLength(0);
   });
 });

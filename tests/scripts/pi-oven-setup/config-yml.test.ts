@@ -311,15 +311,17 @@ describe("deletePiOvenAgentModelOverrides", () => {
     expect(setCallsMade.length).toBe(0);
   });
 
-  it("returns empty array and calls set with empty record when no pi-oven:* keys", async () => {
+  it("returns empty array and does NOT call set when no pi-oven:* keys (no-op)", async () => {
     const { fn, calls } = makeSpawnFn([
       okGetResult({ "claude-code:foo": "m" }),
-      okSetResult(),
     ]);
     const removed = await deletePiOvenAgentModelOverrides({ spawnFn: fn });
     expect(removed).toEqual([]);
-    const setJson = JSON.parse(calls[1][4]);
-    expect(setJson).toEqual({ "claude-code:foo": "m" });
+    // No set call — nothing to remove, skip write entirely
+    const setCallsMade = calls.filter(
+      (c) => c[0] === "omp" && c[1] === "config" && c[2] === "set"
+    );
+    expect(setCallsMade.length).toBe(0);
   });
 
   it("returns empty array when record is empty (fresh)", async () => {

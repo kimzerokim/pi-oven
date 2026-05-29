@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { runStatus } from "../../../scripts/pi-oven-setup/status";
-import { PROFILE_A, PROFILE_B, ROLES } from "../../../scripts/pi-oven-setup/profiles";
+import { ROLES, PROFILE_A } from "../../../scripts/pi-oven-setup/profiles";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -18,20 +18,14 @@ function makeTempDir(): string {
   return dir;
 }
 
-function makeLockFile(dir: string, piOvenSettings: Record<string, unknown>): string {
-  const lockPath = join(dir, "omp-plugins.lock.json");
-  writeFileSync(lockPath, JSON.stringify({ settings: { pi-oven: piOvenSettings } }), "utf-8");
-  return lockPath;
-}
-
-function makeAgentFile(agentsDir: string, role: string, primary: string, alternate: string, thinkingLevel: string): void {
+function makeAgentFile(agentsDir: string, role: string, primary: string): void {
   const content = `---
 name: pi-oven:${role}
 description: Test agent for ${role}
 model:
   - ${primary}
-  - ${alternate}
-thinkingLevel: ${thinkingLevel}
+  - opencode-zen/${primary.split("/").pop()}
+thinkingLevel: high
 mode: subagent
 tools: ["*"]
 blocked_tools: []
@@ -44,93 +38,176 @@ You are pi-oven:${role}.
   writeFileSync(join(agentsDir, `pi-oven-${role}.md`), content, "utf-8");
 }
 
+/**
+ * Build a spawnFn mock that returns preset responses for omp config get.
+ * listModelsOutput: optional string for list-models fixture (for unresolved warning test).
+ */
+function makeSpawnFn(opts: {
+  overrides?: Record<string, string>;
+  listModelsOutput?: string;
+  getExitCode?: number;
+}): (cmd: string, args: string[]) => { exitCode: number | null; stdout: Buffer; stderr: Buffer } {
+  return (cmd, args) => {
+    const argStr = args.join(" ");
+    // omp config get task.agentModelOverrides --json
+    if (cmd === "omp" && argStr.includes("config get task.agentModelOverrides")) {
+      if (opts.getExitCode !== undefined && opts.getExitCode !== 0) {
+        return {
+          exitCode: opts.getExitCode,
+          stdout: Buffer.from(""),
+          stderr: Buffer.from("omp not available"),
+        };
+      }
+      const record = opts.overrides ?? {};
+      const payload = JSON.stringify({ key: "task.agentModelOverrides", value: record, type: "record" });
+      return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
+    }
+    // omp list-models --json (or similar)
+    if (cmd === "omp" && argStr.includes("list-models")) {
+      const out = opts.listModelsOutput ?? "[]";
+      return { exitCode: 0, stdout: Buffer.from(out), stderr: Buffer.from("") };
+    }
+    return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("unexpected command") };
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("runStatus", () => {
   let tempDir: string;
-  let lockPath: string;
   let agentsDir: string;
 
   beforeEach(() => {
     tempDir = makeTempDir();
     agentsDir = join(tempDir, "agents");
     mkdirSync(agentsDir, { recursive: true });
-    lockPath = join(tempDir, "omp-plugins.lock.json");
   });
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("outputs 'Profile not configured' when no pi-oven settings exist", async () => {
-    // Empty lock file
-    writeFileSync(lockPath, JSON.stringify({ settings: {} }), "utf-8");
+  // -------------------------------------------------------------------------
+  // NEW tests: effective model + source label
+  // -------------------------------------------------------------------------
 
-    const result = await runStatus({ lockFilePath: lockPath, agentsDir });
-    expect(result.exitCode).toBe(0);
-    expect(result.output).toContain("Profile not configured");
-  });
-
-  it("shows Profile A when pi-oven.profile = A", async () => {
-    makeLockFile(tempDir, { "pi-oven.profile": "A" });
-    // Populate agents with Profile A
+  it("status shows default(frontmatter) source when no override", async () => {
+    // Seed agents dir with PROFILE_A frontmatter
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
+      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
     }
+    const spawnFn = makeSpawnFn({ overrides: {} });
 
-    const result = await runStatus({ lockFilePath: lockPath, agentsDir });
+    const result = await runStatus({ spawnFn, agentsDir });
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain("Profile A");
+    // critic role should show default frontmatter model
+    expect(result.output).toContain("critic");
+    expect(result.output).toContain(PROFILE_A.critic.primary);
+    expect(result.output).toContain("default");
+    // must NOT contain override source for critic
+    expect(result.output).not.toMatch(/critic.*override\(config\.yml\)/);
   });
 
-  it("shows Profile B when pi-oven.profile = B", async () => {
-    makeLockFile(tempDir, { "pi-oven.profile": "B", "pi-oven.provider.anthropic.enabled": "true" });
+  it("status shows override source when override present", async () => {
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_B[role].primary, PROFILE_B[role].registry_alternate, PROFILE_B[role].thinkingLevel);
+      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
     }
+    const overrideModel = "opencode-zen/claude-opus-4-8";
+    const spawnFn = makeSpawnFn({ overrides: { "pi-oven:critic": overrideModel } });
 
-    const result = await runStatus({ lockFilePath: lockPath, agentsDir });
+    const result = await runStatus({ spawnFn, agentsDir });
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain("Profile B");
+    expect(result.output).toContain("critic");
+    expect(result.output).toContain(overrideModel);
+    expect(result.output).toContain("override");
   });
 
-  it("shows drift warning when agent files differ from plugin config", async () => {
-    // Plugin config says Profile B but agent files are Profile A
-    makeLockFile(tempDir, {
-      "pi-oven.profile": "B",
-      "pi-oven.models.executor.primary": PROFILE_B.executor.primary,
-      "pi-oven.models.executor.registry_alternate": PROFILE_B.executor.registry_alternate,
+  it("status warns on unresolved override (미해소 fallback warning)", async () => {
+    for (const role of ROLES) {
+      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+    }
+    // Use a retired model id that won't appear in list-models
+    const retiredModel = "anthropic/claude-opus-4-7";
+    const spawnFn = makeSpawnFn({
+      overrides: { "pi-oven:critic": retiredModel },
+      // list-models fixture that does NOT include the retired model
+      listModelsOutput: JSON.stringify([
+        { id: "anthropic/claude-opus-4-8" },
+        { id: "opencode-zen/claude-opus-4-8" },
+      ]),
     });
-    // Agent file has Profile A values
-    makeAgentFile(agentsDir, "executor", PROFILE_A.executor.primary, PROFILE_A.executor.registry_alternate, PROFILE_A.executor.thinkingLevel);
 
-    const result = await runStatus({ lockFilePath: lockPath, agentsDir });
-    expect(result.output).toContain("drift");
-  });
-
-  it("lists executor model in output", async () => {
-    makeLockFile(tempDir, {
-      "pi-oven.profile": "A",
-      "pi-oven.models.executor.primary": PROFILE_A.executor.primary,
-      "pi-oven.models.executor.registry_alternate": PROFILE_A.executor.registry_alternate,
-      "pi-oven.models.executor.thinkingLevel": PROFILE_A.executor.thinkingLevel,
-    });
-    makeAgentFile(agentsDir, "executor", PROFILE_A.executor.primary, PROFILE_A.executor.registry_alternate, PROFILE_A.executor.thinkingLevel);
-
-    const result = await runStatus({ lockFilePath: lockPath, agentsDir });
-    expect(result.output).toContain("executor");
-    expect(result.output).toContain(PROFILE_A.executor.primary);
-  });
-
-  it("handles missing lock file gracefully (Profile not configured)", async () => {
-    // lockPath does not exist
-    const result = await runStatus({
-      lockFilePath: join(tempDir, "nonexistent.json"),
-      agentsDir,
-    });
+    const result = await runStatus({ spawnFn, agentsDir, listModelsOutput: JSON.stringify([
+      { id: "anthropic/claude-opus-4-8" },
+      { id: "opencode-zen/claude-opus-4-8" },
+    ]) });
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain("Profile not configured");
+    // Should warn about unresolvable override
+    expect(result.output).toMatch(/미해소|fallback|unresolved/i);
+  });
+
+  it("status shows machine-global scope header", async () => {
+    const spawnFn = makeSpawnFn({ overrides: {} });
+    const result = await runStatus({ spawnFn, agentsDir });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("machine-global");
+  });
+
+  it("status has NO drift warning, NO Profile line", async () => {
+    for (const role of ROLES) {
+      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+    }
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir });
+    expect(result.output).not.toMatch(/drift/i);
+    expect(result.output).not.toMatch(/Profile [AB] active/);
+  });
+
+  it("status shows all ROLES in output", async () => {
+    for (const role of ROLES) {
+      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+    }
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir });
+    for (const role of ROLES) {
+      expect(result.output).toContain(role);
+    }
+  });
+
+  it("status shows (no agent file) when agentsDir is absent", async () => {
+    const missingDir = join(tempDir, "nonexistent");
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir: missingDir });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("no agent file");
+  });
+
+  it("status warns on unknown role override (stray key)", async () => {
+    for (const role of ROLES) {
+      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+    }
+    const spawnFn = makeSpawnFn({ overrides: { "pi-oven:unknown-role-xyz": "some/model" } });
+
+    const result = await runStatus({ spawnFn, agentsDir });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toMatch(/unknown role|unknown-role/i);
+  });
+
+  it("status falls back gracefully when omp config get fails (returns empty overrides)", async () => {
+    for (const role of ROLES) {
+      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+    }
+    const spawnFn = makeSpawnFn({ getExitCode: 1 });
+
+    const result = await runStatus({ spawnFn, agentsDir });
+    expect(result.exitCode).toBe(0);
+    // All roles should show default source since omp failed
+    expect(result.output).toContain("default");
+    expect(result.output).not.toContain("override(config.yml)");
   });
 });

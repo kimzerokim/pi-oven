@@ -84,45 +84,37 @@ describe("pi-oven-setup CLI dispatcher", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("--status: exits 0 and outputs Profile info", async () => {
-    writeFileSync(lockPath, JSON.stringify({ settings: { pi-oven: { "pi-oven.profile": "A" } } }), "utf-8");
+  it("--status: exits 0 and outputs effective model summary", async () => {
     for (const role of ROLES) {
       makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
     }
 
     const { exitCode, stdout } = await runCLI(["--status"], {
-      PI_OVEN_LOCK_FILE: lockPath,
-      PI_OVEN_AGENTS_DIR: agentsDir,
-    });
-    expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/profile/i);
-  });
-
-  it("--status with no config: outputs 'Profile not configured'", async () => {
-    writeFileSync(lockPath, JSON.stringify({ settings: {} }), "utf-8");
-
-    const { exitCode, stdout } = await runCLI(["--status"], {
-      PI_OVEN_LOCK_FILE: lockPath,
-      PI_OVEN_AGENTS_DIR: agentsDir,
-    });
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("Profile not configured");
-  });
-
-  it("--reset: exits 0 and outputs success", async () => {
-    writeFileSync(lockPath, JSON.stringify({ settings: { pi-oven: { "pi-oven.profile": "B" } } }), "utf-8");
-    for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
-    }
-
-    // Use PI_OVEN_MOCK_SPAWN=1 to bypass real omp calls
-    const { exitCode, stdout } = await runCLI(["--reset"], {
-      PI_OVEN_LOCK_FILE: lockPath,
       PI_OVEN_AGENTS_DIR: agentsDir,
       PI_OVEN_MOCK_SPAWN: "1",
     });
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/cleared|reset|Profile A/i);
+    expect(stdout).toContain("machine-global");
+    expect(stdout).toContain("default(frontmatter)");
+  });
+
+  it("--status with no agent files: shows (no agent file) for all roles", async () => {
+    const { exitCode, stdout } = await runCLI(["--status"], {
+      PI_OVEN_AGENTS_DIR: agentsDir,
+      PI_OVEN_MOCK_SPAWN: "1",
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("machine-global");
+    expect(stdout).toContain("no agent file");
+  });
+
+  it("--reset: exits 0 and outputs cleared/no-overrides message", async () => {
+    // Use PI_OVEN_MOCK_SPAWN=1: mock omp returns empty overrides record, so no keys to clear
+    const { exitCode, stdout } = await runCLI(["--reset"], {
+      PI_OVEN_MOCK_SPAWN: "1",
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/cleared|No overrides/i);
   });
 
   it("--import with nonexistent file: exits 1 with error message", async () => {
@@ -135,7 +127,6 @@ describe("pi-oven-setup CLI dispatcher", () => {
   });
 
   it("--import with valid JSON: exits 0 with success", async () => {
-    writeFileSync(lockPath, JSON.stringify({ settings: { pi-oven: {} } }), "utf-8");
     const importFile = join(tempDir, "config.json");
     writeFileSync(
       importFile,
@@ -153,29 +144,10 @@ describe("pi-oven-setup CLI dispatcher", () => {
       }),
       "utf-8"
     );
-    for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
-    }
 
     const { exitCode } = await runCLI(["--import", importFile], {
-      PI_OVEN_LOCK_FILE: lockPath,
-      PI_OVEN_AGENTS_DIR: agentsDir,
       PI_OVEN_MOCK_SPAWN: "1",
       PI_OVEN_VALIDATE_MODE: "none",
-    });
-    expect(exitCode).toBe(0);
-  });
-
-  it("--reapply with pi-oven.profile=B: exits 0", async () => {
-    writeFileSync(lockPath, JSON.stringify({ settings: { pi-oven: { "pi-oven.profile": "B" } } }), "utf-8");
-    for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
-    }
-
-    const { exitCode } = await runCLI(["--reapply"], {
-      PI_OVEN_LOCK_FILE: lockPath,
-      PI_OVEN_AGENTS_DIR: agentsDir,
-      PI_OVEN_MOCK_SPAWN: "1",
     });
     expect(exitCode).toBe(0);
   });
@@ -195,43 +167,107 @@ describe("pi-oven-setup CLI dispatcher", () => {
   });
 
   it("dispatch precedence: --status takes priority over --reset", async () => {
-    writeFileSync(lockPath, JSON.stringify({ settings: { pi-oven: {} } }), "utf-8");
-
     const { exitCode, stdout } = await runCLI(["--status", "--reset"], {
-      PI_OVEN_LOCK_FILE: lockPath,
       PI_OVEN_AGENTS_DIR: agentsDir,
       PI_OVEN_MOCK_SPAWN: "1",
     });
-    // --status should win: output says "not configured", not "cleared"
+    // --status should win: output shows machine-global scope, not cleared
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Profile not configured");
-    expect(stdout).not.toMatch(/cleared|reset/i);
+    expect(stdout).toContain("machine-global");
+    expect(stdout).not.toMatch(/cleared/i);
   });
 
   it("dispatch precedence: --reset takes priority over --import", async () => {
-    writeFileSync(lockPath, JSON.stringify({ settings: { pi-oven: { "pi-oven.profile": "A" } } }), "utf-8");
     const importFile = join(tempDir, "config.json");
     writeFileSync(importFile, JSON.stringify({ pi-oven: { profile: "A", models: {} } }), "utf-8");
-    for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
-    }
 
-    const { stdout } = await runCLI(["--reset", "--import", importFile], {
-      PI_OVEN_LOCK_FILE: lockPath,
-      PI_OVEN_AGENTS_DIR: agentsDir,
+    const { exitCode, stdout } = await runCLI(["--reset", "--import", importFile], {
       PI_OVEN_MOCK_SPAWN: "1",
     });
-    expect(stdout).toMatch(/cleared|reset|Profile A/i);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/cleared|No overrides/i);
   });
 
-  it("no action flag: exits 1 with usage error", async () => {
-    const { exitCode, stderr } = await runCLI([], {
+  it("no action flag: exits 1 with usage error (no --reapply in message)", async () => {
+    const { exitCode, stderr, stdout: out } = await runCLI([], {
       PI_OVEN_LOCK_FILE: lockPath,
       PI_OVEN_AGENTS_DIR: agentsDir,
     });
     expect(exitCode).toBe(1);
     // Should mention expected flags
-    expect(stderr + stdout).toMatch(/--profile|--status|--reset|No action/i);
+    expect(stderr + out).toMatch(/--profile|--status|--reset|No action/i);
+    // --reapply must NOT appear in usage message (retired)
+    expect(stderr + out).not.toContain("--reapply");
+  });
+
+  it("standalone --override sets config via omp and exits 0", async () => {
+    const { exitCode, stdout: out } = await runCLI(
+      ["--override", "critic=anthropic/claude-opus-4-8"],
+      { PI_OVEN_MOCK_SPAWN: "1" }
+    );
+    expect(exitCode).toBe(0);
+    expect(out).not.toMatch(/No action/i);
+  });
+
+  it("standalone --override does not modify tracked baseline files", async () => {
+    const { exitCode } = await runCLI(
+      ["--override", "critic=anthropic/claude-opus-4-8"],
+      { PI_OVEN_MOCK_SPAWN: "1" }
+    );
+    expect(exitCode).toBe(0);
+
+    // Assert no new changes to tracked agents/ or scripts/ in the working tree
+    const gitProc = Bun.spawnSync(
+      ["git", "status", "--short", "--", "agents/", "scripts/"],
+      { cwd: join(import.meta.dir, "../.."), stdio: ["ignore", "pipe", "pipe"] }
+    );
+    const gitOut = gitProc.stdout?.toString() ?? "";
+    // Only allow modifications to pi-oven-setup.ts and pi-oven-setup/ (wave 2a + our changes)
+    // No NEW untracked agent files
+    const lines = gitOut.split("\n").filter((l) => l.trim() !== "");
+    const agentLines = lines.filter((l) => l.includes("agents/"));
+    expect(agentLines.length).toBe(0);
+  });
+
+  it("--override + --reset is mutually exclusive (exit 1)", async () => {
+    const { exitCode, stderr } = await runCLI(
+      ["--override", "critic=anthropic/claude-opus-4-8", "--reset"],
+      { PI_OVEN_MOCK_SPAWN: "1" }
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/mutual.?exclu|--override.*--reset|--reset.*--override/i);
+  });
+
+  it("--override + --apply is mutually exclusive (exit 1)", async () => {
+    const { exitCode, stderr } = await runCLI(
+      ["--override", "critic=anthropic/claude-opus-4-8", "--apply"],
+      { PI_OVEN_MOCK_SPAWN: "1" }
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/mutual.?exclu|--override.*--apply|--apply.*--override/i);
+  });
+
+  it("--override + --status applies override then shows status", async () => {
+    for (const role of ROLES) {
+      makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
+    }
+    const { exitCode, stdout: out } = await runCLI(
+      ["--override", "critic=anthropic/claude-opus-4-8", "--status"],
+      { PI_OVEN_MOCK_SPAWN: "1", PI_OVEN_AGENTS_DIR: agentsDir }
+    );
+    expect(exitCode).toBe(0);
+    // Both override output and status output should appear
+    expect(out).toMatch(/Override applied/i);
+    expect(out).toContain("machine-global");
+  });
+
+  it("--override with invalid model id exits 1", async () => {
+    const { exitCode, stderr } = await runCLI(
+      ["--override", "critic=anthropic/claude-opus-4-7"],
+      { PI_OVEN_MOCK_SPAWN: "1" }
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr + "").toMatch(/not resolvable|invalid.*override/i);
   });
 });
 

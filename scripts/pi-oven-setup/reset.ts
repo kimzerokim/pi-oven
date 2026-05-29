@@ -1,46 +1,39 @@
 /**
  * --reset subcommand for pi-oven setup wizard.
- * Spec B §9.5 — delete all pi-oven.* config keys, restore agent files to Profile A.
+ * Spec E §3.3 — delete only pi-oven:* keys from task.agentModelOverrides (config.yml).
+ * Agent files are NOT touched — they are the committed PROFILE_A baseline.
+ * Plan: docs/plans/2026-05-29-pi-oven-setup-option-c-plan.md §Task 2.4
  */
 
-import { deletePluginConfig, type DeletePluginConfigOpts } from "./persist";
-import { rewriteAllAgents } from "./agent-rewriter";
-import { ROLES, PROFILE_A } from "./profiles";
+import { deletePiOvenAgentModelOverrides } from "./config-yml";
+import type { ConfigYmlOpts } from "./config-yml";
 
 export interface ResetOptions {
-  spawnFn?: DeletePluginConfigOpts["spawnFn"];
-  agentsDir?: string;
+  /** Injectable spawn for omp config get/set (tests). */
+  spawnFn?: ConfigYmlOpts["spawnFn"];
 }
 
 /**
- * Delete all pi-oven.* config keys (71 total: 2 top-level + 23 × 3 per-role),
- * then rewrite all 23 agent files back to Profile A defaults.
+ * Delete all pi-oven:* keys from task.agentModelOverrides.
+ * Preserves non-pi-oven:* keys (AC#2). Does NOT rewrite agent files.
  */
 export async function runReset(
   opts?: ResetOptions
 ): Promise<{ exitCode: number; output: string }> {
-  const spawnOpts = opts?.spawnFn ? { spawnFn: opts.spawnFn } : undefined;
+  const removedKeys = await deletePiOvenAgentModelOverrides(opts);
 
-  // Delete top-level keys
-  await deletePluginConfig("pi-oven.profile", spawnOpts);
-  await deletePluginConfig("pi-oven.provider.anthropic.enabled", spawnOpts);
-
-  // Delete 3 keys × 23 roles = 69 delete calls
-  for (const role of ROLES) {
-    await deletePluginConfig(`pi-oven.models.${role}.primary`, spawnOpts);
-    await deletePluginConfig(`pi-oven.models.${role}.registry_alternate`, spawnOpts);
-    await deletePluginConfig(`pi-oven.models.${role}.thinkingLevel`, spawnOpts);
+  if (removedKeys.length === 0) {
+    return {
+      exitCode: 0,
+      output: "Already cleared — no pi-oven:* overrides in task.agentModelOverrides.\n",
+    };
   }
 
-  // Rewrite agent files to Profile A defaults
-  if (opts?.agentsDir) {
-    await rewriteAllAgents(opts.agentsDir, PROFILE_A);
-  }
-
+  const list = removedKeys.map((k) => `  - ${k}`).join("\n");
   return {
     exitCode: 0,
     output:
-      "Config cleared. Agent files restored to Profile A defaults.\n" +
-      "Run /pi-oven:setup to reconfigure, or /pi-oven:setup --status to verify.\n",
+      `Cleared ${removedKeys.length} pi-oven:* override(s):\n${list}\n` +
+      "Run /pi-oven:setup --status to verify, or /pi-oven:setup to reconfigure.\n",
   };
 }

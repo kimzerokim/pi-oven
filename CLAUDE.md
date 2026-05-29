@@ -52,7 +52,7 @@ bun run eval         # scripts/run-eval.ts (needs LLM keys — gated, see Status
 | `opencode-zen/gemini-3-flash` | medium | explorer, writer, document-specialist, multimodal-looker |
 | `opencode-zen/gemini-3.5-flash` | high | qa-tester (vision) |
 | `opencode-zen/glm-5.1` | high | designer |
-| `opencode-zen/gpt-5-nano` | minimal | git-master |
+| `opencode-zen/claude-haiku-4-5` | low | git-master (re-validated off gpt-5-nano 2026-05-29) |
 
 Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/` always; `anthropic/` only if an agent file already declares an `anthropic/*` model. **PROFILE_B** (anthropic-promoted opt-in) is **DEFERRED** — do not bump/redefine without explicit user instruction (still on retired `opus-4-7` ids by design).
 

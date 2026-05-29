@@ -2,6 +2,20 @@
 
 Meta cycle tracking. Each entry = one self-improvement / build cycle of pi-oven.
 
+## 2026-05-29 — Harness import + per-model optimization + routing re-validation
+
+- Cycle: absorb the best of external_harness (omc/omo/superpowers/Pocock-skills/ECC) + tune the heterogeneous-model workflow. Branch `feature/standard-expansion` (push deferred — bundle as v0.1.0).
+- Driver: Claude Code session orchestrating background workflows (per user "everything in workflows, max parallelism").
+- Deliverables (commits `ec2397a`→`3090c4a` on top of the pi-oven-setup option-C work):
+  - **Project CLAUDE.md** (`ec2397a`) — token-lean guide: goal (optimal omp-native workflow), heterogeneous-model principle, model-routing truth (omp reads only `task.agentModelOverrides`), SoT chain, guardrails, status. Also: version SoT aligned 0.1.0→0.1.0 across the 3 manifests + CI parity check + `.pi/` gitignore.
+  - **Discovery** (`7b1944c`) — read-only workflow (`wf_74c81aad`): per-model prompting audit + external import catalog (82 candidates) + omp ExtensionAPI capability survey. Harvest + synthesis under `docs/harness/surveys/`.
+  - **Per-model agent optimization** (`729daa1`) — workflow `wf_ed1c40ca`: all 23 agent bodies got a model-family-tuned execution-context block + per-role tuning (codex action-bias/no-ceremony, gpt-5.4 XML-bound rules, gemini-flash crisp+schema, kimi markers, glm structured, opus XML). Frontmatter untouched (SoT intact); critic review PASS.
+  - **5 new skills** (`241aa0b`) — workflow `wf_6cbd3de8`: internal-overlap audit found 0 true duplicates among the 15 (distinct by altitude/trigger); synthesized systematic-debugging, improve-codebase-architecture, receiving-code-review, git-workflow, caveman (15→20). plugin.json + skill-count test updated.
+  - **Routing re-validation** (`6868517`) — workflow `wf_ee657aa9`: 23-role audit, 19 kept (benchmark/economics-justified), 2 changed — git-master `gpt-5-nano/minimal`→`claude-haiku-4-5/low` (user-flagged; commit-style inference + concern-split + rebase not mechanical), verifier `medium`→`high` (false-PASS asymmetry). PROFILE_B thinkingLevel synced (parity invariant; model strategy untouched/deferred).
+  - **Spec F (omp-runtime layer)** (`7b1944c` draft, `3090c4a` review) — reconciles foundation Plan 3 to omp reality (gate state machine via the un-timed `tool_call` hook + rules-injector + reminder steering). Codex+critic review (`wf_3b146ba3`): gate CONTINUE, 6 blockers, architecture sound. v2 + §5 user decisions gate implementation.
+- Final state: 23 agents + 20 skills + 23-role PROFILE_A routing; `bun test` 195 pass / tsc / lint:agents / lint:skills / build all green.
+- Status: improvements committed locally; `docs/site/skill-flow.ko.html` (visual map) built + verified (workflow `wf_3f2bde07`; verify caught a stale git-master=gpt-5-nano carried from the pre-routing-change CLAUDE.md → fixed in both); v0.1.0 bundled push + Plan 3 implementation pending user.
+
 ## 2026-05-28 — Spec C: Skill rewrite + new skills (post-v0.1.0 → v0.1.0 ready)
 
 - Cycle: completes the 3-spec model routing + subagent consolidation initiative.

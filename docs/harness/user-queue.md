@@ -33,6 +33,22 @@ Per `docs/specs/2026-05-27-pi-oven-foundation-design.md` Section 3 (Layer 4) + p
 
 ---
 
+### Q-SPEC-E-CYCLE2-SCOPE
+
+- **Date opened:** 2026-05-29
+- **Branch:** `feature/standard-expansion` (사용자 명시: 현재 브랜치, 직접 커밋, PR 없음, push 보류)
+- **Context:** pi-oven-setup stale 감사 (`docs/harness/surveys/2026-05-29-pi-oven-setup-stale-audit.md`) → 모델 override spine 이 dead namespace 에 write. Option C (settings `task.agentModelOverrides`) locked. 아래 항목은 tentative default 로 진행, frozen spec review 게이트에서 사용자 확정.
+- **Tentative defaults (자율 진행):**
+  - **Q-SCOPE-CYCLE2** — 구현 범위: CORE rewire (A1–A6) + flag 정리 (I2 `--profile custom` 제거, I4 `confirm-auth` 제거) + lint colon-name invariant (I3) + extension drift 제거 (A6) + command-doc 재작성 (I5) + opus-4-7→4-8 stale sweep (I7/I8) + project-memory sed 제거 (I8). 현재 브랜치 직접 커밋.
+  - **Q-DISTRIBUTION-A7** — 23 agents main merge + version SoT (package.json 0.1.0 vs manifest 0.1.0) + CI parity: **DEFER**. main 접근은 contract 밖 (release-gating 별도 task).
+  - **Q-MODELS-YML** — orphaned `models.yml` (0 readers, stale ids): **DELETE** + 참조 제거 (audit I6 권고).
+  - **Q-VERSION-SOT** — version 불일치: **DEFER** (A7 과 묶어 release task).
+  - **Q-PROFILE-B** — PROFILE_B opus-4-7 half-migrated: **LEAVE DEFERRED** per memory `project_profile_b_deferred.md`. 단독 bump 금지, flag-only.
+- **User action at review gate:** frozen cycle-2 spec + codex verdict review → 위 default 확정/조정.
+- **Status:** Pending
+
+---
+
 ## Resolved
 
 ### Q-OMP-NOT-INSTALLED-001

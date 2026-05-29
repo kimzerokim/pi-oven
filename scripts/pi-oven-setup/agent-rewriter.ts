@@ -19,12 +19,6 @@ export interface AgentFileEntry {
   currentThinkingLevel: string;
 }
 
-export interface DriftEntry {
-  role: Role;
-  fileModel: string[];
-  configModel: string[];
-}
-
 // ---------------------------------------------------------------------------
 // readAgentFiles
 // ---------------------------------------------------------------------------
@@ -102,42 +96,6 @@ export async function rewriteAllAgents(
   }
 
   return { rewritten, skipped };
-}
-
-// ---------------------------------------------------------------------------
-// detectDrift
-// ---------------------------------------------------------------------------
-
-/**
- * Compares each agent file's model array vs profileMap entry.
- * Returns list of roles where the file model differs from the config model.
- */
-export async function detectDrift(
-  agentsDir: string,
-  profileMap: ProfileMap
-): Promise<DriftEntry[]> {
-  const entries = await readAgentFiles(agentsDir);
-  const drifted: DriftEntry[] = [];
-
-  for (const entry of entries) {
-    const config = profileMap[entry.role];
-    if (!config) continue;
-
-    const configModel = [config.primary, config.registry_alternate];
-    const fileMismatch =
-      entry.currentModel[0] !== configModel[0] ||
-      entry.currentModel[1] !== configModel[1];
-
-    if (fileMismatch) {
-      drifted.push({
-        role: entry.role,
-        fileModel: entry.currentModel,
-        configModel,
-      });
-    }
-  }
-
-  return drifted;
 }
 
 // ---------------------------------------------------------------------------

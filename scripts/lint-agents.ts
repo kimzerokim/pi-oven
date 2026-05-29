@@ -31,6 +31,11 @@ function extractThinkingLevel(frontmatter: Record<string, unknown>): string | un
   return typeof raw === "string" ? raw : undefined;
 }
 
+function extractName(frontmatter: Record<string, unknown>): string | undefined {
+  const raw = frontmatter["name"];
+  return typeof raw === "string" ? raw : undefined;
+}
+
 let files: string[];
 try {
   files = readdirSync(agentsDir).filter(
@@ -61,6 +66,19 @@ for (const file of files) {
   // profiles.ts is the source of truth; agent files are derived artifacts.
   const role = file.replace(/^pi-oven-/, "").replace(/\.md$/, "");
   if (!roleSet.has(role)) continue;
+
+  // Colon-name invariant: frontmatter `name` must equal "pi-oven:" + role.
+  // This ensures the omp registry key (colon form) matches the override key
+  // used by task.agentModelOverrides — preventing silent hyphen/colon mismatch.
+  // Scope: PROFILE_A baseline only. Does NOT read user-global ~/.omp/agent/config.yml.
+  const name = extractName(frontmatter);
+  const expectedName = `pi-oven:${role}`;
+  if (name !== expectedName) {
+    console.error(
+      `lint-agents: ERROR: ${file} name="${name ?? "(missing)"}" must equal "${expectedName}" (colon registry key invariant).`
+    );
+    violations++;
+  }
 
   const expected = PROFILE_A[role as Role];
   const expectedModels = [expected.primary, expected.registry_alternate];

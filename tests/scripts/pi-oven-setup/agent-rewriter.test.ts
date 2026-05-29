@@ -6,7 +6,6 @@ import {
   readAgentFiles,
   rewriteAgentFile,
   rewriteAllAgents,
-  detectDrift,
 } from "../../../scripts/pi-oven-setup/agent-rewriter";
 import { ROLES, PROFILE_A, PROFILE_B, type Role } from "../../../scripts/pi-oven-setup/profiles";
 
@@ -255,82 +254,3 @@ describe("rewriteAllAgents", () => {
   });
 });
 
-describe("detectDrift", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = makeTempDir();
-  });
-
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  it("Profile B agent files + PROFILE_B map → no drift (empty list)", async () => {
-    populateAgentsDir(
-      tempDir,
-      ROLES,
-      (r) => PROFILE_B[r].primary,
-      (r) => PROFILE_B[r].registry_alternate,
-      (r) => PROFILE_B[r].thinkingLevel
-    );
-
-    const drift = await detectDrift(tempDir, PROFILE_B);
-    expect(drift.length).toBe(0);
-  });
-
-  it("Profile A agent files + PROFILE_B map → returns drift for every role that actually differs", async () => {
-    populateAgentsDir(
-      tempDir,
-      ROLES,
-      (r) => PROFILE_A[r].primary,
-      (r) => PROFILE_A[r].registry_alternate,
-      (r) => PROFILE_A[r].thinkingLevel
-    );
-
-    const drift = await detectDrift(tempDir, PROFILE_B);
-    // Drift count is determined by the current PROFILE_A vs PROFILE_B
-    // shape — not pinned to 23 — so routing tuning doesn't break this test.
-    const expectedDrift = ROLES.filter(
-      (r) =>
-        PROFILE_A[r].primary !== PROFILE_B[r].primary ||
-        PROFILE_A[r].registry_alternate !== PROFILE_B[r].registry_alternate
-    ).length;
-    expect(drift.length).toBe(expectedDrift);
-  });
-
-  it("partial drift: only modified roles appear in drift list", async () => {
-    // Start with all Profile B files
-    populateAgentsDir(
-      tempDir,
-      ROLES,
-      (r) => PROFILE_B[r].primary,
-      (r) => PROFILE_B[r].registry_alternate,
-      (r) => PROFILE_B[r].thinkingLevel
-    );
-
-    // Overwrite just executor with Profile A values
-    writeFileSync(
-      join(tempDir, "pi-oven-executor.md"),
-      makeAgentFileContent(
-        "executor",
-        PROFILE_A.executor.primary,
-        PROFILE_A.executor.registry_alternate,
-        PROFILE_A.executor.thinkingLevel
-      ),
-      "utf-8"
-    );
-
-    const drift = await detectDrift(tempDir, PROFILE_B);
-    expect(drift.length).toBe(1);
-    expect(drift[0].role).toBe("executor");
-    expect(drift[0].fileModel).toEqual([
-      PROFILE_A.executor.primary,
-      PROFILE_A.executor.registry_alternate,
-    ]);
-    expect(drift[0].configModel).toEqual([
-      PROFILE_B.executor.primary,
-      PROFILE_B.executor.registry_alternate,
-    ]);
-  });
-});

@@ -2,13 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import * as ext from "../../.omp/extensions/pi-oven";
 import {
   validateAgentRegistry,
   getAllowedPrefixes,
-  type AgentFileEntry,
-  loadProfileMapFromConfig,
-  type SessionModelCapture,
   captureSessionModel,
+  type AgentFileEntry,
+  type SessionModelCapture,
 } from "../../.omp/extensions/pi-oven";
 
 function makeTempDir(): string {
@@ -26,6 +26,24 @@ function writeAgent(dir: string, filename: string, model: string | string[]): vo
     ["---", ...modelLines, "---", "# Agent"].join("\n")
   );
 }
+
+// ---------------------------------------------------------------------------
+// Deletion invariant — drift machinery must not be exported
+// ---------------------------------------------------------------------------
+
+describe("extension no longer exports drift machinery", () => {
+  it("loadProfileMapFromConfig is not exported", () => {
+    expect((ext as unknown as Record<string, unknown>)["loadProfileMapFromConfig"]).toBeUndefined();
+  });
+
+  it("detectDriftFromMap is not exported", () => {
+    expect((ext as unknown as Record<string, unknown>)["detectDriftFromMap"]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateAgentRegistry
+// ---------------------------------------------------------------------------
 
 describe("validateAgentRegistry", () => {
   let tempDir: string;
@@ -92,7 +110,7 @@ describe("validateAgentRegistry", () => {
       join(tempDir, "pi-oven-opus.md"),
       [
         "---",
-        "model: anthropic/claude-opus-4-7",
+        "model: anthropic/claude-opus-4-8",
         "---",
         "# Opus",
       ].join("\n")
@@ -229,134 +247,5 @@ describe("captureSessionModel", () => {
     }
     // captureSessionModel propagates the FS error; the session_start handler catches it
     expect(threw).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// loadProfileMapFromConfig
-// ---------------------------------------------------------------------------
-
-describe("loadProfileMapFromConfig", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = makeTempDir();
-  });
-
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  it("returns null when lock file does not exist", async () => {
-    const lockPath = join(tempDir, "omp-plugins.lock.json");
-    const result = await loadProfileMapFromConfig(lockPath);
-    expect(result).toBeNull();
-  });
-
-  it("returns null when lock file has no pi-oven settings", async () => {
-    const lockPath = join(tempDir, "omp-plugins.lock.json");
-    writeFileSync(lockPath, JSON.stringify({ settings: { other: {} } }));
-    const result = await loadProfileMapFromConfig(lockPath);
-    expect(result).toBeNull();
-  });
-
-  it("returns null when pi-oven settings has fewer than EXPECTED_AGENT_COUNT role entries", async () => {
-    const lockPath = join(tempDir, "omp-plugins.lock.json");
-    // Only 1 role — not enough
-    writeFileSync(lockPath, JSON.stringify({
-      settings: {
-        pi-oven: {
-          "pi-oven.models.executor.primary": "anthropic/claude-sonnet-4-6",
-          "pi-oven.models.executor.registry_alternate": "opencode-zen/claude-sonnet-4-6",
-        }
-      }
-    }));
-    const result = await loadProfileMapFromConfig(lockPath);
-    expect(result).toBeNull();
-  });
-
-  it("returns null when lock file is corrupt JSON", async () => {
-    const lockPath = join(tempDir, "omp-plugins.lock.json");
-    writeFileSync(lockPath, "{ not valid json }}}");
-    const result = await loadProfileMapFromConfig(lockPath);
-    expect(result).toBeNull();
-  });
-
-  it("returns ProfileMap when all 23 roles are present in pi-oven settings", async () => {
-    const lockPath = join(tempDir, "omp-plugins.lock.json");
-    // Build a minimal valid pi-oven settings object with all 23 roles
-    const ROLES = [
-      "executor","explorer","verifier","critic","planner","code-reviewer",
-      "debugger","test-engineer","security-reviewer","writer","designer",
-      "code-simplifier","qa-tester","git-master","document-specialist",
-      "tracer","analyst","scientist","architect","librarian",
-      "multimodal-looker","oracle","metis",
-    ];
-    const pi-oven: Record<string, string> = {};
-    for (const role of ROLES) {
-      pi-oven[`pi-oven.models.${role}.primary`] = `anthropic/claude-sonnet-4-6`;
-      pi-oven[`pi-oven.models.${role}.registry_alternate`] = `opencode-zen/claude-sonnet-4-6`;
-    }
-    writeFileSync(lockPath, JSON.stringify({ settings: { pi-oven } }));
-    const result = await loadProfileMapFromConfig(lockPath);
-    expect(result).not.toBeNull();
-    expect(result!["executor"].primary).toBe("anthropic/claude-sonnet-4-6");
-    expect(result!["executor"].registry_alternate).toBe("opencode-zen/claude-sonnet-4-6");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// drift detection via session_start handler (integration-style)
-// ---------------------------------------------------------------------------
-
-describe("drift detection", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = makeTempDir();
-  });
-
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  it("no drift warning when agent file matches config map", async () => {
-    const { detectDriftFromMap } = await import("../../.omp/extensions/pi-oven");
-    // Write one agent file matching the config
-    writeAgent(tempDir, "pi-oven-executor.md", ["anthropic/claude-sonnet-4-6", "opencode-zen/claude-sonnet-4-6"]);
-    const profileMap = {
-      executor: {
-        primary: "anthropic/claude-sonnet-4-6",
-        registry_alternate: "opencode-zen/claude-sonnet-4-6",
-        thinkingLevel: "high" as const,
-      },
-    };
-    const drift = await detectDriftFromMap(tempDir, profileMap as Parameters<typeof detectDriftFromMap>[1]);
-    expect(drift).toHaveLength(0);
-  });
-
-  it("drift warning when agent file model differs from config map", async () => {
-    const { detectDriftFromMap } = await import("../../.omp/extensions/pi-oven");
-    // Agent has Profile A model but config says Profile B
-    writeAgent(tempDir, "pi-oven-executor.md", ["opencode-zen/gpt-5.3-codex", "openai-codex/gpt-5.3-codex"]);
-    const profileMap = {
-      executor: {
-        primary: "anthropic/claude-sonnet-4-6",
-        registry_alternate: "opencode-zen/claude-sonnet-4-6",
-        thinkingLevel: "high" as const,
-      },
-    };
-    const drift = await detectDriftFromMap(tempDir, profileMap as Parameters<typeof detectDriftFromMap>[1]);
-    expect(drift.length).toBeGreaterThan(0);
-    expect(drift[0].role).toBe("executor");
-  });
-
-  it("no warning when loadProfileMapFromConfig returns null (no pi-oven settings)", async () => {
-    // This tests the guard: if no config, skip drift check
-    const lockPath = join(tempDir, "omp-plugins.lock.json");
-    // No lock file → loadProfileMapFromConfig returns null
-    const result = await loadProfileMapFromConfig(lockPath);
-    expect(result).toBeNull();
-    // If null, session_start handler skips drift — no action needed beyond null check
   });
 });

@@ -136,4 +136,88 @@ describe("lint-agents", () => {
     const result = runLint(tempDir);
     expect(result.exitCode).toBe(0);
   });
+
+  // Colon-name invariant: name must equal "pi-oven:" + role (the omp registry key).
+  // These tests use role "critic" which is in ROLES, so the name check runs.
+
+  it("agent with correct colon name passes colon-name invariant", () => {
+    writeFileSync(
+      join(tempDir, "pi-oven-critic.md"),
+      [
+        "---",
+        "name: pi-oven:critic",
+        "model:",
+        "  - anthropic/claude-opus-4-8",
+        "  - opencode-zen/claude-opus-4-8",
+        "thinkingLevel: xhigh",
+        "---",
+        "# Critic",
+      ].join("\n")
+    );
+    const result = runLint(tempDir);
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("agent with hyphen name fails colon-name invariant and error contains expected name", () => {
+    writeFileSync(
+      join(tempDir, "pi-oven-critic.md"),
+      [
+        "---",
+        "name: pi-oven-critic",
+        "model:",
+        "  - anthropic/claude-opus-4-8",
+        "  - opencode-zen/claude-opus-4-8",
+        "thinkingLevel: xhigh",
+        "---",
+        "# Critic",
+      ].join("\n")
+    );
+    const result = runLint(tempDir);
+    expect(result.exitCode).toBe(1);
+    const output = result.stdout + result.stderr;
+    expect(output).toContain("pi-oven:critic");
+    expect(output).toContain("pi-oven-critic.md");
+  });
+
+  it("agent with missing name field fails colon-name invariant", () => {
+    writeFileSync(
+      join(tempDir, "pi-oven-critic.md"),
+      [
+        "---",
+        "model:",
+        "  - anthropic/claude-opus-4-8",
+        "  - opencode-zen/claude-opus-4-8",
+        "thinkingLevel: xhigh",
+        "---",
+        "# Critic",
+      ].join("\n")
+    );
+    const result = runLint(tempDir);
+    expect(result.exitCode).toBe(1);
+    const output = result.stdout + result.stderr;
+    expect(output).toContain("pi-oven:critic");
+  });
+
+  it("lint does not read user-global config.yml (PROFILE_A baseline only)", () => {
+    // Structural: the lint script only reads the agentsDir passed as argv[2].
+    // It has no reference to ~/.omp/agent/config.yml — verified by absence
+    // of any config.yml read in the script source. This test asserts that
+    // a correct colon-name agent passes regardless of any user config state.
+    writeFileSync(
+      join(tempDir, "pi-oven-critic.md"),
+      [
+        "---",
+        "name: pi-oven:critic",
+        "model:",
+        "  - anthropic/claude-opus-4-8",
+        "  - opencode-zen/claude-opus-4-8",
+        "thinkingLevel: xhigh",
+        "---",
+        "# Critic",
+      ].join("\n")
+    );
+    const result = runLint(tempDir);
+    // Passes without any ~/.omp/agent/config.yml present or consulted.
+    expect(result.exitCode).toBe(0);
+  });
 });

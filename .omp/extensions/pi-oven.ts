@@ -5,8 +5,6 @@ import { fileURLToPath } from "url";
 import * as path from "path";
 import * as os from "os";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { ROLES, EXPECTED_AGENT_COUNT, type Role, type ProfileMap } from "../../scripts/pi-oven-setup/profiles";
-import type { DriftEntry } from "../../scripts/pi-oven-setup/agent-rewriter";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -140,135 +138,6 @@ export async function captureSessionModel(
 }
 
 // ---------------------------------------------------------------------------
-// loadProfileMapFromConfig — reads omp-plugins.lock.json pi-oven settings block
-// ---------------------------------------------------------------------------
-
-/**
- * Reads the omp-plugins.lock.json and reconstructs a partial ProfileMap
- * from the pi-oven settings block.
- *
- * Returns null if:
- * - Lock file absent or corrupt
- * - No settings.pi-oven block
- * - Fewer than EXPECTED_AGENT_COUNT distinct roles present
- */
-export async function loadProfileMapFromConfig(
-  lockPath: string
-): Promise<ProfileMap | null> {
-  let raw: string;
-  try {
-    raw = await fsPromises.readFile(lockPath, "utf-8");
-  } catch {
-    return null;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    typeof (parsed as Record<string, unknown>)["settings"] !== "object"
-  ) {
-    return null;
-  }
-
-  const settings = (parsed as Record<string, unknown>)["settings"] as Record<string, unknown>;
-  const pi-oven = settings["pi-oven"];
-
-  if (typeof pi-oven !== "object" || pi-oven === null) {
-    return null;
-  }
-
-  const piOvenSettings = pi-oven as Record<string, unknown>;
-
-  // Count distinct roles with primary key
-  const rolesFound = new Set<string>();
-  for (const key of Object.keys(piOvenSettings)) {
-    const match = key.match(/^pi-oven\.models\.(.+)\.primary$/);
-    if (match) {
-      rolesFound.add(match[1]);
-    }
-  }
-
-  if (rolesFound.size < EXPECTED_AGENT_COUNT) {
-    return null;
-  }
-
-  // Reconstruct ProfileMap for roles we find
-  const profileMap: Partial<ProfileMap> = {};
-  for (const role of ROLES) {
-    const primary = piOvenSettings[`pi-oven.models.${role}.primary`];
-    const registry_alternate = piOvenSettings[`pi-oven.models.${role}.registry_alternate`];
-    if (typeof primary === "string" && typeof registry_alternate === "string") {
-      profileMap[role] = {
-        primary,
-        registry_alternate,
-        thinkingLevel: "medium", // default; thinkingLevel not used in drift check
-      };
-    }
-  }
-
-  return profileMap as ProfileMap;
-}
-
-// ---------------------------------------------------------------------------
-// detectDriftFromMap — local copy of agent-rewriter detectDrift logic
-// (extension bundle is self-contained; scripts/ paths not resolved by bun build)
-// ---------------------------------------------------------------------------
-
-/**
- * Compares agent files in agentsDir against the provided profileMap.
- * Returns DriftEntry[] for roles where file model arrays differ from config.
- */
-export async function detectDriftFromMap(
-  agentsDir: string,
-  profileMap: Partial<ProfileMap>
-): Promise<DriftEntry[]> {
-  let files: string[];
-  try {
-    files = await fsPromises.readdir(agentsDir);
-  } catch {
-    return [];
-  }
-
-  const piOvenFiles = files.filter((f) => f.startsWith("pi-oven-") && f.endsWith(".md"));
-  const drifted: DriftEntry[] = [];
-
-  for (const filename of piOvenFiles) {
-    const filePath = join(agentsDir, filename);
-    const content = await fsPromises.readFile(filePath, "utf-8");
-    const frontmatter = parseFrontmatter(content);
-    const models = extractModels(frontmatter);
-
-    // Extract role from filename: pi-oven-<role>.md
-    const role = filename.replace(/^pi-oven-/, "").replace(/\.md$/, "") as Role;
-    if (!(ROLES as readonly string[]).includes(role)) continue;
-
-    const config = profileMap[role];
-    if (!config) continue;
-
-    const configModel = [config.primary, config.registry_alternate];
-    const fileMismatch =
-      models[0] !== configModel[0] || models[1] !== configModel[1];
-
-    if (fileMismatch) {
-      drifted.push({
-        role,
-        fileModel: models,
-        configModel,
-      });
-    }
-  }
-
-  return drifted;
-}
-
-// ---------------------------------------------------------------------------
 // Extension entrypoint
 // ---------------------------------------------------------------------------
 
@@ -282,7 +151,6 @@ export default function piOvenPi(pi: ExtensionAPI): void {
 
   validateAgentRegistry(agentsDir, pi.logger);
 
-  const lockPath = path.resolve(os.homedir(), ".omp/plugins/omp-plugins.lock.json");
   const sessionModelPath = path.resolve(os.homedir(), ".omp/plugins/pi-oven-session-model.json");
 
   pi.on("session_start", async (_event, ctx) => {
@@ -300,19 +168,6 @@ export default function piOvenPi(pi: ExtensionAPI): void {
         await captureSessionModel(modelId, sessionModelPath);
       } catch (err) {
         pi.logger.debug(`pi-oven: failed to capture parent session model: ${err}`);
-      }
-    }
-
-    // Drift detection (Spec B §9.6)
-    const profileMap = await loadProfileMapFromConfig(lockPath);
-    if (profileMap) {
-      const drift = await detectDriftFromMap(agentsDir, profileMap);
-      if (drift.length > 0) {
-        const summary = drift.map((d) => d.role).join(", ");
-        pi.logger.warn(
-          `pi-oven: agent files drifted from plugin config (${drift.length} role(s): ${summary}). ` +
-            `Run /pi-oven:setup --reapply to sync.`
-        );
       }
     }
   });

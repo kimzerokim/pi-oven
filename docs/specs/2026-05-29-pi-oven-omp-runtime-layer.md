@@ -1,6 +1,6 @@
 # Spec F: pi-oven omp-native runtime / discipline layer (Plan 3 reconciliation)
 
-**Status**: DRAFT v1 — 2026-05-29 (pending codex cross-vendor review via spec-and-review)
+**Status**: DRAFT v1 — codex review **CONTINUE** (6 BLOCKERs, 2026-05-29). Verdict: `docs/research/codex-reviews/2026-05-29-pi-oven-omp-runtime-layer-critic-review.md`. v2 revision (§8) + §5 user-decisions required before implementation. Central architecture validated sound + honestly scoped by both reviewers.
 **Supersedes/Reconciles**: `docs/specs/2026-05-27-pi-oven-foundation-design.md` §Plan 3 (defined as "Workflow orchestration TS extension: single autonomous loop + multi-agent team mode + gate state machine + per-agent disallowedTools"). This spec corrects what is literally feasible against omp's real ExtensionAPI.
 **Inputs (evidence)**: discovery `wf_74c81aad-c7b` omp-capability survey (harvest `docs/harness/surveys/2026-05-29-discovery-harvest.jsonl`, `.canEnforce`/`.evidence`); `docs/decisions/0001-dogfood-switch.md:79`; `.omp/extensions/pi-oven.ts`.
 **Absorbs (imports)**: omo `rules-injector` + multi-hook coordination; ECC compaction/memory-persistence hooks; pre-execution-gate pattern (discovery Track 2 P0).
@@ -24,7 +24,7 @@ Reduce the autonomous workflow's reliance on each (heterogeneous, non-Anthropic)
 | Block "until verifier dispatched" | ❌ `agent_start/end`,`turn_*` observe-only | `shared-events.ts:174-197` (no result type). Workaround: `sendMessage(deliverAs:nextTurn, triggerTurn:true)` |
 | per-call model/thinkingLevel override | ❌ no dispatch hook | `task/index.ts:647-658` static precedence (`agentModelOverrides>frontmatter>parent`); confirms ADR 0001:79. `setModel/setThinkingLevel` session-global only |
 | subagent-dispatch interception | ⚠️ observe+block only, cannot rewrite | `task` tool fires `tool_call` (can `{block}`); `emitToolCall` (`runner.ts:614-647`) honors only `block`, cannot mutate args/model |
-| extension handler timeout | 30s; thrown/timeout `tool_call` AUTO-BLOCKS | `runner.ts:63` `EXTENSION_HANDLER_TIMEOUT_MS` |
+| `tool_call` handler timeout | **NONE** — `emitToolCall` (`extensions/runner.ts:614-647`) awaits the handler directly, the ONLY emit path not wrapped by `#runHandlerWithTimeout`. A *thrown* error fail-closes (`{block:true}`, `runner.ts:641`); a *hung* handler deadlocks the agent forever. (30s `EXTENSION_HANDLER_TIMEOUT_MS` `extensions/runner.ts:63` applies to session/turn/agent/context emits only.) → Layer 1 MUST self-impose an internal deadline. [corrected v1→v2, B1] |
 
 ---
 
@@ -79,3 +79,19 @@ Native allowlist `tools:` in each agent .md (`executor.ts:621-633`, enforced at 
 - Replacing omp's built-in `task` tool wholesale.
 - omp upstream changes (runtime works on stock omp).
 - PROFILE_B (deferred separately).
+
+---
+
+## §8 v2 work list (from codex+critic review — gate CONTINUE)
+
+Full verdict: `docs/research/codex-reviews/2026-05-29-pi-oven-omp-runtime-layer-critic-review.md`. Architecture is sound (pushbacks P1/P4/P5 — keep the thesis + the "impossible" honesty + Layer-4-SOFT). Fix before implementation:
+
+1. **B1** (partly done above) — §3 Layer 1 caveat + AC2: `tool_call` is un-timed; Layer 1 self-imposes an internal `Promise.race` deadline (pick a number, e.g. 200ms–2s) and throws-to-block on overrun. AC2 asserts the self-deadline, not a platform 30s.
+2. **B2** — per-tool failure policy for corrupt/missing/partial `autonomous.json` (commit/push = fail-closed + env escape hatch); atomic write (temp+rename); ACs for each failure case.
+3. **B3** — canonical git-command normalization (tokenize; resolve `git -C`/subshell/`&&`) OR document best-effort + residual bypass; adversarial ACs.
+4. **B4** — atomic/single-writer FSM updates + stale-cache invalidation; parallel + nested-subagent `tool_call` ACs.
+5. **B5** — set v1 scope = **minimal (commit/push/forbidden only)**; move task-phase-gating to a labeled Phase 2; note native static primitives (`#blockedAgent`/`disabledAgents`) are not phase-aware.
+6. **B6** — AC2 numeric budget; AC3 concrete compaction fixture (inject → `session.compacting` `preserveData` → `before_agent_start` `branchEntries` re-inject w/ named dedup key).
+7. NITs N1–N7 (line-ref disambiguation, integration AC, push-consent schema, Layer-4-is-extension-not-hook, baseline = 1 hook + 1 load-time call).
+
+**Implementation gate**: this spec is NOT ready to build until v2 lands AND the user resolves §5 (recommend: defer Phase-2 dispatch tool; minimal gate scope; augment-not-replace `/pi-oven:autonomous`).

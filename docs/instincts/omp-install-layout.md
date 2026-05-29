@@ -40,7 +40,7 @@ omp plugin marketplace + install 후 다음 layout 을 **실제 사실** 로 인
 }
 ```
 
-Plugin 자원 (skills/, agents/, commands/, .omp/, hooks/, rules/, evals/, .claude-plugin/, scripts/, README.md, LICENSE, models.yml, package.json, tsconfig.json) 가 모두 `cache/plugins/<marketplace>___<plugin>___<version>/` 에 git-subdir source 의 path 따라 복사됨.
+Plugin 자원 (skills/, agents/, commands/, .omp/, hooks/, rules/, evals/, .claude-plugin/, scripts/, README.md, LICENSE, package.json, tsconfig.json) 가 모두 `cache/plugins/<marketplace>___<plugin>___<version>/` 에 git-subdir source 의 path 따라 복사됨.
 
 ## Why this matters
 

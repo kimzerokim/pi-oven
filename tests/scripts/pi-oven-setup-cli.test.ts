@@ -210,23 +210,30 @@ describe("pi-oven-setup CLI dispatcher", () => {
   });
 
   it("standalone --override does not modify tracked baseline files", async () => {
+    const repoRoot = join(import.meta.dir, "../..");
+
+    // Capture git status BEFORE the override runs (delta baseline)
+    const gitBefore = Bun.spawnSync(
+      ["git", "status", "--porcelain", "--", "agents/", "scripts/"],
+      { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] }
+    );
+    const statusBefore = gitBefore.stdout?.toString() ?? "";
+
     const { exitCode } = await runCLI(
       ["--override", "critic=anthropic/claude-opus-4-8"],
       { PI_OVEN_MOCK_SPAWN: "1" }
     );
     expect(exitCode).toBe(0);
 
-    // Assert no new changes to tracked agents/ or scripts/ in the working tree
-    const gitProc = Bun.spawnSync(
-      ["git", "status", "--short", "--", "agents/", "scripts/"],
-      { cwd: join(import.meta.dir, "../.."), stdio: ["ignore", "pipe", "pipe"] }
+    // Capture git status AFTER — the override must introduce no new change
+    const gitAfter = Bun.spawnSync(
+      ["git", "status", "--porcelain", "--", "agents/", "scripts/"],
+      { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] }
     );
-    const gitOut = gitProc.stdout?.toString() ?? "";
-    // Only allow modifications to pi-oven-setup.ts and pi-oven-setup/ (wave 2a + our changes)
-    // No NEW untracked agent files
-    const lines = gitOut.split("\n").filter((l) => l.trim() !== "");
-    const agentLines = lines.filter((l) => l.includes("agents/"));
-    expect(agentLines.length).toBe(0);
+    const statusAfter = gitAfter.stdout?.toString() ?? "";
+
+    // Delta must be zero: whatever was dirty before is still dirty (and nothing more)
+    expect(statusAfter).toBe(statusBefore);
   });
 
   it("--override + --reset is mutually exclusive (exit 1)", async () => {

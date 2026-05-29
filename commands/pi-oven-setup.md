@@ -1,7 +1,7 @@
 ---
 name: pi-oven-setup
 description: Configure pi-oven agent model routing — Profile A (release default) or Profile B (Anthropic opt-in)
-argument-hint: [--status | --reset | --import <file> | --reapply | --apply --profile A|B] [--validate smoke|full|none] [--override <role>=<model>]
+argument-hint: [--status | --reset | --import <file> | --apply --profile A|B] [--validate smoke|full|none] [--override <role>=<model>]
 ---
 
 # /pi-oven:setup
@@ -15,7 +15,6 @@ Parse the user's intent from their initial request:
 - If they say "status" or "show config" → run `bun scripts/pi-oven-setup.ts --status` and relay the output.
 - If they say "reset" or "clear" → confirm with the user first, then run `bun scripts/pi-oven-setup.ts --reset`.
 - If they say "import" with a file path → run `bun scripts/pi-oven-setup.ts --import <file>`.
-- If they say "reapply" or mention a recent `omp plugin upgrade` → run `bun scripts/pi-oven-setup.ts --reapply`.
 - Otherwise (first-time setup or profile change) → walk through the apply flow below.
 
 ## Apply flow (first-time or profile change)
@@ -131,28 +130,30 @@ Show a summary in chat:
 
 ```
 Summary:
-  Profile: <A|B|custom>
+  Profile: <A|B>
   Roles with custom override: <N>
   Provider: <anthropic enabled | anthropic not used>
 
-Ready to persist to omp plugin config and rewrite agent files. Proceed? [Y/n]:
+Ready to persist model overrides to config.yml task.agentModelOverrides. Proceed? [Y/n]:
 ```
 
 On confirmation, dispatch via Bash:
 
 ```
-bun scripts/pi-oven-setup.ts --profile <A|B|custom> --validate=smoke
+bun scripts/pi-oven-setup.ts --profile <A|B> --validate=smoke
 ```
 
 If there are per-role overrides, add one `--override <role>=<model>` flag per override:
 
 ```
-bun scripts/pi-oven-setup.ts --profile custom --override executor=anthropic/claude-opus-4-7 --validate=smoke
+bun scripts/pi-oven-setup.ts --profile A --override executor=anthropic/claude-opus-4-8 --validate=smoke
 ```
 
 Do not add `--validate=none` unless the user explicitly asked to skip validation.
 
-The script handles persist (plugin config write + agent file in-place rewrite) and smoke validation in a single batch call. Do not invoke it more than once for the same flow.
+The script writes model overrides to `~/.omp/agent/config.yml` (`task.agentModelOverrides`, keyed by colon name `pi-oven:<role>`). This is user-global and machine-local — it is NOT committed to the repo. The wizard MUST NOT modify `agents/pi-oven-*.md` files; those are committed PROFILE_A baseline artifacts and are read-only from the wizard's perspective.
+
+The script handles persist (config.yml write) and smoke validation in a single batch call. Do not invoke it more than once for the same flow.
 
 ### Step 6 — Report results
 
@@ -179,15 +180,13 @@ Auto-retry risks repeated billing charges for failing smoke pings.
 |---|---|
 | `--profile A` | Apply Profile A (release default). |
 | `--profile B` | Apply Profile B (Anthropic opt-in). Requires anthropic auth detected. |
-| `--profile custom` | Apply with per-role overrides. Use with `--override` flags. |
-| `--override <role>=<model>` | Override a specific role's primary model. Repeatable. |
+| `--override <role>=<model>` | Override a specific role's model in config.yml task.agentModelOverrides. Repeatable. |
 | `--validate=smoke` | (Default) Ping 7 MUST-tier roles after persist. |
 | `--validate=full` | Ping all 23 roles. |
 | `--validate=none` | Skip validation. |
-| `--status` | Show current profile and resolved model per role. |
-| `--reset` | Delete all `pi-oven.*` plugin config keys and restore Profile A agent files. |
+| `--status` | Show current profile and resolved model per role (reads config.yml overrides + agent frontmatter). |
+| `--reset` | Remove all `pi-oven:*` keys from config.yml task.agentModelOverrides. Does not touch agent files. |
 | `--import <file>` | Import JSON config file (schema: §7.1). |
-| `--reapply` | Rewrite agent files to match persisted plugin config (use after `omp plugin upgrade`). |
 
 The 7 MUST-tier roles for smoke validation are: executor, explorer, verifier, critic, planner, code-reviewer, debugger.
 
@@ -203,8 +202,4 @@ All `omp plugin config` operations use the plugin name `pi-oven` (bare). Do NOT 
 
 ## Known limitations (surface if relevant)
 
-- **Install cache**: Profile B activation requires the install cache to be populated. If the script reports "agent files not in install cache", run: `omp plugin install pi-oven@pi-oven --force`
-- **Plugin upgrade drift**: After every `omp plugin upgrade pi-oven@pi-oven`, agent files reset to repo defaults. The pi-oven extension emits a drift warning at the next session start. Re-run `/pi-oven:setup --reapply` to re-sync.
-- **Dev mode**: When running from a working repo with `omp --plugin-dir`, the script rewrites `agents/pi-oven-*.md` in the repo directory directly. No cache rewrite is needed in dev mode.
-- **anthropic/claude-sonnet-4-7 not yet available**: As of 2026-05-28, `anthropic/claude-sonnet-4-7` is absent from `omp --list-models`. Profile B uses `anthropic/claude-sonnet-4-6` (1M context) for all sonnet-tier roles until 4-7 ships.
 - **Parent session fallback hole**: When a pi-oven subagent's primary model is unauthed, omp falls back to the parent session model (not the next array entry). Profile B is safe only when Anthropic auth is active and stable. This is an omp internal behavior that pi-oven cannot override (Spec A §6.3).

@@ -66,7 +66,7 @@ To request this mode, the caller writes `MODE: practical-reviewer` in the dispat
 
 The `spec-and-review` skill may dispatch critic with multiple models in sequence for cross-vendor disagreement:
 
-1. Stage 1: dispatch pi-oven:critic with `--model opencode-zen/claude-opus-4-7` (default primary).
+1. Stage 1: dispatch pi-oven:critic with `--model opencode-zen/claude-opus-4-8` (default primary).
 2. Stage 2: dispatch pi-oven:critic with `--model openai-codex/gpt-5.4` (fan-out alternate).
 3. Stage 3: orchestrator synthesizes both verdicts. Disagreement = highest-confidence wins; consensus = stronger signal.
 

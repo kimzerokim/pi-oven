@@ -196,7 +196,7 @@ Optimized for users with **OpenCode Zen + OpenAI Codex subscriptions** — no An
 
 - Executor: `openai-codex/gpt-5.3-codex` (alternate: `opencode-zen/gpt-5.3-codex`)
 - Explorer: `opencode-zen/glm-5` (1M context for large repo scans)
-- Reasoning-heavy (critic, security-reviewer, architect, ...): `opencode-zen/claude-opus-4-7`
+- Reasoning-heavy (critic, security-reviewer, architect, ...): `opencode-zen/claude-opus-4-8`
 - Mid-tier (planner, code-reviewer, debugger, ...): `opencode-zen/claude-sonnet-4-6`
 - Cheap fan-out (writer, git-master): `opencode-zen/claude-haiku-4-5`
 

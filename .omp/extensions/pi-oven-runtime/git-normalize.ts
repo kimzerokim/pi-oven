@@ -32,6 +32,19 @@ export interface NormalizedCommand {
   pushTarget?: string;
 }
 
+/**
+ * Concrete filesystem roots the forbidden `rm -rf` matcher resolves against.
+ * Passed in by the caller (gate-handler.ts, wired from `process.cwd()` /
+ * `os.homedir()` in pi-oven.ts) so the matcher stays a PURE, testable function —
+ * it never reads process state itself.
+ */
+export interface NormalizeRoots {
+  /** Absolute repo-root path (the workspace cwd). */
+  repoRoot?: string;
+  /** Absolute expanded home directory. */
+  homeDir?: string;
+}
+
 const GATED_VERBS: ReadonlySet<string> = new Set(["commit", "push"]);
 
 /** Tokenize a shell string honoring single/double quotes. Returns raw tokens. */
@@ -186,8 +199,70 @@ function detectGitVerb(tokens: string[]): { verb: GitVerb; rest: string[] } | nu
 
 const HOME_ROOTS = ["$HOME", "~", "${HOME}"];
 
+/**
+ * Normalize a POSIX-style absolute path: collapse `.`/`..` segments and strip a
+ * trailing slash. A pure string operation (no FS access) so the matcher stays
+ * testable. Returns "/" for the filesystem root.
+ */
+function normalizeAbsPath(p: string): string {
+  const segments = p.split("/");
+  const out: string[] = [];
+  for (const seg of segments) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      out.pop();
+      continue;
+    }
+    out.push(seg);
+  }
+  return "/" + out.join("/");
+}
+
+/**
+ * Resolve an `rm` target string to an absolute, normalized path against the
+ * supplied roots. Handles a leading `~`/`$HOME`/`${HOME}` (expanded to homeDir)
+ * and relative paths (resolved against repoRoot). Returns null when the target
+ * cannot be resolved to an absolute path (e.g. relative path with no repoRoot).
+ */
+function resolveRmTarget(target: string, roots: NormalizeRoots): string | null {
+  // Symbolic home expansion.
+  if (roots.homeDir) {
+    if (target === "~" || target === "$HOME" || target === "${HOME}") {
+      return normalizeAbsPath(roots.homeDir);
+    }
+    if (target.startsWith("~/")) {
+      return normalizeAbsPath(roots.homeDir + "/" + target.slice(2));
+    }
+    if (target.startsWith("$HOME/")) {
+      return normalizeAbsPath(roots.homeDir + "/" + target.slice("$HOME/".length));
+    }
+    if (target.startsWith("${HOME}/")) {
+      return normalizeAbsPath(roots.homeDir + "/" + target.slice("${HOME}/".length));
+    }
+  }
+  if (target.startsWith("/")) {
+    return normalizeAbsPath(target);
+  }
+  // Relative path — resolve against the repo root.
+  if (roots.repoRoot) {
+    return normalizeAbsPath(roots.repoRoot + "/" + target);
+  }
+  return null;
+}
+
+/** True when `ancestor` is the same as, or a parent directory of, `descendant`. */
+function isSameOrAncestor(ancestor: string, descendant: string): boolean {
+  if (ancestor === descendant) return true;
+  const base = ancestor === "/" ? "/" : ancestor + "/";
+  return descendant.startsWith(base);
+}
+
 /** Detect a destructive `rm -rf` of a repo/HOME/system root. */
-function detectForbiddenRm(tokens: string[], segment: string): ForbiddenMatch | null {
+function detectForbiddenRm(
+  tokens: string[],
+  segment: string,
+  roots: NormalizeRoots = {}
+): ForbiddenMatch | null {
   const prog = tokens[0]?.split("/").pop();
   if (prog !== "rm") return null;
   let recursive = false;
@@ -219,6 +294,27 @@ function detectForbiddenRm(tokens: string[], segment: string): ForbiddenMatch | 
     if (target.startsWith("~/") || target.startsWith("$HOME") || target.startsWith("${HOME}")) {
       return { rule: "rm-rf-home", segment };
     }
+    // Resolved-target comparison against the concrete roots (repo / HOME). A
+    // target that resolves to (or is an ancestor of) the repo root or the
+    // expanded HOME dir is forbidden. This catches an absolute repo path, a
+    // relative `.` from the repo root, an expanded `~`/`$HOME`, etc. Benign
+    // cleanup of a SUBDIR (e.g. `rm -rf ./build`) resolves strictly BELOW a
+    // root and is intentionally allowed.
+    const resolved = resolveRmTarget(target, roots);
+    if (resolved) {
+      if (roots.repoRoot) {
+        const repo = normalizeAbsPath(roots.repoRoot);
+        if (isSameOrAncestor(resolved, repo)) {
+          return { rule: "rm-rf-repo-root", segment };
+        }
+      }
+      if (roots.homeDir) {
+        const home = normalizeAbsPath(roots.homeDir);
+        if (isSameOrAncestor(resolved, home)) {
+          return { rule: "rm-rf-home", segment };
+        }
+      }
+    }
   }
   // recursive+force with no positional target after flags is suspicious too,
   // but we only flag explicit dangerous roots to avoid false positives.
@@ -238,7 +334,7 @@ function detectForbiddenProdAccess(tokens: string[], segment: string): Forbidden
   if (sub === "sts" && verb === "assume-role") {
     return { rule: "prod-access-sts", segment };
   }
-  if (sub === " secretsmanager".trim() && (verb === "get-secret-value")) {
+  if (sub === "secretsmanager" && verb === "get-secret-value") {
     return { rule: "prod-access-secrets", segment };
   }
   return null;
@@ -249,8 +345,13 @@ function detectForbiddenProdAccess(tokens: string[], segment: string): Forbidden
 /**
  * Normalize a Bash command string into detected gated git verbs + forbidden
  * matches. One level of interpreter unwrapping is applied per sub-command.
+ *
+ * `roots` (optional) supplies the concrete repo-root / HOME-dir paths the
+ * forbidden `rm -rf` matcher resolves targets against. The caller wires these
+ * from `process.cwd()` / `os.homedir()`; keeping them as parameters (not read
+ * inside) preserves this function's purity and testability.
  */
-export function normalizeCommand(command: string): NormalizedCommand {
+export function normalizeCommand(command: string, roots: NormalizeRoots = {}): NormalizedCommand {
   const gitVerbs: GitVerb[] = [];
   const forbiddenMatches: ForbiddenMatch[] = [];
   let pushTarget: string | undefined;
@@ -281,7 +382,7 @@ export function normalizeCommand(command: string): NormalizedCommand {
       }
     }
 
-    const rm = detectForbiddenRm(tokens, seg);
+    const rm = detectForbiddenRm(tokens, seg, roots);
     if (rm) forbiddenMatches.push(rm);
     const prod = detectForbiddenProdAccess(tokens, seg);
     if (prod) forbiddenMatches.push(prod);

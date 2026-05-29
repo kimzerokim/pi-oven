@@ -163,7 +163,8 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   // The FSM state lives at <repo>/.pi-oven/state/. The repo root is the process
   // cwd at extension load (omp runs the extension from the workspace root).
   // -------------------------------------------------------------------------
-  const stateRoot = path.resolve(process.cwd(), ".pi-oven");
+  const repoRoot = process.cwd();
+  const stateRoot = path.resolve(repoRoot, ".pi-oven");
   const store = new GateStateStore(stateRoot);
   const injector = new RulesInjector();
 
@@ -177,6 +178,11 @@ export default function piOvenPi(pi: ExtensionAPI): void {
     logger: pi.logger,
     getEnv: () => process.env,
     isParentSession,
+    // Concrete roots for the always-on forbidden `rm -rf` floor. Supplied by
+    // the caller (not read inside the pure normalizer) so the matcher resolves
+    // an rm target against the real repo root + HOME and flags a destructive
+    // wipe of either, while a subdir cleanup stays allowed.
+    roots: { repoRoot, homeDir: os.homedir() },
   });
 
   // Layer 1 — the hard tool-boundary gate. The handler self-deadlines (1500 ms)

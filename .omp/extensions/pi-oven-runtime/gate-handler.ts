@@ -18,7 +18,7 @@
 //   - The forbidden floor is enforced regardless of FSM/bypass.
 // ---------------------------------------------------------------------------
 
-import { normalizeCommand } from "./git-normalize";
+import { normalizeCommand, type NormalizeRoots } from "./git-normalize";
 import { decideGate, type GateEnv, type FsmStateView as GateFsmView } from "./gate";
 import type { GateStateStore } from "./gate-state";
 
@@ -36,6 +36,13 @@ export interface GateHandlerDeps {
   getEnv: () => Record<string, string | undefined>;
   /** Parent session may mutate the FSM; subagents are read-only (B4). */
   isParentSession: boolean;
+  /**
+   * Concrete repo-root / HOME-dir paths the forbidden `rm -rf` matcher resolves
+   * against. Wired from `process.cwd()` / `os.homedir()` in pi-oven.ts. Optional so
+   * tests can supply synthetic roots; absent → only the symbolic/system-root
+   * `rm -rf` patterns are matched.
+   */
+  roots?: NormalizeRoots;
   /** Self-deadline in ms (default 1500). Lower in tests for fault injection. */
   deadlineMs?: number;
 }
@@ -94,7 +101,7 @@ async function decideForCommand(
   deps: GateHandlerDeps,
   command: string
 ): Promise<ToolCallResultLike | void> {
-  const normalized = normalizeCommand(command);
+  const normalized = normalizeCommand(command, deps.roots);
 
   // Fast exit for the overwhelmingly-common case: not a gated verb and not a
   // forbidden command. Avoids any FS read on the hot path (keeps p95 low).

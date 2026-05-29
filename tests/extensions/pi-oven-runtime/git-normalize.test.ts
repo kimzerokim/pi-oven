@@ -116,7 +116,9 @@ describe("normalizeCommand — git verb detection (AC7)", () => {
   // KNOWN-UNCOVERED residual bypass surface (Spec §3 Layer 1 B3 step 4):
   //   heredocs feeding git via stdin, shell aliases/functions resolved at rc,
   //   $(...) command substitution producing the verb, eval, write-then-exec a
-  //   script file, base64/printf-decoded commands, GIT_* env porcelain tricks.
+  //   script file, base64/printf-decoded commands, GIT_* env porcelain tricks,
+  //   and a `sudo` prefix (e.g. `sudo git commit`) — sudo is NOT stripped, so
+  //   the verb behind it is not detected by design (best-effort, not a sandbox).
   // These are deliberately NOT asserted-blocked. Layer 1 is best-effort, not a
   // sandbox. The following demonstrate the residual (verb NOT detected by design):
   it("KNOWN-UNCOVERED: does not unwrap nested second-level bash -c", () => {
@@ -181,6 +183,41 @@ describe("normalizeCommand — forbidden set detection (Spec §3 Layer 1)", () =
 
   it("does NOT flag a benign aws s3 ls", () => {
     const n = normalizeCommand("aws s3 ls");
+    expect(n.forbiddenMatches).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rm -rf of the CONCRETE repo-root / expanded-HOME (Spec §3 forbidden-set)
+//
+// The matcher receives the roots as parameters (gate-handler wires them from
+// process.cwd() / os.homedir()) so it stays pure + testable. A target that
+// resolves to (or is an ancestor of) the repo root or HOME is forbidden; a
+// strict SUBDIR (normal cleanup) is intentionally allowed.
+// ---------------------------------------------------------------------------
+
+describe("normalizeCommand — rm -rf of concrete repo/HOME roots (Spec §3)", () => {
+  const repoRoot = "/Users/dev/work/pi-oven";
+  const homeDir = "/Users/dev";
+  const roots = { repoRoot, homeDir };
+
+  it("flags `rm -rf <repo-root-abs>` (absolute repo root path)", () => {
+    const n = normalizeCommand(`rm -rf ${repoRoot}`, roots);
+    expect(n.forbiddenMatches.length).toBeGreaterThan(0);
+  });
+
+  it("flags a relative `rm -rf .` issued from the repo root", () => {
+    const n = normalizeCommand("rm -rf .", roots);
+    expect(n.forbiddenMatches.length).toBeGreaterThan(0);
+  });
+
+  it("flags `rm -rf <expanded-home>` (absolute home path)", () => {
+    const n = normalizeCommand(`rm -rf ${homeDir}`, roots);
+    expect(n.forbiddenMatches.length).toBeGreaterThan(0);
+  });
+
+  it("does NOT flag a benign `rm -rf ./build` subdir cleanup (no false positive)", () => {
+    const n = normalizeCommand("rm -rf ./build", roots);
     expect(n.forbiddenMatches).toEqual([]);
   });
 });

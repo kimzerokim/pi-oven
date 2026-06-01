@@ -1,0 +1,17 @@
+name: html-research-orchestrator-smoke-001
+skill: html-research-orchestrator
+tag: smoke
+input:
+  - turn: 1
+    user: "Create a citation-backed HTML research report for payment tokenization options and put the artifact in temp dir only."
+expected:
+  - skill_triggered: true
+    agent_response_must_contain:
+      [
+        "citation",
+        "temp",
+        "Executive Summary",
+        "Recommendations",
+        "Generated HTML remains outside repo and is not committed."
+      ]
+    tool_calls_required: ["Task|task"]

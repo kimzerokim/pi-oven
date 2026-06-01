@@ -2,7 +2,7 @@
 /**
  * pi-oven-doctor.ts — Install-health diagnostic for the pi-oven omp plugin.
  *
- * Runs a 9-check matrix and prints a PASS/WARN/FAIL report. Read-only:
+ * Runs a 10-check matrix and prints a PASS/WARN/FAIL report. Read-only:
  * the only filesystem mutation is a create+write probe of the state dir,
  * which is removed immediately after (check #8).
  *
@@ -74,6 +74,11 @@ export interface EvalRunnerFact {
   smokeScenarioCount: number;
 }
 
+export interface OpsConnectorFact {
+  missingSkills: string[];
+  credentialFile: string | null;
+}
+
 export interface DoctorFacts {
   omp: BinaryFact;
   bun: BinaryFact;
@@ -84,6 +89,7 @@ export interface DoctorFacts {
   agents: AgentsFact;
   stateDir: StateDirFact;
   evalRunner: EvalRunnerFact;
+  opsConnector: OpsConnectorFact;
 }
 
 export const MIN_OMP_VERSION = "15.0.0";
@@ -278,6 +284,33 @@ export function evalEvalRunner(fact: EvalRunnerFact): CheckResult {
   };
 }
 
+/** (10) UC5 ops connector: aws/bitbucket/cloudflare skills + external credentials path. */
+export function evalOpsConnector(fact: OpsConnectorFact): CheckResult {
+  const name = "uc5 ops connector";
+  if (fact.missingSkills.length > 0) {
+    return {
+      name,
+      status: "FAIL",
+      detail: `Missing required skill files: ${fact.missingSkills.join(", ")}.`,
+      fix: "Restore skills/aws, skills/bitbucket-pipeline, and skills/cloudflare and re-run doctor.",
+    };
+  }
+  if (!fact.credentialFile) {
+    return {
+      name,
+      status: "WARN",
+      detail:
+        "Connector skills are installed but no external credential file was found (.external-credentials, .external_certificate, .external_cerficate).",
+      fix: "Create one credential file at repo root and populate [aws], [bitbucket], [cloudflare] sections.",
+    };
+  }
+  return {
+    name,
+    status: "PASS",
+    detail: `Connector skills installed; credential source detected at ${fact.credentialFile}.`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Rollup + exit-code logic (pure)
 // ---------------------------------------------------------------------------
@@ -442,9 +475,46 @@ async function probeEvalRunner(root: string): Promise<EvalRunnerFact> {
   return { runnerPresent, smokeScenarioCount };
 }
 
+const CONNECTOR_SKILLS = [
+  "skills/aws/SKILL.md",
+  "skills/bitbucket-pipeline/SKILL.md",
+  "skills/cloudflare/SKILL.md",
+] as const;
+
+const CREDENTIAL_CANDIDATES = [
+  ".external-credentials",
+  ".external_certificate",
+  ".external_cerficate",
+] as const;
+
+async function probeOpsConnector(root: string): Promise<OpsConnectorFact> {
+  const missingSkills: string[] = [];
+  for (const rel of CONNECTOR_SKILLS) {
+    const exists = await fs
+      .access(path.join(root, rel))
+      .then(() => true)
+      .catch(() => false);
+    if (!exists) missingSkills.push(rel);
+  }
+
+  let credentialFile: string | null = null;
+  for (const rel of CREDENTIAL_CANDIDATES) {
+    const exists = await fs
+      .access(path.join(root, rel))
+      .then(() => true)
+      .catch(() => false);
+    if (exists) {
+      credentialFile = rel;
+      break;
+    }
+  }
+
+  return { missingSkills, credentialFile };
+}
+
 /** Gather all real-world facts. Isolated so unit tests inject facts directly. */
 export async function gather(root: string): Promise<DoctorFacts> {
-  const [mcp, skillMdCount, pluginSkillsCount, agentCount, stateDir, evalRunner, auth] =
+  const [mcp, skillMdCount, pluginSkillsCount, agentCount, stateDir, evalRunner, opsConnector, auth] =
     await Promise.all([
       probeMcp(root),
       countSkillMd(root),
@@ -452,6 +522,7 @@ export async function gather(root: string): Promise<DoctorFacts> {
       countAgents(root),
       probeStateDir(root),
       probeEvalRunner(root),
+      probeOpsConnector(root),
       detectAuth().catch(
         () => ({ opencode_zen: false, openai_codex: false, anthropic: false }) as AuthStatus
       ),
@@ -471,11 +542,12 @@ export async function gather(root: string): Promise<DoctorFacts> {
     },
     stateDir,
     evalRunner,
+    opsConnector,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Runner: gather facts → run 9 evaluators → render report
+// Runner: gather facts → run 10 evaluators → render report
 // ---------------------------------------------------------------------------
 
 export function runChecks(facts: DoctorFacts): CheckResult[] {
@@ -489,6 +561,7 @@ export function runChecks(facts: DoctorFacts): CheckResult[] {
     evalAgents(facts.agents),
     evalStateDir(facts.stateDir),
     evalEvalRunner(facts.evalRunner),
+    evalOpsConnector(facts.opsConnector),
   ];
 }
 

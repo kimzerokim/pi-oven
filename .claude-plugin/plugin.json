@@ -19,7 +19,10 @@
     "./skills/systematic-debugging/SKILL.md",
     "./skills/improve-codebase-architecture/SKILL.md",
     "./skills/receiving-code-review/SKILL.md",
-    "./skills/git-workflow/SKILL.md"
+    "./skills/git-workflow/SKILL.md",
+    "./skills/aws/SKILL.md",
+    "./skills/bitbucket-pipeline/SKILL.md",
+    "./skills/cloudflare/SKILL.md"
   ],
   "commands": [
     "./commands/pi-oven-setup.md",

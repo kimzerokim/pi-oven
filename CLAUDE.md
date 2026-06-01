@@ -15,7 +15,7 @@
 | Dir | What | SoT? |
 |---|---|---|
 | `agents/pi-oven-*.md` | 22 subagent definitions. Frontmatter `name: pi-oven:<role>` (colon), `model:` array, `thinkingLevel`, body = system prompt. | body hand-authored; `model`/`thinkingLevel` derived from profiles.ts |
-| `skills/<name>/SKILL.md` | 17 skills (+ `references/`, eval scenarios). Bodies **English-only**. | hand-authored |
+| `skills/<name>/SKILL.md` | 20 skills (+ `references/`, eval scenarios). Bodies **English-only**. | hand-authored |
 | `commands/pi-oven-*.md` | `/pi-oven:setup`, `/pi-oven:doctor`, `/pi-oven:autonomous` (LLM prompt templates). | hand-authored |
 | `scripts/pi-oven-setup/` | Setup-wizard CLI modules (TS, bun). | code |
 | `scripts/lint-{agents,skills}.ts` | CI hard lints. | code |
@@ -26,7 +26,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 336 pass currently
+bun test             # 351 pass currently
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -65,16 +65,18 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 - Smallest viable diff; match existing patterns; no external dispatch (`oh-my-claudecode:*` / `omo:*` → 401, they resolve as model strings).
 - Big structural change / new spec → `spec-and-review` (codex cross-vendor review loop) before code. Touching code → TDD-strict + `pre-commit-gate`.
 
-## Status (current — 2026-05-29)
+## Status (current — 2026-06-01)
 
-**v0.1.0 released to local `main`** (FF merge of `feature/standard-expansion`, tag `v0.1.0`). **Not pushed** — `origin/main` still ships zero agents; push deferred pending explicit consent. Version SoT unified at **0.1.0** across `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`.
+**v0.1.0 in progress on `feature/simplify`.** Adds UC5 ops connectors (`aws` / `bitbucket-pipeline` / `cloudflare` skills — read-only inspection with a code-first mutation boundary; credentials via gitignored `.external-credentials`, schema in `.external-credentials.example`), the `pi-oven_ask` advisor path, relentless brainstorming convergence, and an off-spine prune of dead/superseded artifacts. **Not pushed** — `origin/main` still ships zero agents; push deferred pending explicit consent. Version SoT unified at **0.1.0** across `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`.
+
+Prior baseline — **v0.1.0** (FF merge of `feature/standard-expansion`, tag `v0.1.0`, local only).
 
 Done & local: Plan 0 (v0.1.0) · Plan 1 (v0.1.0, 12 skills) · Spec A (23 agents) · Spec B (setup wizard) · Spec C (15 skills) · Spec D (skill↔agent dispatch, both cycles applied) · **Spec E = FROZEN v3 + implemented** (Option C settings-override; 4 commits `72b7b3a`→`05a3662`; dead-spine grep clean) · **v0.1.0 release (local)**. Plan 2 (33-skill expansion) = **SUPERSEDED**.
 
 **Remaining work (verified):**
 1. **Push to origin** (gated on user) — v0.1.0 is merged to local `main` + tagged locally; `git push origin main --tags` needs explicit consent (still nothing on remote). Release cutover + version-SoT reconciliation = **DONE** (all three manifests at 0.1.0).
 2. **Plan 3 omp-native runtime — IMPLEMENTED** (commits f61e091/cc71d03: gate FSM + rules-injector + hardened forbidden-floor). Formal ADR for non-goal closure not yet written.
-3. **Plan 4 remainder** — `/pi-oven:doctor` is **fully implemented** (520-line script, 9-check health matrix); real-eval pipeline gated on LLM keys (`ci.yml` comment); key onboarding pending.
+3. **Plan 4 remainder** — `/pi-oven:doctor` is **fully implemented** (10-check health matrix incl. UC5 ops connector readiness); real-eval pipeline gated on LLM keys (`ci.yml` comment); key onboarding pending.
 4. **PROFILE_B redefinition** — deferred (`skill-agent-dispatch.md:267`), user decision.
 
 ## docs/ map

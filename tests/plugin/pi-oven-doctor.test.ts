@@ -9,6 +9,7 @@ import {
   evalAgents,
   evalStateDir,
   evalEvalRunner,
+  evalOpsConnector,
   rollup,
   exitCodeFor,
   type CheckResult,
@@ -126,15 +127,15 @@ describe("evalMcp", () => {
 
 describe("evalSkills", () => {
   it("PASS when SKILL.md count equals plugin.json skills[] length", () => {
-    const r = evalSkills({ skillMdCount: 17, pluginSkillsCount: 17 });
+    const r = evalSkills({ skillMdCount: 20, pluginSkillsCount: 20 });
     expect(r.status).toBe("PASS");
-    expect(r.detail).toContain("17");
+    expect(r.detail).toContain("20");
   });
 
   it("FAIL when counts mismatch", () => {
-    const r = evalSkills({ skillMdCount: 16, pluginSkillsCount: 17 });
+    const r = evalSkills({ skillMdCount: 19, pluginSkillsCount: 20 });
     expect(r.status).toBe("FAIL");
-    expect(r.detail).toMatch(/16.*17|17.*16/);
+    expect(r.detail).toMatch(/19.*20|20.*19/);
     expect(r.fix).toBeDefined();
   });
 });
@@ -204,6 +205,30 @@ describe("evalEvalRunner", () => {
 });
 
 // ---------------------------------------------------------------------------
+// (10) UC5 ops connector readiness
+// ---------------------------------------------------------------------------
+
+describe("evalOpsConnector", () => {
+  it("PASS when connector skills exist and credential source exists", () => {
+    const r = evalOpsConnector({ missingSkills: [], credentialFile: ".external-credentials" });
+    expect(r.status).toBe("PASS");
+    expect(r.detail).toContain(".external-credentials");
+  });
+
+  it("WARN when connector skills exist but no credential file", () => {
+    const r = evalOpsConnector({ missingSkills: [], credentialFile: null });
+    expect(r.status).toBe("WARN");
+    expect(r.fix).toBeDefined();
+  });
+
+  it("FAIL when any required connector skill is missing", () => {
+    const r = evalOpsConnector({ missingSkills: ["skills/aws/SKILL.md"], credentialFile: ".external-credentials" });
+    expect(r.status).toBe("FAIL");
+    expect(r.fix).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Rollup + exit-code logic
 // ---------------------------------------------------------------------------
 
@@ -254,17 +279,18 @@ describe("exitCodeFor", () => {
 // ---------------------------------------------------------------------------
 
 describe("DoctorFacts → evaluators integration (pure, injected facts)", () => {
-  it("produces exactly 9 checks from a full facts object", () => {
+  it("produces exactly 10 checks from a full facts object", () => {
     const facts: DoctorFacts = {
       omp: { present: true, version: "15.5.10" },
       bun: { present: true, version: "1.2.0" },
       git: { present: true, version: "2.44.0", insideRepo: true },
       auth: { opencode_zen: true, openai_codex: false, anthropic: false },
       mcp: { servers: ["playwright"] },
-      skills: { skillMdCount: 17, pluginSkillsCount: 17 },
+      skills: { skillMdCount: 20, pluginSkillsCount: 20 },
       agents: { agentCount: 22, expectedCount: 22, lintClean: true },
       stateDir: { writable: true, path: ".pi-oven" },
       evalRunner: { runnerPresent: true, smokeScenarioCount: 15 },
+      opsConnector: { missingSkills: [], credentialFile: ".external-credentials" },
     };
     const checks = [
       evalOmpVersion(facts.omp, "15.0.0"),
@@ -276,9 +302,9 @@ describe("DoctorFacts → evaluators integration (pure, injected facts)", () => 
       evalAgents(facts.agents),
       evalStateDir(facts.stateDir),
       evalEvalRunner(facts.evalRunner),
+      evalOpsConnector(facts.opsConnector),
     ];
-    expect(checks).toHaveLength(9);
-    expect(checks.every((c) => c.status === "PASS")).toBe(true);
+    expect(checks).toHaveLength(10);
     expect(exitCodeFor(checks)).toBe(0);
   });
 });

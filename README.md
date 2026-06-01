@@ -2,14 +2,14 @@
 
 > A curated omp marketplace plugin distilled from five frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers / pi-oven). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-195%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-351%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
 ## What you get
 
 - **22 self-contained agents** under the `pi-oven:` namespace — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis. Each is a markdown file in `agents/` with locked model + tool whitelist.
-- **17 skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, git-workflow.
+- **20 skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, git-workflow, aws, bitbucket-pipeline, cloudflare.
 - **`/pi-oven:setup` wizard** — Profile A (release default, opencode-zen + openai-codex) or Profile B (Anthropic Pro/Max opt-in), agent-file source of truth, drift detection on every session.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
 
@@ -93,6 +93,20 @@ Skills auto-activate when their trigger keywords appear in conversation. For exa
 
 See `skills/*/SKILL.md` for the complete trigger list per skill.
 
+### 3.1 Verify UC5 ops connectors after install
+
+Run:
+
+```sh
+bun scripts/pi-oven-doctor.ts
+```
+
+Expected check:
+
+- `[PASS] uc5 ops connector` when connector skills exist and one credential file is present (`.external-credentials`, `.external_certificate`, or `.external_cerficate`)
+- `[WARN] uc5 ops connector` when skills are installed but no credential file exists yet (non-blocking onboarding state)
+- `[FAIL] uc5 ops connector` only when required skill files are missing
+
 ### 4. Verify before claiming done
 
 The `fresh-verifier` skill enforces a hard rule: **the main agent cannot verify its own work**. When you finish a task and want to confirm completion, the skill auto-dispatches `pi-oven:verifier` (a fresh agent with no memory of the implementation) to run a 4-check audit:
@@ -166,6 +180,13 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 | `autonomous-loop` | core | meta orchestrator: ASK-FIRST 3-slot + autopilot / ralph / ultrawork modes |
 | `deep-init` | extended | hierarchical AGENTS.md auto-generation |
 | `deep-dive` | extended | causal trace × 3 lanes → Socratic requirements interview |
+| `systematic-debugging` | extended | reproduce → hypothesize → instrument → fix loop |
+| `improve-codebase-architecture` | extended | deepening-focused architecture refactor discovery |
+| `receiving-code-review` | extended | challenge/validate review comments before applying |
+| `git-workflow` | extended | worktree-first branch start/finish lifecycle |
+| `aws` | ops (UC5) | AWS production read inspection and infra diagnostics |
+| `bitbucket-pipeline` | ops (UC5) | Bitbucket pipeline status/log/variables connector |
+| `cloudflare` | ops (UC5) | Cloudflare DNS/zone read connector |
 
 See `skills/<name>/SKILL.md` for the complete body and `evals/<skill>/scenarios/*.yaml` for behavioral test fixtures.
 
@@ -269,7 +290,7 @@ The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pi-oven-*.md` a
 ### Test suite
 
 ```sh
-bun test       # 152 tests across 20 files (Spec A + B + C combined)
+bun test       # 351 tests across 29 files
 bun check      # tsc --noEmit typecheck
 bun run build  # extension bundle (pi-oven.js)
 bun run lint:agents  # CI-grade agent file lint
@@ -292,7 +313,7 @@ If you're hacking on pi-oven itself, point omp at your local checkout instead of
 ```sh
 cd /path/to/pi-oven
 bun install
-bun test           # baseline 152 passing
+bun test           # baseline 351 passing
 bun check          # typecheck clean
 bun run build      # extension bundles to dist/pi-oven.js
 bun run lint:agents
@@ -310,13 +331,13 @@ In dev mode, agent file edits are picked up immediately (no `omp plugin install 
 ```
 pi-oven/
 ├── .claude-plugin/
-│   ├── plugin.json          # plugin manifest (17 skills, version, commands)
+│   ├── plugin.json          # plugin manifest (20 skills, version, commands)
 │   └── marketplace.json     # marketplace catalog (plugins[0].version)
 ├── .omp/extensions/
 │   └── pi-oven.ts               # load-time validator + session_start drift hook
 ├── agents/                  # 22 pi-oven-prefixed agent files (file-based registry)
 │   └── pi-oven-*.md
-├── skills/                  # 17 skills
+├── skills/                  # 20 skills
 │   └── <skill-name>/
 │       ├── SKILL.md
 │       └── references/      # progressive disclosure docs
@@ -328,7 +349,7 @@ pi-oven/
 │   ├── pi-oven-setup.ts         # /pi-oven:setup batch CLI
 │   ├── pi-oven-setup/           # 11 submodules (profiles, persist, apply, ...)
 │   └── lib/eval-runner.ts   # SDK subscribe-pattern adapter
-├── tests/                   # bun test suite (152 tests, 636 expect calls)
+├── tests/                   # bun test suite (351 tests, 881 expect calls)
 │   ├── extensions/
 │   ├── plugin/
 │   └── scripts/
@@ -352,7 +373,7 @@ pi-oven/
 
 ## Architecture in one paragraph
 
-pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin. The 22 agent files in `agents/pi-oven-*.md` are the single source of truth for model routing — each file's frontmatter `model:` array names the primary + alternate that the omp `task` tool will resolve at dispatch time. A load-time TypeScript validator (`.omp/extensions/pi-oven.ts`) enforces the provider whitelist by reading the agent files themselves: if any file references an `anthropic/*` model, the validator includes `anthropic/` in `ALLOWED_PREFIXES`; otherwise Profile A is in effect. The `/pi-oven:setup` wizard mutates the agent files in-place to switch Profiles; the `session_start` hook detects drift between agent files and persisted plugin config and emits a warning. 17 skills layer workflow discipline on top of the agent registry — each skill dispatches pi-oven-prefixed agents by name through the omp `task` tool. There is no `subagent_type` registry in omp; everything is file lookup. This avoids the 401 failure mode where external namespaces like `oh-my-claudecode:executor` were passed to omp as model strings.
+pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin. The 22 agent files in `agents/pi-oven-*.md` are the single source of truth for model routing — each file's frontmatter `model:` array names the primary + alternate that the omp `task` tool will resolve at dispatch time. A load-time TypeScript validator (`.omp/extensions/pi-oven.ts`) enforces the provider whitelist by reading the agent files themselves: if any file references an `anthropic/*` model, the validator includes `anthropic/` in `ALLOWED_PREFIXES`; otherwise Profile A is in effect. The `/pi-oven:setup` wizard mutates the agent files in-place to switch Profiles; the `session_start` hook detects drift between agent files and persisted plugin config and emits a warning. 20 skills layer workflow discipline on top, including UC5 ops connectors (`aws`, `bitbucket-pipeline`, `cloudflare`).
 
 ---
 

@@ -1,11 +1,11 @@
 ---
 name: pi-oven-doctor
-description: Install health check — runs the pi-oven 9-check matrix (omp version, bun, git, provider auth, MCP, skills, agents, state dir, eval runner)
+description: Install health check — runs the pi-oven 10-check matrix (omp version, bun, git, provider auth, MCP, skills, agents, state dir, eval runner, UC5 ops connector)
 ---
 
 # /pi-oven:doctor
 
-You are running a read-only install-health diagnostic for the pi-oven omp plugin. The actual checks run in `bun scripts/pi-oven-doctor.ts`. You dispatch that script via Bash, then interpret its 9-check report and give the user fix guidance.
+You are running a read-only install-health diagnostic for the pi-oven omp plugin. The actual checks run in `bun scripts/pi-oven-doctor.ts`. You dispatch that script via Bash, then interpret its 10-check report and give the user fix guidance.
 
 This command is purely diagnostic. It NEVER mutates configuration, agent files, skills, or git state. The only filesystem touch is a create+write probe of the gitignored `.pi-oven/` state dir (check #8), which removes its own probe file.
 
@@ -27,7 +27,7 @@ pi-oven doctor — install health
 [PASS] omp version: omp 15.5.10 (>= 15.0.0)
 [PASS] bun: bun 1.3.14 present
 ...
-Summary: 9 PASS / 0 WARN / 0 FAIL — overall PASS
+Summary: 10 PASS / 0 WARN / 0 FAIL — overall PASS
 ```
 
 Exit code: `0` when there are no FAILs (WARNs are acceptable), `1` when any check FAILs.
@@ -55,7 +55,7 @@ cannot execute them. To enable live eval: authenticate a provider in omp
 
 This is the onboarding bridge to the gated real-eval pipeline.
 
-## The 9-check reference
+## The 10-check reference
 
 | # | Check | PASS | WARN | FAIL |
 |---|---|---|---|---|
@@ -65,11 +65,12 @@ This is the onboarding bridge to the gated real-eval pipeline.
 | 4 | provider auth | ≥1 of opencode-zen / openai-codex / anthropic authed | none authed (live eval + dispatch will fail) | — |
 | 5 | mcp servers | ≥1 server in `.pi/mcp.json` or `omp mcp list` | none configured (informational; pi-oven requires none) | — |
 | 6 | skills | `skills/*/SKILL.md` count == `plugin.json` skills[] length | — | count mismatch |
-| 7 | agents | `agents/pi-oven-*.md` count == 23 AND `lint:agents` clean | — | count mismatch, or count OK but lint drift |
+| 7 | agents | `agents/pi-oven-*.md` count == 22 AND `lint:agents` clean | — | count mismatch, or count OK but lint drift |
 | 8 | state dir | `.pi-oven/` creatable + writable | — | not writable |
 | 9 | eval runner | `scripts/run-eval.ts` present AND ≥1 smoke-tagged scenario enumerable | runner present but 0 smoke scenarios | runner script absent |
+| 10 | UC5 ops connector | `skills/aws`, `skills/bitbucket-pipeline`, `skills/cloudflare` present + any credential file (`.external-credentials` / `.external_certificate` / `.external_cerficate`) detected | skill files present but no credential file | any connector skill file missing |
 
-Checks 4 and 5 can only WARN (never FAIL) — auth and MCP are environmental, not install-integrity, defects. Checks 6, 7, and 9-runner-absent are install-integrity FAILs. The script's exit code reflects only FAILs.
+Checks 4 and 5 can only WARN (never FAIL) — auth and MCP are environmental, not install-integrity, defects. Check 10 WARN is also environmental (credential file not yet onboarded). Checks 6, 7, 9-runner-absent, and 10-missing-skills are install-integrity FAILs. The script's exit code reflects only FAILs.
 
 ## Important rules
 

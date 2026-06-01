@@ -9,9 +9,9 @@ describe("plugin.json version + skills count", () => {
     expect(plugin.version).toBe("0.1.0");
   });
 
-  it("plugin.json skills array has 17 entries", async () => {
+  it("plugin.json skills array has 20 entries", async () => {
     const plugin = await Bun.file(path.join(ROOT, ".claude-plugin/plugin.json")).json();
-    expect(plugin.skills.length).toBe(17);
+    expect(plugin.skills.length).toBe(20);
   });
 
   it("marketplace.json plugins[0].version is 0.1.0", async () => {

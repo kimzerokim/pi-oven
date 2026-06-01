@@ -27,6 +27,9 @@ dist/
 .env.*.local
 *.key
 *.pem
+.external-credentials
+.external_certificate
+.external_cerficate
 
 # Eval intermediate (per-run, transient)
 evals/.runs/

@@ -3,6 +3,7 @@
 > Status: in progress on `feature/simplify` (branched from `main` @ v0.1.0).
 > Authority: `pi-oven-bloat-audit` workflow (run `wf_4d9a769e-e65`, 33 agents, adversarial-verified).
 > Scope decision (user, 2026-05-29): **safe prune only** (~4 items) + **subtraction only** (gaps deferred). Push deferred.
+> Update (2026-06-01): UC5 bootstrap landed — `skills/aws`, `skills/bitbucket-pipeline`, `skills/cloudflare` added with shared external-credential source precedence (`.external-credentials` → `.external_certificate` → `.external_cerficate`) and `/pi-oven:doctor` install-time readiness check.
 
 ## Why (audit bottom line)
 
@@ -79,10 +80,10 @@ Only **4 items** survived as genuinely safe to remove (no use-case spine, advers
 ## Verification (fresh agent, separate context)
 1. `bun run check` → clean. `bun test` → all pass (was 336). `bun run lint:agents` + `bun run lint:skills` → clean. `bun run build` → succeeds.
 2. Functional-dir grep returns **zero** refs to: `caveman`, the eval-runner **skill** (`skills/eval-runner`), the `scientist` **role**, the `team` **skill** (`skills/team`). (Eval *infra* refs — `scripts/lib/eval-runner`, `run-eval` — are expected and OK.)
-3. `plugin.json` skills array length == 17; `profiles.ts` ROLES length == 22; no dangling `pi-oven:scientist` token in any `SKILL.md`.
+3. `plugin.json` skills array length == 20; `profiles.ts` ROLES length == 22; no dangling `pi-oven:scientist` token in any `SKILL.md`.
 4. No source file deletion beyond the 4 targets; eval infrastructure intact.
 
 ## Out of scope (deferred)
-- UC5 ops connector (Bitbucket/AWS), UC4 release-orchestration, UC3 HTML generator, project-wide regression gate — separate spec.
+- UC5 ops connector core bootstrap is now landed (skills + doctor readiness), but credential onboarding + production-access boundary decisions remain as follow-up. UC4 release-orchestration, UC3 HTML generator, and project-wide regression gate remain separate specs.
 - UI-authoring agents (`designer`, `multimodal-looker`) — kept; revisit on explicit user confirmation.
 - PROFILE_B redefinition — still deferred (separate user decision).

@@ -1,7 +1,7 @@
 ---
 name: deep-dive
 version: 0.1.0
-description: 2-stage causal investigation → requirements crystallization pipeline; dispatches 3 parallel tracer lanes then runs Socratic interview
+description: bug-investigation pipeline — 3 parallel autonomous tracer lanes, then a bounded clarification of only the trace-unresolvable unknowns
 trigger: "deep dive, deep-dive, trace and clarify, deep investigation"
 alwaysApply: false
 ---
@@ -10,9 +10,9 @@ alwaysApply: false
 
 ## Purpose
 
-Orchestrates a 2-stage pipeline: Stage 1 dispatches `pi-oven:tracer` (agent file: `agents/pi-oven-tracer.md`) across 3 parallel causal investigation lanes; Stage 2 conducts a Socratic interview (main agent drives, no sub-dispatch) to crystallize requirements. The trace findings feed into the interview via a 3-point injection mechanism, producing a spec grounded in evidence rather than assumptions.
+This is the bug-investigation tool. It follows trace lanes **autonomously**: Stage 1 dispatches `pi-oven:tracer` (agent file: `agents/pi-oven-tracer.md`) across 3 parallel causal investigation lanes. Stage 2 is a **bounded clarification** — the main agent asks only the per-lane critical unknowns the trace genuinely could not resolve, preferring to run the recommended discriminating probe over asking. The trace findings feed forward via a 3-point injection mechanism, producing a spec grounded in evidence rather than assumptions.
 
-Solves the context-loss problem that occurs when trace and interview are run separately: findings discovered in the trace carry directly into the interview's starting point, codebase context, and first questions.
+deep-dive is **not** a relentless requirements interview — when full spec convergence is needed, that is `brainstorming`'s job. Solving the context-loss problem that occurs when trace and clarification are run separately: findings discovered in the trace carry directly into the clarification's starting point, codebase context, and first questions.
 
 ## When to use
 
@@ -44,7 +44,7 @@ Solves the context-loss problem that occurs when trace and interview are run sep
 
 Present the 3 hypotheses to the user via `ask` for a single confirmation round:
 
-> Starting deep dive. I'll investigate through 3 parallel trace lanes, then use the findings to conduct a targeted interview.
+> Starting deep dive. I'll investigate through 3 parallel trace lanes, then use the findings for a short, targeted clarification of anything the trace could not resolve.
 >
 > **Problem:** "{initial_idea}"
 > **Project type:** {greenfield|brownfield}
@@ -112,9 +112,9 @@ After all 3 tracer lanes complete:
 [Single next probe that would collapse uncertainty fastest]
 ```
 
-## Phase 4: Interview with 3-point injection
+## Phase 4: Bounded clarification with 3-point injection
 
-The main agent conducts a Socratic interview — no sub-dispatch in this phase. Before the first question, inject 3 points from the trace:
+After the autonomous trace synthesis, the main agent runs a **bounded clarification** — no sub-dispatch in this phase. Ask only the per-lane critical unknowns the trace genuinely could not resolve, and **prefer running the recommended discriminating probe (autonomous) over asking the user.** This is a short clarification, not a convergence interview — relentless spec convergence belongs to `brainstorming`, not deep-dive. Before the first question, inject 3 points from the trace:
 
 **Injection 1 — initial idea enrichment**: if the trace has a high-confidence most likely explanation, reframe the opening with:
 ```
@@ -125,14 +125,15 @@ If all lanes are low-confidence, skip this injection — do not inject an uncert
 
 **Injection 2 — codebase context replacement**: skip re-exploring the codebase. Use the trace's system area mapping as codebase context. The trace already mapped relevant areas with evidence — re-exploring is redundant.
 
-**Injection 3 — initial question queue**: extract per-lane critical unknowns. Ask these as the first 1–3 questions before normal ambiguity-driven questioning resumes.
+**Injection 3 — initial question queue**: extract per-lane critical unknowns. Ask only those the trace could not resolve and a probe cannot answer — the clarification is bounded to these, not an open-ended questioning loop.
 
 If all lanes are low-confidence: still apply Injection 2 (even inconclusive findings provide structural context) and Injection 3 (inject all per-lane unknowns — more open questions are more useful when trace is uncertain).
 
-### Interview loop
+### Clarification loop (bounded)
 
-- One question per turn, targeting the weakest ambiguity dimension
-- Continue until the spec is sufficiently specified (ambiguity ≤ threshold)
+- Ask only what tracing could not resolve; if a probe can answer it, run the probe instead of asking
+- One question per turn when you must ask, targeting a trace-unresolvable critical unknown
+- Keep it bounded — this is a bug-investigation pipeline, not a spec interview; stop once the trace-unresolvable unknowns are answered or deferred
 - Spec saved to `.omc/specs/deep-dive-{slug}.md`
 - Spec includes all standard sections plus an additional **Trace Findings** section summarizing the trace results
 
@@ -144,11 +145,11 @@ Present execution options to the user via `ask`. Always pass `spec_path` explici
 1. **Full pipeline (recommended)**: `spec-and-review` → `writing-plans` → `subagent-driven-development`
 2. **Direct execution**: `autonomous-loop` with the spec as input
 3. **Planning only**: `writing-plans` with the spec as input (skip critic loop)
-4. **Refine further**: return to Phase 4 interview loop
+4. **Refine further**: return to Phase 4 clarification loop
 
 ## Tool usage
 
-- `ask` for lane confirmation (Phase 2) and each interview question (Phase 4)
+- `ask` for lane confirmation (Phase 2) and each bounded clarification question (Phase 4)
 - `task` with `run_in_background: true` to dispatch 3 parallel `pi-oven:tracer` lanes (Phase 3)
 - `pi-oven:explorer` (model: haiku) for brownfield codebase detection (Phase 1)
 - `Write` to save trace result to `.omc/specs/deep-dive-trace-{slug}.md` and final spec to `.omc/specs/deep-dive-{slug}.md`
@@ -157,13 +158,13 @@ Present execution options to the user via `ask`. Always pass `spec_path` explici
 
 - **User says "stop", "cancel", "abort"**: stop immediately, save current state
 - **Trace timeout**: if a tracer lane takes unusually long, warn the user and offer to proceed with partial results
-- **All lanes inconclusive**: proceed to interview with graceful degradation — skip Injection 1 only
-- **User says "skip trace"**: allow skipping to Phase 4 with a warning that the interview will have no trace context (effectively becomes a standalone interview)
-- **Interview stalls**: if ambiguity stops decreasing after 3 rounds targeting the same dimension, surface the stall explicitly and ask the user to provide the missing information directly
+- **All lanes inconclusive**: proceed to clarification with graceful degradation — skip Injection 1 only
+- **User says "skip trace"**: allow skipping to Phase 4 with a warning that the clarification will have no trace context (and that full spec convergence is `brainstorming`'s job, not deep-dive's)
+- **Clarification stalls**: if a trace-unresolvable unknown stays unanswered after a couple of rounds, surface the stall explicitly and ask the user to provide the missing information directly or run the discriminating probe
 
 ## Examples
 
-**Bug investigation — trace-to-interview flow:**
+**Bug investigation — trace-to-clarification flow:**
 ```
 User: deep dive into why our auth token expires early
 
@@ -181,13 +182,13 @@ User: deep dive into why our auth token expires early
     Lane 2: NTP sync status between services
     Lane 3: which timestamp field the test asserts against
 
-[Phase 4] Interview with injection:
+[Phase 4] Bounded clarification with injection:
   "Trace finding: clock skew between auth server and validator.
    Given this root cause, what should we do about it?"
-  First questions from per-lane unknowns:
+  Only the trace-unresolvable unknowns are asked:
     Q1: "Are the auth and validator services on the same host or different hosts?"
     Q2: "Is NTP configured on both?"
-  → Continues until spec threshold reached.
+  → Stops once those unknowns are answered (or a probe resolves them).
 
 [Phase 5] Spec ready. User selects writing-plans → subagent-driven-development.
 ```
@@ -204,8 +205,8 @@ User: deep-dive — improve our caching layer
 
 [Phase 4] Injection 1 skipped (no confident conclusion).
   Injection 2 applied: trace system mapping used as codebase context.
-  Injection 3 applied: all 3 per-lane unknowns seeded as first questions.
-  → Interview drives exploration forward from concrete unknowns.
+  Injection 3 applied: the trace-unresolvable per-lane unknowns seeded as the clarification questions.
+  → Bounded clarification confirms direction from concrete unknowns; deeper spec convergence, if needed, hands off to brainstorming.
 ```
 
 **Bad — skipping lane confirmation:**

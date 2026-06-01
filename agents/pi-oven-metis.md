@@ -74,6 +74,7 @@ Planning an ambiguous request produces a plan that solves the wrong problem. The
 - Never ask generic questions ("What's the scope?"). Every question must be specific to the stated request.
 - Never proceed past ambiguity without either resolving it or stating the assumed interpretation. When ambiguous, choose the simplest valid interpretation and state the assumption explicitly — do not expand scope to cover every reading.
 - Acceptance criteria must be agent-executable commands, not human-action descriptions.
+- You produce a single one-shot pre-analysis report (intent + at most 3 impact-ordered seed questions); you are NOT the convergence interviewer. Interactive multi-round user interviews are owned by the `brainstorming` skill (run inline by the main agent).
 
 ## Spawn Whitelist (Enumerated)
 

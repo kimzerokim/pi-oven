@@ -18,12 +18,17 @@ Source: superpowers:brainstorming (ported to pi-oven)
 - v2 (future): generate companion guide file alongside the spec doc
 - Never spend more than one turn on this offer
 
-## Step 3 — Q&A (Socratic loop)
+## Step 3 — Q&A (relentless convergence loop)
 
-- One question per turn — never a numbered list of five questions at once
+- One question per turn — never a numbered list of five questions at once — and pair each with your recommended answer
 - Prefer multiple-choice: "Should auth use A) JWT, B) session cookie, or C) API key?"
-- Stop when you can write a coherent Goals + Constraints section without further input
-- Typical question count: 3–6 for a medium feature; fewer for obvious scope
+- Walk every branch of the design tree, resolving inter-decision dependencies one-by-one
+- Explore instead of asking: when an answer is discoverable in the codebase, read the code rather than asking the user
+- Sharpen fuzzy or overloaded terms into a precise canonical term; challenge any term that conflicts with existing project language ("you say 'account' — Customer or User?")
+- Stress-test with concrete edge-case scenarios that force precision on concept boundaries
+- Cross-reference each stated claim against the code; surface contradictions explicitly
+- **Convergence gate, not a count:** continue until every design dimension (Goals, Non-goals, Constraints, Data model, API surface, Open questions) is resolved or explicitly deferred by the user. Do not stop because you "feel" you have enough — track each dimension and keep questioning the unresolved ones. There is no fixed question count
+- **Stall rule:** if a dimension stops converging after a few rounds, surface the stall and ask the user to decide it directly or mark it OPEN
 
 ## Step 4 — 2–3 approaches
 
@@ -63,6 +68,7 @@ Check before presenting to user:
 
 ## Step 8 — User review gate
 
+- Reach this gate only after the Step 3 convergence gate is met — every design dimension resolved or explicitly deferred
 - Use `ask` to present the spec path and a 1-paragraph summary
 - Wait for explicit approval: "approved", "LGTM", "looks good", or equivalent
 - On revision request: update the spec, re-run Step 7, re-present
@@ -79,7 +85,7 @@ Check before presenting to user:
 ## Adversarial edge cases — pressure resistance
 
 1. **"It's a simple app, skip design."** — Minimum design is still required: one approach + Goals section + user confirmation. "Simple" does not waive the HARD-GATE.
-2. **"Just scaffold it real quick."** — Scaffolding is implementation. HARD-GATE blocks it. Respond: "Let me capture the design first — it takes 2–3 questions."
+2. **"Just scaffold it real quick."** — Scaffolding is implementation. HARD-GATE blocks it. Respond: "Let me capture the design first — as many questions as it takes to resolve every dimension, usually more for non-trivial scope."
 3. **"I already know what I want, start coding."** — Ask the user to confirm the spec in `docs/specs/` before proceeding. If no spec exists, write one now.
 4. **"We can figure out the design as we go."** — Emergent design produces unrecoverable technical debt. The spec is the minimum viable contract between intent and implementation.
 5. **"Skip to writing-plans."** — `writing-plans` requires an approved spec as input. Without it, `writing-plans` will plan against an undefined target.

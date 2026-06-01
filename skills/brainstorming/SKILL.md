@@ -29,7 +29,7 @@ This gate applies even when the user says "it's simple", "just scaffold it", or 
 
 1. **Explore** — read existing codebase context; identify adjacent modules, constraints, and conventions
 2. **Visual Companion offer** — ask if a companion diagram or wireframe would help (v1: stub; v2 feature)
-3. **Q&A** — ask clarifying questions one at a time using `ask`; prefer multiple-choice; stop when intent is unambiguous
+3. **Q&A convergence loop** — interview relentlessly using `ask`, one question per turn, each with your recommended answer; walk every branch of the design tree, resolving inter-decision dependencies one-by-one; when an answer is discoverable in the codebase, explore instead of asking; sharpen fuzzy or overloaded terms into a precise canonical term and challenge any term that conflicts with existing project language; stress-test with concrete edge-case scenarios that force precision on concept boundaries; cross-reference each stated claim against the code and surface contradictions explicitly. No fixed question count — continue until the convergence gate below is met
 4. **2–3 approaches** — present distinct design options with trade-offs; no implementation detail yet
 5. **Design sections** — draft Goals, Non-goals, Constraints, Data model, API surface, Open questions
 6. **Doc** — write spec to `docs/specs/YYYY-MM-DD-<topic>-design.md`
@@ -39,10 +39,13 @@ This gate applies even when the user says "it's simple", "just scaffold it", or 
 
 ## Q&A discipline
 
-- Ask one question per turn, not a list
+- Ask one question per turn, not a list — and pair each with your recommended answer
 - Prefer multiple-choice options when possible (`A / B / C`)
-- Stop asking when you have enough to write a coherent spec
-- Never ask for information you can infer from codebase exploration
+- Never ask for information you can infer from codebase exploration — explore instead
+- **Convergence gate:** do not stop until EVERY design dimension — Goals, Non-goals, Constraints, Data model, API surface, Open questions — is either resolved or explicitly deferred by the user. Then present for approval. Never stop on "I think I have enough" alone; track each dimension and keep questioning the unresolved ones
+- **Stall rule:** if a dimension stops converging after a few rounds, surface the stall explicitly and ask the user to decide it directly or mark it OPEN — do not loop silently
+
+Convergence discipline adapted from the `grill-with-docs` pattern (relentless one-question-at-a-time interview until shared understanding).
 
 ## Spec save path
 
@@ -66,7 +69,7 @@ Deeper rationale + checklist detail: skill://pi-oven/brainstorming/references/ch
 
 When running this skill inside an omp session, route work to the pi-oven agent registry rather than handling every step inline:
 
-- Intent clarification (one-question-at-a-time interview): dispatch `pi-oven:metis`.
+- Intent clarification: the interactive convergence interview is run **inline by the main agent** (it owns the user turns). Dispatch `pi-oven:metis` **once** for pre-analysis only — intent classification, codebase pre-analysis, and at most a few informed seed questions — never as the convergence loop.
 - Project context exploration (files, recent commits, patterns): dispatch `pi-oven:explorer`.
 - Approach comparison and architectural trade-offs: dispatch `pi-oven:architect`.
 - Spec writing and clear documentation: the main agent owns this, optionally consulting `pi-oven:writer` for prose polish.

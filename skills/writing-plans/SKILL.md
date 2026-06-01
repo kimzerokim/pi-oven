@@ -143,7 +143,7 @@ Header + task template: skill://pi-oven/writing-plans/references/template.md
 
 When authoring an implementation plan inside omp:
 
-- Requirements gathering and ambiguity resolution: dispatch `pi-oven:metis` (which may in turn spawn `pi-oven:explorer` / `pi-oven:librarian` / `pi-oven:document-specialist`).
+- Requirements gathering and ambiguity resolution: dispatch `pi-oven:metis` **once** for one-shot pre-analysis only — intent classification plus a few impact-ordered seed questions feeding the plan (it may in turn spawn `pi-oven:explorer` / `pi-oven:librarian` / `pi-oven:document-specialist`). The interactive multi-round convergence interview, when one is needed, is `brainstorming` run inline by the main agent — never delegated to `pi-oven:metis`.
 - Codebase context confirmation: dispatch `pi-oven:explorer`.
 - Atomic-task decomposition: dispatch `pi-oven:planner`.
 - Architectural risk and migration impact review: dispatch `pi-oven:architect`.

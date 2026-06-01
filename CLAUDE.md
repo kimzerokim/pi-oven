@@ -67,14 +67,14 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 
 ## Status (current — 2026-06-01)
 
-**v0.1.0 in progress on `feature/simplify`.** Adds UC5 ops connectors (`aws` / `bitbucket-pipeline` / `cloudflare` skills — read-only inspection with a code-first mutation boundary; credentials via gitignored `.external-credentials`, schema in `.external-credentials.example`), the `pi-oven_ask` advisor path, relentless brainstorming convergence, and an off-spine prune of dead/superseded artifacts. **Not pushed** — `origin/main` still ships zero agents; push deferred pending explicit consent. Version SoT unified at **0.1.0** across `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`.
+**v0.1.0 MERGED to local `main`** (merge commit `9b4980f`, tag `v0.1.0` = HEAD). Adds UC5 ops connectors (`aws` / `bitbucket-pipeline` / `cloudflare` skills — read-only inspection with a code-first mutation boundary; credentials via gitignored `.external-credentials`, schema in `.external-credentials.example`), the `pi-oven_ask` advisor path, relentless brainstorming convergence, and an off-spine prune of dead/superseded artifacts. **Not pushed** — `origin/main` still ships zero agents; push deferred pending explicit consent. Version SoT unified at **0.1.0** across `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`.
 
 Prior baseline — **v0.1.0** (FF merge of `feature/standard-expansion`, tag `v0.1.0`, local only).
 
-Done & local: Plan 0 (v0.1.0) · Plan 1 (v0.1.0, 12 skills) · Spec A (23 agents) · Spec B (setup wizard) · Spec C (15 skills) · Spec D (skill↔agent dispatch, both cycles applied) · **Spec E = FROZEN v3 + implemented** (Option C settings-override; 4 commits `72b7b3a`→`05a3662`; dead-spine grep clean) · **v0.1.0 release (local)**. Plan 2 (33-skill expansion) = **SUPERSEDED**.
+Done & local: Plan 0 (v0.1.0) · Plan 1 (v0.1.0, 12 skills) · Spec A (23 agents) · Spec B (setup wizard) · Spec C (15 skills) · Spec D (skill↔agent dispatch, both cycles applied) · **Spec E = FROZEN v3 + implemented** (Option C settings-override; 4 commits `72b7b3a`→`05a3662`; dead-spine grep clean) · **v0.1.0 release (local)** · **v0.1.0 merged + tagged (local, HEAD = `9b4980f`)**. Plan 2 (33-skill expansion) = **SUPERSEDED**.
 
 **Remaining work (verified):**
-1. **Push to origin** (gated on user) — v0.1.0 is merged to local `main` + tagged locally; `git push origin main --tags` needs explicit consent (still nothing on remote). Release cutover + version-SoT reconciliation = **DONE** (all three manifests at 0.1.0).
+1. **Push to origin** (gated on user) — v0.1.0 is merged to local `main` + tagged locally (tags `v0.1.0`, `v0.1.0`); `git push origin main --tags` needs explicit consent (still nothing on remote). Release cutover + version-SoT reconciliation = **DONE** (all three manifests at 0.1.0).
 2. **Plan 3 omp-native runtime — IMPLEMENTED** (commits f61e091/cc71d03: gate FSM + rules-injector + hardened forbidden-floor). Formal ADR for non-goal closure not yet written.
 3. **Plan 4 remainder** — `/pi-oven:doctor` is **fully implemented** (10-check health matrix incl. UC5 ops connector readiness); real-eval pipeline gated on LLM keys (`ci.yml` comment); key onboarding pending.
 4. **PROFILE_B redefinition** — deferred (`skill-agent-dispatch.md:267`), user decision.

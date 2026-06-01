@@ -35,21 +35,24 @@ Parse the user's intent from their initial request:
 
 ### Step 0 — Primary language
 
-Before anything else, ask the user which language setup and the agents should use. Call the `pi-oven_ask` tool with two options, each carrying a description:
+Before anything else, ask the user which language setup and the agents should use. Call the `pi-oven_ask` tool with two options, each carrying a description (the `pi-oven_ask` UI automatically adds an "Other (type your own)" option):
 
 - Option 1 — label: `한국어 (Korean)`, description: `셋업 대화와 이후 에이전트 응답을 한국어로`
 - Option 2 — label: `English`, description: `Setup dialog and agent responses in English`
+
+The user may instead pick "Other (type your own)" and enter any plain language name (examples: `Español`, `日本語`, `Français`). A free-form name must be a plain language label: letters, spaces, and `()-.` only, up to 40 characters — the script rejects anything else (newlines, backticks, `<>`, `#`, `;`, etc.) because the value is injected verbatim into the agent system prompt.
 
 After the user picks, persist the choice by dispatching the resolved script with the matching flag:
 
 ```bash
 bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language ko    # if 한국어 (Korean) was chosen
 bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language en    # if English was chosen
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language "<the exact name the user typed>"   # if "Other" was chosen, e.g. --language "Español"
 ```
 
-This writes the per-project default language to `<cwd>/.pi-oven/config.json` (machine-local, gitignored); the pi-oven extension injects it at runtime so agents respond in the chosen language.
+This writes the per-project default language to `<cwd>/.pi-oven/config.json` (machine-local, gitignored); the pi-oven extension injects it at runtime so agents respond in the chosen language. Canonical `ko`/`en` carry rich directives; any other accepted name gets a generic directive that simply names the language.
 
-Then conduct ALL remaining steps (Steps 1–6 below) IN the chosen language — render every prompt, summary, and report in Korean if `한국어 (Korean)` was picked, otherwise in English.
+Then conduct ALL remaining steps (Steps 1–6 below) IN the chosen language — render every prompt, summary, and report in Korean if `한국어 (Korean)` was picked, in the named language if a custom one was typed, otherwise in English.
 
 ### Step 1 — Detect authed providers
 
@@ -144,7 +147,7 @@ Proceed with Profile B? [y/N]:
 Ask the user:
 
 ```
-Apply profile defaults to all 23 roles? [Y/n]:
+Apply profile defaults to all 22 roles? [Y/n]:
 ```
 
 `Y` or Enter: use the selected profile defaults for all roles — proceed to Step 5.
@@ -214,12 +217,12 @@ Auto-retry risks repeated billing charges for failing smoke pings.
 | `--profile B` | Apply Profile B (Anthropic opt-in). Requires anthropic auth detected. |
 | `--override <role>=<model>` | Override a specific role's model in config.yml task.agentModelOverrides. Repeatable. |
 | `--validate=smoke` | (Default) Ping 7 MUST-tier roles after persist. |
-| `--validate=full` | Ping all 23 roles. |
+| `--validate=full` | Ping all 22 roles. |
 | `--validate=none` | Skip validation. |
 | `--status` | Show current profile and resolved model per role (reads config.yml overrides + agent frontmatter). |
 | `--reset` | Remove all `pi-oven:*` keys from config.yml task.agentModelOverrides. Does not touch agent files. |
 | `--import <file>` | Import JSON config file (schema: §7.1). |
-| `--language <ko\|en>` | Persist the per-project default language to `.pi-oven/config.json`. Set in Step 0. |
+| `--language <ko\|en\|name>` | Persist the per-project default language to `.pi-oven/config.json`. Accepts `ko`/`en` or any plain language name (letters, spaces, `()-.`; ≤ 40 chars). Set in Step 0. |
 
 The 7 MUST-tier roles for smoke validation are: executor, explorer, verifier, critic, planner, code-reviewer, debugger.
 

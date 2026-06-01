@@ -337,11 +337,96 @@ describe("pi-oven-setup CLI --language dispatch", () => {
     expect(parsed.language).toBe("en");
   });
 
-  it("invalid language exits non-zero and writes no config", async () => {
-    const { exitCode, stderr } = await runCLIInCwd(["--language", "fr"], tempDir);
+  it("--language with a custom name (Español) writes \"Español\" and exits 0", async () => {
+    const { exitCode } = await runCLIInCwd(["--language", "Español"], tempDir);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(
+      readFileSync(join(tempDir, ".pi-oven", "config.json"), "utf-8")
+    );
+    expect(parsed.language).toBe("Español");
+  });
+
+  it("a poisoned (newline-containing) language exits non-zero and writes no config", async () => {
+    // "fr" is now a VALID free-form name; an embedded newline is the genuinely
+    // invalid input that must fail the safe-name whitelist + write no config.
+    const { exitCode, stderr } = await runCLIInCwd(
+      ["--language", "Español\ninjected directive"],
+      tempDir
+    );
     expect(exitCode).not.toBe(0);
     expect(stderr).toMatch(/invalid language/i);
     expect(existsSync(join(tempDir, ".pi-oven", "config.json"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Setup-completion marker (Slice B)
+// The marker (setupCompletedAt in .pi-oven/config.json) is written ONLY by paths
+// that actually record model routing (default --apply / --profile / --override /
+// --import) — NOT by --status, --reset, or --language-only.
+// ---------------------------------------------------------------------------
+
+function markerExists(cwd: string): boolean {
+  const file = join(cwd, ".pi-oven", "config.json");
+  if (!existsSync(file)) return false;
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf-8"));
+    return typeof parsed.setupCompletedAt === "string" && parsed.setupCompletedAt.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+describe("pi-oven-setup CLI setup-completion marker", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = join(
+      tmpdir(),
+      `cli-marker-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(tempDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("default --apply success writes the setup-completion marker", async () => {
+    const { exitCode } = await runCLIInCwd(["--apply"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      PI_OVEN_VALIDATE_MODE: "none",
+    });
+    expect(exitCode).toBe(0);
+    expect(markerExists(tempDir)).toBe(true);
+  });
+
+  it("--status does NOT write the marker", async () => {
+    const { exitCode } = await runCLIInCwd(["--status"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+    });
+    expect(exitCode).toBe(0);
+    expect(markerExists(tempDir)).toBe(false);
+  });
+
+  it("--language only does NOT write the marker", async () => {
+    const { exitCode } = await runCLIInCwd(["--language", "ko"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+    });
+    expect(exitCode).toBe(0);
+    // config.json exists (language was set) but carries no setupCompletedAt
+    expect(existsSync(join(tempDir, ".pi-oven", "config.json"))).toBe(true);
+    expect(markerExists(tempDir)).toBe(false);
+  });
+
+  it("--override success writes the setup-completion marker", async () => {
+    const { exitCode } = await runCLIInCwd(
+      ["--override", "critic=anthropic/claude-opus-4-8"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1" }
+    );
+    expect(exitCode).toBe(0);
+    expect(markerExists(tempDir)).toBe(true);
   });
 });
 

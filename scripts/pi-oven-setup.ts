@@ -19,7 +19,7 @@ import { runReset } from "./pi-oven-setup/reset";
 import { runImport } from "./pi-oven-setup/import";
 import { runApply } from "./pi-oven-setup/apply";
 import { runOverride } from "./pi-oven-setup/override";
-import { normalizeLanguage, setProjectLanguage } from "./pi-oven-setup/project-config";
+import { normalizeLanguage, setProjectLanguage, markSetupComplete } from "./pi-oven-setup/project-config";
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -85,7 +85,7 @@ const validateMode = (["smoke", "full", "none"].includes(rawValidateMode)
 // ---------------------------------------------------------------------------
 
 if (values.language !== undefined) {
-  let lang: "ko" | "en";
+  let lang: string;
   try {
     lang = normalizeLanguage(values.language as string);
   } catch (err) {
@@ -139,6 +139,10 @@ if (hasOverride) {
 // ---------------------------------------------------------------------------
 
 let result: { exitCode: number; output: string };
+// Whether the selected dispatch path actually records MODEL ROUTING (default
+// --apply / --profile / --import / standalone --override). Only these mark the
+// project "set up" — never --status, --reset, --language, or --validate-only.
+let markRouting = false;
 
 if (values.status) {
   // If --override present, apply overrides first (§3.4: write-before-status)
@@ -155,6 +159,7 @@ if (values.status) {
   result = await runReset({ spawnFn });
 } else if (values.import !== undefined) {
   result = await runImport(values.import as string, { spawnFn });
+  markRouting = true;
 } else if (values.profile || values.apply) {
   const profile = (values.profile as string | undefined) ?? "A";
   if (profile !== "A" && profile !== "B") {
@@ -170,6 +175,7 @@ if (values.status) {
     spawnFn,
     agentsDir,
   });
+  markRouting = true;
 } else if (hasOverride) {
   // Standalone --override (no other action flag)
   const overrideResult = await runOverride({ entries: overrideEntries, spawnFn });
@@ -178,6 +184,7 @@ if (values.status) {
     process.stderr.write(result.output);
     process.exit(result.exitCode);
   }
+  markRouting = true;
 } else {
   process.stderr.write(
     "No action specified. Use --profile <A|B>, --status, --reset, --import <file>, or --override <role>=<model>.\n"
@@ -188,6 +195,13 @@ if (values.status) {
 // ---------------------------------------------------------------------------
 // Output + exit
 // ---------------------------------------------------------------------------
+
+// Record the setup-completion marker only for a SUCCESSFUL model-routing path
+// (default --apply / --profile / --import / standalone --override). Placed just
+// before the success exit so a failure (exitCode !== 0) never marks the project.
+if (markRouting && result.exitCode === 0) {
+  await markSetupComplete();
+}
 
 process.stdout.write(result.output);
 process.exit(result.exitCode);

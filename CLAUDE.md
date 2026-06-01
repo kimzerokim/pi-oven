@@ -27,7 +27,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 351 pass currently
+bun test             # 474 pass currently
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -69,7 +69,9 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 
 ## Status (current — 2026-06-02)
 
-**v0.1.0 is the shipped HEAD/tag** (commit `9278b2a`, tag `v0.1.0` = HEAD on `main`). v0.1.0 adds `/pi-oven:setup` primary-language selection + per-project default-language injection (writes `.pi-oven/config.json`), and a global-install command script-path fix. Version SoT unified at **0.1.0** across `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`. **Not pushed** — `origin/main` still ships zero agents; push deferred pending explicit consent.
+**v0.1.0 is the shipped HEAD/tag** (commit `9278b2a`, tag `v0.1.0` on `main`; HEAD is now one commit ahead — see Post-v0.1.0 below). v0.1.0 adds `/pi-oven:setup` primary-language selection + per-project default-language injection (writes `.pi-oven/config.json`), and a global-install command script-path fix. Version SoT unified at **0.1.0** across `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`. **Not pushed** — `origin/main` still ships zero agents; push deferred pending explicit consent.
+
+**Post-v0.1.0 (local, unreleased — no version bump)** — `/pi-oven:setup` now accepts a **free-form custom primary language** beyond ko/en (sanitized in `.omp/extensions/pi-oven-runtime/language.ts` `resolveLanguage`; unicode-name whitelist + 40-char cap = the **system-prompt injection boundary**, re-validated on both write and read so a hand-edited `.pi-oven/config.json` cannot poison the prompt). ko/en keep their rich directives; any other language gets a generic English directive. Added a **setup-completion marker** `setupCompletedAt` in `.pi-oven/config.json` (written on `--apply`/`--profile`/`--override`/`--import` success only, cleared by `--reset`) that drives a **once-per-session, non-blocking `ctx.ui.notify` "not set up" notice** at `session_start` (tells the user to run `/pi-oven:setup` or uninstall). README gained a **one-shot copy-paste install block** ending in `omp "/pi-oven:setup"` (install automatic → setup interactive) plus doc-staleness fixes (test count 433→474, submodules 11→13; `commands/pi-oven-setup.md` 23→22 roles). 474 tests pass.
 
 Historical narrative only:
 - **v0.4.x** (`v0.1.0`→`v0.1.0`) — UC5 ops connectors (`aws` / `bitbucket-pipeline` / `cloudflare` skills, read-only inspection with a code-first mutation boundary; credentials via gitignored `.external-credentials`), the `pi-oven_ask` advisor path, relentless brainstorming convergence, off-spine prune; later registered `html-research-orchestrator` + dynamic version test.

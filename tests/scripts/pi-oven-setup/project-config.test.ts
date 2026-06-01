@@ -1,11 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, readFileSync, writeFileSync } from "fs";
+import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
   normalizeLanguage,
   setProjectLanguage,
   readProjectLanguage,
+  markSetupComplete,
+  isSetupComplete,
+  clearSetupComplete,
   type ProjectLanguage,
 } from "../../../scripts/pi-oven-setup/project-config";
 
@@ -47,10 +50,18 @@ describe("project-config — normalizeLanguage", () => {
     expect(normalizeLanguage(" english ")).toBe("en");
   });
 
-  it("throws on an unknown language token", () => {
-    expect(() => normalizeLanguage("fr")).toThrow();
+  it("accepts a free-form language name verbatim (casing preserved)", () => {
+    expect(normalizeLanguage("Español")).toBe("Español");
+    expect(normalizeLanguage("日本語")).toBe("日本語");
+    expect(normalizeLanguage("fr")).toBe("fr");
+    expect(normalizeLanguage("Português (Brasil)")).toBe("Português (Brasil)");
+  });
+
+  it("throws on empty / unsafe / over-length input", () => {
     expect(() => normalizeLanguage("")).toThrow();
-    expect(() => normalizeLanguage("japanese")).toThrow();
+    expect(() => normalizeLanguage("   ")).toThrow();
+    expect(() => normalizeLanguage("ko; rm -rf /")).toThrow();
+    expect(() => normalizeLanguage("a".repeat(41))).toThrow();
   });
 });
 
@@ -86,6 +97,13 @@ describe("project-config — set / read symmetry", () => {
     await setProjectLanguage("en", { cwd });
     expect(await readProjectLanguage({ cwd })).toBe("en");
   });
+
+  it("round-trips a custom free-form language ('Español')", async () => {
+    await setProjectLanguage("Español", { cwd });
+    expect(await readProjectLanguage({ cwd })).toBe("Español");
+    const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
+    expect(parsed.language).toBe("Español");
+  });
 });
 
 describe("project-config — readProjectLanguage edge cases", () => {
@@ -103,10 +121,28 @@ describe("project-config — readProjectLanguage edge cases", () => {
     expect(await readProjectLanguage({ cwd })).toBeNull();
   });
 
-  it("returns null when the stored language is invalid", async () => {
+  it("returns null when the stored language is an unsafe value (non-string)", async () => {
     mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
-    writeFileSync(configFile(cwd), JSON.stringify({ language: "fr" }), "utf-8");
+    writeFileSync(configFile(cwd), JSON.stringify({ language: 42 }), "utf-8");
     expect(await readProjectLanguage({ cwd })).toBeNull();
+  });
+
+  it("returns null when a hand-edited language field is poisoned (embedded newline)", async () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    // A poisoned value that JSON can carry but resolveLanguage must reject —
+    // re-validation defends a manually-edited config.json from poisoning the prompt.
+    writeFileSync(
+      configFile(cwd),
+      JSON.stringify({ language: "Español\ninjected directive" }),
+      "utf-8"
+    );
+    expect(await readProjectLanguage({ cwd })).toBeNull();
+  });
+
+  it("returns a custom free-form language persisted directly", async () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), JSON.stringify({ language: "Français" }), "utf-8");
+    expect(await readProjectLanguage({ cwd })).toBe("Français");
   });
 
   it("returns null when the language key is missing", async () => {
@@ -167,5 +203,86 @@ describe("project-config — preserve other keys (read-merge)", () => {
       await setProjectLanguage(lang, { cwd });
       expect(await readProjectLanguage({ cwd })).toBe(lang);
     }
+  });
+});
+
+describe("project-config — setup-completion marker", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("isSetupComplete is false before any mark (file absent)", () => {
+    expect(isSetupComplete({ cwd })).toBe(false);
+  });
+
+  it("markSetupComplete writes a non-empty string setupCompletedAt", async () => {
+    await markSetupComplete({ cwd });
+    const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
+    expect(typeof parsed.setupCompletedAt).toBe("string");
+    expect(parsed.setupCompletedAt.length).toBeGreaterThan(0);
+    // ISO-8601 round-trips through Date without becoming Invalid Date
+    expect(Number.isNaN(Date.parse(parsed.setupCompletedAt))).toBe(false);
+  });
+
+  it("isSetupComplete is true after markSetupComplete", async () => {
+    await markSetupComplete({ cwd });
+    expect(isSetupComplete({ cwd })).toBe(true);
+  });
+
+  it("markSetupComplete preserves an existing language key", async () => {
+    await setProjectLanguage("ko", { cwd });
+    await markSetupComplete({ cwd });
+    const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
+    expect(parsed.language).toBe("ko");
+    expect(typeof parsed.setupCompletedAt).toBe("string");
+  });
+
+  it("isSetupComplete is false when setupCompletedAt is an empty string", () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), JSON.stringify({ setupCompletedAt: "" }), "utf-8");
+    expect(isSetupComplete({ cwd })).toBe(false);
+  });
+
+  it("isSetupComplete is false when setupCompletedAt is missing", () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), JSON.stringify({ language: "ko" }), "utf-8");
+    expect(isSetupComplete({ cwd })).toBe(false);
+  });
+
+  it("isSetupComplete is false when setupCompletedAt is a non-string", () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), JSON.stringify({ setupCompletedAt: 42 }), "utf-8");
+    expect(isSetupComplete({ cwd })).toBe(false);
+  });
+
+  it("isSetupComplete fails soft to false on unparsable JSON", () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), "{ not json", "utf-8");
+    expect(isSetupComplete({ cwd })).toBe(false);
+  });
+
+  it("clearSetupComplete removes the marker but KEEPS language", async () => {
+    await setProjectLanguage("en", { cwd });
+    await markSetupComplete({ cwd });
+    expect(isSetupComplete({ cwd })).toBe(true);
+
+    await clearSetupComplete({ cwd });
+    expect(isSetupComplete({ cwd })).toBe(false);
+    const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
+    expect(parsed.language).toBe("en");
+    expect(parsed.setupCompletedAt).toBeUndefined();
+  });
+
+  it("clearSetupComplete is a no-op when the config file is absent", async () => {
+    await clearSetupComplete({ cwd });
+    expect(isSetupComplete({ cwd })).toBe(false);
+    // No file was created by the no-op clear
+    expect(existsSync(configFile(cwd))).toBe(false);
   });
 });

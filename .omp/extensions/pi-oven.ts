@@ -8,6 +8,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { GateStateStore } from "./pi-oven-runtime/gate-state";
 import { createGateHandler } from "./pi-oven-runtime/gate-handler";
 import { RulesInjector } from "./pi-oven-runtime/rules-injector";
+import { resolveLanguage } from "./pi-oven-runtime/language";
 import { registerPiOvenAsk } from "./pi-oven-runtime/pi-oven-ask";
 import {
   STOP_GUARD_MESSAGE,
@@ -254,19 +255,33 @@ export default function piOvenPi(pi: ExtensionAPI): void {
 
   // Per-project default RESPONSE language (Plan 2026-06-02). Read the
   // machine-local <repoRoot>/.pi-oven/config.json synchronously at load and,
-  // ONLY when it carries a valid "ko"/"en", set the injector's language.
-  // Absent/invalid => leave null => the injector injects NOTHING for language
-  // (the ambient project/global setting is respected — no imposed default).
+  // ONLY when it carries a SAFE language (canonical "ko"/"en" OR a free-form
+  // name that passes resolveLanguage's security whitelist), set the injector's
+  // language. Absent/invalid/unsafe => leave null => the injector injects
+  // NOTHING for language (the ambient project/global setting is respected — no
+  // imposed default). resolveLanguage re-validates the persisted string so a
+  // hand-edited config.json can never poison the system prompt.
   // Fail-open: any FS/parse fault must never break extension load.
+  //
+  // The SAME single read also derives the setup-completion flag (Slice B): a
+  // non-empty string `setupCompletedAt` means this project has been set up.
+  // Absent/unparsable/missing-marker => setupComplete stays false and the
+  // session_start handler shows a once-per-session, non-blocking "not set up"
+  // notice (guarded by ctx.hasUI so print/RPC modes are unaffected).
+  let setupComplete = false;
   try {
     const configPath = path.resolve(repoRoot, ".pi-oven", "config.json");
     const raw = readFileSync(configPath, "utf-8");
-    const parsed = JSON.parse(raw) as { language?: unknown };
-    if (parsed.language === "ko" || parsed.language === "en") {
-      injector.setLanguage(parsed.language);
+    const parsed = JSON.parse(raw) as { language?: unknown; setupCompletedAt?: unknown };
+    const resolved =
+      typeof parsed.language === "string" ? resolveLanguage(parsed.language) : null;
+    if (resolved) {
+      injector.setLanguage(resolved);
     } else {
       pi.logger.debug("pi-oven: .pi-oven/config.json has no valid language — ambient respected");
     }
+    setupComplete =
+      typeof parsed.setupCompletedAt === "string" && parsed.setupCompletedAt.length > 0;
   } catch (err) {
     pi.logger.debug(`pi-oven: project language config not read (ambient respected): ${err}`);
   }
@@ -344,6 +359,31 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", async (_event, ctx) => {
+    // Once-per-session, NON-BLOCKING "not set up" notice (Slice B). Shown only
+    // in interactive UI mode (ctx.hasUI + ctx.ui.notify present) and only when
+    // the setup-completion marker is absent. session_start fires once per
+    // session, so this is naturally once-per-session. Fail-open: any fault is
+    // swallowed so the notice can never break session start.
+    try {
+      const uiCtx = ctx as unknown as {
+        hasUI?: boolean;
+        ui?: { notify?: (message: string, level: string) => void };
+      };
+      if (
+        uiCtx.hasUI &&
+        uiCtx.ui &&
+        typeof uiCtx.ui.notify === "function" &&
+        !setupComplete
+      ) {
+        uiCtx.ui.notify(
+          "pi-oven is not set up for this project. Run /pi-oven:setup to configure it — or, if you don't want to see this, uninstall the plugin with: omp plugin uninstall pi-oven@pi-oven",
+          "warning"
+        );
+      }
+    } catch (err) {
+      pi.logger.debug(`pi-oven: setup-state notice skipped: ${err}`);
+    }
+
     // Capture parent session model for CLI parent-session check (Spec B §6 Step a.5)
     // ctx.getModel is available at runtime (extensibility/extensions/types.d.ts:800)
     // Ensure pi-oven:* agents are discoverable in both project/user scopes even

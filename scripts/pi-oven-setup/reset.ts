@@ -7,10 +7,13 @@
 
 import { deletePiOvenAgentModelOverrides } from "./config-yml";
 import type { ConfigYmlOpts } from "./config-yml";
+import { clearSetupComplete } from "./project-config";
 
 export interface ResetOptions {
   /** Injectable spawn for omp config get/set (tests). */
   spawnFn?: ConfigYmlOpts["spawnFn"];
+  /** Project root whose setup-completion marker is cleared (default cwd). */
+  cwd?: string;
 }
 
 /**
@@ -21,6 +24,10 @@ export async function runReset(
   opts?: ResetOptions
 ): Promise<{ exitCode: number; output: string }> {
   const removedKeys = await deletePiOvenAgentModelOverrides(opts);
+
+  // A successful reset returns the project to "not set up" — clear the marker
+  // so the runtime shows the once-per-session "not set up" notice again.
+  await clearSetupComplete({ cwd: opts?.cwd });
 
   if (removedKeys.length === 0) {
     return {

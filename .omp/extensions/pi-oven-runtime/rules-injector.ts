@@ -28,8 +28,12 @@ export const DISCIPLINE_DEDUP_KEY = "pi-oven:discipline-rules@v1";
  */
 export const LANGUAGE_DEDUP_KEY = "pi-oven:language";
 
-/** Canonical project response language (mirrors scripts/pi-oven-setup/project-config.ts). */
-export type ProjectLanguage = "ko" | "en";
+/**
+ * Project response language (mirrors scripts/pi-oven-setup/project-config.ts).
+ * Canonical `"ko"`/`"en"` carry rich directives; any other value is a
+ * free-form language NAME and gets a generic English directive.
+ */
+export type ProjectLanguage = string;
 
 /** The set of discipline rule IDs the injector currently steers on. */
 export const DISCIPLINE_RULE_IDS = [
@@ -68,15 +72,22 @@ export class RulesInjector {
     return this.phase;
   }
 
-  /** Set the project default response language (null = ambient, inject nothing). */
-  setLanguage(lang: ProjectLanguage | null): void {
+  /**
+   * Set the project default response language. `"ko"`/`"en"` get rich
+   * directives; any other free-form name gets a generic directive. `null` =
+   * ambient, inject nothing.
+   */
+  setLanguage(lang: string | null): void {
     this.language = lang;
   }
 
   /**
    * Build the language-directive block (tagged with the language dedup marker),
-   * or `null` when no language is set. KO and EN keep code/identifiers/string
-   * literals/logs in their original form — only USER-FACING output switches.
+   * or `null` when no language is set. Branch order: null → null; "ko" → KO
+   * block; "en" → EN block; any other free-form language name → a GENERIC
+   * English directive naming that language. KO/EN/generic all keep
+   * code/identifiers/string literals/logs in their original form — only
+   * USER-FACING output switches.
    */
   buildLanguageDirective(): string | null {
     if (this.language === null) return null;
@@ -92,12 +103,24 @@ export class RulesInjector {
         "- 코드/식별자/문자열 리터럴/로그/명령어는 원문(영어)을 그대로 유지하세요.",
       ].join("\n");
     }
+    if (this.language === "en") {
+      return [
+        `<!-- ${LANGUAGE_DEDUP_KEY} -->`,
+        "## pi-oven response language",
+        "",
+        "The default response language for this project is English.",
+        "- Write all user-facing output (explanations, summaries, questions, progress) in English.",
+        "- If the user writes in another language, mirror their language.",
+        "- Keep code/identifiers/string literals/logs/commands in their original form.",
+      ].join("\n");
+    }
+    const lang = this.language;
     return [
       `<!-- ${LANGUAGE_DEDUP_KEY} -->`,
       "## pi-oven response language",
       "",
-      "The default response language for this project is English.",
-      "- Write all user-facing output (explanations, summaries, questions, progress) in English.",
+      `The default response language for this project is ${lang}.`,
+      `- Write all user-facing output (explanations, summaries, questions, progress) in ${lang}.`,
       "- If the user writes in another language, mirror their language.",
       "- Keep code/identifiers/string literals/logs/commands in their original form.",
     ].join("\n");

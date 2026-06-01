@@ -1,5 +1,12 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { runReset } from "../../../scripts/pi-oven-setup/reset";
+import {
+  markSetupComplete,
+  isSetupComplete,
+} from "../../../scripts/pi-oven-setup/project-config";
 
 // ---------------------------------------------------------------------------
 // SpawnFn mock factory
@@ -111,5 +118,48 @@ describe("runReset", () => {
     });
 
     await expect(runReset({ spawnFn })).rejects.toThrow();
+  });
+});
+
+describe("runReset — clears the project setup-completion marker", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = join(
+      tmpdir(),
+      `reset-marker-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(cwd, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("after a successful reset the project marker is cleared", async () => {
+    const getResponse = {
+      type: "record",
+      value: { "pi-oven:critic": "anthropic/claude-opus-4-8" },
+    };
+    const { spawnFn } = makeSpawn(getResponse);
+
+    await markSetupComplete({ cwd });
+    expect(isSetupComplete({ cwd })).toBe(true);
+
+    const result = await runReset({ spawnFn, cwd });
+    expect(result.exitCode).toBe(0);
+    expect(isSetupComplete({ cwd })).toBe(false);
+  });
+
+  it("clears the marker even on a no-op reset (no pi-oven:* overrides present)", async () => {
+    const getResponse = { type: "record", value: {} };
+    const { spawnFn } = makeSpawn(getResponse);
+
+    await markSetupComplete({ cwd });
+    expect(isSetupComplete({ cwd })).toBe(true);
+
+    const result = await runReset({ spawnFn, cwd });
+    expect(result.exitCode).toBe(0);
+    expect(isSetupComplete({ cwd })).toBe(false);
   });
 });

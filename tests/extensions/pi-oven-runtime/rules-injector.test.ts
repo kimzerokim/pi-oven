@@ -170,6 +170,27 @@ describe("RulesInjector — language directive", () => {
     expect(inj.buildLanguageDirective()).toBeNull();
   });
 
+  it("custom language directive names the language, is English-generic, and carries the marker", () => {
+    const inj = new RulesInjector();
+    inj.setLanguage("Español");
+    const directive = inj.buildLanguageDirective();
+    expect(directive).not.toBeNull();
+    expect(directive!).toContain("Español");
+    expect(directive!).toContain(LANGUAGE_DEDUP_KEY);
+    // English-generic phrasing, NOT the KO block
+    expect(directive!).toContain("The default response language for this project is Español.");
+    expect(directive!).not.toContain("한국어");
+  });
+
+  it("custom language => applyToSystemPrompt appends the language block exactly once", () => {
+    const inj = new RulesInjector();
+    inj.setLanguage("日本語");
+    const out = inj.applyToSystemPrompt(["base"]);
+    const langHits = out.filter((s) => s.includes(LANGUAGE_DEDUP_KEY));
+    expect(langHits).toHaveLength(1);
+    expect(langHits[0]).toContain("日本語");
+  });
+
   it("null language => applyToSystemPrompt injects NO language block (ambient respected)", () => {
     const inj = new RulesInjector();
     // language left unset

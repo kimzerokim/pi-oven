@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from five frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers / pi-oven). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-433%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-474%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
@@ -39,6 +39,17 @@ omp plugin list | grep pi-oven
 # Expected: pi-oven@pi-oven (0.1.0)
 ```
 
+### One-shot (install automatic, setup interactive)
+
+```sh
+omp plugin marketplace add kimzerokim/pi-oven
+omp plugin install pi-oven@pi-oven --force
+omp plugin list | grep pi-oven
+omp "/pi-oven:setup"   # opens omp and starts the interactive setup wizard
+```
+
+The first three lines install pi-oven automatically; the last line opens omp and runs `/pi-oven:setup` interactively — pick your language (Korean, English, or type your own), then choose a profile.
+
 If you already have an older version installed, refresh the marketplace cache first:
 
 ```sh
@@ -61,7 +72,7 @@ After installation, run `/pi-oven:setup` inside an omp session. The wizard is **
 
 The wizard will:
 
-0. Ask your primary language first (Step 0) — pick `한국어 (Korean)` or `English`. The wizard conducts the rest of setup in that language and persists it as the project default language to `.pi-oven/config.json` (machine-local, gitignored). The pi-oven extension injects this default at runtime so agents respond in your chosen language; if no config is set, the ambient project/global language preference is respected (nothing is forced).
+0. Ask your primary language first (Step 0) — pick `한국어 (Korean)`, `English`, or type your OWN language (e.g. `Español`, `日本語`, `Français`) and it becomes the project default. The wizard conducts the rest of setup in that language and persists it as the project default language to `.pi-oven/config.json` (machine-local, gitignored). The pi-oven extension injects this default at runtime so agents respond in your chosen language; if no config is set, the ambient project/global language preference is respected (nothing is forced).
 1. Detect which providers are authenticated (`opencode-zen`, `openai-codex`, `anthropic`).
 2. Offer Profile A (release default) or Profile B (Anthropic opt-in, if available).
 3. Optionally let you override individual agent roles.
@@ -313,7 +324,7 @@ The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pi-oven-*.md` a
 ### Test suite
 
 ```sh
-bun test       # 433 tests across 40 files
+bun test       # 474 tests across 41 files
 bun check      # tsc --noEmit typecheck
 bun run build  # extension bundle (pi-oven.js)
 bun run lint:agents  # CI-grade agent file lint
@@ -336,7 +347,7 @@ If you're hacking on pi-oven itself, point omp at your local checkout instead of
 ```sh
 cd /path/to/pi-oven
 bun install
-bun test           # baseline 433 passing
+bun test           # baseline 474 passing
 bun check          # typecheck clean
 bun run build      # extension bundles to dist/pi-oven.js
 bun run lint:agents
@@ -371,8 +382,8 @@ pi-oven/
 │   ├── run-eval.ts          # scenario runner against omp SDK
 │   ├── pi-oven-setup.ts         # /pi-oven:setup batch CLI
 │   ├── pi-oven-release/         # release automation modules (bump/sync/changelog/publish)
-│   ├── pi-oven-setup/           # 11 submodules (profiles, persist, apply, ...)
-├── tests/                   # bun test suite (433 tests, 1081 expect calls, 40 files)
+│   ├── pi-oven-setup/           # 13 submodules (profiles, persist, apply, ...)
+├── tests/                   # bun test suite (474 tests, 1161 expect calls, 41 files)
 │   ├── extensions/
 │   ├── plugin/
 │   └── scripts/

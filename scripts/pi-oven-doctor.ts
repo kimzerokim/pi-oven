@@ -445,6 +445,7 @@ const SOT_SKILL_PATHS = [
   "./skills/systematic-debugging/SKILL.md",
   "./skills/improve-codebase-architecture/SKILL.md",
   "./skills/receiving-code-review/SKILL.md",
+  "./skills/html-research-orchestrator/SKILL.md",
   "./skills/git-workflow/SKILL.md",
   "./skills/aws/SKILL.md",
   "./skills/bitbucket-pipeline/SKILL.md",

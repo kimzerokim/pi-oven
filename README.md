@@ -9,7 +9,7 @@
 ## What you get
 
 - **22 self-contained agents** under the `pi-oven:` namespace — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis. Each is a markdown file in `agents/` with locked model + tool whitelist.
-- **20 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, git-workflow, aws, bitbucket-pipeline, cloudflare.
+- **21 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, git-workflow, aws, bitbucket-pipeline, cloudflare.
 - **`/pi-oven:setup` wizard** — Profile A (release default, opencode-zen + openai-codex) or Profile B (Anthropic Pro/Max opt-in), agent-file source of truth, drift detection on every session.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
 
@@ -198,6 +198,7 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 | `systematic-debugging` | extended | reproduce → hypothesize → instrument → fix loop |
 | `improve-codebase-architecture` | extended | deepening-focused architecture refactor discovery |
 | `receiving-code-review` | extended | challenge/validate review comments before applying |
+| `html-research-orchestrator` | extended | fan-out research → cited HTML report assembly |
 | `git-workflow` | extended | worktree-first branch start/finish lifecycle |
 | `aws` | ops (UC5) | AWS production read inspection and infra diagnostics |
 | `bitbucket-pipeline` | ops (UC5) | Bitbucket pipeline status/log/variables connector |
@@ -352,13 +353,13 @@ In dev mode, agent file edits are picked up immediately (no `omp plugin install 
 ```
 pi-oven/
 ├── .claude-plugin/
-│   ├── plugin.json          # plugin manifest (20 skills, version, commands)
+│   ├── plugin.json          # plugin manifest (21 skills, version, commands)
 │   └── marketplace.json     # marketplace catalog (plugins[0].version)
 ├── .omp/extensions/
 │   └── pi-oven.ts               # load-time validator + session_start drift hook
 ├── agents/                  # 22 pi-oven-prefixed agent files (file-based registry)
 │   └── pi-oven-*.md
-├── skills/                  # 21 authored skills (20 runtime-loaded + html-research-orchestrator)
+├── skills/                  # 21 authored skills (all runtime-loaded)
 │   └── <skill-name>/
 │       ├── SKILL.md
 │       └── references/      # progressive disclosure docs
@@ -395,7 +396,7 @@ pi-oven/
 
 ## Architecture in one paragraph
 
-pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin. The 22 agent files in `agents/pi-oven-*.md` are the single source of truth for model routing — each file's frontmatter `model:` array names the primary + alternate that the omp `task` tool will resolve at dispatch time. A load-time TypeScript validator (`.omp/extensions/pi-oven.ts`) enforces the provider whitelist by reading the agent files themselves: if any file references an `anthropic/*` model, the validator includes `anthropic/` in `ALLOWED_PREFIXES`; otherwise Profile A is in effect. The `/pi-oven:setup` wizard mutates the agent files in-place to switch Profiles; the `session_start` hook detects drift between agent files and persisted plugin config and emits a warning. 20 skills layer workflow discipline on top, including UC5 ops connectors (`aws`, `bitbucket-pipeline`, `cloudflare`).
+pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin. The 22 agent files in `agents/pi-oven-*.md` are the single source of truth for model routing — each file's frontmatter `model:` array names the primary + alternate that the omp `task` tool will resolve at dispatch time. A load-time TypeScript validator (`.omp/extensions/pi-oven.ts`) enforces the provider whitelist by reading the agent files themselves: if any file references an `anthropic/*` model, the validator includes `anthropic/` in `ALLOWED_PREFIXES`; otherwise Profile A is in effect. The `/pi-oven:setup` wizard mutates the agent files in-place to switch Profiles; the `session_start` hook detects drift between agent files and persisted plugin config and emits a warning. 21 skills layer workflow discipline on top, including UC5 ops connectors (`aws`, `bitbucket-pipeline`, `cloudflare`).
 
 ---
 

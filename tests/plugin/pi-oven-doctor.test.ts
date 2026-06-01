@@ -129,7 +129,7 @@ describe("evalSkills", () => {
   it("PASS when plugin skill manifest matches SoT set", () => {
     const r = evalSkills({
       skillMdCount: 21,
-      pluginSkillsCount: 20,
+      pluginSkillsCount: 21,
       missingFromManifest: [],
       extraInManifest: [],
     });
@@ -296,7 +296,7 @@ describe("DoctorFacts → evaluators integration (pure, injected facts)", () => 
       git: { present: true, version: "2.44.0", insideRepo: true },
       auth: { opencode_zen: true, openai_codex: false, anthropic: false },
       mcp: { servers: ["playwright"] },
-      skills: { skillMdCount: 21, pluginSkillsCount: 20, missingFromManifest: [], extraInManifest: [] },
+      skills: { skillMdCount: 21, pluginSkillsCount: 21, missingFromManifest: [], extraInManifest: [] },
       agents: { agentCount: 22, expectedCount: 22, lintClean: true },
       stateDir: { writable: true, path: ".pi-oven" },
       evalRunner: { runnerPresent: true, smokeScenarioCount: 15 },

@@ -15,7 +15,7 @@
 | Dir | What | SoT? |
 |---|---|---|
 | `agents/pi-oven-*.md` | 22 subagent definitions. Frontmatter `name: pi-oven:<role>` (colon), `model:` array, `thinkingLevel`, body = system prompt. | body hand-authored; `model`/`thinkingLevel` derived from profiles.ts |
-| `skills/<name>/SKILL.md` | 21 authored skills; runtime loads the 20-skill SoT set from `.claude-plugin/plugin.json`. Bodies **English-only**. | hand-authored |
+| `skills/<name>/SKILL.md` | 21 authored skills; runtime loads the 21-skill SoT set from `.claude-plugin/plugin.json`. Bodies **English-only**. | hand-authored |
 | `commands/pi-oven-*.md` | 4 command templates exist; runtime registers `/pi-oven:setup`, `/pi-oven:doctor`, `/pi-oven:autonomous` from `plugin.json`. | hand-authored |
 | `scripts/pi-oven-setup/` | Setup-wizard CLI modules (TS, bun). | code |
 | `scripts/pi-oven-release/` | Release automation modules (version bump, SoT sync, changelog, publish gate). | code |

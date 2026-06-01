@@ -86,5 +86,113 @@ expected:
       const verdict = await runScenario(scenario, fakeSession);
       expect(verdict.passed).toBe(true);
     });
+
+    it("fails when skill_triggered expects a specific token that is absent", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "tool_execution_start", toolName: "task", toolCallId: "c1" });
+            listener({ type: "message_update", delta: "running generic flow" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: t3
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - skill_triggered: "autonomous-loop"
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(false);
+      expect(verdict.failures).toContain(
+        'skill_triggered: expected "autonomous-loop" in tool calls or response content'
+      );
+    });
+
+    it("fails when skill_triggered is false but activation evidence exists", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "tool_execution_start", toolName: "task", toolCallId: "c1" });
+            listener({ type: "message_update", delta: "response text" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: t4
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - skill_triggered: false
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(false);
+      expect(verdict.failures).toContain(
+        "skill_triggered: expected no activation evidence, but activation was observed"
+      );
+    });
+
+    it("passes when skill_triggered expects a specific token that is present", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "tool_execution_start", toolName: "autonomous-loop-check", toolCallId: "c1" });
+            listener({ type: "message_update", delta: "ok" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: t5
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - skill_triggered: "autonomous-loop"
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(true);
+    });
+
+    it("passes when skill_triggered is false and no activation evidence exists", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: t6
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - skill_triggered: false
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(true);
+    });
   });
 });

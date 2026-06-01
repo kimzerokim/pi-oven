@@ -15,7 +15,8 @@
     "build": "bun build .omp/extensions/pi-oven.ts --outdir dist --target bun --format esm --external '@oh-my-pi/*'",
     "eval": "bun scripts/run-eval.ts",
     "lint:agents": "bun scripts/lint-agents.ts",
-    "lint:skills": "bun scripts/lint-skills.ts"
+    "lint:skills": "bun scripts/lint-skills.ts",
+    "release:pi-oven": "bun scripts/pi-oven-release/index.ts"
   },
   "dependencies": {
     "@oh-my-pi/pi-coding-agent": "*"

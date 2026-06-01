@@ -9,8 +9,9 @@
 //   - emitToolCall is UN-TIMED in omp (§2 row 7). All handler work is wrapped in
 //     a Promise.race against a self-deadline (default 1500 ms). On overrun the
 //     handler THROWS → omp converts to {block:true} = fail-CLOSED (SAFE).
-//   - Only Bash tool calls are inspected. Any other tool, or any unexpected
-//     error in the non-gated path, fails OPEN (never break a normal session).
+//   - Bash calls are inspected for commit/push/forbidden gating. Task calls are
+//     inspected for agent-namespace compatibility (allow `pi-oven:*` and bare names;
+//     block only foreign namespaced refs). Any other tool, or any
 //   - Subagent sessions (isParentSession=false) are still GATED (read-only
 //     lookup) but NEVER mutate the FSM (single-writer rule, B4).
 //   - File push-consent is consumed (single-use) inside the mutex before the
@@ -81,7 +82,21 @@ export function createGateHandler(
   return async function handler(
     event: ToolCallEventLike
   ): Promise<ToolCallResultLike | void> {
-    // Only Bash carries a gated command string. Everything else fails OPEN.
+    // Task dispatch compatibility guard:
+    // - allow `pi-oven:*` when the runtime registry provides it
+    // - allow bare names (`executor`, `planner`, ...) for harness-fixed registries
+    // - block foreign namespaced refs (`oh-my-claudecode:*`, `omo:*`, ...)
+    if (event.toolName === "task") {
+      const agent = event.input?.agent;
+      if (typeof agent !== "string" || agent.length === 0) return { block: false };
+      if (!agent.includes(":") || agent.startsWith("pi-oven:")) return { block: false };
+      return {
+        block: true,
+        reason:
+          'pi-oven: task dispatch blocked — unsupported namespaced agent. Use bare built-in names (e.g. "executor") or `pi-oven:*` aliases when registered.',
+      };
+    }
+    // Only Bash carries command-gated checks beyond this point.
     if (event.toolName !== "bash") return undefined;
     const command = event.input?.command;
     if (typeof command !== "string" || command.length === 0) return undefined;

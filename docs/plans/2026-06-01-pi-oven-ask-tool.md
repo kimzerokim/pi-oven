@@ -23,8 +23,8 @@
 - `Container`, `Text`, `Markdown` — importable from `@oh-my-pi/pi-tui` (also re-exported by pi-coding-agent).
 - Precedent to mirror for live-picker wiring: `packages/coding-agent/src/modes/components/thinking-selector.ts` (Container + SelectList child + onSelect/onCancel).
 
-## Scope (v1)
-Single question, **single-select**, with optional per-option `description` + optional `recommended` + an auto-appended "Other (type your own)" free-text entry. Multi-select / multi-question stay on the built-in `ask` (documented). This covers brainstorming's A/B/C convergence questions and deep-dive's confirmations.
+## Scope (v2, backward-compatible)
+Keep existing v1 single-question behavior intact, and add optional batched mode via `questions?: [{ id, question, options, recommended?, multi? }]`. Batch mode supports per-question multi-select when `multi=true`; single-question mode remains single-select.
 
 ## New module: `.omp/extensions/pi-oven-runtime/pi-oven-ask.ts`
 Export **pure, unit-testable** helpers + the registrar:
@@ -82,4 +82,4 @@ Do NOT attempt to test `ctx.ui.custom`/SelectList rendering — covered by build
 4. Coherence: pi-oven_ask registered fail-open; execute has the custom-missing fallback; descriptions reach SelectItem.description; skills steer option questions to pi-oven_ask.
 
 ## Out of scope (note in code/docs)
-Multi-select, multi-question back/forward navigation, and the ask timeout/auto-select feature are NOT ported (built-in `ask` keeps those). Revisit if needed.
+Batch back/forward navigation UX and ask timeout/auto-select remain out of scope.

@@ -73,14 +73,20 @@ export async function runScenario(scenario: Scenario, session: SessionLike): Pro
   }
 
   for (const exp of scenario.expected) {
-    // 1. skill_triggered: check if any tool call name or content contains the skill name
+    // 1. skill_triggered
     if (exp.skill_triggered !== undefined) {
+      const anyTriggered = lastBuf.toolCalls.length > 0 || lastBuf.content.length > 0;
       const target = typeof exp.skill_triggered === "string" ? exp.skill_triggered : null;
-      const triggered = target
+      const targetTriggered = target
         ? lastBuf.toolCalls.some((n) => n.includes(target)) || lastBuf.content.includes(target)
-        : lastBuf.toolCalls.length > 0 || lastBuf.content.length > 0;
-      if (exp.skill_triggered === true && !triggered) {
+        : anyTriggered;
+
+      if (exp.skill_triggered === true && !anyTriggered) {
         failures.push(`skill_triggered: no evidence of skill activation`);
+      } else if (exp.skill_triggered === false && anyTriggered) {
+        failures.push(`skill_triggered: expected no activation evidence, but activation was observed`);
+      } else if (typeof exp.skill_triggered === "string" && !targetTriggered) {
+        failures.push(`skill_triggered: expected "${exp.skill_triggered}" in tool calls or response content`);
       }
     }
 

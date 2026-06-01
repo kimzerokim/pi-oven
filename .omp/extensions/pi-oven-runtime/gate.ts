@@ -19,7 +19,7 @@ import type { NormalizedCommand } from "./git-normalize";
 
 export interface FsmStateData {
   active: boolean;
-  gateCache: { commit?: string };
+  gateCache: { commit?: string; regression?: string };
 }
 
 /** Discriminated view of the FSM state file as seen by the gate. */
@@ -122,11 +122,12 @@ export function decideGate(input: GateInput): GateDecision {
   }
 
   // wantsCommit
-  if (fsm.state.gateCache.commit === "PASS") {
+  if (fsm.state.gateCache.commit === "PASS" && fsm.state.gateCache.regression === "PASS") {
     return { block: false };
   }
   return {
     block: true,
-    reason: "pi-oven: git commit blocked — pre-commit gate has not PASSED (gateCache.commit != PASS).",
+    reason:
+      "pi-oven: git commit blocked — full regression gate has not PASSED (requires gateCache.commit === PASS and gateCache.regression === PASS).",
   };
 }

@@ -9,7 +9,7 @@
 ## What you get
 
 - **22 self-contained agents** under the `pi-oven:` namespace — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis. Each is a markdown file in `agents/` with locked model + tool whitelist.
-- **20 skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, git-workflow, aws, bitbucket-pipeline, cloudflare.
+- **20 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, git-workflow, aws, bitbucket-pipeline, cloudflare.
 - **`/pi-oven:setup` wizard** — Profile A (release default, opencode-zen + openai-codex) or Profile B (Anthropic Pro/Max opt-in), agent-file source of truth, drift detection on every session.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
 
@@ -77,13 +77,19 @@ Inside any omp session, dispatch an agent by name:
 
 The agent loads from `agents/pi-oven-explorer.md`, uses the model from your active Profile, and respects its tool whitelist (read-only research agents cannot Write or Edit).
 
+At `session_start`, pi-oven also mirrors `pi-oven-*.md` into discovery-stable paths:
+- project scope: `.omp/agents/`
+- user/global scope: `~/.omp/agent/agents/`
+
+So `pi-oven:*` dispatch remains available even when plugin-root agent discovery is disabled in a harness runtime.
+
 ### 3. Trigger skills by keyword
 
 Skills auto-activate when their trigger keywords appear in conversation. For example:
 
 | Skill | Sample trigger |
 |---|---|
-| `autonomous-loop` | `자율 실행`, `ralph로 돌려`, `autopilot`, `ultrawork`, `must complete` |
+| `autonomous-loop` | `자율 실행`, `자율실행`, `ralph로 돌려`, `autopilot`, `ultrawork`, `must complete` |
 | `tdd-strict` | `tdd`, `test first`, `red-green-refactor` |
 | `spec-and-review` | `spec 잡자`, `plan draft`, `codex review` |
 | `codebase-survey` | `버그 수정`, `callsite 전수`, `상세하게 봐줘` |
@@ -103,10 +109,19 @@ bun scripts/pi-oven-doctor.ts
 
 Expected check:
 
-- `[PASS] uc5 ops connector` when connector skills exist and one credential file is present (`.external-credentials`, `.external_certificate`, or `.external_cerficate`)
+- `[PASS] uc5 ops connector` when connector skills exist and one credential file is present (`.external-credentials` or `.external_certificate`; legacy alias `.external_cerficate` is also accepted)
 - `[WARN] uc5 ops connector` when skills are installed but no credential file exists yet (non-blocking onboarding state)
 - `[FAIL] uc5 ops connector` only when required skill files are missing
 
+### 3.2 Dry-run release automation
+
+Run:
+
+```sh
+bun run release:pi-oven -- --bump patch --dry-run --update-changelog --sync-label
+```
+
+Default behavior is safe (`--dry-run` unless `--publish` is explicitly set without dry-run). The release script enforces version SoT sync across `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json`.
 ### 4. Verify before claiming done
 
 The `fresh-verifier` skill enforces a hard rule: **the main agent cannot verify its own work**. When you finish a task and want to confirm completion, the skill auto-dispatches `pi-oven:verifier` (a fresh agent with no memory of the implementation) to run a 4-check audit:
@@ -283,6 +298,12 @@ This is required because the marketplace install copies the repo tree recursivel
 
 `omp plugin config` operations use the bare plugin name `pi-oven` (matches `plugin.json` `"name"`). The marketplace-qualified id `pi-oven@pi-oven` is only for `omp plugin install` / `omp plugin uninstall`. If you accidentally pass `pi-oven@pi-oven` to a `config` subcommand, you'll see `Plugin "pi-oven@pi-oven" not found`.
 
+### `Unknown agent "pi-oven:executor"` in task dispatch
+
+This means your current runtime did not load plugin-root agents. pi-oven now auto-mirrors agent files into `.omp/agents/` (project) and `~/.omp/agent/agents/` (user/global) at `session_start`.
+
+If you still see the error in an already-open session, restart the session (or trigger a new one) so `session_start` runs and the mirror is written.
+
 ### `bun run lint:agents` fails
 
 The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pi-oven-*.md` and fails if any file is missing a `model:` field. If you customized an agent and removed the model lock, this lint will catch it before the build merges.
@@ -337,7 +358,7 @@ pi-oven/
 │   └── pi-oven.ts               # load-time validator + session_start drift hook
 ├── agents/                  # 22 pi-oven-prefixed agent files (file-based registry)
 │   └── pi-oven-*.md
-├── skills/                  # 20 skills
+├── skills/                  # 21 authored skills (20 runtime-loaded + html-research-orchestrator)
 │   └── <skill-name>/
 │       ├── SKILL.md
 │       └── references/      # progressive disclosure docs
@@ -347,8 +368,8 @@ pi-oven/
 │   ├── lint-agents.ts       # CI hard lint
 │   ├── run-eval.ts          # scenario runner against omp SDK
 │   ├── pi-oven-setup.ts         # /pi-oven:setup batch CLI
+│   ├── pi-oven-release/         # release automation modules (bump/sync/changelog/publish)
 │   ├── pi-oven-setup/           # 11 submodules (profiles, persist, apply, ...)
-│   └── lib/eval-runner.ts   # SDK subscribe-pattern adapter
 ├── tests/                   # bun test suite (351 tests, 881 expect calls)
 │   ├── extensions/
 │   ├── plugin/
@@ -356,7 +377,8 @@ pi-oven/
 ├── commands/                # slash command prompt templates
 │   ├── pi-oven-setup.md
 │   ├── pi-oven-doctor.md
-│   └── pi-oven-autonomous.md
+│   ├── pi-oven-autonomous.md
+│   └── pi-oven-release.md
 └── docs/
     ├── specs/               # design specs (foundation + agent registry + setup wizard + skill rewrite)
     ├── plans/               # implementation plans

@@ -2,6 +2,21 @@
 
 Per-gate procedure, failure protocol, and skill integration map.
 
+
+## Runtime gate decision (hook layer)
+
+For `git commit` under ACTIVE gate (`state.kind=OK` + `state.active=true`), runtime allow requires full regression cache pass:
+
+- `gateCache.commit === "PASS"`
+- `gateCache.regression === "PASS"`
+
+If either check is not `PASS`, commit is blocked.
+
+Preserved invariants:
+- Forbidden floor is always-on (independent of gate state / bypass).
+- Push consent flow is unchanged (env/file single-use behavior).
+- ABSENT state is non-blocking.
+- CORRUPT state is fail-closed for commit/push.
 ## Gate 0 — AGENTS.md sync
 
 **Trigger**: `git diff --cached --name-status` returns any `A` (added) or `D` (deleted) entry.

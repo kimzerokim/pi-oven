@@ -2,7 +2,7 @@
 name: pre-commit-gate
 version: 0.1.0
 description: "Sequential 11-gate pre-commit check (AGENTS.md sync, freshness, ai-slop, secrets, prod code-first, build, test, docker smoke, Playwright UI, fix-scope, fresh-verifier) before every git commit via Bash. One FAIL blocks immediately. New commit, never --amend."
-trigger: "git commit / git push / gh pr command via Bash"
+trigger: "git commit / git push / gh pr command via Bash OR 커밋 전 점검, 프리커밋 게이트"
 alwaysApply: false
 ---
 
@@ -31,6 +31,16 @@ Do not bypass with `--no-verify` unless the user explicitly orders it. Partial g
 | 5 | Fresh-verifier | 3+ files changed, high-risk tag, or any main-authored commit | `PI_OVEN_GATE5_SKIP=1` |
 
 Gate 6 (cycle-exit verifier) fires separately on `gh pr create` / `git push origin main` — not part of the per-commit sequence above.
+
+## Runtime commit enforcement (ACTIVE gate)
+
+When `.pi-oven/state/autonomous.json` is `kind=OK` and `active=true`, runtime `git commit` allow is **full regression gate only**:
+
+- `gateCache.commit === "PASS"` **and**
+- `gateCache.regression === "PASS"`
+
+If either is missing/non-`PASS`, commit is blocked fail-closed.  
+ABSENT state remains non-blocking, CORRUPT remains fail-closed, forbidden floor remains always-on, and push-consent behavior is unchanged.
 
 ## Sequential failure protocol
 

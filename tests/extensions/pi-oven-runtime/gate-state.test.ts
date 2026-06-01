@@ -35,13 +35,26 @@ describe("GateStateStore — read failure policy (AC6)", () => {
   it("valid primary → readState returns kind OK with parsed state", async () => {
     const store = new GateStateStore(dir);
     mkdirSync(join(dir, "state"), { recursive: true });
-    const s: FsmState = { active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 };
+    const s: FsmState = { active: true, gateCache: { commit: "PASS", regression: "PASS" }, version: 1, schemaVersion: 1 };
     writeFileSync(statePath(dir), JSON.stringify(s));
     const view = await store.readState();
     expect(view.kind).toBe("OK");
     if (view.kind === "OK") {
       expect(view.state.active).toBe(true);
       expect(view.state.gateCache.commit).toBe("PASS");
+      expect(view.state.gateCache.regression).toBe("PASS");
+    }
+  });
+
+  it("schema-compatible primary (regression omitted) → readState still returns kind OK", async () => {
+    const store = new GateStateStore(dir);
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(statePath(dir), JSON.stringify({ active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 }));
+    const view = await store.readState();
+    expect(view.kind).toBe("OK");
+    if (view.kind === "OK") {
+      expect(view.state.gateCache.commit).toBe("PASS");
+      expect(view.state.gateCache.regression).toBeUndefined();
     }
   });
 
@@ -64,7 +77,7 @@ describe("GateStateStore — read failure policy (AC6)", () => {
   it("orphan .tmp + valid primary (c1) → reads the valid primary, ignores .tmp", async () => {
     const store = new GateStateStore(dir);
     mkdirSync(join(dir, "state"), { recursive: true });
-    const s: FsmState = { active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 };
+    const s: FsmState = { active: true, gateCache: { commit: "PASS", regression: "PASS" }, version: 1, schemaVersion: 1 };
     writeFileSync(statePath(dir), JSON.stringify(s));
     writeFileSync(statePath(dir) + ".tmp", "{ partial");
     const view = await store.readState();
@@ -88,12 +101,13 @@ describe("GateStateStore — atomic write (AC6 / AC8)", () => {
 
   it("writeState produces a valid readable primary and leaves no orphan .tmp", async () => {
     const store = new GateStateStore(dir);
-    const s: FsmState = { active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 };
+    const s: FsmState = { active: true, gateCache: { commit: "PASS", regression: "PASS" }, version: 1, schemaVersion: 1 };
     await store.writeState(s);
     expect(existsSync(statePath(dir))).toBe(true);
     expect(existsSync(statePath(dir) + ".tmp")).toBe(false);
     const parsed = JSON.parse(readFileSync(statePath(dir), "utf-8"));
     expect(parsed.gateCache.commit).toBe("PASS");
+    expect(parsed.gateCache.regression).toBe("PASS");
   });
 
   it("creates the state dir if absent", async () => {

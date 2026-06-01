@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import * as ext from "../../.omp/extensions/pi-oven";
@@ -10,6 +10,7 @@ import {
   type AgentFileEntry,
   type SessionModelCapture,
 } from "../../.omp/extensions/pi-oven";
+import { syncPiOvenAgentMirrors } from "../../.omp/extensions/pi-oven";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-ext-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -202,6 +203,82 @@ describe("validateAgentRegistry", () => {
 });
 
 // ---------------------------------------------------------------------------
+// syncPiOvenAgentMirrors
+// ---------------------------------------------------------------------------
+
+describe("syncPiOvenAgentMirrors", () => {
+  let tempDir: string;
+  let sourceDir: string;
+  let projectDir: string;
+  let homeDir: string;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+    sourceDir = join(tempDir, "source-agents");
+    projectDir = join(tempDir, "project");
+    homeDir = join(tempDir, "home");
+    mkdirSync(sourceDir, { recursive: true });
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(homeDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("mirrors pi-oven-*.md to project+user targets and removes stale mirrored files", async () => {
+    writeFileSync(join(sourceDir, "pi-oven-executor.md"), "---\nmodel: opencode-zen/glm-5\n---\n");
+    writeFileSync(join(sourceDir, "pi-oven-verifier.md"), "---\nmodel: opencode-zen/glm-5\n---\n");
+    writeFileSync(join(sourceDir, "README.md"), "not mirrored");
+
+    const projectAgents = join(projectDir, ".omp", "agents");
+    const userAgents = join(homeDir, ".omp", "agent", "agents");
+    mkdirSync(projectAgents, { recursive: true });
+    mkdirSync(userAgents, { recursive: true });
+
+    writeFileSync(join(projectAgents, "pi-oven-stale.md"), "stale");
+    writeFileSync(join(userAgents, "pi-oven-stale.md"), "stale");
+    writeFileSync(join(projectAgents, "custom.md"), "keep");
+    writeFileSync(join(userAgents, "custom.md"), "keep");
+
+    const r = await syncPiOvenAgentMirrors(sourceDir, projectDir, homeDir);
+    expect(r.mirroredFiles).toBe(4);
+    expect(r.removedStaleFiles).toBe(2);
+    expect(r.targetsTouched).toContain(projectAgents);
+    expect(r.targetsTouched).toContain(userAgents);
+
+    expect(existsSync(join(projectAgents, "pi-oven-executor.md"))).toBe(true);
+    expect(existsSync(join(projectAgents, "pi-oven-verifier.md"))).toBe(true);
+    expect(existsSync(join(userAgents, "pi-oven-executor.md"))).toBe(true);
+    expect(existsSync(join(userAgents, "pi-oven-verifier.md"))).toBe(true);
+    expect(existsSync(join(projectAgents, "pi-oven-stale.md"))).toBe(false);
+    expect(existsSync(join(userAgents, "pi-oven-stale.md"))).toBe(false);
+    expect(readFileSync(join(projectAgents, "custom.md"), "utf-8")).toBe("keep");
+    expect(readFileSync(join(userAgents, "custom.md"), "utf-8")).toBe("keep");
+  });
+
+  it("is idempotent when mirrored targets are already up-to-date", async () => {
+    writeFileSync(join(sourceDir, "pi-oven-executor.md"), "---\nmodel: opencode-zen/glm-5\n---\n");
+    const first = await syncPiOvenAgentMirrors(sourceDir, projectDir, homeDir);
+    expect(first.mirroredFiles).toBe(2);
+
+    const second = await syncPiOvenAgentMirrors(sourceDir, projectDir, homeDir);
+    expect(second.mirroredFiles).toBe(0);
+    expect(second.removedStaleFiles).toBe(0);
+    expect(second.targetsTouched).toHaveLength(0);
+  });
+
+  it("returns no-op when source agents dir is missing", async () => {
+    const missingSource = join(tempDir, "missing-source");
+    const r = await syncPiOvenAgentMirrors(missingSource, projectDir, homeDir);
+    expect(r.mirroredFiles).toBe(0);
+    expect(r.removedStaleFiles).toBe(0);
+    expect(r.targetsTouched).toHaveLength(0);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
 // session_start: captureSessionModel
 // ---------------------------------------------------------------------------
 
@@ -220,7 +297,7 @@ describe("captureSessionModel", () => {
     const targetPath = join(tempDir, "pi-oven-session-model.json");
     await captureSessionModel("anthropic/claude-sonnet-4-6", targetPath);
 
-    const content = JSON.parse(require("fs").readFileSync(targetPath, "utf-8")) as SessionModelCapture;
+    const content = JSON.parse(readFileSync(targetPath, "utf-8")) as SessionModelCapture;
     expect(content.model).toBe("anthropic/claude-sonnet-4-6");
     expect(typeof content.capturedAt).toBe("number");
     expect(content.capturedAt).toBeLessThanOrEqual(Date.now());
@@ -231,7 +308,7 @@ describe("captureSessionModel", () => {
     await captureSessionModel("anthropic/claude-sonnet-4-6", targetPath);
     await captureSessionModel("opencode-zen/gpt-5.3-codex", targetPath);
 
-    const content = JSON.parse(require("fs").readFileSync(targetPath, "utf-8")) as SessionModelCapture;
+    const content = JSON.parse(readFileSync(targetPath, "utf-8")) as SessionModelCapture;
     expect(content.model).toBe("opencode-zen/gpt-5.3-codex");
   });
 

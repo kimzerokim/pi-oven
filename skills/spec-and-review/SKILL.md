@@ -2,7 +2,7 @@
 name: spec-and-review
 version: 0.1.0
 description: Spec/plan authoring with cross-vendor critic loop via omp internal multi-provider task fan-out (Codex + Zen GLM/Qwen simultaneously)
-trigger: "new spec/plan draft OR 'spec 잡자' / 'plan draft' / 'codex review' keyword"
+trigger: "new spec/plan draft OR spec 잡자 / 스펙 잡자 / 기획안 작성 / plan draft / codex review keyword"
 alwaysApply: false
 ---
 

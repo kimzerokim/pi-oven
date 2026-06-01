@@ -68,7 +68,7 @@ This is the onboarding bridge to the gated real-eval pipeline.
 | 7 | agents | `agents/pi-oven-*.md` count == 22 AND `lint:agents` clean | — | count mismatch, or count OK but lint drift |
 | 8 | state dir | `.pi-oven/` creatable + writable | — | not writable |
 | 9 | eval runner | `scripts/run-eval.ts` present AND ≥1 smoke-tagged scenario enumerable | runner present but 0 smoke scenarios | runner script absent |
-| 10 | UC5 ops connector | `skills/aws`, `skills/bitbucket-pipeline`, `skills/cloudflare` present + any credential file (`.external-credentials` / `.external_certificate` / `.external_cerficate`) detected | skill files present but no credential file | any connector skill file missing |
+| 10 | UC5 ops connector | `skills/aws`, `skills/bitbucket-pipeline`, `skills/cloudflare` present + credential file (`.external-credentials` or `.external_certificate`; legacy `.external_cerficate` alias also accepted) detected | skill files present but no credential file | any connector skill file missing |
 
 Checks 4 and 5 can only WARN (never FAIL) — auth and MCP are environmental, not install-integrity, defects. Check 10 WARN is also environmental (credential file not yet onboarded). Checks 6, 7, 9-runner-absent, and 10-missing-skills are install-integrity FAILs. The script's exit code reflects only FAILs.
 

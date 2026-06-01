@@ -8,7 +8,7 @@ export interface ScenarioTurn {
  *  agent_response_must_explain, state_transition_must_reach) land in Plan 3.
  */
 export interface ScenarioExpectation {
-  skill_triggered?: boolean | string;          // true = any skill event; string = specific skill name in payload
+  skill_triggered?: boolean | string;          // true = any activation, false = no activation, string = token must appear in tool-call name or response text
   agent_response_must_contain?: string[];      // substrings required in aggregated content
   agent_response_must_not_contain?: string[];  // substrings forbidden in aggregated content
   tool_calls_required?: string[];              // regex patterns: at least one tool call must match each

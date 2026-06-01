@@ -122,20 +122,30 @@ describe("evalMcp", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (6) skills count match
+// (6) skills SoT manifest alignment
 // ---------------------------------------------------------------------------
 
 describe("evalSkills", () => {
-  it("PASS when SKILL.md count equals plugin.json skills[] length", () => {
-    const r = evalSkills({ skillMdCount: 20, pluginSkillsCount: 20 });
+  it("PASS when plugin skill manifest matches SoT set", () => {
+    const r = evalSkills({
+      skillMdCount: 21,
+      pluginSkillsCount: 20,
+      missingFromManifest: [],
+      extraInManifest: [],
+    });
     expect(r.status).toBe("PASS");
-    expect(r.detail).toContain("20");
+    expect(r.detail).toContain("SoT-aligned");
   });
 
-  it("FAIL when counts mismatch", () => {
-    const r = evalSkills({ skillMdCount: 19, pluginSkillsCount: 20 });
+  it("FAIL when SoT-required skills are missing from plugin manifest", () => {
+    const r = evalSkills({
+      skillMdCount: 21,
+      pluginSkillsCount: 19,
+      missingFromManifest: ["./skills/autonomous-loop/SKILL.md"],
+      extraInManifest: [],
+    });
     expect(r.status).toBe("FAIL");
-    expect(r.detail).toMatch(/19.*20|20.*19/);
+    expect(r.detail).toContain("Missing:");
     expect(r.fix).toBeDefined();
   });
 });
@@ -286,7 +296,7 @@ describe("DoctorFacts → evaluators integration (pure, injected facts)", () => 
       git: { present: true, version: "2.44.0", insideRepo: true },
       auth: { opencode_zen: true, openai_codex: false, anthropic: false },
       mcp: { servers: ["playwright"] },
-      skills: { skillMdCount: 20, pluginSkillsCount: 20 },
+      skills: { skillMdCount: 21, pluginSkillsCount: 20, missingFromManifest: [], extraInManifest: [] },
       agents: { agentCount: 22, expectedCount: 22, lintClean: true },
       stateDir: { writable: true, path: ".pi-oven" },
       evalRunner: { runnerPresent: true, smokeScenarioCount: 15 },

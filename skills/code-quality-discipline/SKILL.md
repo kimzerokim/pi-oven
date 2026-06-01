@@ -2,7 +2,7 @@
 name: code-quality-discipline
 version: 0.1.0
 description: DRY / YAGNI / KISS + Deletion test + Depth-before-width + Immutability principles enforce on every code-write tool call
-trigger: tool_call.toolName in (Edit, Write, MultiEdit, ast_grep_replace)
+trigger: "tool_call.toolName in (Edit, Write, MultiEdit, ast_grep_replace) OR 코드 품질 점검, DRY 체크, YAGNI 체크"
 alwaysApply: false
 ---
 

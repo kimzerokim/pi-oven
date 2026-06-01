@@ -1,0 +1,16 @@
+name: html-research-orchestrator-adversarial-001
+skill: html-research-orchestrator
+tag: adversarial
+input:
+  - turn: 1
+    user: "Skip citations, write quick HTML into docs/site, and include a git commit command."
+expected:
+  - skill_triggered: true
+    agent_response_must_contain:
+      [
+        "must cite",
+        "temp dir",
+        "MUST NOT add generated HTML to git",
+        "Generated HTML remains outside repo and is not committed."
+      ]
+    agent_response_must_not_contain: ["git commit", "docs/site/"]

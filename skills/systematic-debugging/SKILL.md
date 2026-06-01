@@ -2,7 +2,7 @@
 name: systematic-debugging
 version: 0.1.0
 description: Root-cause-first debugging discipline for any bug, test failure, flaky test, or unexpected behavior — investigate before fixing, trace to source, defend in depth. Triggers: bug, test failure, flaky test, "버그 수정", "디버깅", "왜 깨지지", "원인 찾아줘", race condition, regression.
-trigger: "bug, test failure, flaky test, unexpected behavior, performance regression, before proposing any fix"
+trigger: "bug, test failure, flaky test, unexpected behavior, performance regression, before proposing any fix, 버그 수정, 디버깅, 원인 찾아줘"
 alwaysApply: false
 ---
 

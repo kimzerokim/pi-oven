@@ -26,6 +26,8 @@
     "typescript": "^5.5.0"
   },
   "omp": {
-    "extensions": ["./.omp/extensions/pi-oven.ts"]
+    "extensions": [
+      "./.omp/extensions/pi-oven.ts"
+    ]
   }
 }

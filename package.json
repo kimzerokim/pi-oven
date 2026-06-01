@@ -12,7 +12,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "build": "bun build .omp/extensions/pi-oven.ts --outdir dist --target bun --format esm",
+    "build": "bun build .omp/extensions/pi-oven.ts --outdir dist --target bun --format esm --external '@oh-my-pi/*'",
     "eval": "bun scripts/run-eval.ts",
     "lint:agents": "bun scripts/lint-agents.ts",
     "lint:skills": "bun scripts/lint-skills.ts"

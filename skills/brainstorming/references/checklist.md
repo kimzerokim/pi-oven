@@ -22,6 +22,7 @@ Source: superpowers:brainstorming (ported to pi-oven)
 
 - One question per turn — never a numbered list of five questions at once — and pair each with your recommended answer
 - Prefer multiple-choice: "Should auth use A) JWT, B) session cookie, or C) API key?"
+- For single-select option questions, prefer the `pi-oven_ask` tool with options as `{label, description}` so each option's rationale shows beside it in the live picker; keep the built-in `ask` for multi-select or free-form questions
 - Walk every branch of the design tree, resolving inter-decision dependencies one-by-one
 - Explore instead of asking: when an answer is discoverable in the codebase, read the code rather than asking the user
 - Sharpen fuzzy or overloaded terms into a precise canonical term; challenge any term that conflicts with existing project language ("you say 'account' — Customer or User?")

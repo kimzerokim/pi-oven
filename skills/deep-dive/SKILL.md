@@ -56,7 +56,7 @@ Present the 3 hypotheses to the user via `ask` for a single confirmation round:
 >
 > Confirm these, or adjust them?
 
-**One round only.** After confirmation, proceed immediately.
+**One round only.** After confirmation, proceed immediately. When this confirmation is a single-select option choice, prefer the `pi-oven_ask` tool (options as `{label, description}`) so each lane's rationale shows beside it in the live picker; keep the built-in `ask` for multi-select or free-form input.
 
 ## Phase 3: Trace execution
 
@@ -133,6 +133,7 @@ If all lanes are low-confidence: still apply Injection 2 (even inconclusive find
 
 - Ask only what tracing could not resolve; if a probe can answer it, run the probe instead of asking
 - One question per turn when you must ask, targeting a trace-unresolvable critical unknown
+- For single-select option questions, prefer the `pi-oven_ask` tool (options as `{label, description}`) so each option's rationale shows beside it; keep the built-in `ask` for multi-select or free-form input
 - Keep it bounded — this is a bug-investigation pipeline, not a spec interview; stop once the trace-unresolvable unknowns are answered or deferred
 - Spec saved to `.omc/specs/deep-dive-{slug}.md`
 - Spec includes all standard sections plus an additional **Trace Findings** section summarizing the trace results
@@ -149,7 +150,7 @@ Present execution options to the user via `ask`. Always pass `spec_path` explici
 
 ## Tool usage
 
-- `ask` for lane confirmation (Phase 2) and each bounded clarification question (Phase 4)
+- `ask` for lane confirmation (Phase 2) and each bounded clarification question (Phase 4) — prefer `pi-oven_ask` with `{label, description}` options for single-select choices so rationales show beside each option; keep built-in `ask` for multi-select / free-form
 - `task` with `run_in_background: true` to dispatch 3 parallel `pi-oven:tracer` lanes (Phase 3)
 - `pi-oven:explorer` (model: haiku) for brownfield codebase detection (Phase 1)
 - `Write` to save trace result to `.omc/specs/deep-dive-trace-{slug}.md` and final spec to `.omc/specs/deep-dive-{slug}.md`

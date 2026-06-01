@@ -8,6 +8,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { GateStateStore } from "./pi-oven-runtime/gate-state";
 import { createGateHandler } from "./pi-oven-runtime/gate-handler";
 import { RulesInjector } from "./pi-oven-runtime/rules-injector";
+import { registerPiOvenAsk } from "./pi-oven-runtime/pi-oven-ask";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -267,6 +268,14 @@ export default function piOvenPi(pi: ExtensionAPI): void {
       pi.logger.debug(`pi-oven: session_start rehydrate skipped: ${err}`);
     }
   });
+
+  // Register the pi-oven_ask tool (single-select question with per-option
+  // descriptions). Fail-open: a registration fault must never break load.
+  try {
+    registerPiOvenAsk(pi);
+  } catch (err) {
+    pi.logger.debug(`pi-oven: pi-oven_ask registration skipped: ${err}`);
+  }
 
   pi.setLabel("pi-oven v0.1.0");
   pi.logger.info("pi-oven loaded");

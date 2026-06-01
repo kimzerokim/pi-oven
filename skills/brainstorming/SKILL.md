@@ -41,6 +41,7 @@ This gate applies even when the user says "it's simple", "just scaffold it", or 
 
 - Ask one question per turn, not a list — and pair each with your recommended answer
 - Prefer multiple-choice options when possible (`A / B / C`)
+- For single-select option questions, prefer the `pi-oven_ask` tool with each option as `{label, description}` — the recommended-answer rationale goes in `description`, shown beside the option in the live picker. Keep the built-in `ask` for multi-select or free-form questions
 - Never ask for information you can infer from codebase exploration — explore instead
 - **Convergence gate:** do not stop until EVERY design dimension — Goals, Non-goals, Constraints, Data model, API surface, Open questions — is either resolved or explicitly deferred by the user. Then present for approval. Never stop on "I think I have enough" alone; track each dimension and keep questioning the unresolved ones
 - **Stall rule:** if a dimension stops converging after a few rounds, surface the stall explicitly and ask the user to decide it directly or mark it OPEN — do not loop silently

@@ -5,6 +5,11 @@ import {
   readAgentModelOverrides,
   setAgentModelOverride,
   deletePiOvenAgentModelOverrides,
+  mergeDisabledProviders,
+  readDisabledProvidersStrict,
+  setPiOvenDisabledProviders,
+  clearPiOvenDisabledProviders,
+  PI_OVEN_MANAGED_PROVIDERS,
 } from "../../../scripts/pi-oven-setup/config-yml";
 
 // ---------------------------------------------------------------------------
@@ -45,6 +50,21 @@ function okGetResult(value: Record<string, string>): SpawnResult {
 
 function okSetResult(): SpawnResult {
   return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+}
+
+function okGetArrayResult(value: string[]): SpawnResult {
+  return {
+    exitCode: 0,
+    stdout: Buffer.from(
+      JSON.stringify({
+        key: "disabledProviders",
+        value,
+        type: "array",
+        description: "",
+      })
+    ),
+    stderr: Buffer.from(""),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -368,5 +388,162 @@ describe("readAgentModelOverrides", () => {
     ]);
     const result = await readAgentModelOverrides({ spawnFn: fn });
     expect(result).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergeDisabledProviders — PURE, no spawn
+// ---------------------------------------------------------------------------
+
+describe("mergeDisabledProviders", () => {
+  it("add unions, preserves order, de-dupes", () => {
+    const out = mergeDisabledProviders(["codex"], { op: "add", providers: ["claude", "claude-plugins"] });
+    expect(out).toEqual(["codex", "claude", "claude-plugins"]);
+  });
+
+  it("add is idempotent when providers already present", () => {
+    const out = mergeDisabledProviders(["claude", "claude-plugins"], {
+      op: "add",
+      providers: ["claude", "claude-plugins"],
+    });
+    expect(out).toEqual(["claude", "claude-plugins"]);
+  });
+
+  it("add onto empty yields the providers", () => {
+    const out = mergeDisabledProviders([], { op: "add", providers: PI_OVEN_MANAGED_PROVIDERS });
+    expect(out).toEqual(["claude", "claude-plugins"]);
+  });
+
+  it("remove deletes only listed providers, preserves siblings", () => {
+    const out = mergeDisabledProviders(["codex", "claude", "claude-plugins"], {
+      op: "remove",
+      providers: ["claude", "claude-plugins"],
+    });
+    expect(out).toEqual(["codex"]);
+  });
+
+  it("remove when absent leaves the list unchanged", () => {
+    const out = mergeDisabledProviders(["codex"], { op: "remove", providers: ["claude", "claude-plugins"] });
+    expect(out).toEqual(["codex"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readDisabledProvidersStrict
+// ---------------------------------------------------------------------------
+
+describe("readDisabledProvidersStrict", () => {
+  it("ok:true on array shape", async () => {
+    const { fn } = makeSpawnFn([okGetArrayResult(["claude", "claude-plugins"])]);
+    const result = await readDisabledProvidersStrict({ spawnFn: fn });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.list).toEqual(["claude", "claude-plugins"]);
+  });
+
+  it("ok:true list:[] on fresh empty array", async () => {
+    const { fn } = makeSpawnFn([okGetArrayResult([])]);
+    const result = await readDisabledProvidersStrict({ spawnFn: fn });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.list).toEqual([]);
+  });
+
+  it("ok:false when type != array (e.g. record)", async () => {
+    const { fn } = makeSpawnFn([
+      { exitCode: 0, stdout: Buffer.from(JSON.stringify({ value: {}, type: "record" })), stderr: Buffer.from("") },
+    ]);
+    const result = await readDisabledProvidersStrict({ spawnFn: fn });
+    expect(result.ok).toBe(false);
+  });
+
+  it("ok:false when value is not an array", async () => {
+    const { fn } = makeSpawnFn([
+      { exitCode: 0, stdout: Buffer.from(JSON.stringify({ value: "oops", type: "array" })), stderr: Buffer.from("") },
+    ]);
+    const result = await readDisabledProvidersStrict({ spawnFn: fn });
+    expect(result.ok).toBe(false);
+  });
+
+  it("ok:false on malformed JSON", async () => {
+    const { fn } = makeSpawnFn([{ exitCode: 0, stdout: Buffer.from("not json{{{"), stderr: Buffer.from("") }]);
+    const result = await readDisabledProvidersStrict({ spawnFn: fn });
+    expect(result.ok).toBe(false);
+  });
+
+  it("ok:false on get non-zero exit", async () => {
+    const { fn } = makeSpawnFn([{ exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("err") }]);
+    const result = await readDisabledProvidersStrict({ spawnFn: fn });
+    expect(result.ok).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setPiOvenDisabledProviders
+// ---------------------------------------------------------------------------
+
+describe("setPiOvenDisabledProviders", () => {
+  it("get then set with merged array, preserves sibling providers", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["codex"]), okSetResult()]);
+    const result = await setPiOvenDisabledProviders({ spawnFn: fn });
+    expect(result).toEqual(["codex", "claude", "claude-plugins"]);
+
+    expect(calls[0]).toEqual(["omp", "config", "get", "disabledProviders", "--json"]);
+    expect(calls[1].slice(0, 4)).toEqual(["omp", "config", "set", "disabledProviders"]);
+    expect(JSON.parse(calls[1][4])).toEqual(["codex", "claude", "claude-plugins"]);
+  });
+
+  it("idempotent — already-isolated config sets the same array", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude", "claude-plugins"]), okSetResult()]);
+    await setPiOvenDisabledProviders({ spawnFn: fn });
+    expect(JSON.parse(calls[1][4])).toEqual(["claude", "claude-plugins"]);
+  });
+
+  it("ABORTS on corrupt get — set NOT called (no sibling-wipe)", async () => {
+    const { fn, calls } = makeSpawnFn([{ exitCode: 0, stdout: Buffer.from("not json{{{"), stderr: Buffer.from("") }]);
+    await expect(setPiOvenDisabledProviders({ spawnFn: fn })).rejects.toThrow();
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
+  });
+
+  it("throws when get exits non-zero — set NOT called", async () => {
+    const { fn, calls } = makeSpawnFn([{ exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("err") }]);
+    await expect(setPiOvenDisabledProviders({ spawnFn: fn })).rejects.toThrow();
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
+  });
+
+  it("throws when omp config set exits non-zero", async () => {
+    const { fn } = makeSpawnFn([okGetArrayResult([]), { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("set failed") }]);
+    await expect(setPiOvenDisabledProviders({ spawnFn: fn })).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// clearPiOvenDisabledProviders
+// ---------------------------------------------------------------------------
+
+describe("clearPiOvenDisabledProviders", () => {
+  it("removes only managed providers, preserves siblings, returns removed sorted", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["codex", "claude", "claude-plugins"]), okSetResult()]);
+    const removed = await clearPiOvenDisabledProviders({ spawnFn: fn });
+    expect(removed).toEqual(["claude", "claude-plugins"]);
+    expect(JSON.parse(calls[1][4])).toEqual(["codex"]);
+  });
+
+  it("no-op (no set call) when no managed providers present", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["codex"])]);
+    const removed = await clearPiOvenDisabledProviders({ spawnFn: fn });
+    expect(removed).toEqual([]);
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
+  });
+
+  it("no-op on empty array", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult([])]);
+    const removed = await clearPiOvenDisabledProviders({ spawnFn: fn });
+    expect(removed).toEqual([]);
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
+  });
+
+  it("ABORTS on corrupt get — set NOT called", async () => {
+    const { fn, calls } = makeSpawnFn([{ exitCode: 0, stdout: Buffer.from("not json{{{"), stderr: Buffer.from("") }]);
+    await expect(clearPiOvenDisabledProviders({ spawnFn: fn })).rejects.toThrow();
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
   });
 });

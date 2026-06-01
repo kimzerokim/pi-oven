@@ -235,3 +235,158 @@ export async function deletePiOvenAgentModelOverrides(
 
   return removedKeys;
 }
+
+// ---------------------------------------------------------------------------
+// disabledProviders (ARRAY) — the ~/.claude isolation toggle.
+// Same transport as the overrides path: omp config get disabledProviders --json
+// → in-memory merge → omp config set disabledProviders '<whole-merged-json>'.
+// ---------------------------------------------------------------------------
+
+/**
+ * The discovery providers pi-oven toggles for the "ignore the ~/.claude
+ * Claude-Code layer" isolation: `claude` (~/.claude CLAUDE.md / skills / hooks /
+ * commands) + `claude-plugins` (~/.claude marketplace plugins, e.g. omc).
+ * pi-oven loads via the separate `omp-plugins` provider and is NOT affected.
+ */
+export const PI_OVEN_MANAGED_PROVIDERS = ["claude", "claude-plugins"] as const;
+
+/**
+ * PURE merge helper (no IO) for the disabledProviders ARRAY.
+ * - op "add":    union(current, providers), first-seen order preserved, de-duped.
+ * - op "remove": current minus providers (preserves sibling providers the user
+ *   set themselves).
+ */
+export function mergeDisabledProviders(
+  current: string[],
+  mutation:
+    | { op: "add"; providers: readonly string[] }
+    | { op: "remove"; providers: readonly string[] }
+): string[] {
+  if (mutation.op === "add") {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const p of [...current, ...mutation.providers]) {
+      if (!seen.has(p)) {
+        seen.add(p);
+        out.push(p);
+      }
+    }
+    return out;
+  }
+  const removeSet = new Set(mutation.providers);
+  return current.filter((p) => !removeSet.has(p));
+}
+
+/**
+ * Parse the raw stdout of `omp config get disabledProviders --json`.
+ * Returns { ok: true, list } on a valid array shape, { ok: false, error } else.
+ */
+function parseGetArrayOutput(
+  stdout: string
+): { ok: true; list: string[] } | { ok: false; error: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return { ok: false, error: "JSON.parse failed" };
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, error: "top-level is not an object" };
+  }
+
+  const obj = parsed as OmpGetShape;
+
+  if (obj.type !== "array") {
+    return { ok: false, error: `type is not "array": ${String(obj.type)}` };
+  }
+  if (!Array.isArray(obj.value)) {
+    return { ok: false, error: ".value is not an array" };
+  }
+
+  return { ok: true, list: (obj.value as unknown[]).map((v) => String(v)) };
+}
+
+/**
+ * STRICT read for the WRITE path (fail-closed). Spawns
+ * `omp config get disabledProviders --json`. Callers MUST abort on ok:false —
+ * never merge-into-[] then set (that would wipe sibling providers).
+ */
+export async function readDisabledProvidersStrict(
+  opts?: ConfigYmlOpts
+): Promise<{ ok: true; list: string[] } | { ok: false; error: string }> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "get", "disabledProviders", "--json"]);
+
+  if (result.exitCode !== 0) {
+    return { ok: false, error: `omp config get exited ${String(result.exitCode)}` };
+  }
+
+  const stdout = result.stdout?.toString() ?? "";
+  return parseGetArrayOutput(stdout);
+}
+
+/**
+ * ENABLE isolation: readDisabledProvidersStrict → if !ok ABORT(throw) →
+ * mergeDisabledProviders(add PI_OVEN_MANAGED_PROVIDERS) → `omp config set
+ * disabledProviders '<whole-merged-json>'`. Returns the resulting provider list.
+ * Idempotent — re-adding already-present providers is a no-op union.
+ */
+export async function setPiOvenDisabledProviders(opts?: ConfigYmlOpts): Promise<string[]> {
+  const readResult = await readDisabledProvidersStrict(opts);
+  if (!readResult.ok) {
+    throw new Error(`setPiOvenDisabledProviders: readDisabledProvidersStrict failed — ${readResult.error}`);
+  }
+
+  const merged = mergeDisabledProviders(readResult.list, {
+    op: "add",
+    providers: PI_OVEN_MANAGED_PROVIDERS,
+  });
+
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const setResult = spawn("omp", ["config", "set", "disabledProviders", JSON.stringify(merged)]);
+
+  if (setResult.exitCode !== 0) {
+    throw new Error(
+      `setPiOvenDisabledProviders: omp config set failed (exit ${String(setResult.exitCode)}): ${setResult.stderr?.toString() ?? ""}`
+    );
+  }
+
+  return merged;
+}
+
+/**
+ * DISABLE isolation: readDisabledProvidersStrict → if !ok ABORT(throw) →
+ * mergeDisabledProviders(remove PI_OVEN_MANAGED_PROVIDERS) → set. Returns the sorted
+ * list of providers actually removed. Preserves sibling providers. No-op (skips
+ * the set call) when none of the managed providers are present.
+ */
+export async function clearPiOvenDisabledProviders(opts?: ConfigYmlOpts): Promise<string[]> {
+  const readResult = await readDisabledProvidersStrict(opts);
+  if (!readResult.ok) {
+    throw new Error(`clearPiOvenDisabledProviders: readDisabledProvidersStrict failed — ${readResult.error}`);
+  }
+
+  const current = readResult.list;
+  const removed = PI_OVEN_MANAGED_PROVIDERS.filter((p) => current.includes(p)).sort();
+
+  if (removed.length === 0) {
+    return [];
+  }
+
+  const merged = mergeDisabledProviders(current, {
+    op: "remove",
+    providers: PI_OVEN_MANAGED_PROVIDERS,
+  });
+
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const setResult = spawn("omp", ["config", "set", "disabledProviders", JSON.stringify(merged)]);
+
+  if (setResult.exitCode !== 0) {
+    throw new Error(
+      `clearPiOvenDisabledProviders: omp config set failed (exit ${String(setResult.exitCode)}): ${setResult.stderr?.toString() ?? ""}`
+    );
+  }
+
+  return removed;
+}

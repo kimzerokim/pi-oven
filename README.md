@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from five frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers / pi-oven). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-490%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-515%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
@@ -12,6 +12,7 @@
 - **21 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, git-workflow, aws, bitbucket-pipeline, cloudflare.
 - **`/pi-oven:setup` wizard** — Profile A (release default, opencode-zen + openai-codex) or Profile B (Anthropic Pro/Max opt-in), agent-file source of truth, drift detection on every session.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
+- **Project `CLAUDE.md` injection + omp isolation** — the runtime extension reads your repo-root `CLAUDE.md` and injects it into the main + sub agent system prompt (omp does not read repo-root `CLAUDE.md` natively). `/pi-oven:setup --isolate` then makes omp ignore the global `~/.claude` layer entirely, so omp runs as a clean pi-oven-only environment. See [omp isolation & project CLAUDE.md](#omp-isolation--project-claudemd).
 
 ---
 
@@ -234,6 +235,8 @@ The wizard accepts subcommands:
 | `/pi-oven:setup --apply --profile A` | Non-interactive apply with explicit profile |
 | `/pi-oven:setup --apply --profile B --validate full` | Full 22-role smoke ping (default is 7 MUST-tier) |
 | `/pi-oven:setup --apply --profile A --override executor=openai-codex/gpt-5.4` | Per-role override (repeatable) |
+| `/pi-oven:setup --isolate` | Make omp ignore the `~/.claude` layer (writes `disabledProviders`). Combinable, e.g. `--apply --profile A --isolate` |
+| `/pi-oven:setup --no-isolate` | Re-enable the `~/.claude` layer in omp |
 
 ### Profile A (release default)
 
@@ -255,6 +258,40 @@ Activates only when your omp environment is authenticated with native Anthropic 
 - Explorer / Librarian: `opencode-zen/glm-5` (unchanged from Profile A)
 
 If your Anthropic credential is revoked, the wizard's `--status` reports drift and recommends `/pi-oven:setup --reapply` after re-running `/pi-oven:setup` with Profile A.
+
+---
+
+## omp isolation & project CLAUDE.md
+
+pi-oven installs as an **omp** plugin, but a stock omp also ingests the **Claude Code** layer under `~/.claude/` — `~/.claude/CLAUDE.md`, `~/.claude/skills/*`, Claude hooks, and `~/.claude/plugins/*` (e.g. omc). If you also use Claude Code, that global layer leaks into every omp session. pi-oven gives you two pieces so omp runs as a clean, self-contained environment that still honors each project's own guidance.
+
+### Project `CLAUDE.md` injection (automatic, on by default)
+
+omp's `claude` discovery provider only reads `~/.claude/CLAUDE.md` and `<cwd>/.claude/CLAUDE.md` — it **never reads the repo-root `CLAUDE.md`** that is the Claude Code project-memory convention. The pi-oven runtime extension closes that gap: at load it reads `<repoRoot>/CLAUDE.md` and injects it into the **main and sub** agent system prompt (via the `before_agent_start` hook), so omp honors your project's local instructions in every repo. It is project-local by construction (reads only the repo root), fail-open (a missing/oversized file injects nothing), and capped at 256 KB. Opt out per-project with `.pi-oven/config.json`:
+
+```json
+{ "projectInstructions": false }
+```
+
+### omp isolation (`/pi-oven:setup --isolate`)
+
+To make omp **ignore the entire `~/.claude` layer**, run:
+
+```
+/pi-oven:setup --isolate          # or combine: /pi-oven:setup --apply --profile A --isolate
+```
+
+This writes one user-global setting to `~/.omp/agent/config.yml`:
+
+```yaml
+disabledProviders:
+  - claude          # ~/.claude/CLAUDE.md + skills + hooks + commands
+  - claude-plugins  # ~/.claude marketplace plugins (omc, etc.)
+```
+
+omp enforces it across every capability, so the omc `CLAUDE.md`, pi-oven skills, Claude hooks, and Claude plugins all stop loading in omp — while pi-oven (the separate `omp-plugins` provider) keeps loading and injects your repo-root `CLAUDE.md`. The write is **omp-only and never touches `~/.claude` on disk**, so genuine Claude Code sessions are completely unaffected. It is a snapshot at startup, so **restart omp** to apply. Undo any time with `/pi-oven:setup --no-isolate` (it removes only `claude`/`claude-plugins`, preserving any other providers you disabled yourself).
+
+The net effect: in omp you get **pi-oven + your project's `CLAUDE.md`**, and nothing from the global `~/.claude` layer.
 
 ---
 
@@ -324,7 +361,7 @@ The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pi-oven-*.md` a
 ### Test suite
 
 ```sh
-bun test       # 490 tests across 41 files
+bun test       # 515 tests across 42 files
 bun check      # tsc --noEmit typecheck
 bun run build  # extension bundle (pi-oven.js)
 bun run lint:agents  # CI-grade agent file lint
@@ -347,7 +384,7 @@ If you're hacking on pi-oven itself, point omp at your local checkout instead of
 ```sh
 cd /path/to/pi-oven
 bun install
-bun test           # baseline 490 passing
+bun test           # baseline 515 passing
 bun check          # typecheck clean
 bun run build      # extension bundles to dist/pi-oven.js
 bun run lint:agents
@@ -383,7 +420,7 @@ pi-oven/
 │   ├── pi-oven-setup.ts         # /pi-oven:setup batch CLI
 │   ├── pi-oven-release/         # release automation modules (bump/sync/changelog/publish)
 │   ├── pi-oven-setup/           # 13 submodules (profiles, persist, apply, ...)
-├── tests/                   # bun test suite (490 tests, 1188 expect calls, 41 files)
+├── tests/                   # bun test suite (515 tests, 1235 expect calls, 42 files)
 │   ├── extensions/
 │   ├── plugin/
 │   └── scripts/

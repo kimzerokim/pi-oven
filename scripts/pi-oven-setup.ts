@@ -19,6 +19,7 @@ import { runReset } from "./pi-oven-setup/reset";
 import { runImport } from "./pi-oven-setup/import";
 import { runApply } from "./pi-oven-setup/apply";
 import { runOverride } from "./pi-oven-setup/override";
+import { runIsolate } from "./pi-oven-setup/isolate";
 import { normalizeLanguage, setProjectLanguage, markSetupComplete } from "./pi-oven-setup/project-config";
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,8 @@ const { values } = parseArgs({
     validate: { type: "string", default: "smoke" },
     "no-validate": { type: "boolean", default: false },
     language: { type: "string" },
+    isolate: { type: "boolean", default: false },
+    "no-isolate": { type: "boolean", default: false },
   },
   strict: false,
 });
@@ -50,8 +53,13 @@ const agentsDir = process.env.PI_OVEN_AGENTS_DIR ?? undefined;
 const mockSpawn = process.env.PI_OVEN_MOCK_SPAWN === "1";
 const spawnFn = mockSpawn
   ? (_cmd: string, args: string[]) => {
-      // Return valid JSON for `omp config get task.agentModelOverrides --json`
+      // Return valid JSON for `omp config get <key> --json`
       if (args[0] === "config" && args[1] === "get") {
+        // disabledProviders is an ARRAY-typed setting; everything else is a record.
+        if (args[2] === "disabledProviders") {
+          const payload = JSON.stringify({ key: args[2], value: [], type: "array", description: "" });
+          return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") } as any;
+        }
         const payload = JSON.stringify({ key: args[2], value: {}, type: "record", description: "" });
         return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") } as any;
       }
@@ -128,6 +136,19 @@ if (hasOverride) {
   }
 }
 
+// --isolate / --no-isolate toggle omp's ~/.claude isolation (disabledProviders).
+// They are mutually exclusive with each other but MAY combine with any primary
+// action (runs after it). Standalone is also valid.
+const wantIsolate = Boolean(values.isolate);
+const wantNoIsolate = Boolean(values["no-isolate"]);
+if (wantIsolate && wantNoIsolate) {
+  process.stderr.write(
+    "--isolate and --no-isolate are mutually exclusive. Use --isolate to make omp ignore the ~/.claude layer, or --no-isolate to re-enable it.\n"
+  );
+  process.exit(1);
+}
+const hasIsolate = wantIsolate || wantNoIsolate;
+
 // ---------------------------------------------------------------------------
 // Dispatch — precedence per §3.3/§3.4:
 //   --override + --status → override-write first, then status
@@ -185,11 +206,22 @@ if (values.status) {
     process.exit(result.exitCode);
   }
   markRouting = true;
+} else if (hasIsolate) {
+  // Standalone --isolate / --no-isolate (no primary model-routing action).
+  // The isolation toggle itself runs in the shared post-dispatch step below.
+  result = { exitCode: 0, output: "" };
 } else {
   process.stderr.write(
-    "No action specified. Use --profile <A|B>, --status, --reset, --import <file>, or --override <role>=<model>.\n"
+    "No action specified. Use --profile <A|B>, --status, --reset, --import <file>, --override <role>=<model>, or --isolate/--no-isolate.\n"
   );
   process.exit(1);
+}
+
+// Isolation toggle runs AFTER the primary action (if any) and only on its
+// success, so e.g. `--profile A --isolate` applies the profile then isolates.
+if (hasIsolate && result.exitCode === 0) {
+  const iso = await runIsolate({ enable: wantIsolate, spawnFn });
+  result = { exitCode: iso.exitCode, output: result.output + iso.output };
 }
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ import piOvenPi from "../../../.omp/extensions/pi-oven";
 // AC4 — no regression + correctness: the extension entrypoint still wires the
 // baseline behaviors (validateAgentRegistry at load, session_start capture)
 // AND registers the new Plan-3 runtime handlers (tool_call, before_agent_start,
-// session.compacting, session_before_compact).
+// session.compacting, session_before_compact, turn_start, turn_end).
 //
 // We drive the entrypoint with a fake ExtensionAPI that records registrations.
 // ---------------------------------------------------------------------------
@@ -15,7 +15,9 @@ interface FakePi {
   handlers: Record<string, Function>;
   labels: string[];
   logs: { level: string; msg: string }[];
+  sentMessages: Array<{ message: unknown; options: unknown }>;
   on(event: string, handler: Function): void;
+  sendMessage(message: unknown, options?: unknown): void;
   setLabel(label: string): void;
   logger: { info: Function; warn: Function; error: Function; debug: Function };
 }
@@ -25,14 +27,19 @@ function makeFakePi(): FakePi {
   const handlers: Record<string, Function> = {};
   const labels: string[] = [];
   const logs: { level: string; msg: string }[] = [];
+  const sentMessages: Array<{ message: unknown; options: unknown }> = [];
   return {
     events,
     handlers,
     labels,
     logs,
+    sentMessages,
     on(event: string, handler: Function) {
       events.push(event);
       handlers[event] = handler;
+    },
+    sendMessage(message: unknown, options?: unknown) {
+      sentMessages.push({ message, options });
     },
     setLabel(label: string) {
       labels.push(label);
@@ -55,6 +62,8 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(pi.events).toContain("session.compacting");
     expect(pi.events).toContain("session_before_compact");
     expect(pi.events).toContain("session_start"); // baseline preserved
+    expect(pi.events).toContain("turn_start");
+    expect(pi.events).toContain("turn_end");
   });
 
   it("still sets the pi-oven label and logs loaded (baseline preserved)", () => {
@@ -96,5 +105,43 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       input: { command: "ls -la" },
     })) as { block?: boolean } | void;
     expect(res?.block ?? false).toBe(false);
+  });
+
+  it("turn_end queues hidden continuation when autonomous polite-stop is detected", async () => {
+    const pi = makeFakePi();
+    piOvenPi(pi as never);
+
+    const onTurnStart = pi.handlers["turn_start"];
+    const onTurnEnd = pi.handlers["turn_end"];
+
+    const ctx = {
+      sessionManager: {
+        getBranch: () => [
+          {
+            id: "u1",
+            type: "message",
+            message: { role: "user", content: [{ type: "text", text: "자율 실행으로 계속 진행해줘" }] },
+          },
+        ],
+      },
+    };
+
+    await onTurnStart({ type: "turn_start", turnIndex: 1, timestamp: Date.now() }, ctx);
+    await onTurnEnd({
+      type: "turn_end",
+      turnIndex: 1,
+      message: {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "좋습니다. 다음 단계가 필요하면 알려주세요." }],
+      },
+      toolResults: [],
+    });
+
+    expect(pi.sentMessages.length).toBe(1);
+    const queued = pi.sentMessages[0];
+    expect((queued.message as { customType?: string }).customType).toBe("pi-oven-autonomous-stop-guard");
+    expect((queued.options as { deliverAs?: string; triggerTurn?: boolean }).deliverAs).toBe("nextTurn");
+    expect((queued.options as { deliverAs?: string; triggerTurn?: boolean }).triggerTurn).toBe(true);
   });
 });

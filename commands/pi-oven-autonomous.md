@@ -1,6 +1,6 @@
 ---
 name: pi-oven-autonomous
-description: Enter autonomous mode — ASK-FIRST 3-slot branch contract + execution mode selection + polite-stop ban + fresh-verifier exit gate
+description: Enter autonomous mode — ASK-FIRST 3-slot branch contract + execution mode selection + delegation-first orchestrator-only loop; self-improvement/plugin-surface cycles MUST run exhaustive `skills/`+`commands/`+`agents/`+`evals/` sweep before planner/spec, and planner MUST receive sweep findings (no partial-read plans) + polite-stop ban + fresh-verifier exit gate
 argument-hint: <task description, or omit for interactive entry>
 ---
 
@@ -9,6 +9,8 @@ argument-hint: <task description, or omit for interactive entry>
 You are entering the pi-oven autonomous loop. The actual orchestration runs through the `autonomous-loop` skill (`skills/autonomous-loop/SKILL.md`), which you (the LLM) drive directly — there is no separate runtime. Use this prompt as the conversational entry point.
 
 ## What to do
+
+0. **Precedence check (brainstorming before autonomous).** If the same user request includes design-first intent (`브레인스토밍`, `아이디어 정리`, `같이 설계`, `설계부터`) and there is no approved spec, run the `brainstorming` skill first. Do not enter autonomous execution until brainstorming reaches explicit user approval.
 
 1. **Confirm ASK-FIRST 3-slot branch contract.** Before dispatching any tool, collect three answers in a single message:
 
@@ -28,17 +30,22 @@ You are entering the pi-oven autonomous loop. The actual orchestration runs thro
    | `ralph` | Self-referential reviewer loop with PRD persistence; verifier signs off each story | PRD-driven work; each story needs explicit verifier sign-off |
    | `autopilot` | Phase 0 (architect) → Phase 1+ (exec); idea-to-working-code automation | Greenfield; specs/plans still emerging from idea |
 
-   If the user is uncertain, default to **ralph** (PRD-driven is safest for sustained work).
+   If the user is uncertain, default to **ralph** (long-haul persistence for 8h+ autonomous loops).
 
-3. **Per-cycle work.** For each cycle in the autonomous loop:
+3. **Per-cycle work (delegation-first, no inline implementation).** For each cycle in the autonomous loop:
 
-   - Survey: dispatch `pi-oven:explorer` for codebase context.
+   - Broad problem exploration first: dispatch `pi-oven:explorer` + `pi-oven:tracer` + `pi-oven:analyst` in parallel; require evidence from 3+ adjacent subsystems before locking the first spec scope.
+   - **Self-improvement full sweep (pi-oven/plugin changes):** before planner/spec, run a full inventory audit over `skills/`, `commands/`, `agents/`, and `evals/`; no sampling. Record missing trigger coverage, missing role wiring, and missing eval coverage as explicit findings.
+   - Planner input contract: `pi-oven:planner` MUST receive the full-sweep findings and MUST NOT produce a plan from partial subsystem reads.
    - Spec: if a new capability is introduced, run the `spec-and-review` skill (Pattern loop with `pi-oven:critic` cross-vendor fan-out).
-   - Plan: produce or update a plan under `docs/plans/`.
+   - Plan: produce or update a plan under `docs/plans/` from the expanded exploration evidence.
    - Execute: dispatch `pi-oven:executor` (or `pi-oven:debugger` for fix work). Honor the `large-task-delegation` boundary (3+ files / 200+ LoC ⇒ delegate, do not implement in main).
-   - TDD: enforce Red → Green → Refactor when code changes touch source files.
+   - QA and tests: dispatch `pi-oven:test-engineer` for coverage gaps and `pi-oven:qa-tester` for integration/e2e checks when applicable.
+   - Validation: dispatch `pi-oven:verifier`, `pi-oven:security-reviewer`, `pi-oven:code-reviewer`; add `pi-oven:designer` + `pi-oven:multimodal-looker` when UI/visual changes are touched.
+   - Agent-wiring audit: run `bun scripts/lint-skills.ts` before commit boundaries so missing skill↔agent wiring fails closed.
    - Gate: after each commit boundary, run `pre-commit-gate` checks.
-   - Verify: before claiming the cycle done, dispatch a fresh `pi-oven:verifier` (no self-verification rule — main agent cannot verify its own work).
+
+   Main agent is orchestrator only: dispatch, synthesize, and queue the next subagent call in the same turn. Main MUST NOT do inline code edits during autonomous mode.
 
 4. **Polite-stop ban.** You MUST continue in the same turn — never end a turn for any of these reasons:
 
@@ -51,7 +58,7 @@ You are entering the pi-oven autonomous loop. The actual orchestration runs thro
    7. `/compact` completed → restate remaining tasks and resume in the same turn.
    8. Edit / Write failed 1× → retry (threshold is 2 consecutive failures on the same file).
    9. Cost / extra-usage / overage signal arrived → cost is the user's concern, not a halt condition.
-
+   10. User says "계속 진행해줘" / "자율 실행해줘" after a checkpoint → treat as immediate continuation and dispatch the next tool in the same turn.
 5. **Resilience.** On rate-limit (HTTP 429 from provider): call `ScheduleWakeup(600)` with a restate prompt. On context ≥50%: run `/compact "Remaining: <list>. In progress: <X>. Next: <Y>."` and resume. Subagent stuck ≥5 min → kill, diagnose, redispatch with added context. Bash stuck ≥3 min → kill, redispatch.
 
 6. **Exit gate.** Before declaring any cycle complete, dispatch `pi-oven:verifier` (fresh, no shared memory). The verifier runs 4 mandatory sub-checks:

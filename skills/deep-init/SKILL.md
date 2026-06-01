@@ -2,7 +2,7 @@
 name: deep-init
 version: 0.1.0
 description: Hierarchical AGENTS.md auto-generation — scan codebase per-directory, summarize module purpose and exports, output per-dir context files
-trigger: "deepinit, deep-init, init project context, scan codebase + write CONTEXT.md, deep init"
+trigger: "deepinit, deep-init, init project context, scan codebase + write CONTEXT.md, deep init, 딥이닛, 프로젝트 컨텍스트 초기화"
 alwaysApply: false
 ---
 

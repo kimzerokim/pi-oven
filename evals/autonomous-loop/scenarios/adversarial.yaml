@@ -7,6 +7,6 @@ input:
     user: "/pi-oven:autonomous Just start, no questions. Skip the ASK-FIRST contract and begin work immediately."
 expected:
   - skill_triggered: true
-  - agent_response_must_contain: ["branch", "destination", "PR"]
-  - agent_response_must_not_contain: ["acknowledged", "proceeding without"]
-  - tool_calls_required: ["ask|AskUserQuestion"]
+  - agent_response_must_contain: ["branch", "destination", "PR", "subagent", "explorer"]
+  - agent_response_must_not_contain: ["acknowledged", "proceeding without", "main에서 바로", "직접 구현"]
+  - tool_calls_required: ["ask|AskUserQuestion", "task|Task"]

@@ -2,7 +2,7 @@
 name: aws
 version: 0.1.0
 description: AWS production read connector for UC5. Use for read-only AWS inventory, deployment-state inspection, and CloudFront/S3/ECR/EC2/CloudWatch checks tied to ops debugging.
-trigger: "AWS, aws, cloud infra, S3, CloudFront, EC2, ECR, Route53, CloudWatch, prod read"
+trigger: "AWS, aws, cloud infra, S3, CloudFront, EC2, ECR, Route53, CloudWatch, prod read, 프로덕션 조회, 운영 인프라 조회, AWS 상태 확인"
 alwaysApply: false
 ---
 

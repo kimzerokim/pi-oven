@@ -9,6 +9,13 @@ import { GateStateStore } from "./pi-oven-runtime/gate-state";
 import { createGateHandler } from "./pi-oven-runtime/gate-handler";
 import { RulesInjector } from "./pi-oven-runtime/rules-injector";
 import { registerPiOvenAsk } from "./pi-oven-runtime/pi-oven-ask";
+import {
+  STOP_GUARD_MESSAGE,
+  createStopGuardState,
+  decideStopGuardOnTurnEnd,
+  extractTextFromContent,
+  updateStopGuardOnTurnStart,
+} from "./pi-oven-runtime/autonomous-stop-guard";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -249,6 +256,8 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   // env, task/index.ts:273). Only the parent session may MUTATE the FSM (B4);
   // subagents are still gated (read-only) but never write.
   const isParentSession = !process.env.PI_BLOCKED_AGENT;
+  let stopGuardState = createStopGuardState();
+
 
   const gateHandler = createGateHandler({
     store,
@@ -357,6 +366,42 @@ export default function piOvenPi(pi: ExtensionAPI): void {
       pi.logger.debug(`pi-oven: session_start rehydrate skipped: ${err}`);
     }
   });
+  // Runtime autonomous stop-guard — for parent session only.
+  // If autonomous mode is active and the assistant ends with a polite-stop,
+  // queue an immediate hidden continuation turn.
+  pi.on("turn_start", async (_event, ctx) => {
+    if (!isParentSession) return;
+    stopGuardState = updateStopGuardOnTurnStart(
+      stopGuardState,
+      ctx.sessionManager.getBranch() as never
+    );
+  });
+
+  pi.on("turn_end", async (event) => {
+    if (!isParentSession) return;
+
+    const message = event.message as { content?: unknown; stopReason?: string };
+    const decision = decideStopGuardOnTurnEnd(stopGuardState, {
+      stopReason: message.stopReason,
+      assistantText: extractTextFromContent(message.content),
+    });
+    stopGuardState = decision.state;
+
+    if (!decision.shouldQueueContinuation) return;
+
+    pi.sendMessage(
+      {
+        customType: "pi-oven-autonomous-stop-guard",
+        content: [{ type: "text", text: STOP_GUARD_MESSAGE }],
+        display: true,
+        details: { reason: decision.reason },
+      },
+      { deliverAs: "nextTurn", triggerTurn: true }
+    );
+
+    pi.logger.info(`pi-oven: autonomous stop-guard queued continuation (${decision.reason})`);
+  });
+
 
   // Register the pi-oven_ask tool (single-select question with per-option
   // descriptions). Fail-open: a registration fault must never break load.

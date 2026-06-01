@@ -2,7 +2,7 @@
 name: git-workflow
 version: 0.1.0
 description: Isolated-workspace lifecycle for feature work — set up a worktree before starting, then merge / PR / keep / discard at the finish. Use when starting isolated feature work, before executing an implementation plan, or when implementation is complete and the branch needs integrating. Keywords — worktree, isolated workspace, finish branch, merge branch, create PR, discard branch, branch cleanup, 워크트리, 브랜치 정리, 작업 마무리, PR 만들어, 머지.
-trigger: "starting feature work needing isolation OR pre-plan-execution OR 'finish branch' / 'merge' / 'create PR' / 'discard branch' / '브랜치 정리'"
+trigger: "starting feature work needing isolation OR pre-plan-execution OR finish branch / merge / create PR / discard branch / 브랜치 정리 / 워크트리 시작 / 작업 마무리"
 alwaysApply: false
 ---
 

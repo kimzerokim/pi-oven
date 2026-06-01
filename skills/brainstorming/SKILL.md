@@ -2,7 +2,7 @@
 name: brainstorming
 version: 0.1.0
 description: Transform a raw idea into an approved spec via Socratic Q&A — HARD-GATE blocks all implementation until design is explicitly approved
-trigger: keyword 'brainstorm' / '아이디어' OR new project / new feature pre-implementation
+trigger: "brainstorm, brainstorming, 브레인스토밍, 아이디어 정리, 같이 설계, 설계부터 하자"
 alwaysApply: false
 ---
 
@@ -14,7 +14,7 @@ Invoke before any creative work — new features, new projects, spec requests, o
 
 Four conditions each independently trigger this skill:
 
-- User says "brainstorm", "brainstorming", or "아이디어"
+- User says "brainstorm", "brainstorming", "브레인스토밍", "아이디어 정리", or "같이 설계"
 - A new project or new feature is requested without an existing approved spec
 - User asks "what should we build" or equivalent open-ended design question
 - Any implementation request that lacks a written spec in `docs/specs/`
@@ -44,6 +44,7 @@ This gate applies even when the user says "it's simple", "just scaffold it", or 
 - For single-select option questions, prefer the `pi-oven_ask` tool with each option as `{label, description}` — the recommended-answer rationale goes in `description`, shown beside the option in the live picker. Keep the built-in `ask` for multi-select or free-form questions
 - Never ask for information you can infer from codebase exploration — explore instead
 - **Convergence gate:** do not stop until EVERY design dimension — Goals, Non-goals, Constraints, Data model, API surface, Open questions — is either resolved or explicitly deferred by the user. Then present for approval. Never stop on "I think I have enough" alone; track each dimension and keep questioning the unresolved ones
+- **Single-question exit is invalid:** asking one question and then switching to implementation/autonomous execution is a hard violation unless the user explicitly says to skip brainstorming
 - **Stall rule:** if a dimension stops converging after a few rounds, surface the stall explicitly and ask the user to decide it directly or mark it OPEN — do not loop silently
 
 Convergence discipline adapted from the `grill-with-docs` pattern (relentless one-question-at-a-time interview until shared understanding).

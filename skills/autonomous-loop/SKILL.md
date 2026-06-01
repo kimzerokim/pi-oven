@@ -1,8 +1,8 @@
 ---
 name: autonomous-loop
 version: 0.1.0
-description: Meta orchestrator for multi-cycle autonomous execution — ASK-FIRST 3-slot branch contract, three execution modes (ultrawork / ralph / autopilot), polite-stop ban, fresh-agent verifier exit gate, rate-limit/compact resilience
-trigger: "/pi-oven:autonomous, 자율 실행, 자율실행, 끝까지 끝내줘, 자는 동안 진행해, ralph로 돌려, autopilot, ralph, ultrawork, ulw, full auto, don't stop, must complete"
+description: Meta orchestrator for multi-cycle autonomous execution — delegation-first 8h+ long-haul loop, ASK-FIRST 3-slot branch contract, three execution modes (ultrawork / ralph / autopilot); self-improvement/plugin-surface cycles MUST run exhaustive `skills/`+`commands/`+`agents/`+`evals/` sweep before planner/spec, and planner MUST receive sweep findings (no partial-read plans); polite-stop ban, fresh-agent verifier exit gate, rate-limit/compact resilience
+trigger: "/pi-oven:autonomous, 자율 실행, 자율실행, 자율로 돌려, 자동으로 끝내줘, 끝까지 끝내줘, 자는 동안 진행해, 알아서 진행해, 멈추지 말고 진행해, 계속 진행해, 스탑하지마, ralph로 돌려, autopilot, ralph, ultrawork, ulw, full auto, don't stop, must complete"
 alwaysApply: false
 ---
 
@@ -12,11 +12,14 @@ alwaysApply: false
 
 Invoke when ANY of these conditions hold:
 
-- User sends an explicit autonomous keyword: `/pi-oven:autonomous`, `자율 실행`, `자율실행`, `끝까지 끝내줘`, `자는 동안 진행해`, `ralph로 돌려`, `autopilot`, `ralph`, `ultrawork`
+- User sends an explicit autonomous keyword: `/pi-oven:autonomous`, `자율 실행`, `자율실행`, `자율로 돌려`, `끝까지 끝내줘`, `자는 동안 진행해`, `계속 진행해`, `멈추지 말고 진행해`, `ralph로 돌려`, `autopilot`, `ralph`, `ultrawork`
 - A large-task delegation spans multiple cycles (3+ files, 200+ LoC, multi-stage)
 - Harness self-improvement cycle is triggered (plan A→N continuation)
 
 Do NOT invoke for single-shot tasks that complete in one tool call.
+
+**Precedence guard (brainstorming first):**
+- If the user also requests brainstorming/design-first (`브레인스토밍`, `아이디어 정리`, `같이 설계`, `설계부터`) and no approved spec exists, run `brainstorming` first and block autonomous execution until that skill reaches explicit approval.
 
 ---
 
@@ -47,7 +50,7 @@ Three autonomous execution modes. Select the mode based on user trigger or task 
 | `ralph` | "ralph", "don't stop", "must complete" | PRD-driven persistence loop — story-by-story until all acceptance criteria verified by reviewer | Task requires guaranteed completion with reviewer sign-off |
 | `autopilot` | "autopilot", "autonomous", "full auto", "끝까지 끝내줘" | Full lifecycle pipeline — Expansion → Planning → Execution → QA → Validation | Idea-to-working-code; multi-phase project |
 
-Default when user says `자율 실행`, `자율실행`, `끝까지 끝내줘`, or `/pi-oven:autonomous`: **autopilot** mode.
+Default when user says `자율 실행`, `자율실행`, `끝까지 끝내줘`, or `/pi-oven:autonomous`: **ralph** mode (long-haul persistence baseline). Use `autopilot` only when the user explicitly wants idea-to-code phase orchestration.
 
 ---
 
@@ -90,11 +93,12 @@ Phase sequence — each phase must complete before the next begins:
 
 | Phase | Action | Agents |
 |---|---|---|
-| 0 — Expansion | If input is vague: dispatch `pi-oven:planner` to extract requirements + `pi-oven:architect` to create technical spec. If a spec already exists in `docs/specs/`: skip. | `pi-oven:planner`, `pi-oven:architect` |
-| 1 — Planning | Create implementation plan. If `writing-plans` output exists in `docs/plans/`: skip. | `pi-oven:planner` (direct, no interview) |
-| 2 — Execution | Implement the plan using ultrawork pattern (parallel waves). | `pi-oven:executor` (tier-routed) |
-| 3 — QA | Build, lint, test, fix failures. Repeat up to 5 cycles. Stop early if the same error repeats 3 times — that is a fundamental issue requiring user input, not another retry. | `pi-oven:executor`, `pi-oven:debugger` |
-| 4 — Validation | Multi-perspective review in parallel: functional + security + quality. All must approve; fix and re-validate on rejection, up to 3 re-validation rounds. | `pi-oven:verifier`, `pi-oven:security-reviewer`, `pi-oven:code-reviewer` |
+| -1 — Broad exploration | Before scoping any first improvement/spec, dispatch parallel discovery over the target surface: `pi-oven:explorer` (file/call graph), `pi-oven:tracer` (cross-call causal paths), `pi-oven:analyst` (risk/impact clustering). Require evidence from at least 3 adjacent subsystems and at least 2 alternative improvement directions; do not lock spec scope until this evidence is collected. | `pi-oven:explorer`, `pi-oven:tracer`, `pi-oven:analyst` |
+| 0 — Expansion | If input is vague: dispatch `pi-oven:planner` to extract requirements + `pi-oven:architect` to create technical spec from Broad exploration evidence. If a spec already exists in `docs/specs/`, still run delta expansion against newly discovered subsystems before skipping. | `pi-oven:planner`, `pi-oven:architect` |
+| 1 — Planning | Create implementation plan from the expanded scope. If `writing-plans` output exists in `docs/plans/`, refresh it with new discoveries instead of blind reuse. | `pi-oven:planner` (direct, no interview) |
+| 2 — Execution | Implement the plan using ultrawork pattern (parallel waves). Main never edits; executor/debugger subagents own code changes. | `pi-oven:executor`, `pi-oven:debugger` |
+| 3 — QA | Build, lint, test, fix failures. Repeat up to 5 cycles. Stop early if the same error repeats 3 times — that is a fundamental issue requiring user input, not another retry. | `pi-oven:executor`, `pi-oven:debugger`, `pi-oven:test-engineer` |
+| 4 — Validation | Multi-perspective review in parallel: functional + security + quality, plus UX/visual checks when UI is touched. All must approve; fix and re-validate on rejection, up to 3 re-validation rounds. | `pi-oven:verifier`, `pi-oven:security-reviewer`, `pi-oven:code-reviewer`, `pi-oven:designer`, `pi-oven:multimodal-looker` |
 
 ---
 
@@ -104,19 +108,20 @@ Regardless of mode, invoke skills in this order each cycle:
 
 1. `freshness-guard` — stale meta-doc check before any reads (all modes)
 2. `codebase-survey` — mandatory pre-planning deep read via `pi-oven:explorer` (all modes, unless survey result exists)
-3. `spec-and-review` — if the cycle introduces a new capability or design change (autopilot Phase 0/1)
-4. `writing-plans` — produce/update `docs/plans/` checkpoint (autopilot Phase 1)
-5. Execution phase — mode-specific: ultrawork waves / ralph loop / autopilot lifecycle
-6. `large-task-delegation` routing — if any single task is 3+ files or 200+ LoC
-7. `tdd-strict` — enforced inside executor subagents (Red→Green→Refactor), not in main
-8. `pre-commit-gate` — run after each commit boundary (Gates 0–4.5, all modes)
-9. `fresh-verifier` — mandatory before exit (all modes, see Exit gate section)
+3. Broad exploration gate — if this is the first improvement scope in the run, dispatch `pi-oven:explorer` + `pi-oven:tracer` + `pi-oven:analyst` in parallel and record cross-subsystem evidence before scoping spec/plan
+4. `spec-and-review` — if the cycle introduces a new capability or design change (autopilot Phase 0/1)
+5. `writing-plans` — produce/update `docs/plans/` checkpoint (autopilot Phase 1)
+6. Execution phase — mode-specific: ultrawork waves / ralph loop / autopilot lifecycle
+7. `large-task-delegation` routing — if any single task is 3+ files or 200+ LoC
+8. `tdd-strict` — enforced inside executor subagents (Red→Green→Refactor), not in main
+9. `pre-commit-gate` — run after each commit boundary (Gates 0–4.5, all modes)
+10. `fresh-verifier` — mandatory before exit (all modes, see Exit gate section)
 
-Main agent role: dispatch and sequence only. Main does not implement inline.
+Main agent role: orchestrator only — dispatch, sequence, synthesize evidence, and queue next subagent work in the same turn. Main MUST NOT implement inline code, inline tests, or inline refactors during autonomous-loop execution.
 
 ---
 
-## Polite-stop ban (9 canonical examples)
+## Polite-stop ban (10 canonical examples)
 
 Never stop in any of these situations — continue in the same turn:
 
@@ -129,6 +134,7 @@ Never stop in any of these situations — continue in the same turn:
 7. `/compact` completed → ended turn instead of restating remaining tasks and resuming
 8. Edit/Write failed 1x → halted on same file (threshold is 2 consecutive failures)
 9. Cost/extra-usage/overage signal received → halted (cost-overage is NOT a halt condition)
+10. User says "계속 진행해줘" / "자율 실행해줘" after a checkpoint → treated as a new confirmation gate instead of immediate continuation
 
 ---
 

@@ -483,23 +483,31 @@ async function probeStateDir(root: string): Promise<StateDirFact> {
   }
 }
 
+export async function countSmokeScenarios(evalsDir: string): Promise<number> {
+  const skillDirs = await fs.readdir(evalsDir).catch(() => [] as string[]);
+  const counts = await Promise.all(
+    skillDirs.map(async (skillDir) => {
+      const scenDir = path.join(evalsDir, skillDir, "scenarios");
+      const files = await fs.readdir(scenDir).catch(() => [] as string[]);
+      const yamlFiles = files.filter((file) => file.endsWith(".yaml"));
+      const hits = await Promise.all(
+        yamlFiles.map(async (file) => {
+          const text = await fs.readFile(path.join(scenDir, file), "utf8").catch(() => "");
+          return Number(/^tag:\s*smoke/m.test(text));
+        })
+      );
+      return hits.reduce((sum, hit) => sum + hit, 0);
+    })
+  );
+  return counts.reduce((sum, count) => sum + count, 0);
+}
+
 async function probeEvalRunner(root: string): Promise<EvalRunnerFact> {
   const runnerPresent = await fs
     .access(path.join(root, "scripts", "run-eval.ts"))
     .then(() => true)
     .catch(() => false);
-  let smokeScenarioCount = 0;
-  const evalsDir = path.join(root, "evals");
-  const skillDirs = await fs.readdir(evalsDir).catch(() => [] as string[]);
-  for (const d of skillDirs) {
-    const scenDir = path.join(evalsDir, d, "scenarios");
-    const files = await fs.readdir(scenDir).catch(() => [] as string[]);
-    for (const f of files) {
-      if (!f.endsWith(".yaml")) continue;
-      const text = await fs.readFile(path.join(scenDir, f), "utf8").catch(() => "");
-      if (/^tag:\s*smoke/m.test(text)) smokeScenarioCount++;
-    }
-  }
+  const smokeScenarioCount = await countSmokeScenarios(path.join(root, "evals"));
   return { runnerPresent, smokeScenarioCount };
 }
 

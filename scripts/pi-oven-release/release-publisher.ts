@@ -1,5 +1,5 @@
 import type { SpawnFn } from "./changelog-generator";
-import { createReleaseCommit, createReleaseTag, ensureGitClean, pushRelease, type GitRunResult } from "./git-ops";
+import { createReleaseCommit, createReleaseTag, pushRelease, type GitRunResult } from "./git-ops";
 
 export interface PublishOptions {
   version: string;
@@ -20,7 +20,6 @@ export function publishRelease(options: PublishOptions): PublishResult {
     return { performed: false, pushes: [] };
   }
 
-  ensureGitClean(options.spawnFn);
 
   const commit = createReleaseCommit(options.version, options.dryRun, options.spawnFn);
   const tag = createReleaseTag(options.version, options.dryRun, options.spawnFn);

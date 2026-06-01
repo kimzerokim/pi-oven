@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { bumpVersion, parseSemver, type BumpType } from "./version-bumper";
 import { readCurrentVersionFromSoT, syncReleaseManifests } from "./manifest-sync";
 import { updateChangelog } from "./changelog-generator";
-import { getCurrentTag } from "./git-ops";
+import { ensureGitClean, getCurrentTag } from "./git-ops";
 import { publishRelease } from "./release-publisher";
 
 type Values = {
@@ -65,6 +65,9 @@ async function main() {
   const updateChangelogFlag = values["update-changelog"] ?? false;
   const syncLabel = values["sync-label"] ?? false;
   const publish = values.publish ?? false;
+  if (publish) {
+    ensureGitClean(spawnFn);
+  }
 
   const currentVersion = readCurrentVersionFromSoT();
   const targetVersion = resolveTargetVersion(values, currentVersion);

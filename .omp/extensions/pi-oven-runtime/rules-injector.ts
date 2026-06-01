@@ -29,6 +29,13 @@ export const DISCIPLINE_DEDUP_KEY = "pi-oven:discipline-rules@v1";
 export const LANGUAGE_DEDUP_KEY = "pi-oven:language";
 
 /**
+ * Named dedup marker for the project-instructions block (the repo-root
+ * CLAUDE.md). NOT version-keyed: the content varies per repo, but re-injection
+ * must dedup on the same marker so a prompt never carries two project blocks.
+ */
+export const PROJECT_INSTRUCTIONS_DEDUP_KEY = "pi-oven:project-instructions";
+
+/**
  * Project response language (mirrors scripts/pi-oven-setup/project-config.ts).
  * Canonical `"ko"`/`"en"` carry rich directives; any other value is a
  * free-form language NAME and gets a generic English directive.
@@ -64,6 +71,15 @@ export class RulesInjector {
    */
   private language: ProjectLanguage | null = null;
 
+  /**
+   * The repo-root CLAUDE.md content (project-local instructions). `null` =>
+   * inject NOTHING. Set once at extension load from `<repoRoot>/CLAUDE.md`.
+   * omp does not natively read the repo-root CLAUDE.md (its claude provider
+   * reads `.claude/CLAUDE.md` + `~/.claude/CLAUDE.md` only), so this is how the
+   * main+sub agents come to honor the Claude-Code project-memory convention.
+   */
+  private projectInstructions: string | null = null;
+
   setPhase(phase: string): void {
     this.phase = phase;
   }
@@ -79,6 +95,14 @@ export class RulesInjector {
    */
   setLanguage(lang: string | null): void {
     this.language = lang;
+  }
+
+  /**
+   * Set the repo-root project instructions (the verbatim CLAUDE.md content).
+   * Empty/whitespace-only or `null` => cleared (inject nothing).
+   */
+  setProjectInstructions(content: string | null): void {
+    this.projectInstructions = content && content.trim().length > 0 ? content : null;
   }
 
   /**
@@ -126,6 +150,30 @@ export class RulesInjector {
     ].join("\n");
   }
 
+  /**
+   * Build the project-instructions block (tagged with the project dedup
+   * marker), or `null` when no project instructions are set. The CLAUDE.md
+   * content is embedded verbatim. The framing states the source is the repo's
+   * own root CLAUDE.md and that it is project-LOCAL (not the global
+   * `~/.claude/CLAUDE.md`) so the agent does not conflate it with global config.
+   */
+  buildProjectInstructionsBlock(): string | null {
+    if (this.projectInstructions === null) return null;
+    return [
+      `<!-- ${PROJECT_INSTRUCTIONS_DEDUP_KEY} -->`,
+      "## Project instructions (repository CLAUDE.md)",
+      "",
+      "The following are this repository's own instructions, loaded from its",
+      "root `CLAUDE.md`. Treat them as authoritative project-specific guidance",
+      "for work in this repo. They are project-LOCAL — NOT loaded from any global",
+      "`~/.claude` configuration.",
+      "",
+      "---",
+      "",
+      this.projectInstructions,
+    ].join("\n");
+  }
+
   /** Build the discipline-rule block string (tagged with the dedup key). */
   buildSystemPromptBlock(): string {
     return [
@@ -160,6 +208,14 @@ export class RulesInjector {
     const directive = this.buildLanguageDirective();
     if (directive !== null && !out.some((s) => s.includes(LANGUAGE_DEDUP_KEY))) {
       out = [...out, directive];
+    }
+
+    // Project instructions (repo-root CLAUDE.md) — appended ONLY when set
+    // (non-null) AND no project marker is already present (dedup). null =>
+    // inject NOTHING. This applies to main AND sub agents (no parent guard).
+    const projectBlock = this.buildProjectInstructionsBlock();
+    if (projectBlock !== null && !out.some((s) => s.includes(PROJECT_INSTRUCTIONS_DEDUP_KEY))) {
+      out = [...out, projectBlock];
     }
 
     return out;

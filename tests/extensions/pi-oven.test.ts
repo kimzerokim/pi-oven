@@ -11,6 +11,7 @@ import {
   type SessionModelCapture,
 } from "../../.omp/extensions/pi-oven";
 import { syncPiOvenAgentMirrors } from "../../.omp/extensions/pi-oven";
+import { readProjectInstructions } from "../../.omp/extensions/pi-oven";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-ext-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -324,5 +325,67 @@ describe("captureSessionModel", () => {
     }
     // captureSessionModel propagates the FS error; the session_start handler catches it
     expect(threw).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readProjectInstructions — repo-root CLAUDE.md reader (project-local only)
+//
+// omp does not natively read the repo-root CLAUDE.md (its claude provider reads
+// .claude/CLAUDE.md + ~/.claude/CLAUDE.md only). This pure reader feeds the repo
+// root CLAUDE.md to the RulesInjector so the main+sub agents honor it. It is
+// project-LOCAL by construction (reads <repoRoot>/CLAUDE.md), never the global
+// ~/.claude one. Fail-open: any absence/oversize/error => null (inject nothing).
+// ---------------------------------------------------------------------------
+
+describe("readProjectInstructions", () => {
+  let repoRoot: string;
+
+  beforeEach(() => {
+    repoRoot = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it("returns the content of <repoRoot>/CLAUDE.md when present", () => {
+    writeFileSync(join(repoRoot, "CLAUDE.md"), "# Project\nUse bun, not npm.");
+    const out = readProjectInstructions(repoRoot);
+    expect(out).not.toBeNull();
+    expect(out!).toContain("Use bun, not npm.");
+  });
+
+  it("returns null when <repoRoot>/CLAUDE.md is absent", () => {
+    expect(readProjectInstructions(repoRoot)).toBeNull();
+  });
+
+  it("returns null when CLAUDE.md is empty", () => {
+    writeFileSync(join(repoRoot, "CLAUDE.md"), "");
+    expect(readProjectInstructions(repoRoot)).toBeNull();
+  });
+
+  it("returns null when CLAUDE.md exceeds the byte cap (fail-open)", () => {
+    writeFileSync(join(repoRoot, "CLAUDE.md"), "x".repeat(2000));
+    expect(readProjectInstructions(repoRoot, 1000)).toBeNull();
+  });
+
+  it("returns content when CLAUDE.md is within the byte cap", () => {
+    writeFileSync(join(repoRoot, "CLAUDE.md"), "x".repeat(500));
+    const out = readProjectInstructions(repoRoot, 1000);
+    expect(out).not.toBeNull();
+    expect(out!.length).toBe(500);
+  });
+
+  it("returns null on read error (nonexistent repoRoot dir) — fail-open", () => {
+    const missing = join(repoRoot, "does-not-exist");
+    expect(readProjectInstructions(missing)).toBeNull();
+  });
+
+  it("reads ONLY the repo-root CLAUDE.md, NOT <repoRoot>/.claude/CLAUDE.md", () => {
+    // a .claude/CLAUDE.md with no root CLAUDE.md must yield null (root-only scope)
+    mkdirSync(join(repoRoot, ".claude"), { recursive: true });
+    writeFileSync(join(repoRoot, ".claude", "CLAUDE.md"), "scoped config — must be ignored");
+    expect(readProjectInstructions(repoRoot)).toBeNull();
   });
 });

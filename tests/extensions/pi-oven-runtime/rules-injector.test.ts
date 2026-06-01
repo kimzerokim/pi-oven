@@ -3,6 +3,7 @@ import {
   RulesInjector,
   DISCIPLINE_DEDUP_KEY,
   LANGUAGE_DEDUP_KEY,
+  PROJECT_INSTRUCTIONS_DEDUP_KEY,
   type PreservedRules,
 } from "../../../.omp/extensions/pi-oven-runtime/rules-injector";
 
@@ -246,5 +247,95 @@ describe("RulesInjector — language directive", () => {
     sp = inj.applyToSystemPrompt(sp);
     expect(sp.filter((s) => s.includes(DISCIPLINE_DEDUP_KEY))).toHaveLength(1);
     expect(sp.filter((s) => s.includes(LANGUAGE_DEDUP_KEY))).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Project instructions (repo root CLAUDE.md injection)
+//
+//   - The repo's own root CLAUDE.md is injected into the main+sub agent system
+//     prompt so omp honors project-local guidance that it does not natively
+//     read (omp reads .claude/CLAUDE.md + ~/.claude/CLAUDE.md only — never the
+//     repo-root CLAUDE.md that is the Claude Code project-memory convention).
+//   - null/empty => inject NOTHING (no project block).
+//   - the block carries the project-instructions dedup marker and the verbatim
+//     CLAUDE.md content.
+//   - dedup: re-injection never produces a second project block.
+//   - coexists with discipline + language blocks (three separate dedup keys).
+// ---------------------------------------------------------------------------
+
+describe("RulesInjector — project instructions", () => {
+  it("buildProjectInstructionsBlock returns null when none set", () => {
+    const inj = new RulesInjector();
+    expect(inj.buildProjectInstructionsBlock()).toBeNull();
+  });
+
+  it("setProjectInstructions then build contains the content + dedup marker", () => {
+    const inj = new RulesInjector();
+    inj.setProjectInstructions("# Project guide\nUse bun, not npm.");
+    const block = inj.buildProjectInstructionsBlock();
+    expect(block).not.toBeNull();
+    expect(block!).toContain("Use bun, not npm.");
+    expect(block!).toContain(PROJECT_INSTRUCTIONS_DEDUP_KEY);
+  });
+
+  it("the block states it is project-local (not from global ~/.claude)", () => {
+    const inj = new RulesInjector();
+    inj.setProjectInstructions("anything");
+    const block = inj.buildProjectInstructionsBlock();
+    expect(block!.toLowerCase()).toContain("claude.md");
+    // the framing must disambiguate project-local from global config
+    expect(block!).toMatch(/\.claude/);
+  });
+
+  it("empty content is treated as null (no block)", () => {
+    const inj = new RulesInjector();
+    inj.setProjectInstructions("");
+    expect(inj.buildProjectInstructionsBlock()).toBeNull();
+  });
+
+  it("setProjectInstructions(null) clears a previously-set value", () => {
+    const inj = new RulesInjector();
+    inj.setProjectInstructions("content");
+    inj.setProjectInstructions(null);
+    expect(inj.buildProjectInstructionsBlock()).toBeNull();
+  });
+
+  it("applyToSystemPrompt appends the project block exactly once", () => {
+    const inj = new RulesInjector();
+    inj.setProjectInstructions("PROJECT-RULES-MARKER");
+    const out = inj.applyToSystemPrompt(["base"]);
+    const hits = out.filter((s) => s.includes(PROJECT_INSTRUCTIONS_DEDUP_KEY));
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toContain("PROJECT-RULES-MARKER");
+    expect(out).toContain("base");
+  });
+
+  it("dedup: re-applying does NOT inject a second project block", () => {
+    const inj = new RulesInjector();
+    inj.setProjectInstructions("PROJECT-RULES-MARKER");
+    let sp: string[] = ["base"];
+    sp = inj.applyToSystemPrompt(sp);
+    sp = inj.applyToSystemPrompt(sp);
+    expect(sp.filter((s) => s.includes(PROJECT_INSTRUCTIONS_DEDUP_KEY))).toHaveLength(1);
+  });
+
+  it("no project instructions => applyToSystemPrompt injects NO project block (discipline still present)", () => {
+    const inj = new RulesInjector();
+    const out = inj.applyToSystemPrompt(["base"]);
+    expect(out.some((s) => s.includes(PROJECT_INSTRUCTIONS_DEDUP_KEY))).toBe(false);
+    expect(out.some((s) => s.includes(DISCIPLINE_DEDUP_KEY))).toBe(true);
+  });
+
+  it("coexists with discipline + language blocks (all three present, each once)", () => {
+    const inj = new RulesInjector();
+    inj.setPhase("BUILD");
+    inj.setLanguage("ko");
+    inj.setProjectInstructions("PROJECT-RULES-MARKER");
+    const out = inj.applyToSystemPrompt(["base"]);
+    expect(out.filter((s) => s.includes(DISCIPLINE_DEDUP_KEY))).toHaveLength(1);
+    expect(out.filter((s) => s.includes(LANGUAGE_DEDUP_KEY))).toHaveLength(1);
+    expect(out.filter((s) => s.includes(PROJECT_INSTRUCTIONS_DEDUP_KEY))).toHaveLength(1);
+    expect(out).toContain("base");
   });
 });

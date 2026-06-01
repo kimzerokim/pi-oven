@@ -226,6 +226,39 @@ export async function syncPiOvenAgentMirrors(
 }
 
 // ---------------------------------------------------------------------------
+// readProjectInstructions — repo-root CLAUDE.md reader (project-local)
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the repo-root project instructions file `<repoRoot>/CLAUDE.md`.
+ *
+ * omp does NOT natively read the repo-root CLAUDE.md — its `claude` discovery
+ * provider reads `~/.claude/CLAUDE.md` + `<cwd>/.claude/CLAUDE.md` only, never
+ * the repo-root `CLAUDE.md` that is the Claude Code project-memory convention.
+ * This reader feeds that file to the RulesInjector so the main AND sub agents
+ * honor it, while the global `~/.claude/CLAUDE.md` stays ignored.
+ *
+ * Project-LOCAL by construction: it only ever resolves `<repoRoot>/CLAUDE.md`.
+ * Fail-open: returns `null` when the file is absent, empty/whitespace-only,
+ * exceeds `maxBytes`, or any read error occurs — so a missing / oversized /
+ * unreadable file can never break extension load.
+ */
+export function readProjectInstructions(
+  repoRoot: string,
+  maxBytes: number = 256 * 1024
+): string | null {
+  try {
+    const claudeMd = path.resolve(repoRoot, "CLAUDE.md");
+    const content = readFileSync(claudeMd, "utf-8");
+    if (content.trim().length === 0) return null;
+    if (Buffer.byteLength(content, "utf-8") > maxBytes) return null;
+    return content;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Extension entrypoint
 // ---------------------------------------------------------------------------
 
@@ -269,10 +302,17 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   // session_start handler shows a once-per-session, non-blocking "not set up"
   // notice (guarded by ctx.hasUI so print/RPC modes are unaffected).
   let setupComplete = false;
+  // Repo-root CLAUDE.md injection is ON by default; opt out per-project with
+  // `.pi-oven/config.json` { "projectInstructions": false }.
+  let projectInstructionsEnabled = true;
   try {
     const configPath = path.resolve(repoRoot, ".pi-oven", "config.json");
     const raw = readFileSync(configPath, "utf-8");
-    const parsed = JSON.parse(raw) as { language?: unknown; setupCompletedAt?: unknown };
+    const parsed = JSON.parse(raw) as {
+      language?: unknown;
+      setupCompletedAt?: unknown;
+      projectInstructions?: unknown;
+    };
     const resolved =
       typeof parsed.language === "string" ? resolveLanguage(parsed.language) : null;
     if (resolved) {
@@ -282,8 +322,27 @@ export default function piOvenPi(pi: ExtensionAPI): void {
     }
     setupComplete =
       typeof parsed.setupCompletedAt === "string" && parsed.setupCompletedAt.length > 0;
+    if (parsed.projectInstructions === false) projectInstructionsEnabled = false;
   } catch (err) {
     pi.logger.debug(`pi-oven: project language config not read (ambient respected): ${err}`);
+  }
+
+  // Inject the repo-root CLAUDE.md (project-local instructions) into the main
+  // AND sub agent system prompt — omp does not read it natively. The global
+  // `~/.claude/CLAUDE.md` is never touched here. Fail-open: any fault leaves the
+  // injector without project instructions and the turn is unaffected.
+  if (projectInstructionsEnabled) {
+    try {
+      const projectInstructions = readProjectInstructions(repoRoot);
+      if (projectInstructions) {
+        injector.setProjectInstructions(projectInstructions);
+        pi.logger.debug(
+          `pi-oven: injected project CLAUDE.md (${projectInstructions.length} chars)`
+        );
+      }
+    } catch (err) {
+      pi.logger.debug(`pi-oven: project CLAUDE.md not read: ${err}`);
+    }
   }
 
   // A subagent session is recognized via PI_BLOCKED_AGENT (omp recursion-guard

@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from five frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers / pi-oven). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-474%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-490%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
@@ -324,7 +324,7 @@ The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pi-oven-*.md` a
 ### Test suite
 
 ```sh
-bun test       # 474 tests across 41 files
+bun test       # 490 tests across 41 files
 bun check      # tsc --noEmit typecheck
 bun run build  # extension bundle (pi-oven.js)
 bun run lint:agents  # CI-grade agent file lint
@@ -347,7 +347,7 @@ If you're hacking on pi-oven itself, point omp at your local checkout instead of
 ```sh
 cd /path/to/pi-oven
 bun install
-bun test           # baseline 474 passing
+bun test           # baseline 490 passing
 bun check          # typecheck clean
 bun run build      # extension bundles to dist/pi-oven.js
 bun run lint:agents
@@ -383,7 +383,7 @@ pi-oven/
 │   ├── pi-oven-setup.ts         # /pi-oven:setup batch CLI
 │   ├── pi-oven-release/         # release automation modules (bump/sync/changelog/publish)
 │   ├── pi-oven-setup/           # 13 submodules (profiles, persist, apply, ...)
-├── tests/                   # bun test suite (474 tests, 1161 expect calls, 41 files)
+├── tests/                   # bun test suite (490 tests, 1188 expect calls, 41 files)
 │   ├── extensions/
 │   ├── plugin/
 │   └── scripts/

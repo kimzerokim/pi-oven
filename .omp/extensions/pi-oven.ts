@@ -23,6 +23,12 @@ export interface SessionModelCapture {
   capturedAt: number;
 }
 
+export interface AgentMirrorSyncResult {
+  mirroredFiles: number;
+  removedStaleFiles: number;
+  targetsTouched: string[];
+}
+
 // ---------------------------------------------------------------------------
 // getAllowedPrefixes (dynamic — option c from Spec B §10.5)
 // ---------------------------------------------------------------------------
@@ -122,7 +128,7 @@ export function validateAgentRegistry(
 }
 
 // ---------------------------------------------------------------------------
-// captureSessionModel — writes parent session model to a JSON file
+// Agent mirror sync + session model capture helpers
 // ---------------------------------------------------------------------------
 
 /**
@@ -139,6 +145,76 @@ export async function captureSessionModel(
     capturedAt: Date.now(),
   };
   await fsPromises.writeFile(targetPath, JSON.stringify(capture, null, 2), "utf-8");
+}
+
+function isPiOvenAgentFile(name: string): boolean {
+  return name.startsWith("pi-oven-") && name.endsWith(".md");
+}
+
+function buildMirrorTargets(cwd: string, homeDir: string): string[] {
+  return [
+    path.resolve(cwd, ".omp", "agents"),
+    path.resolve(homeDir, ".omp", "agent", "agents"),
+  ];
+}
+
+/**
+ * Mirror pi-oven agent files into discovery-stable directories so task dispatch
+ * can resolve `pi-oven:*` regardless of plugin-scope discovery quirks.
+ *
+ * - source: extension-local `agents/` directory
+ * - targets: project `.omp/agents` + user `~/.omp/agent/agents`
+ * - only mirrors `pi-oven-*.md`
+ * - removes stale mirrored `pi-oven-*.md` files that no longer exist at source
+ * - preserves non-pi-oven files in targets
+ */
+export async function syncPiOvenAgentMirrors(
+  sourceAgentsDir: string,
+  cwd: string,
+  homeDir: string
+): Promise<AgentMirrorSyncResult> {
+  const sourceEntries = await fsPromises.readdir(sourceAgentsDir).catch(() => [] as string[]);
+  const sourceFiles = sourceEntries.filter(isPiOvenAgentFile);
+  if (sourceFiles.length === 0) {
+    return { mirroredFiles: 0, removedStaleFiles: 0, targetsTouched: [] };
+  }
+
+  const sourceContent = new Map<string, string>();
+  for (const name of sourceFiles) {
+    const content = await fsPromises.readFile(path.join(sourceAgentsDir, name), "utf-8");
+    sourceContent.set(name, content);
+  }
+
+  const targets = Array.from(new Set(buildMirrorTargets(cwd, homeDir)));
+  let mirroredFiles = 0;
+  let removedStaleFiles = 0;
+  const targetsTouched: string[] = [];
+
+  for (const targetDir of targets) {
+    await fsPromises.mkdir(targetDir, { recursive: true });
+    const existingEntries = await fsPromises.readdir(targetDir).catch(() => [] as string[]);
+    const existingPiOven = existingEntries.filter(isPiOvenAgentFile);
+
+    for (const stale of existingPiOven) {
+      if (!sourceContent.has(stale)) {
+        await fsPromises.unlink(path.join(targetDir, stale)).catch(() => {});
+        removedStaleFiles++;
+        if (!targetsTouched.includes(targetDir)) targetsTouched.push(targetDir);
+      }
+    }
+
+    for (const [name, content] of sourceContent.entries()) {
+      const targetPath = path.join(targetDir, name);
+      const previous = await fsPromises.readFile(targetPath, "utf-8").catch(() => null as string | null);
+      if (previous !== content) {
+        await fsPromises.writeFile(targetPath, content, "utf-8");
+        mirroredFiles++;
+        if (!targetsTouched.includes(targetDir)) targetsTouched.push(targetDir);
+      }
+    }
+  }
+
+  return { mirroredFiles, removedStaleFiles, targetsTouched };
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +318,19 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     // Capture parent session model for CLI parent-session check (Spec B §6 Step a.5)
     // ctx.getModel is available at runtime (extensibility/extensions/types.d.ts:800)
+    // Ensure pi-oven:* agents are discoverable in both project/user scopes even
+    // when plugin-root discovery is unavailable in this runtime.
+    try {
+      const mirror = await syncPiOvenAgentMirrors(agentsDir, repoRoot, os.homedir());
+      if (mirror.targetsTouched.length > 0) {
+        pi.logger.info(
+          `pi-oven: synced agent mirror (${mirror.mirroredFiles} updated, ${mirror.removedStaleFiles} removed) -> ${mirror.targetsTouched.join(", ")}`
+        );
+      }
+    } catch (err) {
+      pi.logger.debug(`pi-oven: agent mirror sync skipped: ${err}`);
+    }
+
     // but not reflected in the bundled @oh-my-pi/pi-coding-agent types.
     const ctxAny = ctx as unknown as { getModel?: () => unknown };
     const activeModel = ctxAny.getModel?.();

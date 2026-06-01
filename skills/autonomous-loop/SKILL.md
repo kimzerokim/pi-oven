@@ -2,7 +2,7 @@
 name: autonomous-loop
 version: 0.1.0
 description: Meta orchestrator for multi-cycle autonomous execution — ASK-FIRST 3-slot branch contract, three execution modes (ultrawork / ralph / autopilot), polite-stop ban, fresh-agent verifier exit gate, rate-limit/compact resilience
-trigger: "/pi-oven:autonomous, 자율 실행, 끝까지 끝내줘, 자는 동안 진행해, ralph로 돌려, autopilot, ralph, ultrawork, ulw, full auto, don't stop, must complete"
+trigger: "/pi-oven:autonomous, 자율 실행, 자율실행, 끝까지 끝내줘, 자는 동안 진행해, ralph로 돌려, autopilot, ralph, ultrawork, ulw, full auto, don't stop, must complete"
 alwaysApply: false
 ---
 
@@ -12,7 +12,7 @@ alwaysApply: false
 
 Invoke when ANY of these conditions hold:
 
-- User sends an explicit autonomous keyword: `/pi-oven:autonomous`, `자율 실행`, `끝까지 끝내줘`, `자는 동안 진행해`, `ralph로 돌려`, `autopilot`, `ralph`, `ultrawork`
+- User sends an explicit autonomous keyword: `/pi-oven:autonomous`, `자율 실행`, `자율실행`, `끝까지 끝내줘`, `자는 동안 진행해`, `ralph로 돌려`, `autopilot`, `ralph`, `ultrawork`
 - A large-task delegation spans multiple cycles (3+ files, 200+ LoC, multi-stage)
 - Harness self-improvement cycle is triggered (plan A→N continuation)
 
@@ -47,7 +47,7 @@ Three autonomous execution modes. Select the mode based on user trigger or task 
 | `ralph` | "ralph", "don't stop", "must complete" | PRD-driven persistence loop — story-by-story until all acceptance criteria verified by reviewer | Task requires guaranteed completion with reviewer sign-off |
 | `autopilot` | "autopilot", "autonomous", "full auto", "끝까지 끝내줘" | Full lifecycle pipeline — Expansion → Planning → Execution → QA → Validation | Idea-to-working-code; multi-phase project |
 
-Default when user says `자율 실행`, `끝까지 끝내줘`, or `/pi-oven:autonomous`: **autopilot** mode.
+Default when user says `자율 실행`, `자율실행`, `끝까지 끝내줘`, or `/pi-oven:autonomous`: **autopilot** mode.
 
 ---
 

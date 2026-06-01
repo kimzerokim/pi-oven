@@ -73,7 +73,7 @@ You are entering the pi-oven autonomous loop. The actual orchestration runs thro
 ## Important rules
 
 - The autonomous loop is **LLM-driven, file-based**. There is no TypeScript state machine runtime — you drive every transition through tool dispatch.
-- All subagent dispatch goes through the `task` tool with a `pi-oven-*` agent file name (e.g. `pi-oven:executor`, `pi-oven:critic`). External namespaces like `oh-my-claudecode:*` and `omo:*` are NOT supported — they get passed as model strings and fail with 401.
+- Subagent dispatch uses the `task` tool. Prefer `pi-oven:*` aliases (`pi-oven:executor`, `pi-oven:critic`) when that registry is loaded; in harness-fixed task schemas that reject `pi-oven:*`, use bare built-in names (`executor`, `critic`). External namespaces like `oh-my-claudecode:*` and `omo:*` are NOT supported — they get passed as model strings and fail with 401.
 - Push policy: do NOT `git push` without explicit user confirmation. `PI_OVEN_CYCLE_EXIT_VERIFIED=1` is for the cycle-exit hook only and does NOT replace user push consent.
 - Per-spec semantic commits — bundle related changes into one commit per spec or one commit per logical unit. Avoid one-commit-per-task.
 

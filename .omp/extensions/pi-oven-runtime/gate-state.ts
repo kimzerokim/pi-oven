@@ -19,7 +19,7 @@ import { join, dirname } from "path";
 
 export interface FsmState {
   active: boolean;
-  gateCache: { commit?: string };
+  gateCache: { commit?: string; regression?: string };
   version: number;
   schemaVersion: number;
   phase?: string;

@@ -18,12 +18,12 @@ import { normalizeCommand } from "../../../.omp/extensions/pi-oven-runtime/git-n
 // Forbidden floor is ALWAYS-ON regardless of FSM/bypass.
 // ---------------------------------------------------------------------------
 
-function ok(partial: Partial<FsmStateView & { kind: "OK" }> & { commit?: string; active?: boolean }): FsmStateView {
+function ok(partial: Partial<FsmStateView & { kind: "OK" }> & { commit?: string; regression?: string; active?: boolean }): FsmStateView {
   return {
     kind: "OK",
     state: {
       active: partial.active ?? true,
-      gateCache: { commit: partial.commit ?? "FAIL" },
+      gateCache: { commit: partial.commit ?? "FAIL", regression: partial.regression ?? "FAIL" },
     },
   } as FsmStateView;
 }
@@ -31,7 +31,7 @@ function ok(partial: Partial<FsmStateView & { kind: "OK" }> & { commit?: string;
 function input(command: string, overrides: Partial<GateInput> = {}): GateInput {
   return {
     normalized: normalizeCommand(command),
-    fsm: ok({ commit: "FAIL", active: true }),
+    fsm: ok({ commit: "FAIL", regression: "FAIL", active: true }),
     env: {},
     fileConsentValid: false,
     ...overrides,
@@ -43,19 +43,25 @@ function input(command: string, overrides: Partial<GateInput> = {}): GateInput {
 // ---------------------------------------------------------------------------
 
 describe("decideGate — commit gate (AC1)", () => {
-  it("blocks `git commit` when active and gateCache.commit !== PASS", () => {
-    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "FAIL", active: true }) }));
+  it("blocks `git commit` when active and commit/regression gate is not fully PASS", () => {
+    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "PASS", regression: "FAIL", active: true }) }));
     expect(r.block).toBe(true);
     expect(r.reason).toBeDefined();
   });
 
-  it("allows `git commit` when active and gateCache.commit === PASS", () => {
-    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "PASS", active: true }) }));
+  it("allows `git commit` when active and gateCache.commit/regression are both PASS", () => {
+    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "PASS", regression: "PASS", active: true }) }));
     expect(r.block).toBe(false);
   });
 
+  it("blocks `git commit` when active and commit PASS but regression is missing (schema compatibility default)", () => {
+    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "PASS", regression: undefined, active: true }) }));
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/full regression gate/i);
+  });
+
   it("allows a non-git command unconditionally", () => {
-    const r = decideGate(input("ls -la", { fsm: ok({ commit: "FAIL", active: true }) }));
+    const r = decideGate(input("ls -la", { fsm: ok({ commit: "FAIL", regression: "FAIL", active: true }) }));
     expect(r.block).toBe(false);
   });
 });
@@ -76,7 +82,7 @@ describe("decideGate — B2 absent=allow / corrupt=fail-closed (AC6)", () => {
   });
 
   it("OK but active:false → gate INACTIVE → ALLOWS git commit", () => {
-    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "FAIL", active: false }) }));
+    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "FAIL", regression: "FAIL", active: false }) }));
     expect(r.block).toBe(false);
   });
 
@@ -104,7 +110,7 @@ describe("decideGate — B2 absent=allow / corrupt=fail-closed (AC6)", () => {
   });
 
   it("PI_OVEN_GATE_BYPASS=1 allows commit when active+FAIL (anti-brick covers active gate too)", () => {
-    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "FAIL", active: true }), env: { PI_OVEN_GATE_BYPASS: "1" } }));
+    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "FAIL", regression: "FAIL", active: true }), env: { PI_OVEN_GATE_BYPASS: "1" } }));
     expect(r.block).toBe(false);
     expect(r.bypassed).toBe(true);
   });
@@ -135,7 +141,7 @@ describe("decideGate — forbidden floor always-on (AC6)", () => {
 
   it("forbidden floor takes precedence over a PASS commit cache", () => {
     // command both has a forbidden match and would otherwise be allowed
-    const r = decideGate(input("rm -rf / && git commit -m x", { fsm: ok({ commit: "PASS", active: true }) }));
+    const r = decideGate(input("rm -rf / && git commit -m x", { fsm: ok({ commit: "PASS", regression: "PASS", active: true }) }));
     expect(r.block).toBe(true);
     expect(r.reason).toMatch(/forbidden/i);
   });
@@ -147,13 +153,13 @@ describe("decideGate — forbidden floor always-on (AC6)", () => {
 
 describe("decideGate — push consent (AC5)", () => {
   it("blocks `git push` when active and no consent (env unset, file invalid)", () => {
-    const r = decideGate(input("git push origin main", { fsm: ok({ commit: "PASS", active: true }) }));
+    const r = decideGate(input("git push origin main", { fsm: ok({ commit: "PASS", regression: "PASS", active: true }) }));
     expect(r.block).toBe(true);
   });
 
   it("allows `git push` with PI_OVEN_PUSH_CONSENT env set; does NOT consume the file", () => {
     const r = decideGate(input("git push origin main", {
-      fsm: ok({ commit: "PASS", active: true }),
+      fsm: ok({ commit: "PASS", regression: "PASS", active: true }),
       env: { PI_OVEN_PUSH_CONSENT: "deadbeef" },
     }));
     expect(r.block).toBe(false);
@@ -163,7 +169,7 @@ describe("decideGate — push consent (AC5)", () => {
 
   it("allows `git push` with a valid consent FILE and flags consume-on-use", () => {
     const r = decideGate(input("git push origin main", {
-      fsm: ok({ commit: "PASS", active: true }),
+      fsm: ok({ commit: "PASS", regression: "PASS", active: true }),
       fileConsentValid: true,
     }));
     expect(r.block).toBe(false);
@@ -173,7 +179,7 @@ describe("decideGate — push consent (AC5)", () => {
 
   it("env consent takes precedence over file (does not consume file when both present)", () => {
     const r = decideGate(input("git push origin main", {
-      fsm: ok({ commit: "PASS", active: true }),
+      fsm: ok({ commit: "PASS", regression: "PASS", active: true }),
       env: { PI_OVEN_PUSH_CONSENT: "x" },
       fileConsentValid: true,
     }));
@@ -184,7 +190,7 @@ describe("decideGate — push consent (AC5)", () => {
 
   it("an invalid/expired file consent (fileConsentValid=false) → blocks push", () => {
     const r = decideGate(input("git push", {
-      fsm: ok({ commit: "PASS", active: true }),
+      fsm: ok({ commit: "PASS", regression: "PASS", active: true }),
       fileConsentValid: false,
     }));
     expect(r.block).toBe(true);

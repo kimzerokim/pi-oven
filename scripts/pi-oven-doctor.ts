@@ -55,6 +55,8 @@ export interface McpFact {
 export interface SkillsFact {
   skillMdCount: number;
   pluginSkillsCount: number;
+  missingFromManifest: string[];
+  extraInManifest: string[];
 }
 
 export interface AgentsFact {
@@ -200,21 +202,24 @@ export function evalMcp(fact: McpFact): CheckResult {
   };
 }
 
-/** (6) skills: SKILL.md count must equal plugin.json skills[] length. */
+/** (6) skills: plugin.json skills[] must match SoT-required skill set. */
 export function evalSkills(fact: SkillsFact): CheckResult {
   const name = "skills";
-  if (fact.skillMdCount === fact.pluginSkillsCount) {
+  if (fact.missingFromManifest.length === 0 && fact.extraInManifest.length === 0) {
     return {
       name,
       status: "PASS",
-      detail: `${fact.skillMdCount} SKILL.md files match plugin.json skills[] (${fact.pluginSkillsCount}).`,
+      detail: `plugin.json skills[] is SoT-aligned (${fact.pluginSkillsCount} loaded, ${fact.skillMdCount} SKILL.md files present).`,
     };
   }
   return {
     name,
     status: "FAIL",
-    detail: `skills/*/SKILL.md count (${fact.skillMdCount}) != plugin.json skills[] length (${fact.pluginSkillsCount}).`,
-    fix: "Sync .claude-plugin/plugin.json skills[] with skills/*/SKILL.md (add/remove entries to match).",
+    detail:
+      `plugin.json skills[] diverges from SoT. ` +
+      `Missing: ${fact.missingFromManifest.length ? fact.missingFromManifest.join(", ") : "none"}. ` +
+      `Extra: ${fact.extraInManifest.length ? fact.extraInManifest.join(", ") : "none"}.`,
+    fix: "Sync .claude-plugin/plugin.json skills[] to the 20 SoT skills in docs/site/skill-flow.ko.html.",
   };
 }
 
@@ -300,7 +305,7 @@ export function evalOpsConnector(fact: OpsConnectorFact): CheckResult {
       name,
       status: "WARN",
       detail:
-        "Connector skills are installed but no external credential file was found (.external-credentials, .external_certificate, .external_cerficate).",
+        "Connector skills are installed but no external credential file was found (.external-credentials or .external_certificate; legacy alias .external_cerficate is also accepted).",
       fix: "Create one credential file at repo root and populate [aws], [bitbucket], [cloudflare] sections.",
     };
   }
@@ -413,15 +418,38 @@ async function countSkillMd(root: string): Promise<number> {
   return count;
 }
 
-async function readPluginSkillsCount(root: string): Promise<number> {
+async function readPluginSkills(root: string): Promise<string[]> {
   try {
     const raw = await fs.readFile(path.join(root, ".claude-plugin", "plugin.json"), "utf8");
     const json = JSON.parse(raw) as { skills?: unknown[] };
-    return Array.isArray(json.skills) ? json.skills.length : 0;
+    return Array.isArray(json.skills) ? json.skills.filter((s): s is string => typeof s === "string") : [];
   } catch {
-    return 0;
+    return [];
   }
 }
+
+const SOT_SKILL_PATHS = [
+  "./skills/code-quality-discipline/SKILL.md",
+  "./skills/tdd-strict/SKILL.md",
+  "./skills/brainstorming/SKILL.md",
+  "./skills/codebase-survey/SKILL.md",
+  "./skills/fresh-verifier/SKILL.md",
+  "./skills/writing-plans/SKILL.md",
+  "./skills/spec-and-review/SKILL.md",
+  "./skills/pre-commit-gate/SKILL.md",
+  "./skills/large-task-delegation/SKILL.md",
+  "./skills/subagent-driven-development/SKILL.md",
+  "./skills/autonomous-loop/SKILL.md",
+  "./skills/deep-init/SKILL.md",
+  "./skills/deep-dive/SKILL.md",
+  "./skills/systematic-debugging/SKILL.md",
+  "./skills/improve-codebase-architecture/SKILL.md",
+  "./skills/receiving-code-review/SKILL.md",
+  "./skills/git-workflow/SKILL.md",
+  "./skills/aws/SKILL.md",
+  "./skills/bitbucket-pipeline/SKILL.md",
+  "./skills/cloudflare/SKILL.md",
+] as const;
 
 async function countAgents(root: string): Promise<number> {
   const agentsDir = path.join(root, "agents");
@@ -482,6 +510,7 @@ const CONNECTOR_SKILLS = [
 ] as const;
 
 const CREDENTIAL_CANDIDATES = [
+  // Keep legacy typo alias for backward compatibility with earlier local setups.
   ".external-credentials",
   ".external_certificate",
   ".external_cerficate",
@@ -514,11 +543,11 @@ async function probeOpsConnector(root: string): Promise<OpsConnectorFact> {
 
 /** Gather all real-world facts. Isolated so unit tests inject facts directly. */
 export async function gather(root: string): Promise<DoctorFacts> {
-  const [mcp, skillMdCount, pluginSkillsCount, agentCount, stateDir, evalRunner, opsConnector, auth] =
+  const [mcp, skillMdCount, pluginSkills, agentCount, stateDir, evalRunner, opsConnector, auth] =
     await Promise.all([
       probeMcp(root),
       countSkillMd(root),
-      readPluginSkillsCount(root),
+      readPluginSkills(root),
       countAgents(root),
       probeStateDir(root),
       probeEvalRunner(root),
@@ -528,13 +557,23 @@ export async function gather(root: string): Promise<DoctorFacts> {
       ),
     ]);
 
+  const pluginSkillSet = new Set(pluginSkills);
+  const sotSkillSet = new Set<string>(SOT_SKILL_PATHS);
+  const missingFromManifest = SOT_SKILL_PATHS.filter((skill) => !pluginSkillSet.has(skill));
+  const extraInManifest = pluginSkills.filter((skill) => !sotSkillSet.has(skill));
+
   return {
     omp: probeBinary("omp", "--version"),
     bun: probeBinary("bun", "--version"),
     git: probeGit(),
     auth,
     mcp,
-    skills: { skillMdCount, pluginSkillsCount },
+    skills: {
+      skillMdCount,
+      pluginSkillsCount: pluginSkills.length,
+      missingFromManifest,
+      extraInManifest,
+    },
     agents: {
       agentCount,
       expectedCount: EXPECTED_AGENT_COUNT,

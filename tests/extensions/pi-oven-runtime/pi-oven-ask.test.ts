@@ -4,14 +4,9 @@ import {
   buildSelectItems,
   clampRecommended,
   formatAskResult,
+  formatBatchResult,
   foldLabel,
 } from "../../../.omp/extensions/pi-oven-runtime/pi-oven-ask";
-
-// ---------------------------------------------------------------------------
-// PURE helpers only. The ctx.ui.custom / SelectList live-picker path is NOT
-// unit-tested here (covered by `bun run build` against installed @oh-my-pi
-// types + manual QA), per spec §Tests.
-// ---------------------------------------------------------------------------
 
 describe("buildSelectItems", () => {
   it("maps each option to {value: label, label, description?}", () => {
@@ -20,7 +15,6 @@ describe("buildSelectItems", () => {
       { label: "Session cookie" },
     ]);
     expect(items[0]).toEqual({ value: "JWT", label: "JWT", description: "stateless, scalable" });
-    // No description → no description key emitted.
     expect(items[1]).toEqual({ value: "Session cookie", label: "Session cookie" });
     expect(items[1]).not.toHaveProperty("description");
   });
@@ -37,7 +31,6 @@ describe("buildSelectItems", () => {
     const items = buildSelectItems([{ label: "Dup" }, { label: "Dup" }]);
     const values = items.map((i) => i.value);
     expect(new Set(values).size).toBe(values.length);
-    // Visible labels are preserved verbatim.
     expect(items[0]!.label).toBe("Dup");
     expect(items[1]!.label).toBe("Dup");
   });
@@ -66,14 +59,14 @@ describe("formatAskResult", () => {
   it("selected → 'User selected: X' + details.selected", () => {
     const res = formatAskResult("Q?", "Option A", undefined);
     expect(res.content[0]).toEqual({ type: "text", text: "User selected: Option A" });
-    expect(res.details).toEqual({ question: "Q?", selected: "Option A" });
+    expect(res.details).toEqual({ mode: "single", question: "Q?", selected: "Option A" });
     expect(res.details).not.toHaveProperty("customInput");
   });
 
   it("customInput → 'User provided custom input: Y' + details.customInput", () => {
     const res = formatAskResult("Q?", undefined, "my answer");
     expect(res.content[0]).toEqual({ type: "text", text: "User provided custom input: my answer" });
-    expect(res.details).toEqual({ question: "Q?", customInput: "my answer" });
+    expect(res.details).toEqual({ mode: "single", question: "Q?", customInput: "my answer" });
     expect(res.details).not.toHaveProperty("selected");
   });
 
@@ -87,7 +80,30 @@ describe("formatAskResult", () => {
   it("both undefined → 'User cancelled the selection'", () => {
     const res = formatAskResult("Q?", undefined, undefined);
     expect(res.content[0]).toEqual({ type: "text", text: "User cancelled the selection" });
-    expect(res.details).toEqual({ question: "Q?" });
+    expect(res.details).toEqual({ mode: "single", question: "Q?" });
+  });
+});
+
+describe("formatBatchResult", () => {
+  it("returns batch mode details keyed by id", () => {
+    const res = formatBatchResult({
+      q1: { selected: "A" },
+      q2: { selectedMany: ["X", "Y"], customInput: "note" },
+    });
+    expect(res.content[0]).toEqual({ type: "text", text: "User answered 2 questions" });
+    expect(res.details).toEqual({
+      mode: "batch",
+      answers: {
+        q1: { selected: "A" },
+        q2: { selectedMany: ["X", "Y"], customInput: "note" },
+      },
+    });
+  });
+
+  it("returns cancelled text when answers are empty", () => {
+    const res = formatBatchResult({});
+    expect(res.content[0]).toEqual({ type: "text", text: "User cancelled the selection" });
+    expect(res.details).toEqual({ mode: "batch", answers: {} });
   });
 });
 

@@ -32,6 +32,16 @@ Do not bypass with `--no-verify` unless the user explicitly orders it. Partial g
 
 Gate 6 (cycle-exit verifier) fires separately on `gh pr create` / `git push origin main` — not part of the per-commit sequence above.
 
+## Runtime commit enforcement (ACTIVE gate)
+
+When `.pi-oven/state/autonomous.json` is `kind=OK` and `active=true`, runtime `git commit` allow is **full regression gate only**:
+
+- `gateCache.commit === "PASS"` **and**
+- `gateCache.regression === "PASS"`
+
+If either is missing/non-`PASS`, commit is blocked fail-closed.  
+ABSENT state remains non-blocking, CORRUPT remains fail-closed, forbidden floor remains always-on, and push-consent behavior is unchanged.
+
 ## Sequential failure protocol
 
 1. Run gates in order: 0 → 0.5 → 1 → 1.5 → 1.6 → 2 → 3 → 3.5 → 4 → 4.5 → 5.

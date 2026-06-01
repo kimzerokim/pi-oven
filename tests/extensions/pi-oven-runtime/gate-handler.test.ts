@@ -69,11 +69,24 @@ describe("gateHandler — commit gate (AC1)", () => {
     expect(r?.reason).toBeDefined();
   });
 
-  it("allows git commit when active and commit cache == PASS", async () => {
-    writeState(dir, { active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 });
+  it("allows git commit when active and commit+regression cache == PASS", async () => {
+    writeState(
+      dir,
+      { active: true, gateCache: { commit: "PASS", regression: "PASS" }, version: 1, schemaVersion: 1 }
+    );
     const h = createGateHandler(await deps(dir));
     const r = await h(bashEvent("git commit -m x"));
     expect(r?.block ?? false).toBe(false);
+  });
+ 
+  it("blocks git commit when active and regression cache != PASS", async () => {
+    writeState(
+      dir,
+      { active: true, gateCache: { commit: "PASS", regression: "FAIL" }, version: 1, schemaVersion: 1 }
+    );
+    const h = createGateHandler(await deps(dir));
+    const r = await h(bashEvent("git commit -m x"));
+    expect(r?.block).toBe(true);
   });
 
   it("ALLOWS git commit when the FSM file is ABSENT (normal dev session — B2 refinement)", async () => {
@@ -252,6 +265,42 @@ describe("gateHandler — subagent read-only (AC8b)", () => {
     const subHandler = createGateHandler({ ...d, isParentSession: false });
     const r = await subHandler(bashEvent("git commit -m x"));
     expect(r?.block).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task dispatch guard — compatibility mode:
+// allow bare names + pi-oven:* aliases, block foreign namespaced refs.
+// ---------------------------------------------------------------------------
+
+describe("gateHandler — task dispatch compatibility guard", () => {
+  let dir: string;
+  beforeEach(() => { dir = makeTempDir(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("allows task dispatch with built-in agent name executor", async () => {
+    const h = createGateHandler(await deps(dir));
+    const r = await h(taskEvent("executor"));
+    expect(r?.block ?? false).toBe(false);
+  });
+
+  it("allows task dispatch with built-in agent name task", async () => {
+    const h = createGateHandler(await deps(dir));
+    const r = await h(taskEvent("task"));
+    expect(r?.block ?? false).toBe(false);
+  });
+
+  it("allows task dispatch when agent uses pi-oven namespace", async () => {
+    const h = createGateHandler(await deps(dir));
+    const r = await h(taskEvent("pi-oven:executor"));
+    expect(r?.block ?? false).toBe(false);
+  });
+
+  it("blocks task dispatch when agent uses foreign namespace", async () => {
+    const h = createGateHandler(await deps(dir));
+    const r = await h(taskEvent("oh-my-claudecode:executor"));
+    expect(r?.block).toBe(true);
+    expect(r?.reason).toMatch(/unsupported namespaced agent|built-in names|pi-oven/i);
   });
 });
 

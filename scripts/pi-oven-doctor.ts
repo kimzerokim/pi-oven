@@ -219,7 +219,7 @@ export function evalSkills(fact: SkillsFact): CheckResult {
       `plugin.json skills[] diverges from SoT. ` +
       `Missing: ${fact.missingFromManifest.length ? fact.missingFromManifest.join(", ") : "none"}. ` +
       `Extra: ${fact.extraInManifest.length ? fact.extraInManifest.join(", ") : "none"}.`,
-    fix: "Sync .claude-plugin/plugin.json skills[] to the 20 SoT skills in docs/site/skill-flow.ko.html.",
+    fix: "Sync .claude-plugin/plugin.json skills[] to the 21 SoT skills in docs/site/skill-flow.ko.html.",
   };
 }
 

@@ -1,11 +1,12 @@
 import { describe, it, expect } from "bun:test";
 import { spawnSync } from "bun";
+import { join } from "path";
 
 describe("run-eval CLI", () => {
   it("exits 0 when no scenarios match filter", () => {
     const result = spawnSync({
-      cmd: ["bun", "scripts/run-eval.ts", "--skill", "nonexistent-skill"],
-      cwd: process.cwd(),
+      cmd: [process.execPath, join(import.meta.dir, "../../scripts/run-eval.ts"), "--skill", "nonexistent-skill"],
+      cwd: join(import.meta.dir, "../.."),
     });
     expect(result.exitCode).toBe(0);
   });

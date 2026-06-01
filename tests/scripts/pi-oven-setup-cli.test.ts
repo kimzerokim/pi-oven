@@ -52,7 +52,7 @@ async function runCLI(
   env?: Record<string, string>
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const cliPath = join(import.meta.dir, "../../scripts/pi-oven-setup.ts");
-  const proc = Bun.spawnSync(["bun", "run", cliPath, ...args], {
+  const proc = Bun.spawnSync([process.execPath, "run", cliPath, ...args], {
     env: { ...process.env, ...env },
     stdio: ["ignore", "pipe", "pipe"],
     cwd: join(import.meta.dir, "../.."),
@@ -291,7 +291,7 @@ async function runCLIInCwd(
   env?: Record<string, string>
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const cliPath = join(import.meta.dir, "../../scripts/pi-oven-setup.ts");
-  const proc = Bun.spawnSync(["bun", "run", cliPath, ...args], {
+  const proc = Bun.spawnSync([process.execPath, "run", cliPath, ...args], {
     env: { ...process.env, ...env },
     stdio: ["ignore", "pipe", "pipe"],
     cwd,

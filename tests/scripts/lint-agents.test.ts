@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
-const LINT_SCRIPT = "/Users/kimzerokim/work/personal/pi-oven/scripts/lint-agents.ts";
+const LINT_SCRIPT = join(import.meta.dir, "../../scripts/lint-agents.ts");
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `lint-agents-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -14,8 +14,8 @@ function makeTempDir(): string {
 
 function runLint(agentsDir: string): { exitCode: number; stderr: string; stdout: string } {
   const result = spawnSync({
-    cmd: ["bun", LINT_SCRIPT, agentsDir],
-    cwd: "/Users/kimzerokim/work/personal/pi-oven",
+    cmd: [process.execPath, LINT_SCRIPT, agentsDir],
+    cwd: join(import.meta.dir, "../.."),
   });
   return {
     exitCode: result.exitCode ?? 1,

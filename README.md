@@ -313,7 +313,7 @@ The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pi-oven-*.md` a
 ### Test suite
 
 ```sh
-bun test       # 351 tests across 29 files
+bun test       # 433 tests across 40 files
 bun check      # tsc --noEmit typecheck
 bun run build  # extension bundle (pi-oven.js)
 bun run lint:agents  # CI-grade agent file lint
@@ -336,7 +336,7 @@ If you're hacking on pi-oven itself, point omp at your local checkout instead of
 ```sh
 cd /path/to/pi-oven
 bun install
-bun test           # baseline 351 passing
+bun test           # baseline 433 passing
 bun check          # typecheck clean
 bun run build      # extension bundles to dist/pi-oven.js
 bun run lint:agents
@@ -372,7 +372,7 @@ pi-oven/
 │   ├── pi-oven-setup.ts         # /pi-oven:setup batch CLI
 │   ├── pi-oven-release/         # release automation modules (bump/sync/changelog/publish)
 │   ├── pi-oven-setup/           # 11 submodules (profiles, persist, apply, ...)
-├── tests/                   # bun test suite (351 tests, 881 expect calls)
+├── tests/                   # bun test suite (433 tests, 1081 expect calls, 40 files)
 │   ├── extensions/
 │   ├── plugin/
 │   └── scripts/

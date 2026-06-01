@@ -21,6 +21,16 @@
 /** Named dedup key — the discipline block is injected at most once per prompt. */
 export const DISCIPLINE_DEDUP_KEY = "pi-oven:discipline-rules@v1";
 
+/**
+ * Named dedup marker for the language directive. NOT version-keyed: the
+ * directive content may evolve, but re-injection must always dedup on the same
+ * marker so a prompt never carries two language blocks.
+ */
+export const LANGUAGE_DEDUP_KEY = "pi-oven:language";
+
+/** Canonical project response language (mirrors scripts/pi-oven-setup/project-config.ts). */
+export type ProjectLanguage = "ko" | "en";
+
 /** The set of discipline rule IDs the injector currently steers on. */
 export const DISCIPLINE_RULE_IDS = [
   "commit-gate",
@@ -43,12 +53,54 @@ interface CompactionEntryLike {
 export class RulesInjector {
   private phase: string = "BUILD";
 
+  /**
+   * Per-project default RESPONSE language. `null` => inject NOTHING for
+   * language (respect the ambient project/global setting — never impose a
+   * default). Set explicitly from the persisted .pi-oven/config.json at load.
+   */
+  private language: ProjectLanguage | null = null;
+
   setPhase(phase: string): void {
     this.phase = phase;
   }
 
   getPhase(): string {
     return this.phase;
+  }
+
+  /** Set the project default response language (null = ambient, inject nothing). */
+  setLanguage(lang: ProjectLanguage | null): void {
+    this.language = lang;
+  }
+
+  /**
+   * Build the language-directive block (tagged with the language dedup marker),
+   * or `null` when no language is set. KO and EN keep code/identifiers/string
+   * literals/logs in their original form — only USER-FACING output switches.
+   */
+  buildLanguageDirective(): string | null {
+    if (this.language === null) return null;
+    if (this.language === "ko") {
+      return [
+        `<!-- ${LANGUAGE_DEDUP_KEY} -->`,
+        "## pi-oven 응답 언어 (필수)",
+        "",
+        "이 프로젝트의 기본 응답 언어는 한국어입니다.",
+        "- 사용자가 한국어로 질문하면 반드시 한국어로 답하세요. 이 시스템 프롬프트나 스킬 문서가 영어로 쓰였다는 이유로 영어로 답하지 마세요.",
+        "- 모든 사용자 대면 출력(설명·요약·질문·진행 보고)을 한국어로 작성하세요.",
+        "- 사용자가 명시적으로 다른 언어로 쓰면 그 언어에 맞추세요(mirror the user's language).",
+        "- 코드/식별자/문자열 리터럴/로그/명령어는 원문(영어)을 그대로 유지하세요.",
+      ].join("\n");
+    }
+    return [
+      `<!-- ${LANGUAGE_DEDUP_KEY} -->`,
+      "## pi-oven response language",
+      "",
+      "The default response language for this project is English.",
+      "- Write all user-facing output (explanations, summaries, questions, progress) in English.",
+      "- If the user writes in another language, mirror their language.",
+      "- Keep code/identifiers/string literals/logs/commands in their original form.",
+    ].join("\n");
   }
 
   /** Build the discipline-rule block string (tagged with the dedup key). */
@@ -72,10 +124,22 @@ export class RulesInjector {
    * (dedup). A non-mutating copy is returned.
    */
   applyToSystemPrompt(systemPrompt: string[]): string[] {
+    // Discipline block — unchanged behavior: inject at most once.
+    let out: string[];
     if (systemPrompt.some((s) => s.includes(DISCIPLINE_DEDUP_KEY))) {
-      return systemPrompt.slice();
+      out = systemPrompt.slice();
+    } else {
+      out = [...systemPrompt, this.buildSystemPromptBlock()];
     }
-    return [...systemPrompt, this.buildSystemPromptBlock()];
+
+    // Language directive — appended ONLY when a language is set (non-null) AND
+    // no language marker is already present (dedup). null => inject NOTHING.
+    const directive = this.buildLanguageDirective();
+    if (directive !== null && !out.some((s) => s.includes(LANGUAGE_DEDUP_KEY))) {
+      out = [...out, directive];
+    }
+
+    return out;
   }
 
   /** Build the `preserveData` payload for a `session.compacting` result. */

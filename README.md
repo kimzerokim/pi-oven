@@ -61,6 +61,7 @@ After installation, run `/pi-oven:setup` inside an omp session. The wizard is **
 
 The wizard will:
 
+0. Ask your primary language first (Step 0) — pick `한국어 (Korean)` or `English`. The wizard conducts the rest of setup in that language and persists it as the project default language to `.pi-oven/config.json` (machine-local, gitignored). The pi-oven extension injects this default at runtime so agents respond in your chosen language; if no config is set, the ambient project/global language preference is respected (nothing is forced).
 1. Detect which providers are authenticated (`opencode-zen`, `openai-codex`, `anthropic`).
 2. Offer Profile A (release default) or Profile B (Anthropic opt-in, if available).
 3. Optionally let you override individual agent roles.

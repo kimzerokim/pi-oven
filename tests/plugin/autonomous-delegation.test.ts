@@ -31,7 +31,8 @@ describe("autonomous delegation-first policy", () => {
     expect(content).toContain("full inventory audit over `skills/`, `commands/`, `agents/`, and `evals/`; no sampling");
     expect(content).toContain("Planner input contract: `pi-oven:planner` MUST receive the full-sweep findings");
     expect(content).toContain("MUST NOT produce a plan from partial subsystem reads");
-    expect(content).toContain("Agent-wiring audit: run `bun scripts/lint-skills.ts`");
+    expect(content).toContain("Agent-wiring audit: run");
+    expect(content).toContain("scripts/lint-skills.ts");
     expect(content).toContain("Main agent is orchestrator only");
 
     const plannerContent = await readFile(PLANNER_PATH, "utf-8");

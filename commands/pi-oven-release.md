@@ -6,10 +6,24 @@ argument-hint: [--bump major|minor|patch | --version X.Y.Z] [--from-tag vX.Y.Z] 
 
 # /pi-oven:release
 
+## Resolve the plugin script dir first
+
+pi-oven may be installed globally, so the script does NOT live under the user's project cwd. Before dispatching any `bun` command, resolve the plugin script dir once and reuse `$PI_OVEN_DIR` for every dispatch (dev cwd → `installed_plugins.json` `installPath` → cache glob):
+
+```bash
+PI_OVEN_DIR="$PWD"
+if [ ! -f "$PI_OVEN_DIR/scripts/pi-oven-release/index.ts" ]; then
+  PI_OVEN_DIR="$(jq -r '.plugins["pi-oven@pi-oven"][0].installPath // empty' "$HOME/.omp/plugins/installed_plugins.json" 2>/dev/null)"
+  [ -z "$PI_OVEN_DIR" ] && PI_OVEN_DIR="$(ls -d "$HOME"/.omp/plugins/cache/plugins/pi-oven___pi-oven___*/ 2>/dev/null | sort -V | tail -1)"
+fi
+```
+
+Use `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-release/index.ts" <args>` — never a bare `bun scripts/pi-oven-release/index.ts` (that breaks on global installs where cwd ≠ plugin dir).
+
 Run release automation via:
 
 ```sh
-bun scripts/pi-oven-release/index.ts --bump patch --dry-run
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-release/index.ts" --bump patch --dry-run
 ```
 
 ## Flags

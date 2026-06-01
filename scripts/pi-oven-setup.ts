@@ -19,6 +19,7 @@ import { runReset } from "./pi-oven-setup/reset";
 import { runImport } from "./pi-oven-setup/import";
 import { runApply } from "./pi-oven-setup/apply";
 import { runOverride } from "./pi-oven-setup/override";
+import { normalizeLanguage, setProjectLanguage } from "./pi-oven-setup/project-config";
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -35,6 +36,7 @@ const { values } = parseArgs({
     override: { type: "string", multiple: true },
     validate: { type: "string", default: "smoke" },
     "no-validate": { type: "boolean", default: false },
+    language: { type: "string" },
   },
   strict: false,
 });
@@ -75,6 +77,27 @@ const rawValidateMode = process.env.PI_OVEN_VALIDATE_MODE ?? (values["no-validat
 const validateMode = (["smoke", "full", "none"].includes(rawValidateMode)
   ? rawValidateMode
   : "smoke") as "smoke" | "full" | "none";
+
+// ---------------------------------------------------------------------------
+// Standalone --language dispatch (Plan 2026-06-02 §2)
+// Persists the per-project default RESPONSE language to <cwd>/.pi-oven/config.json.
+// Independent of the profile/override paths so /pi-oven:setup Step 0 can run it alone.
+// ---------------------------------------------------------------------------
+
+if (values.language !== undefined) {
+  let lang: "ko" | "en";
+  try {
+    lang = normalizeLanguage(values.language as string);
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  }
+  await setProjectLanguage(lang);
+  process.stdout.write(
+    `Project default language set to "${lang}" (.pi-oven/config.json).\n`
+  );
+  process.exit(0);
+}
 
 // ---------------------------------------------------------------------------
 // Flag-combination mutual-exclusion check (§3.4)

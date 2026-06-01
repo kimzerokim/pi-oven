@@ -252,6 +252,25 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   const store = new GateStateStore(stateRoot);
   const injector = new RulesInjector();
 
+  // Per-project default RESPONSE language (Plan 2026-06-02). Read the
+  // machine-local <repoRoot>/.pi-oven/config.json synchronously at load and,
+  // ONLY when it carries a valid "ko"/"en", set the injector's language.
+  // Absent/invalid => leave null => the injector injects NOTHING for language
+  // (the ambient project/global setting is respected — no imposed default).
+  // Fail-open: any FS/parse fault must never break extension load.
+  try {
+    const configPath = path.resolve(repoRoot, ".pi-oven", "config.json");
+    const raw = readFileSync(configPath, "utf-8");
+    const parsed = JSON.parse(raw) as { language?: unknown };
+    if (parsed.language === "ko" || parsed.language === "en") {
+      injector.setLanguage(parsed.language);
+    } else {
+      pi.logger.debug("pi-oven: .pi-oven/config.json has no valid language — ambient respected");
+    }
+  } catch (err) {
+    pi.logger.debug(`pi-oven: project language config not read (ambient respected): ${err}`);
+  }
+
   // A subagent session is recognized via PI_BLOCKED_AGENT (omp recursion-guard
   // env, task/index.ts:273). Only the parent session may MUTATE the FSM (B4);
   // subagents are still gated (read-only) but never write.

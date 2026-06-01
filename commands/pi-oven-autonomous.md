@@ -8,6 +8,20 @@ argument-hint: <task description, or omit for interactive entry>
 
 You are entering the pi-oven autonomous loop. The actual orchestration runs through the `autonomous-loop` skill (`skills/autonomous-loop/SKILL.md`), which you (the LLM) drive directly — there is no separate runtime. Use this prompt as the conversational entry point.
 
+## Resolve the plugin script dir first
+
+pi-oven may be installed globally, so its scripts do NOT live under the user's project cwd. Before dispatching any `bun scripts/...` command from this command, resolve the plugin script dir once and reuse `$PI_OVEN_DIR` for every dispatch (dev cwd → `installed_plugins.json` `installPath` → cache glob):
+
+```bash
+PI_OVEN_DIR="$PWD"
+if [ ! -f "$PI_OVEN_DIR/scripts/lint-skills.ts" ]; then
+  PI_OVEN_DIR="$(jq -r '.plugins["pi-oven@pi-oven"][0].installPath // empty' "$HOME/.omp/plugins/installed_plugins.json" 2>/dev/null)"
+  [ -z "$PI_OVEN_DIR" ] && PI_OVEN_DIR="$(ls -d "$HOME"/.omp/plugins/cache/plugins/pi-oven___pi-oven___*/ 2>/dev/null | sort -V | tail -1)"
+fi
+```
+
+Dispatch pi-oven scripts as `bun "${PI_OVEN_DIR%/}/scripts/<x>.ts"` — never a bare `bun scripts/<x>.ts` (that breaks on global installs where cwd ≠ plugin dir).
+
 ## What to do
 
 0. **Precedence check (brainstorming before autonomous).** If the same user request includes design-first intent (`브레인스토밍`, `아이디어 정리`, `같이 설계`, `설계부터`) and there is no approved spec, run the `brainstorming` skill first. Do not enter autonomous execution until brainstorming reaches explicit user approval.
@@ -42,7 +56,7 @@ You are entering the pi-oven autonomous loop. The actual orchestration runs thro
    - Execute: dispatch `pi-oven:executor` (or `pi-oven:debugger` for fix work). Honor the `large-task-delegation` boundary (3+ files / 200+ LoC ⇒ delegate, do not implement in main).
    - QA and tests: dispatch `pi-oven:test-engineer` for coverage gaps and `pi-oven:qa-tester` for integration/e2e checks when applicable.
    - Validation: dispatch `pi-oven:verifier`, `pi-oven:security-reviewer`, `pi-oven:code-reviewer`; add `pi-oven:designer` + `pi-oven:multimodal-looker` when UI/visual changes are touched.
-   - Agent-wiring audit: run `bun scripts/lint-skills.ts` before commit boundaries so missing skill↔agent wiring fails closed.
+   - Agent-wiring audit: run `bun "${PI_OVEN_DIR%/}/scripts/lint-skills.ts"` (resolve `$PI_OVEN_DIR` first) before commit boundaries so missing skill↔agent wiring fails closed.
    - Gate: after each commit boundary, run `pre-commit-gate` checks.
 
    Main agent is orchestrator only: dispatch, synthesize, and queue the next subagent call in the same turn. Main MUST NOT do inline code edits during autonomous mode.

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { ROLES, PROFILE_A } from "../../scripts/pi-oven-setup/profiles";
@@ -275,6 +275,73 @@ describe("pi-oven-setup CLI dispatcher", () => {
     );
     expect(exitCode).toBe(1);
     expect(stderr + "").toMatch(/not resolvable|invalid.*override/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --language dispatch (Plan 2026-06-02 §2)
+// Runs the CLI in an ISOLATED temp cwd so the per-project .pi-oven/config.json
+// is written there and NEVER into the repo's own .pi-oven.
+// ---------------------------------------------------------------------------
+
+/** Run the CLI with an explicit cwd (isolated temp dir for --language tests). */
+async function runCLIInCwd(
+  args: string[],
+  cwd: string,
+  env?: Record<string, string>
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const cliPath = join(import.meta.dir, "../../scripts/pi-oven-setup.ts");
+  const proc = Bun.spawnSync(["bun", "run", cliPath, ...args], {
+    env: { ...process.env, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+    cwd,
+  });
+  return {
+    exitCode: proc.exitCode ?? 1,
+    stdout: proc.stdout?.toString() ?? "",
+    stderr: proc.stderr?.toString() ?? "",
+  };
+}
+
+describe("pi-oven-setup CLI --language dispatch", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = join(
+      tmpdir(),
+      `cli-lang-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(tempDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("--language ko writes .pi-oven/config.json with \"ko\" and exits 0", async () => {
+    const { exitCode } = await runCLIInCwd(["--language", "ko"], tempDir);
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(
+      readFileSync(join(tempDir, ".pi-oven", "config.json"), "utf-8")
+    );
+    expect(parsed.language).toBe("ko");
+  });
+
+  it("--language english normalizes and writes \"en\"", async () => {
+    const { exitCode } = await runCLIInCwd(["--language", "english"], tempDir);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(
+      readFileSync(join(tempDir, ".pi-oven", "config.json"), "utf-8")
+    );
+    expect(parsed.language).toBe("en");
+  });
+
+  it("invalid language exits non-zero and writes no config", async () => {
+    const { exitCode, stderr } = await runCLIInCwd(["--language", "fr"], tempDir);
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/invalid language/i);
+    expect(existsSync(join(tempDir, ".pi-oven", "config.json"))).toBe(false);
   });
 });
 

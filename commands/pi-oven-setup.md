@@ -6,18 +6,50 @@ argument-hint: [--status | --reset | --import <file> | --apply --profile A|B] [-
 
 # /pi-oven:setup
 
-You are guiding the user through pi-oven setup. The actual logic runs in `bun scripts/pi-oven-setup.ts`. You drive the conversation; the script runs in batch.
+You are guiding the user through pi-oven setup. The actual logic runs in the `pi-oven-setup.ts` script (resolved per the note below). You drive the conversation; the script runs in batch.
+
+## Resolve the plugin script dir first
+
+pi-oven may be installed globally, so the script does NOT live under the user's project cwd. Before dispatching any `bun` command, resolve the plugin script dir once and reuse `$PI_OVEN_DIR` for every dispatch (dev cwd → `installed_plugins.json` `installPath` → cache glob):
+
+```bash
+PI_OVEN_DIR="$PWD"
+if [ ! -f "$PI_OVEN_DIR/scripts/pi-oven-setup.ts" ]; then
+  PI_OVEN_DIR="$(jq -r '.plugins["pi-oven@pi-oven"][0].installPath // empty' "$HOME/.omp/plugins/installed_plugins.json" 2>/dev/null)"
+  [ -z "$PI_OVEN_DIR" ] && PI_OVEN_DIR="$(ls -d "$HOME"/.omp/plugins/cache/plugins/pi-oven___pi-oven___*/ 2>/dev/null | sort -V | tail -1)"
+fi
+```
+
+Every dispatch below uses `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" <args>` — never a bare `bun scripts/pi-oven-setup.ts` (that breaks on global installs where cwd ≠ plugin dir).
 
 ## What to do
 
 Parse the user's intent from their initial request:
 
-- If they say "status" or "show config" → run `bun scripts/pi-oven-setup.ts --status` and relay the output.
-- If they say "reset" or "clear" → confirm with the user first, then run `bun scripts/pi-oven-setup.ts --reset`.
-- If they say "import" with a file path → run `bun scripts/pi-oven-setup.ts --import <file>`.
+- If they say "status" or "show config" → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --status` and relay the output.
+- If they say "reset" or "clear" → confirm with the user first, then run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset`.
+- If they say "import" with a file path → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --import <file>`.
 - Otherwise (first-time setup or profile change) → walk through the apply flow below.
 
 ## Apply flow (first-time or profile change)
+
+### Step 0 — Primary language
+
+Before anything else, ask the user which language setup and the agents should use. Call the `pi-oven_ask` tool with two options, each carrying a description:
+
+- Option 1 — label: `한국어 (Korean)`, description: `셋업 대화와 이후 에이전트 응답을 한국어로`
+- Option 2 — label: `English`, description: `Setup dialog and agent responses in English`
+
+After the user picks, persist the choice by dispatching the resolved script with the matching flag:
+
+```bash
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language ko    # if 한국어 (Korean) was chosen
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language en    # if English was chosen
+```
+
+This writes the per-project default language to `<cwd>/.pi-oven/config.json` (machine-local, gitignored); the pi-oven extension injects it at runtime so agents respond in the chosen language.
+
+Then conduct ALL remaining steps (Steps 1–6 below) IN the chosen language — render every prompt, summary, and report in Korean if `한국어 (Korean)` was picked, otherwise in English.
 
 ### Step 1 — Detect authed providers
 
@@ -137,16 +169,16 @@ Summary:
 Ready to persist model overrides to config.yml task.agentModelOverrides. Proceed? [Y/n]:
 ```
 
-On confirmation, dispatch via Bash:
+On confirmation, dispatch via Bash (using the resolved `$PI_OVEN_DIR`):
 
 ```
-bun scripts/pi-oven-setup.ts --profile <A|B> --validate=smoke
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile <A|B> --validate=smoke
 ```
 
 If there are per-role overrides, add one `--override <role>=<model>` flag per override:
 
 ```
-bun scripts/pi-oven-setup.ts --profile A --override executor=anthropic/claude-opus-4-8 --validate=smoke
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile A --override executor=anthropic/claude-opus-4-8 --validate=smoke
 ```
 
 Do not add `--validate=none` unless the user explicitly asked to skip validation.
@@ -168,8 +200,8 @@ If the script exits with code 1 (one or more UNVERIFIED roles), do NOT auto-retr
 ```
 One or more roles are UNVERIFIED. Options:
   1. Reconfigure  — run /pi-oven:setup again with a different profile or overrides
-  2. Diagnose     — run: bun scripts/pi-oven-setup.ts --validate=full
-  3. Reset        — run: bun scripts/pi-oven-setup.ts --reset
+  2. Diagnose     — run: bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --validate=full
+  3. Reset        — run: bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset
 ```
 
 Auto-retry risks repeated billing charges for failing smoke pings.
@@ -187,6 +219,7 @@ Auto-retry risks repeated billing charges for failing smoke pings.
 | `--status` | Show current profile and resolved model per role (reads config.yml overrides + agent frontmatter). |
 | `--reset` | Remove all `pi-oven:*` keys from config.yml task.agentModelOverrides. Does not touch agent files. |
 | `--import <file>` | Import JSON config file (schema: §7.1). |
+| `--language <ko\|en>` | Persist the per-project default language to `.pi-oven/config.json`. Set in Step 0. |
 
 The 7 MUST-tier roles for smoke validation are: executor, explorer, verifier, critic, planner, code-reviewer, debugger.
 
@@ -194,11 +227,12 @@ All `omp plugin config` operations use the plugin name `pi-oven` (bare). Do NOT 
 
 ## Important rules
 
-- Do NOT run `bun scripts/pi-oven-setup.ts` from inside this prompt template — you (the LLM) dispatch it via the Bash tool based on user input collected in conversation.
+- Do NOT run the `pi-oven-setup.ts` script from inside this prompt template — you (the LLM) dispatch it via the Bash tool based on user input collected in conversation.
 - Do NOT mutate `agents/pi-oven-*.md` manually — only via the script.
 - Do NOT commit. The user reviews before any commit.
 - Do NOT use `omp plugin config` calls directly — the script handles all persistence.
-- Do NOT pipe anything into `bun scripts/pi-oven-setup.ts` — the script is batch-only and reads no stdin.
+- Do NOT pipe anything into the `pi-oven-setup.ts` script — it is batch-only and reads no stdin.
+- Always resolve `$PI_OVEN_DIR` (see "Resolve the plugin script dir first") and dispatch `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts"` — never a bare `bun scripts/pi-oven-setup.ts`.
 
 ## Known limitations (surface if relevant)
 

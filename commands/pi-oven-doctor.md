@@ -5,18 +5,32 @@ description: Install health check — runs the pi-oven 10-check matrix (omp vers
 
 # /pi-oven:doctor
 
-You are running a read-only install-health diagnostic for the pi-oven omp plugin. The actual checks run in `bun scripts/pi-oven-doctor.ts`. You dispatch that script via Bash, then interpret its 10-check report and give the user fix guidance.
+You are running a read-only install-health diagnostic for the pi-oven omp plugin. The actual checks run in the `pi-oven-doctor.ts` script (resolved per the note below). You dispatch that script via Bash, then interpret its 10-check report and give the user fix guidance.
 
 This command is purely diagnostic. It NEVER mutates configuration, agent files, skills, or git state. The only filesystem touch is a create+write probe of the gitignored `.pi-oven/` state dir (check #8), which removes its own probe file.
+
+## Resolve the plugin script dir first
+
+pi-oven may be installed globally, so the script does NOT live under the user's project cwd. Before dispatching any `bun` command, resolve the plugin script dir once and reuse `$PI_OVEN_DIR` for every dispatch (dev cwd → `installed_plugins.json` `installPath` → cache glob):
+
+```bash
+PI_OVEN_DIR="$PWD"
+if [ ! -f "$PI_OVEN_DIR/scripts/pi-oven-doctor.ts" ]; then
+  PI_OVEN_DIR="$(jq -r '.plugins["pi-oven@pi-oven"][0].installPath // empty' "$HOME/.omp/plugins/installed_plugins.json" 2>/dev/null)"
+  [ -z "$PI_OVEN_DIR" ] && PI_OVEN_DIR="$(ls -d "$HOME"/.omp/plugins/cache/plugins/pi-oven___pi-oven___*/ 2>/dev/null | sort -V | tail -1)"
+fi
+```
+
+Every dispatch below uses `bun "${PI_OVEN_DIR%/}/scripts/<x>.ts"` — never a bare `bun scripts/<x>.ts` (that breaks on global installs where cwd ≠ plugin dir).
 
 ## What to do
 
 ### Step 1 — Run the diagnostic
 
-Dispatch via Bash:
+Dispatch via Bash (using the resolved `$PI_OVEN_DIR`):
 
 ```
-bun scripts/pi-oven-doctor.ts
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-doctor.ts"
 ```
 
 The script gathers all environment facts (spawns `omp`/`bun`/`git`, reads `.pi/mcp.json`, counts skills/agents, probes the state dir, enumerates eval scenarios) and prints a report shaped like:
@@ -47,10 +61,10 @@ If `overall PASS` or `overall WARN`, tell the user the install is healthy (or he
 The `provider auth` check WARNs when no whitelisted provider (`opencode-zen` / `openai-codex` / `anthropic`) is authenticated. When you see that WARN, explicitly tell the user:
 
 ```
-Live eval (bun scripts/run-eval.ts) needs a provider API key. No whitelisted
-provider is currently authed, so the eval runner can enumerate scenarios but
-cannot execute them. To enable live eval: authenticate a provider in omp
-(opencode-zen is the release default), then re-run /pi-oven:doctor.
+Live eval (bun "${PI_OVEN_DIR%/}/scripts/run-eval.ts") needs a provider API key.
+No whitelisted provider is currently authed, so the eval runner can enumerate
+scenarios but cannot execute them. To enable live eval: authenticate a provider
+in omp (opencode-zen is the release default), then re-run /pi-oven:doctor.
 ```
 
 This is the onboarding bridge to the gated real-eval pipeline.
@@ -75,7 +89,7 @@ Checks 4 and 5 can only WARN (never FAIL) — auth and MCP are environmental, no
 ## Important rules
 
 - **Read-only diagnostic.** This command never mutates config, `agents/pi-oven-*.md`, skills, or git. Do not "fix" anything yourself — only relay the `fix:` hints from the report and let the user decide.
-- Dispatch `bun scripts/pi-oven-doctor.ts` via the Bash tool. Do NOT pipe anything into it — it reads no stdin and runs batch-only.
+- Dispatch `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-doctor.ts"` (resolve `$PI_OVEN_DIR` first) via the Bash tool — never a bare `bun scripts/pi-oven-doctor.ts`. Do NOT pipe anything into it — it reads no stdin and runs batch-only.
 - Do NOT run it more than once per request unless the user changes their environment and asks to re-check.
 - When `provider auth` WARNs, always surface the eval-key onboarding note (Step 3) — live eval needs keys.
 - Do NOT commit. This command produces no committable artifacts (`.pi-oven/` is gitignored).

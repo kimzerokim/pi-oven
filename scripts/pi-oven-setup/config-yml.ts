@@ -236,6 +236,29 @@ export async function deletePiOvenAgentModelOverrides(
 }
 
 // ---------------------------------------------------------------------------
+// resetConfigKey — WRITE path (full-reset only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Reset a single omp setting back to its type-default via `omp config reset
+ * <key>` (number→0, record→{}, array→[]). Used only by `--reset --full` to
+ * return pi-oven-managed keys (modelRoles / disabledProviders / setupVersion) to
+ * the "new user" state. Throws (including stderr) on a non-zero exit. The caller
+ * MUST only pass pi-oven-managed keys — never omp-internal keys like
+ * lastChangelogVersion.
+ */
+export async function resetConfigKey(key: string, opts?: ConfigYmlOpts): Promise<void> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "reset", key]);
+
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `resetConfigKey: omp config reset ${key} failed (exit ${String(result.exitCode)}): ${result.stderr?.toString() ?? ""}`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // modelRoles (RECORD) — the MAIN orchestrator model pair (default + title).
 // Same whole-record merge transport as task.agentModelOverrides: omp config get
 // modelRoles --json → in-memory merge → omp config set modelRoles '<json>'.

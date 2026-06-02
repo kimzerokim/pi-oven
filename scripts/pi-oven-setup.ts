@@ -31,6 +31,7 @@ const { values } = parseArgs({
   options: {
     status: { type: "boolean", default: false },
     reset: { type: "boolean", default: false },
+    full: { type: "boolean", default: false },
     import: { type: "string" },
     apply: { type: "boolean", default: false },
     profile: { type: "string" },
@@ -177,7 +178,7 @@ if (values.status) {
   }
   result = await runStatus({ spawnFn, agentsDir });
 } else if (values.reset) {
-  result = await runReset({ spawnFn });
+  result = await runReset({ spawnFn, full: Boolean(values.full) });
 } else if (values.import !== undefined) {
   result = await runImport(values.import as string, { spawnFn });
   markRouting = true;

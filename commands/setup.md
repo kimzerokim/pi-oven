@@ -1,7 +1,7 @@
 ---
 name: pi-oven-setup
 description: Configure pi-oven agent model routing — Profile A (release default) or Profile B (Anthropic opt-in)
-argument-hint: [--status | --reset | --import <file> | --apply --profile A|B] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate]
+argument-hint: [--status | --reset [--full] | --import <file> | --apply --profile A|B] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate]
 ---
 
 # /pi-oven:setup
@@ -27,7 +27,7 @@ Every dispatch below uses `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" <args
 Parse the user's intent from their initial request:
 
 - If they say "status" or "show config" → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --status` and relay the output.
-- If they say "reset" or "clear" → confirm with the user first, then run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset`.
+- If they say "reset" or "clear" → confirm with the user first, then run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset`. If they ask for a complete reset before uninstall (a clean "new user" state), add `--full` to also reset `modelRoles`, `disabledProviders`, and `setupVersion` to omp defaults.
 - If they say "import" with a file path → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --import <file>`.
 - Otherwise (first-time setup or profile change) → walk through the apply flow below.
 
@@ -241,6 +241,7 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 | `--validate=none` | Skip validation. |
 | `--status` | Show current profile and resolved model per role (reads config.yml overrides + agent frontmatter). |
 | `--reset` | Remove all `pi-oven:*` keys from config.yml task.agentModelOverrides. Does not touch agent files. |
+| `--reset --full` | Full reset for a clean uninstall: in addition to removing the `pi-oven:*` overrides, reset the other pi-oven-managed keys (`modelRoles`, `disabledProviders`, `setupVersion`) to their omp type-defaults so config.yml returns to the "new user" state. Never touches omp-internal keys (e.g. `lastChangelogVersion`). No-op-safe when those keys are absent. |
 | `--import <file>` | Import JSON config file (schema: §7.1). |
 | `--language <ko\|en\|name>` | Persist the per-project default language to `.pi-oven/config.json`. Accepts `ko`/`en` or any plain language name (letters, spaces, `()-.`; ≤ 40 chars). Set in Step 0. |
 | `--isolate` | Make omp IGNORE the `~/.claude` Claude-Code context layer (omc CLAUDE.md + pi-oven): writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (user-global, machine-local, preserves sibling providers) and purges any legacy `claude-plugins` entry. It does NOT disable `claude-plugins` — pi-oven's own `/pi-oven:*` commands load through that provider, so disabling it would remove them. omc/agentmemory marketplace plugin commands remain visible. pi-oven keeps loading and injects the repo-root `CLAUDE.md`. omp-only — never touches `~/.claude` on disk. Restart omp to apply. Combinable with `--profile`/`--apply` (runs after). |

@@ -33,6 +33,10 @@ function makeSpawn(getResponse: object): {
     if (args[0] === "config" && args[1] === "set") {
       return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
     }
+    // Respond to `omp config reset <key>` (full-reset path)
+    if (args[0] === "config" && args[1] === "reset") {
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    }
     return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
   };
   return { spawnFn, calls };
@@ -118,6 +122,82 @@ describe("runReset", () => {
     });
 
     await expect(runReset({ spawnFn })).rejects.toThrow();
+  });
+
+  it("non-full reset preserves modelRoles/disabledProviders/setupVersion (no config reset call)", async () => {
+    const getResponse = {
+      type: "record",
+      value: { "pi-oven:critic": "anthropic/claude-opus-4-8" },
+    };
+    const { spawnFn, calls } = makeSpawn(getResponse);
+
+    const result = await runReset({ spawnFn });
+    expect(result.exitCode).toBe(0);
+
+    // A non-full reset must NEVER touch modelRoles / disabledProviders / setupVersion
+    const resetCall = calls.find((c) => c.args[0] === "config" && c.args[1] === "reset");
+    expect(resetCall).toBeUndefined();
+  });
+});
+
+describe("runReset — --full mode", () => {
+  it("full reset removes pi-oven:* overrides AND resets modelRoles/disabledProviders/setupVersion", async () => {
+    const getResponse = {
+      type: "record",
+      value: { "pi-oven:critic": "anthropic/claude-opus-4-8", "claude-code:foo": "model-x" },
+    };
+    const { spawnFn, calls } = makeSpawn(getResponse);
+
+    const result = await runReset({ spawnFn, full: true });
+    expect(result.exitCode).toBe(0);
+
+    // pi-oven:* overrides still removed via the whole-record set (non-pi-oven preserved)
+    const setCall = calls.find((c) => c.args[0] === "config" && c.args[1] === "set");
+    expect(setCall).toBeDefined();
+    const writtenJson = JSON.parse(setCall!.args[3]);
+    expect(writtenJson["claude-code:foo"]).toBe("model-x");
+    expect(writtenJson["pi-oven:critic"]).toBeUndefined();
+
+    // The three pi-oven-managed keys are reset to defaults
+    const resetKeys = calls
+      .filter((c) => c.args[0] === "config" && c.args[1] === "reset")
+      .map((c) => c.args[2]);
+    expect(resetKeys).toContain("modelRoles");
+    expect(resetKeys).toContain("disabledProviders");
+    expect(resetKeys).toContain("setupVersion");
+  });
+
+  it("full reset never resets omp-managed keys (e.g. lastChangelogVersion)", async () => {
+    const getResponse = { type: "record", value: {} };
+    const { spawnFn, calls } = makeSpawn(getResponse);
+
+    const result = await runReset({ spawnFn, full: true });
+    expect(result.exitCode).toBe(0);
+
+    const resetKeys = calls
+      .filter((c) => c.args[0] === "config" && c.args[1] === "reset")
+      .map((c) => c.args[2]);
+    expect(resetKeys).not.toContain("lastChangelogVersion");
+    // Only the three pi-oven-managed keys are ever reset
+    expect(new Set(resetKeys)).toEqual(
+      new Set(["modelRoles", "disabledProviders", "setupVersion"])
+    );
+  });
+
+  it("full reset still clears managed keys when there are no pi-oven:* overrides", async () => {
+    const getResponse = { type: "record", value: {} };
+    const { spawnFn, calls } = makeSpawn(getResponse);
+
+    const result = await runReset({ spawnFn, full: true });
+    expect(result.exitCode).toBe(0);
+
+    // No overrides → no config set, but the managed keys are still reset
+    const setCall = calls.find((c) => c.args[0] === "config" && c.args[1] === "set");
+    expect(setCall).toBeUndefined();
+    const resetKeys = calls
+      .filter((c) => c.args[0] === "config" && c.args[1] === "reset")
+      .map((c) => c.args[2]);
+    expect(resetKeys.sort()).toEqual(["disabledProviders", "modelRoles", "setupVersion"]);
   });
 });
 

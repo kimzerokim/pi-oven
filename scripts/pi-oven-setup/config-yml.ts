@@ -243,12 +243,24 @@ export async function deletePiOvenAgentModelOverrides(
 // ---------------------------------------------------------------------------
 
 /**
- * The discovery providers pi-oven toggles for the "ignore the ~/.claude
- * Claude-Code layer" isolation: `claude` (~/.claude CLAUDE.md / skills / hooks /
- * commands) + `claude-plugins` (~/.claude marketplace plugins, e.g. omc).
- * pi-oven loads via the separate `omp-plugins` provider and is NOT affected.
+ * The discovery provider pi-oven toggles for the "ignore the ~/.claude
+ * Claude-Code layer" isolation: `claude` ONLY (~/.claude CLAUDE.md / skills /
+ * hooks / commands). It must NOT disable `claude-plugins`: pi-oven's own
+ * `/pi-oven:*` commands and skills register through that same `claude-plugins`
+ * discovery provider (it reads ~/.omp/plugins too, not just ~/.claude/plugins),
+ * so disabling it would also kill pi-oven's own commands. Trade-off (by design):
+ * omc/agentmemory marketplace plugin commands remain visible under omp.
  */
-export const PI_OVEN_MANAGED_PROVIDERS = ["claude", "claude-plugins"] as const;
+export const PI_OVEN_MANAGED_PROVIDERS = ["claude"] as const;
+
+/**
+ * Legacy providers an earlier (buggy, pre-0.1.0) isolate added to
+ * `disabledProviders`. They are ALWAYS purged on either toggle to heal those
+ * configs: disabling `claude-plugins` removed pi-oven's own `/pi-oven:*` commands, so
+ * `--isolate` strips it back out and `--no-isolate` removes it alongside the
+ * managed set.
+ */
+export const PI_OVEN_DEPRECATED_PROVIDERS = ["claude-plugins"] as const;
 
 /**
  * PURE merge helper (no IO) for the disabledProviders ARRAY.
@@ -327,10 +339,13 @@ export async function readDisabledProvidersStrict(
 }
 
 /**
- * ENABLE isolation: readDisabledProvidersStrict → if !ok ABORT(throw) →
- * mergeDisabledProviders(add PI_OVEN_MANAGED_PROVIDERS) → `omp config set
- * disabledProviders '<whole-merged-json>'`. Returns the resulting provider list.
- * Idempotent — re-adding already-present providers is a no-op union.
+ * ENABLE isolation: readDisabledProvidersStrict → if !ok ABORT(throw) → FIRST
+ * purge PI_OVEN_DEPRECATED_PROVIDERS (op "remove"), THEN add PI_OVEN_MANAGED_PROVIDERS
+ * (op "add") → `omp config set disabledProviders '<whole-merged-json>'`. Net
+ * result: `claude` present, legacy `claude-plugins` absent, siblings preserved
+ * (e.g. [claude,claude-plugins]→[claude]; []→[claude]; [codex,claude-plugins]→
+ * [codex,claude]). Returns the resulting provider list. Idempotent — re-adding
+ * an already-present managed provider is a no-op union.
  */
 export async function setPiOvenDisabledProviders(opts?: ConfigYmlOpts): Promise<string[]> {
   const readResult = await readDisabledProvidersStrict(opts);
@@ -338,7 +353,11 @@ export async function setPiOvenDisabledProviders(opts?: ConfigYmlOpts): Promise<
     throw new Error(`setPiOvenDisabledProviders: readDisabledProvidersStrict failed — ${readResult.error}`);
   }
 
-  const merged = mergeDisabledProviders(readResult.list, {
+  const purged = mergeDisabledProviders(readResult.list, {
+    op: "remove",
+    providers: PI_OVEN_DEPRECATED_PROVIDERS,
+  });
+  const merged = mergeDisabledProviders(purged, {
     op: "add",
     providers: PI_OVEN_MANAGED_PROVIDERS,
   });
@@ -357,9 +376,13 @@ export async function setPiOvenDisabledProviders(opts?: ConfigYmlOpts): Promise<
 
 /**
  * DISABLE isolation: readDisabledProvidersStrict → if !ok ABORT(throw) →
- * mergeDisabledProviders(remove PI_OVEN_MANAGED_PROVIDERS) → set. Returns the sorted
- * list of providers actually removed. Preserves sibling providers. No-op (skips
- * the set call) when none of the managed providers are present.
+ * mergeDisabledProviders(remove the UNION of PI_OVEN_MANAGED_PROVIDERS +
+ * PI_OVEN_DEPRECATED_PROVIDERS) → set, so it strips BOTH `claude` and any legacy
+ * `claude-plugins` a buggy pre-0.1.0 isolate left behind. Returns the sorted
+ * list of providers actually removed (union ∩ current). Preserves sibling
+ * providers. No-op (skips the set call) when none of those providers are present
+ * (e.g. [claude,claude-plugins]→[] removed [claude,claude-plugins];
+ * [codex,claude]→[codex] removed [claude]).
  */
 export async function clearPiOvenDisabledProviders(opts?: ConfigYmlOpts): Promise<string[]> {
   const readResult = await readDisabledProvidersStrict(opts);
@@ -368,7 +391,8 @@ export async function clearPiOvenDisabledProviders(opts?: ConfigYmlOpts): Promis
   }
 
   const current = readResult.list;
-  const removed = PI_OVEN_MANAGED_PROVIDERS.filter((p) => current.includes(p)).sort();
+  const union = [...PI_OVEN_MANAGED_PROVIDERS, ...PI_OVEN_DEPRECATED_PROVIDERS];
+  const removed = union.filter((p) => current.includes(p)).sort();
 
   if (removed.length === 0) {
     return [];
@@ -376,7 +400,7 @@ export async function clearPiOvenDisabledProviders(opts?: ConfigYmlOpts): Promis
 
   const merged = mergeDisabledProviders(current, {
     op: "remove",
-    providers: PI_OVEN_MANAGED_PROVIDERS,
+    providers: union,
   });
 
   const spawn = opts?.spawnFn ?? defaultSpawn;

@@ -10,6 +10,7 @@ import {
   setPiOvenDisabledProviders,
   clearPiOvenDisabledProviders,
   PI_OVEN_MANAGED_PROVIDERS,
+  PI_OVEN_DEPRECATED_PROVIDERS,
 } from "../../../scripts/pi-oven-setup/config-yml";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +67,20 @@ function okGetArrayResult(value: string[]): SpawnResult {
     stderr: Buffer.from(""),
   };
 }
+
+// ---------------------------------------------------------------------------
+// PI_OVEN_MANAGED_PROVIDERS / PI_OVEN_DEPRECATED_PROVIDERS — the isolate provider sets
+// ---------------------------------------------------------------------------
+
+describe("PI_OVEN provider constants", () => {
+  it("PI_OVEN_MANAGED_PROVIDERS is claude ONLY (never claude-plugins)", () => {
+    expect([...PI_OVEN_MANAGED_PROVIDERS]).toEqual(["claude"]);
+  });
+
+  it("PI_OVEN_DEPRECATED_PROVIDERS is the legacy claude-plugins entry to purge", () => {
+    expect([...PI_OVEN_DEPRECATED_PROVIDERS]).toEqual(["claude-plugins"]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // mergeOverrideRecord — PURE, no spawn
@@ -411,7 +426,7 @@ describe("mergeDisabledProviders", () => {
 
   it("add onto empty yields the providers", () => {
     const out = mergeDisabledProviders([], { op: "add", providers: PI_OVEN_MANAGED_PROVIDERS });
-    expect(out).toEqual(["claude", "claude-plugins"]);
+    expect(out).toEqual(["claude"]);
   });
 
   it("remove deletes only listed providers, preserves siblings", () => {
@@ -484,17 +499,39 @@ describe("setPiOvenDisabledProviders", () => {
   it("get then set with merged array, preserves sibling providers", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult(["codex"]), okSetResult()]);
     const result = await setPiOvenDisabledProviders({ spawnFn: fn });
-    expect(result).toEqual(["codex", "claude", "claude-plugins"]);
+    expect(result).toEqual(["codex", "claude"]);
 
     expect(calls[0]).toEqual(["omp", "config", "get", "disabledProviders", "--json"]);
     expect(calls[1].slice(0, 4)).toEqual(["omp", "config", "set", "disabledProviders"]);
-    expect(JSON.parse(calls[1][4])).toEqual(["codex", "claude", "claude-plugins"]);
+    expect(JSON.parse(calls[1][4])).toEqual(["codex", "claude"]);
   });
 
-  it("idempotent — already-isolated config sets the same array", async () => {
+  it("idempotent — already-isolated config sets claude only", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude"]), okSetResult()]);
+    const result = await setPiOvenDisabledProviders({ spawnFn: fn });
+    expect(result).toEqual(["claude"]);
+    expect(JSON.parse(calls[1][4])).toEqual(["claude"]);
+  });
+
+  it("migrates a buggy pre-0.1.0 [claude, claude-plugins] config to [claude]", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude", "claude-plugins"]), okSetResult()]);
-    await setPiOvenDisabledProviders({ spawnFn: fn });
-    expect(JSON.parse(calls[1][4])).toEqual(["claude", "claude-plugins"]);
+    const result = await setPiOvenDisabledProviders({ spawnFn: fn });
+    expect(result).toEqual(["claude"]);
+    expect(JSON.parse(calls[1][4])).toEqual(["claude"]);
+  });
+
+  it("migrates [codex, claude-plugins] to [codex, claude] (purge legacy, add managed)", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["codex", "claude-plugins"]), okSetResult()]);
+    const result = await setPiOvenDisabledProviders({ spawnFn: fn });
+    expect(result).toEqual(["codex", "claude"]);
+    expect(JSON.parse(calls[1][4])).toEqual(["codex", "claude"]);
+  });
+
+  it("adds claude onto a fresh empty config", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult([]), okSetResult()]);
+    const result = await setPiOvenDisabledProviders({ spawnFn: fn });
+    expect(result).toEqual(["claude"]);
+    expect(JSON.parse(calls[1][4])).toEqual(["claude"]);
   });
 
   it("ABORTS on corrupt get — set NOT called (no sibling-wipe)", async () => {
@@ -520,14 +557,35 @@ describe("setPiOvenDisabledProviders", () => {
 // ---------------------------------------------------------------------------
 
 describe("clearPiOvenDisabledProviders", () => {
-  it("removes only managed providers, preserves siblings, returns removed sorted", async () => {
+  it("removes managed + legacy providers, preserves siblings, returns removed sorted", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult(["codex", "claude", "claude-plugins"]), okSetResult()]);
     const removed = await clearPiOvenDisabledProviders({ spawnFn: fn });
     expect(removed).toEqual(["claude", "claude-plugins"]);
     expect(JSON.parse(calls[1][4])).toEqual(["codex"]);
   });
 
-  it("no-op (no set call) when no managed providers present", async () => {
+  it("removes a buggy pre-0.1.0 [claude, claude-plugins] config to []", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude", "claude-plugins"]), okSetResult()]);
+    const removed = await clearPiOvenDisabledProviders({ spawnFn: fn });
+    expect(removed).toEqual(["claude", "claude-plugins"]);
+    expect(JSON.parse(calls[1][4])).toEqual([]);
+  });
+
+  it("removes only claude when claude-plugins absent (preserves siblings)", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["codex", "claude"]), okSetResult()]);
+    const removed = await clearPiOvenDisabledProviders({ spawnFn: fn });
+    expect(removed).toEqual(["claude"]);
+    expect(JSON.parse(calls[1][4])).toEqual(["codex"]);
+  });
+
+  it("removes a lone legacy claude-plugins entry", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude-plugins"]), okSetResult()]);
+    const removed = await clearPiOvenDisabledProviders({ spawnFn: fn });
+    expect(removed).toEqual(["claude-plugins"]);
+    expect(JSON.parse(calls[1][4])).toEqual([]);
+  });
+
+  it("no-op (no set call) when no managed/legacy providers present", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult(["codex"])]);
     const removed = await clearPiOvenDisabledProviders({ spawnFn: fn });
     expect(removed).toEqual([]);

@@ -41,12 +41,20 @@ must NOT carry the plugin-name prefix. See `omp-marketplace-command-namespacing.
 `capability/index.ts:251-259` snapshots it into a Set; `filterProviders`
 (`capability/index.ts:211`) drops those provider ids from **every** capability.
 
-- `disabledProviders: [claude, claude-plugins]` in user-global
-  `~/.omp/agent/config.yml` (or project `<repo>/.omp/settings.json`) makes omp
-  **ignore the entire `~/.claude` Claude-Code layer** (omc CLAUDE.md + pi-oven
-  skills + omc plugin/MCP + Claude hooks) while keeping `omp-plugins` (pi-oven) and
-  `native` intact. It is omp-only — never touches `~/.claude` on disk, so real
-  Claude Code sessions are unaffected.
+- **The pi-oven isolate disables `claude` ONLY**, never `claude-plugins`.
+  `disabledProviders: [claude]` in user-global `~/.omp/agent/config.yml` (or
+  project `<repo>/.omp/settings.json`) makes omp **ignore the `~/.claude`
+  Claude-Code CONTEXT layer** (omc CLAUDE.md + pi-oven skills + Claude
+  hooks/commands) while keeping `omp-plugins` (pi-oven) and `native` intact. It is
+  omp-only — never touches `~/.claude` on disk, so real Claude Code sessions are
+  unaffected.
+- **Why NOT `claude-plugins`:** pi-oven's marketplace COMMANDS and SKILLS register
+  via the `claude-plugins` provider — it reads `~/.omp/plugins/cache/` too, not
+  only `~/.claude/plugins/cache/`. So disabling `claude-plugins` ALSO removes
+  pi-oven's own `/pi-oven:*` commands (empirically: `[claude,claude-plugins]` → 0 pi-oven
+  commands; `[claude]` → pi-oven commands survive). The accepted trade-off is that
+  omc/agentmemory marketplace plugin commands (`/oh-my-claudecode:*`) stay
+  visible under omp. See `omp-marketplace-command-namespacing.md`.
 - Snapshotted once at startup → **restart omp** to apply. No env var.
 - `claude`/`claude-plugins` here are **discovery**-provider ids, NOT model-provider
   ids (anthropic/openai-codex/…), so adding them disables no LLM backend.
@@ -64,11 +72,13 @@ pi-oven fills this in its extension: `readProjectInstructions(<repoRoot>/CLAUDE.
 → `RulesInjector.setProjectInstructions` → injected into the main+sub agent system
 prompt via `before_agent_start` (dedup key `pi-oven:project-instructions`). This is
 how omp comes to honor a project's local CLAUDE.md while the global `~/.claude`
-layer stays disabled via `disabledProviders`.
+context layer stays disabled via `disabledProviders: [claude]`.
 
 ## How to apply
 
-1. Isolate omp from `~/.claude`: set `disabledProviders: [claude, claude-plugins]`.
+1. Isolate omp from `~/.claude`: set `disabledProviders: [claude]` (the `claude`
+   provider ONLY — keep `claude-plugins` enabled so pi-oven's own `/pi-oven:*` commands
+   survive).
 2. Keep project-local guidance: pi-oven auto-injects `<repoRoot>/CLAUDE.md`
    (default ON; opt out with `.pi-oven/config.json` `{ "projectInstructions": false }`).
 3. Verify after applying: in omp, `skill://autonomous-boundary` (a pi-oven

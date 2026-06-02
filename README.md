@@ -12,7 +12,7 @@
 - **21 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, git-workflow, aws, bitbucket-pipeline, cloudflare.
 - **`/pi-oven:setup` wizard** — Profile A (release default, opencode-zen + openai-codex) or Profile B (Anthropic Pro/Max opt-in), agent-file source of truth, drift detection on every session.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
-- **Project `CLAUDE.md` injection + omp isolation** — the runtime extension reads your repo-root `CLAUDE.md` and injects it into the main + sub agent system prompt (omp does not read repo-root `CLAUDE.md` natively). `/pi-oven:setup --isolate` then makes omp ignore the global `~/.claude` layer entirely, so omp runs as a clean pi-oven-only environment. See [omp isolation & project CLAUDE.md](#omp-isolation--project-claudemd).
+- **Project `CLAUDE.md` injection + omp isolation** — the runtime extension reads your repo-root `CLAUDE.md` and injects it into the main + sub agent system prompt (omp does not read repo-root `CLAUDE.md` natively). `/pi-oven:setup --isolate` then makes omp ignore the global `~/.claude` context layer (`~/.claude/CLAUDE.md` + pi-oven skills/hooks), so omp runs as a pi-oven-first environment. It keeps the `claude-plugins` provider enabled (that is how pi-oven's own `/pi-oven:*` commands load), so omc/agentmemory marketplace plugin commands remain visible — the trade-off for not killing pi-oven's own commands. See [omp isolation & project CLAUDE.md](#omp-isolation--project-claudemd).
 
 ---
 
@@ -235,8 +235,8 @@ The wizard accepts subcommands:
 | `/pi-oven:setup --apply --profile A` | Non-interactive apply with explicit profile |
 | `/pi-oven:setup --apply --profile B --validate full` | Full 22-role smoke ping (default is 7 MUST-tier) |
 | `/pi-oven:setup --apply --profile A --override executor=openai-codex/gpt-5.4` | Per-role override (repeatable) |
-| `/pi-oven:setup --isolate` | Make omp ignore the `~/.claude` layer (writes `disabledProviders`). Combinable, e.g. `--apply --profile A --isolate` |
-| `/pi-oven:setup --no-isolate` | Re-enable the `~/.claude` layer in omp |
+| `/pi-oven:setup --isolate` | Make omp ignore the `~/.claude` context layer (writes `disabledProviders: [claude]`; keeps `claude-plugins` so pi-oven's own `/pi-oven:*` commands survive). Combinable, e.g. `--apply --profile A --isolate` |
+| `/pi-oven:setup --no-isolate` | Re-enable the `~/.claude` layer in omp (removes `claude` + any legacy `claude-plugins`) |
 
 ### Profile A (release default)
 
@@ -275,7 +275,7 @@ omp's `claude` discovery provider only reads `~/.claude/CLAUDE.md` and `<cwd>/.c
 
 ### omp isolation (`/pi-oven:setup --isolate`)
 
-To make omp **ignore the entire `~/.claude` layer**, run:
+To make omp **ignore the `~/.claude` Claude-Code context layer**, run:
 
 ```
 /pi-oven:setup --isolate          # or combine: /pi-oven:setup --apply --profile A --isolate
@@ -286,12 +286,11 @@ This writes one user-global setting to `~/.omp/agent/config.yml`:
 ```yaml
 disabledProviders:
   - claude          # ~/.claude/CLAUDE.md + skills + hooks + commands
-  - claude-plugins  # ~/.claude marketplace plugins (omc, etc.)
 ```
 
-omp enforces it across every capability, so the omc `CLAUDE.md`, pi-oven skills, Claude hooks, and Claude plugins all stop loading in omp — while pi-oven (the separate `omp-plugins` provider) keeps loading and injects your repo-root `CLAUDE.md`. The write is **omp-only and never touches `~/.claude` on disk**, so genuine Claude Code sessions are completely unaffected. It is a snapshot at startup, so **restart omp** to apply. Undo any time with `/pi-oven:setup --no-isolate` (it removes only `claude`/`claude-plugins`, preserving any other providers you disabled yourself).
+It disables the `claude` discovery provider **only**. It deliberately leaves `claude-plugins` enabled: pi-oven's own `/pi-oven:*` commands and skills register through that very provider (it serves `~/.omp/plugins` too, not just `~/.claude/plugins`), so disabling it would also remove pi-oven's own commands. The accepted trade-off is that omc/agentmemory marketplace plugin commands (`/oh-my-claudecode:*`) stay visible. With `claude` disabled, the omc `~/.claude/CLAUDE.md`, pi-oven skills, and Claude hooks/commands stop loading in omp — while pi-oven keeps loading and injects your repo-root `CLAUDE.md`. The write is **omp-only and never touches `~/.claude` on disk**, so genuine Claude Code sessions are completely unaffected. It is a snapshot at startup, so **restart omp** to apply. Undo any time with `/pi-oven:setup --no-isolate` (it removes `claude` plus any legacy `claude-plugins` an earlier build added, preserving any other providers you disabled yourself).
 
-The net effect: in omp you get **pi-oven + your project's `CLAUDE.md`**, and nothing from the global `~/.claude` layer.
+The net effect: in omp you get **pi-oven + your project's `CLAUDE.md`** with the global `~/.claude` context gone, while marketplace plugin commands (omc/agentmemory) stay available.
 
 ---
 

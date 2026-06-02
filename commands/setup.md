@@ -211,12 +211,14 @@ Auto-retry risks repeated billing charges for failing smoke pings.
 
 ### Step 7 — Optional: isolate omp from the `~/.claude` layer
 
-After model routing is set, ask whether omp should run as a clean pi-oven-only environment:
+After model routing is set, ask whether omp should ignore the global `~/.claude` context layer:
 
 ```
-Make omp ignore the global ~/.claude Claude-Code layer (omc + pi-oven)?
-omp will then load ONLY the pi-oven plugin and inject this repo's root CLAUDE.md.
-Your ~/.claude on disk is untouched — real Claude Code sessions keep working. [y/N]:
+Make omp ignore the global ~/.claude Claude-Code context layer (omc CLAUDE.md + pi-oven)?
+omp will inject this repo's root CLAUDE.md instead. Your pi-oven /pi-oven:* commands keep working
+(they load via the claude-plugins provider, which stays enabled). omc/agentmemory marketplace
+plugin commands remain visible. Your ~/.claude on disk is untouched — real Claude Code sessions
+keep working. [y/N]:
 ```
 
 If the user agrees, dispatch (combinable in the same call as Step 5, e.g. `--profile A --isolate`):
@@ -225,7 +227,7 @@ If the user agrees, dispatch (combinable in the same call as Step 5, e.g. `--pro
 bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --isolate
 ```
 
-This writes `disabledProviders: [claude, claude-plugins]` to `~/.omp/agent/config.yml`. Tell the user to restart omp for it to take effect. To undo later: `--no-isolate`.
+This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purges any legacy `claude-plugins` entry an earlier buggy build added — disabling it removed pi-oven's own `/pi-oven:*` commands). It keeps `claude-plugins` enabled so pi-oven keeps loading. Tell the user to restart omp for it to take effect. To undo later: `--no-isolate`.
 
 ## Flag reference (for dispatching the batch script)
 
@@ -241,8 +243,8 @@ This writes `disabledProviders: [claude, claude-plugins]` to `~/.omp/agent/confi
 | `--reset` | Remove all `pi-oven:*` keys from config.yml task.agentModelOverrides. Does not touch agent files. |
 | `--import <file>` | Import JSON config file (schema: §7.1). |
 | `--language <ko\|en\|name>` | Persist the per-project default language to `.pi-oven/config.json`. Accepts `ko`/`en` or any plain language name (letters, spaces, `()-.`; ≤ 40 chars). Set in Step 0. |
-| `--isolate` | Make omp IGNORE the entire `~/.claude` Claude-Code layer (omc + pi-oven): writes `disabledProviders: [claude, claude-plugins]` to `~/.omp/agent/config.yml` (user-global, machine-local, preserves sibling providers). pi-oven keeps loading and injects the repo-root `CLAUDE.md`. omp-only — never touches `~/.claude` on disk. Restart omp to apply. Combinable with `--profile`/`--apply` (runs after). |
-| `--no-isolate` | Undo `--isolate`: remove `claude` + `claude-plugins` from `disabledProviders` (preserves any other providers). |
+| `--isolate` | Make omp IGNORE the `~/.claude` Claude-Code context layer (omc CLAUDE.md + pi-oven): writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (user-global, machine-local, preserves sibling providers) and purges any legacy `claude-plugins` entry. It does NOT disable `claude-plugins` — pi-oven's own `/pi-oven:*` commands load through that provider, so disabling it would remove them. omc/agentmemory marketplace plugin commands remain visible. pi-oven keeps loading and injects the repo-root `CLAUDE.md`. omp-only — never touches `~/.claude` on disk. Restart omp to apply. Combinable with `--profile`/`--apply` (runs after). |
+| `--no-isolate` | Undo `--isolate`: remove `claude` + any legacy `claude-plugins` from `disabledProviders` (preserves any other providers). |
 
 The 7 MUST-tier roles for smoke validation are: executor, explorer, verifier, critic, planner, code-reviewer, debugger.
 

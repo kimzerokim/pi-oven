@@ -31,21 +31,29 @@ function okSetResult(): SpawnResult {
 }
 
 describe("runIsolate — enable", () => {
-  it("writes disabledProviders union and reports the ignored layer", async () => {
+  it("writes disabledProviders = [claude] and reports the ignored layer", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult([]), okSetResult()]);
     const result = await runIsolate({ enable: true, spawnFn: fn });
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("IGNORE the ~/.claude");
     expect(result.output).toContain("claude");
+    // claude-plugins must NOT be disabled — pi-oven's own /pi-oven:* commands load through it
     expect(result.output).toContain("claude-plugins");
-    expect(JSON.parse(calls[1][4])).toEqual(["claude", "claude-plugins"]);
+    expect(JSON.parse(calls[1][4])).toEqual(["claude"]);
   });
 
   it("preserves a pre-existing sibling provider", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult(["codex"]), okSetResult()]);
     const result = await runIsolate({ enable: true, spawnFn: fn });
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(calls[1][4])).toEqual(["codex", "claude", "claude-plugins"]);
+    expect(JSON.parse(calls[1][4])).toEqual(["codex", "claude"]);
+  });
+
+  it("migrates a buggy pre-0.1.0 [claude, claude-plugins] config to [claude]", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude", "claude-plugins"]), okSetResult()]);
+    const result = await runIsolate({ enable: true, spawnFn: fn });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(calls[1][4])).toEqual(["claude"]);
   });
 
   it("exit 1 with a failure message when the read fails (no set)", async () => {
@@ -58,12 +66,19 @@ describe("runIsolate — enable", () => {
 });
 
 describe("runIsolate — disable (--no-isolate)", () => {
-  it("removes the managed providers and reports re-enable", async () => {
+  it("removes managed + legacy providers and reports re-enable", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude", "claude-plugins"]), okSetResult()]);
     const result = await runIsolate({ enable: false, spawnFn: fn });
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("Re-enabled the ~/.claude layer");
     expect(JSON.parse(calls[1][4])).toEqual([]);
+  });
+
+  it("removes only claude when the config has no legacy claude-plugins", async () => {
+    const { fn, calls } = makeSpawnFn([okGetArrayResult(["codex", "claude"]), okSetResult()]);
+    const result = await runIsolate({ enable: false, spawnFn: fn });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(calls[1][4])).toEqual(["codex"]);
   });
 
   it("reports nothing-to-undo when not isolated (no set call)", async () => {

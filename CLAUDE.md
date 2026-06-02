@@ -27,7 +27,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 515 pass currently
+bun test             # 526 pass currently
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -70,6 +70,8 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 ## Status
 
 **Current: v0.1.0** — shipped + pushed to `origin/main` (tag `v0.1.0`). Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
+
+**Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@pi-oven (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 
 Live status, open work, and the execution log → **`docs/WORKING-CONTEXT.md`**. Per-release history → `CHANGELOG.md` + git. This file is the stable guide, not a changelog — don't restate version/plan history here.
 

@@ -8,7 +8,7 @@
 
 **Goal: build the optimal agentic workflow that runs natively on omp.** Not a Claude Code plugin — Claude Code interop is a by-product, not maintained.
 
-**Core design principle — heterogeneous models.** Agents do NOT all run on Anthropic. PROFILE_A spreads 22 roles across ~8 model families (codex, gemini-flash, kimi, glm, gpt-nano, opus). Each agent's body must inject an **execution context optimized for its specific model**, not a generic prompt. Model-fit is a first-class concern.
+**Core design principle — heterogeneous models.** Agents do NOT all run on Anthropic. PROFILE_A spreads 22 roles across ~6 models / 3 providers (anthropic opus · openai-codex gpt-5.4 · opencode-zen gemini-flash/glm/haiku). Each agent's body must inject an **execution context optimized for its specific model**, not a generic prompt. Model-fit is a first-class concern.
 
 ## Layout
 
@@ -27,7 +27,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 544 pass currently
+bun test             # 545 pass currently
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -54,7 +54,7 @@ bun run release:pi-oven -- --bump patch --dry-run  # release automation (safe de
 | `opencode-zen/glm-5.1` | med→xhigh | designer, verifier, code-reviewer, code-simplifier, tracer, analyst, librarian |
 | `opencode-zen/claude-haiku-4-5` | low | git-master (re-validated off gpt-5-nano 2026-05-29) |
 
-`/pi-oven:setup --profile` now also sets the main orchestrator model (`modelRoles.default` + `modelRoles.title`), separate from the 22 subagent roles.
+`/pi-oven:setup --profile` now also sets the main orchestrator model (`modelRoles.default` + `modelRoles.title`), separate from the 22 subagent roles. PROFILE_A pins these to **canonical** ids (`gpt-5.4:high` / `gpt-5.4-mini:low`, no provider prefix): with an empty `modelProviderOrder`, omp resolves them openai-codex-first and falls back to opencode-zen (both providers carry these models). The codex subagent roles get the same primary→fallback ordering via their frontmatter `model:` array (`openai-codex/gpt-5.4` then `opencode-zen/gpt-5.4`).
 
 Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/` always; `anthropic/` only if an agent file already declares an `anthropic/*` model. **PROFILE_B** (anthropic-promoted opt-in) is **DEFERRED** — do not bump/redefine without explicit user instruction (still on retired `opus-4-7` ids by design).
 

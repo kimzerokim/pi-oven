@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from five frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers / pi-oven). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-544%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-545%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
@@ -242,11 +242,13 @@ The wizard accepts subcommands:
 
 Optimized for users with **OpenCode Zen + OpenAI Codex subscriptions** — no Anthropic dependency.
 
-- Executor: `openai-codex/gpt-5.3-codex` (alternate: `opencode-zen/gpt-5.3-codex`)
-- Explorer: `opencode-zen/glm-5` (1M context for large repo scans)
-- Reasoning-heavy (critic, security-reviewer, architect, ...): `opencode-zen/claude-opus-4-8`
-- Mid-tier (planner, code-reviewer, debugger, ...): `opencode-zen/claude-sonnet-4-6`
-- Cheap fan-out (writer, git-master): `opencode-zen/claude-haiku-4-5`
+- Codex roles (executor, debugger, test-engineer, architect, metis): `openai-codex/gpt-5.4` (alternate: `opencode-zen/gpt-5.4`)
+- Explorer / docs (explorer, writer, document-specialist, multimodal-looker): `opencode-zen/gemini-3-flash`
+- Reasoning-heavy (critic, planner, security-reviewer, oracle): `anthropic/claude-opus-4-8`
+- Structured review / design (designer, verifier, code-reviewer, code-simplifier, tracer, analyst, librarian): `opencode-zen/glm-5.1`
+- Vision (qa-tester): `opencode-zen/gemini-3.5-flash` · Cheap git (git-master): `opencode-zen/claude-haiku-4-5`
+
+Beyond the 22 subagent roles, `/pi-oven:setup --profile` also sets the **main orchestrator** model — omp `modelRoles.default` = canonical `gpt-5.4` (openai-codex-first, opencode-zen fallback). The 21 skills enforce subagent dispatch so the orchestrator routes work to the right agent instead of doing it inline.
 
 ### Profile B (Anthropic opt-in)
 

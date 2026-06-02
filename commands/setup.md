@@ -15,8 +15,8 @@ pi-oven may be installed globally, so the script does NOT live under the user's 
 ```bash
 PI_OVEN_DIR="$PWD"
 if [ ! -f "$PI_OVEN_DIR/scripts/pi-oven-setup.ts" ]; then
-  PI_OVEN_DIR="$(jq -r '.plugins["pi-oven@pi-oven"][0].installPath // empty' "$HOME/.omp/plugins/installed_plugins.json" 2>/dev/null)"
-  [ -z "$PI_OVEN_DIR" ] && PI_OVEN_DIR="$(ls -d "$HOME"/.omp/plugins/cache/plugins/pi-oven___pi-oven___*/ 2>/dev/null | sort -V | tail -1)"
+  PI_OVEN_DIR="$(jq -r '.plugins["pi-oven@kzk"][0].installPath // empty' "$HOME/.omp/plugins/installed_plugins.json" 2>/dev/null)"
+  [ -z "$PI_OVEN_DIR" ] && PI_OVEN_DIR="$(ls -d "$HOME"/.omp/plugins/cache/plugins/kzk___pi-oven___*/ 2>/dev/null | sort -V | tail -1)"
 fi
 ```
 
@@ -248,7 +248,7 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 
 The 7 MUST-tier roles for smoke validation are: executor, explorer, verifier, critic, planner, code-reviewer, debugger.
 
-All `omp plugin config` operations use the plugin name `pi-oven` (bare). Do NOT pass `pi-oven@pi-oven` to `omp plugin config` calls — that form is only for `omp plugin install` / `omp plugin uninstall`.
+All `omp plugin config` operations use the plugin name `pi-oven` (bare). Do NOT pass `pi-oven@kzk` to `omp plugin config` calls — that form is only for `omp plugin install` / `omp plugin uninstall`.
 
 ## Important rules
 

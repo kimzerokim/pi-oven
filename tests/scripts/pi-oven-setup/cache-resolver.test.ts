@@ -18,7 +18,7 @@ function makeTempDir(): string {
 }
 
 /**
- * Creates a fake pi-oven___pi-oven___<version>/agents/ directory
+ * Creates a fake kzk___pi-oven___<version>/agents/ directory
  * inside cacheRoot and populates it with N fake pi-oven-*.md files.
  */
 function makeFakeCacheEntry(
@@ -26,7 +26,7 @@ function makeFakeCacheEntry(
   version: string,
   agentCount: number
 ): string {
-  const agentsDir = join(cacheRoot, `pi-oven___pi-oven___${version}`, "agents");
+  const agentsDir = join(cacheRoot, `kzk___pi-oven___${version}`, "agents");
   mkdirSync(agentsDir, { recursive: true });
   for (let i = 0; i < agentCount; i++) {
     writeFileSync(join(agentsDir, `pi-oven-agent-${i}.md`), `# agent ${i}\n`);

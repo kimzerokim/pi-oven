@@ -32,14 +32,14 @@ export function compareSemver(a: string, b: string): number {
 
 /**
  * Resolves the agents/ directory of the latest installed pi-oven plugin version.
- * Returns null if no pi-oven___pi-oven___* directory exists under cacheRoot.
+ * Returns null if no kzk___pi-oven___* directory exists under cacheRoot.
  */
 export async function resolveCacheAgentsDir(
   cacheRoot?: string
 ): Promise<string | null> {
   const root = cacheRoot ?? DEFAULT_CACHE_ROOT;
   const dirs = await fs.readdir(root).catch(() => [] as string[]);
-  const piOvenDirs = dirs.filter((d) => d.startsWith("pi-oven___pi-oven___"));
+  const piOvenDirs = dirs.filter((d) => d.startsWith("kzk___pi-oven___"));
   if (piOvenDirs.length === 0) return null;
   // Pick latest installed version by semver sort (descending)
   piOvenDirs.sort((a, b) => {

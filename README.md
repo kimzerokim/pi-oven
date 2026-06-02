@@ -33,18 +33,18 @@ Prerequisites:
 omp plugin marketplace add kimzerokim/pi-oven
 
 # 2. Install the plugin (use --force after agent-file changes ship)
-omp plugin install pi-oven@pi-oven --force
+omp plugin install pi-oven@kzk --force
 
 # 3. Verify
 omp plugin list | grep pi-oven
-# Expected: pi-oven@pi-oven (0.1.0)
+# Expected: pi-oven@kzk (0.1.0)
 ```
 
 ### One-shot (install automatic, setup interactive)
 
 ```sh
 omp plugin marketplace add kimzerokim/pi-oven
-omp plugin install pi-oven@pi-oven --force
+omp plugin install pi-oven@kzk --force
 omp plugin list | grep pi-oven
 omp "/pi-oven:setup"   # opens omp and starts the interactive setup wizard
 ```
@@ -56,7 +56,7 @@ If you already have an older version installed, refresh the marketplace cache fi
 ```sh
 omp plugin marketplace remove pi-oven
 omp plugin marketplace add kimzerokim/pi-oven
-omp plugin install pi-oven@pi-oven --force
+omp plugin install pi-oven@kzk --force
 ```
 
 ---
@@ -320,23 +320,23 @@ When a pi-oven agent's primary model is unauthenticated (e.g., you select Profil
 
 ### omp plugin upgrade resets agent files
 
-`omp plugin upgrade pi-oven@pi-oven` overwrites the install-cache `agents/` directory with the repo defaults (Profile A). If you previously selected Profile B, re-run `/pi-oven:setup --reapply` to restore the anthropic model routing.
+`omp plugin upgrade pi-oven@kzk` overwrites the install-cache `agents/` directory with the repo defaults (Profile A). If you previously selected Profile B, re-run `/pi-oven:setup --reapply` to restore the anthropic model routing.
 
 The drift detector emits a warning at session start if it notices the agent files no longer match your persisted Profile.
 
 ### Install cache must be populated
 
-After installing pi-oven@pi-oven from the marketplace, ensure the install cache has the 22 agent files:
+After installing pi-oven@kzk from the marketplace, ensure the install cache has the 22 agent files:
 
 ```sh
-ls ~/.omp/plugins/cache/plugins/pi-oven___pi-oven___*/agents/ | wc -l
+ls ~/.omp/plugins/cache/plugins/kzk___pi-oven___*/agents/ | wc -l
 # Expected: 22
 ```
 
 If empty (`0`), force a reinstall:
 
 ```sh
-omp plugin install pi-oven@pi-oven --force
+omp plugin install pi-oven@kzk --force
 ```
 
 This is required because the marketplace install copies the repo tree recursively (`fs.cp recursive`); a stale cache from a pre-agent-registry version will show empty.
@@ -347,7 +347,7 @@ This is required because the marketplace install copies the repo tree recursivel
 
 ### Wizard reports "Plugin not found"
 
-`omp plugin config` operations use the bare plugin name `pi-oven` (matches `plugin.json` `"name"`). The marketplace-qualified id `pi-oven@pi-oven` is only for `omp plugin install` / `omp plugin uninstall`. If you accidentally pass `pi-oven@pi-oven` to a `config` subcommand, you'll see `Plugin "pi-oven@pi-oven" not found`.
+`omp plugin config` operations use the bare plugin name `pi-oven` (matches `plugin.json` `"name"`). The marketplace-qualified id `pi-oven@kzk` is only for `omp plugin install` / `omp plugin uninstall`. If you accidentally pass `pi-oven@kzk` to a `config` subcommand, you'll see `Plugin "pi-oven@kzk" not found`.
 
 ### `Unknown agent "pi-oven:executor"` in task dispatch
 

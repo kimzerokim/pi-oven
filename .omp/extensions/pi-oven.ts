@@ -435,7 +435,7 @@ export default function piOvenPi(pi: ExtensionAPI): void {
         !setupComplete
       ) {
         uiCtx.ui.notify(
-          "pi-oven is not set up for this project. Run /pi-oven:setup to configure it — or, if you don't want to see this, uninstall the plugin with: omp plugin uninstall pi-oven@pi-oven",
+          "pi-oven is not set up for this project. Run /pi-oven:setup to configure it — or, if you don't want to see this, uninstall the plugin with: omp plugin uninstall pi-oven@kzk",
           "warning"
         );
       }

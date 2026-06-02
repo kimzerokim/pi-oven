@@ -13,8 +13,8 @@ pi-oven may be installed globally, so the script does NOT live under the user's 
 ```bash
 PI_OVEN_DIR="$PWD"
 if [ ! -f "$PI_OVEN_DIR/scripts/pi-oven-release/index.ts" ]; then
-  PI_OVEN_DIR="$(jq -r '.plugins["pi-oven@pi-oven"][0].installPath // empty' "$HOME/.omp/plugins/installed_plugins.json" 2>/dev/null)"
-  [ -z "$PI_OVEN_DIR" ] && PI_OVEN_DIR="$(ls -d "$HOME"/.omp/plugins/cache/plugins/pi-oven___pi-oven___*/ 2>/dev/null | sort -V | tail -1)"
+  PI_OVEN_DIR="$(jq -r '.plugins["pi-oven@kzk"][0].installPath // empty' "$HOME/.omp/plugins/installed_plugins.json" 2>/dev/null)"
+  [ -z "$PI_OVEN_DIR" ] && PI_OVEN_DIR="$(ls -d "$HOME"/.omp/plugins/cache/plugins/kzk___pi-oven___*/ 2>/dev/null | sort -V | tail -1)"
 fi
 ```
 

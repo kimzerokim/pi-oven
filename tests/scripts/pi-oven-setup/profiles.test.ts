@@ -67,6 +67,15 @@ describe("profiles", () => {
       }
     });
 
+    // openai-codex primary + opencode-zen fallback on the SAME gpt-5.4 (not the
+    // -pro variant): both providers carry gpt-5.4, so the frontmatter model array
+    // resolves openai-codex-first with opencode-zen fallback.
+    it("executor/debugger/test-engineer alternate is opencode-zen/gpt-5.4", () => {
+      for (const role of ["executor", "debugger", "test-engineer"] as const) {
+        expect(PROFILE_A[role].registry_alternate).toBe("opencode-zen/gpt-5.4");
+      }
+    });
+
     it("the 6 reasoning roles primary is opencode-zen/glm-5.1", () => {
       for (const role of [
         "verifier",
@@ -125,10 +134,8 @@ describe("profiles", () => {
 
   describe("orchestrator models", () => {
     it("PROFILE_A_ORCHESTRATOR sets the main session + title models", () => {
-      expect(PROFILE_A_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.4:high");
-      expect(PROFILE_A_ORCHESTRATOR.title).toBe(
-        "openai-codex/gpt-5.4-mini:low"
-      );
+      expect(PROFILE_A_ORCHESTRATOR.default).toBe("gpt-5.4:high");
+      expect(PROFILE_A_ORCHESTRATOR.title).toBe("gpt-5.4-mini:low");
     });
 
     it("PROFILE_B_ORCHESTRATOR reuses deferred-B anthropic ids", () => {

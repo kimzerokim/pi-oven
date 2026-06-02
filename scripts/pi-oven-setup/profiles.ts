@@ -57,7 +57,7 @@ export type ProfileMap = Record<Role, ModelEntry>;
 export const PROFILE_A: ProfileMap = {
   executor: {
     primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4-pro",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
   },
   explorer: {
@@ -87,12 +87,12 @@ export const PROFILE_A: ProfileMap = {
   },
   debugger: {
     primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4-pro",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
   },
   "test-engineer": {
     primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4-pro",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
   },
   "security-reviewer": {
@@ -176,6 +176,13 @@ export const PROFILE_A: ProfileMap = {
  * Written by `/pi-oven:setup --profile` (the user-setup apply path), NOT by the
  * maintainer agent-frontmatter generate path. PROFILE_B reuses only ids that
  * PROFILE_B already declares (B is DEFERRED — no new B ids introduced here).
+ *
+ * PROFILE_A uses CANONICAL model ids (no provider prefix) for the orchestrator:
+ * with an empty `modelProviderOrder`, omp resolves canonical `gpt-5.4` /
+ * `gpt-5.4-mini` openai-codex-first (registry order) and falls back to
+ * opencode-zen — both providers carry these models. The subagent codex roles
+ * get the same primary→fallback ordering via their frontmatter model array
+ * ([openai-codex/gpt-5.4, opencode-zen/gpt-5.4]).
  */
 export interface OrchestratorModels {
   default: string;
@@ -183,8 +190,8 @@ export interface OrchestratorModels {
 }
 
 export const PROFILE_A_ORCHESTRATOR: OrchestratorModels = {
-  default: "openai-codex/gpt-5.4:high",
-  title: "openai-codex/gpt-5.4-mini:low",
+  default: "gpt-5.4:high",
+  title: "gpt-5.4-mini:low",
 };
 
 export const PROFILE_B_ORCHESTRATOR: OrchestratorModels = {

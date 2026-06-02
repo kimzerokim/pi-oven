@@ -220,8 +220,8 @@ describe("runApply", () => {
 
     // Merged whole-record contains the new default+title AND preserves the sibling.
     const merged = JSON.parse(modelRoleSets[0].args[3]);
-    expect(merged.default).toBe("openai-codex/gpt-5.4:high");
-    expect(merged.title).toBe("openai-codex/gpt-5.4-mini:low");
+    expect(merged.default).toBe("gpt-5.4:high");
+    expect(merged.title).toBe("gpt-5.4-mini:low");
     expect(merged.someSibling).toBe("keep");
 
     // Anti-Spec-E regression: NO task.agentModelOverrides may be written.
@@ -243,8 +243,8 @@ describe("runApply", () => {
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
     );
     const merged = JSON.parse(setCall!.args[3]);
-    expect(merged.default).toBe("openai-codex/gpt-5.4:high");
-    expect(merged.title).toBe("openai-codex/gpt-5.4-mini:low");
+    expect(merged.default).toBe("gpt-5.4:high");
+    expect(merged.title).toBe("gpt-5.4-mini:low");
   });
 
   it("runApply WITHOUT agentsDir writes PROFILE_B orchestrator values for profile B", async () => {

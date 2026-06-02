@@ -1,0 +1,1045 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>pi-oven — omp 플러그인 스킬 &amp; 워크플로우 지도</title>
+<!--
+  Single-page reference for the pi-oven omp plugin (oh-my-pi harness layer):
+  22 file-based agents, 21 skills, 3 commands, 1 omp extension.
+  Authoritative source: CLAUDE.md + agents/pi-oven-*.md + skills/*/SKILL.md + .omp/extensions/pi-oven.ts.
+  This HTML is a read-only navigable index derived from those sources.
+-->
+<style>
+  :root {
+    --bg:        #ffffff;
+    --bg-alt:    #f5f5f7;
+    --bg-card:   #ffffff;
+    --bg-chip:   #eef0f3;
+    --bg-code:   #f7f7f9;
+    --border:    #e3e3e8;
+    --border-2:  #d2d2d7;
+    --fg:        #1d1d1f;
+    --fg-2:      #515154;
+    --fg-3:      #86868b;
+    --accent:    #0066cc;
+    --accent-2:  #0a84ff;
+    --red:       #c0392b;
+    --green:     #1f8a3a;
+    --amber:     #b86e00;
+    --violet:    #6c3bbf;
+    --shadow:    0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+    --mono:      ui-monospace, "SF Mono", Menlo, "JetBrains Mono", monospace;
+    --sans:      -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:        #1c1c1e;
+      --bg-alt:    #242426;
+      --bg-card:   #2a2a2c;
+      --bg-chip:   #353538;
+      --bg-code:   #2f2f32;
+      --border:    #3a3a3d;
+      --border-2:  #46464a;
+      --fg:        #f5f5f7;
+      --fg-2:      #c7c7cc;
+      --fg-3:      #98989d;
+      --accent:    #4ca0ff;
+      --accent-2:  #6cb4ff;
+      --shadow:    0 1px 2px rgba(0,0,0,0.3), 0 10px 30px rgba(0,0,0,0.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  body { font-size: 15px; line-height: 1.55; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  code { font-family: var(--mono); font-size: 0.875em; background: var(--bg-code); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border); }
+  pre { font-family: var(--mono); font-size: 13px; background: var(--bg-code); padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); overflow-x: auto; }
+  pre code { background: transparent; border: 0; padding: 0; }
+  h1, h2, h3, h4 { font-weight: 600; letter-spacing: -0.01em; color: var(--fg); scroll-margin-top: 24px; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  h2 { font-size: 22px; margin: 48px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  h2:first-of-type { border-top: 0; padding-top: 0; }
+  h3 { font-size: 17px; margin: 28px 0 8px; }
+  h4 { font-size: 14px; margin: 16px 0 6px; color: var(--fg-2); }
+  p { margin: 8px 0 12px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--bg-alt); font-weight: 600; color: var(--fg-2); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+  tbody tr:hover { background: var(--bg-alt); }
+  ul, ol { margin: 8px 0 12px; padding-left: 22px; }
+  li { margin: 3px 0; }
+
+  /* skip link */
+  .skip { position: absolute; left: -999px; top: 0; background: var(--accent); color: #fff; padding: 8px 14px; border-radius: 0 0 8px 0; z-index: 100; }
+  .skip:focus { left: 0; text-decoration: none; }
+
+  /* layout */
+  .layout { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+  nav.toc { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; background: var(--bg-alt); border-right: 1px solid var(--border); padding: 24px 18px 32px; font-size: 13.5px; }
+  nav.toc .brand { font-weight: 700; letter-spacing: -0.01em; font-size: 15px; margin-bottom: 4px; color: var(--fg); }
+  nav.toc .brand .tag { display: inline-block; font-size: 10.5px; font-weight: 600; color: var(--fg-3); margin-left: 6px; padding: 2px 6px; background: var(--bg-chip); border-radius: 999px; vertical-align: middle; }
+  nav.toc .ver { font-size: 11.5px; color: var(--fg-3); font-family: var(--mono); margin-bottom: 14px; }
+  nav.toc ul { list-style: none; padding: 0; margin: 0; }
+  nav.toc > ul > li { margin: 4px 0; }
+  nav.toc a { display: block; padding: 4px 8px; border-radius: 6px; color: var(--fg-2); transition: background 0.12s, color 0.12s; }
+  nav.toc a:hover { background: var(--bg-chip); color: var(--fg); text-decoration: none; }
+  nav.toc a.active { background: var(--bg-chip); color: var(--accent); font-weight: 600; }
+  nav.toc .group { font-weight: 600; color: var(--fg); margin-top: 14px; padding: 4px 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-3); }
+  nav.toc ul ul { padding-left: 8px; border-left: 1px solid var(--border); margin-left: 4px; }
+  nav.toc ul ul a { font-size: 12.5px; color: var(--fg-2); padding: 3px 8px; }
+
+  main { padding: 36px 48px 80px; max-width: 980px; }
+  main > section { margin-bottom: 8px; }
+
+  /* mobile nav */
+  .nav-toggle { display: none; }
+  .nav-toggle-label { display: none; }
+
+  /* hero */
+  .hero { padding: 14px 0 6px; }
+  .hero .sub { color: var(--fg-3); font-size: 14px; margin-top: 2px; }
+  .hero .meta { display: flex; gap: 14px; flex-wrap: wrap; margin: 14px 0 6px; font-size: 12.5px; color: var(--fg-2); }
+  .hero .meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero .meta .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .hero .meta .dot.amber { background: var(--amber); }
+  .hero .meta .dot.violet { background: var(--violet); }
+
+  /* cards */
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin: 14px 0; box-shadow: var(--shadow); }
+  .card .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .card .name { font-weight: 700; font-size: 16px; font-family: var(--mono); color: var(--fg); letter-spacing: -0.005em; }
+  .card .ver { font-size: 12px; color: var(--fg-3); font-family: var(--mono); }
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--bg-chip); color: var(--fg-2); letter-spacing: 0.02em; }
+  .badge.auto  { background: #e3f3ea; color: var(--green); }
+  .badge.gate  { background: #fbeee0; color: var(--amber); }
+  .badge.entry { background: #e3ecfa; color: var(--accent); }
+  .badge.hook  { background: #efe6fa; color: var(--violet); }
+  .badge.disc  { background: #f2f2f4; color: var(--fg-2); }
+  @media (prefers-color-scheme: dark) {
+    .badge.auto  { background: #16361f; color: #6fd896; }
+    .badge.gate  { background: #3a2c12; color: #e0a960; }
+    .badge.entry { background: #16273f; color: #6cb4ff; }
+    .badge.hook  { background: #2c2140; color: #b794f0; }
+    .badge.disc  { background: #353538; color: var(--fg-2); }
+  }
+  .card .blurb { font-size: 14px; color: var(--fg-2); margin: 4px 0 10px; }
+  .card h4 { margin-top: 14px; }
+  .card .triggers { display: flex; flex-wrap: wrap; gap: 5px 6px; margin: 6px 0 0; }
+  .chip { display: inline-block; padding: 2px 8px; font-size: 12px; font-family: var(--mono); background: var(--bg-chip); border: 1px solid var(--border); border-radius: 999px; color: var(--fg-2); }
+  .chip.k { background: #eef5ff; border-color: #d6e4fa; color: var(--accent); }
+  .chip.x { background: #f2f2f4; border-color: var(--border); color: var(--fg-3); font-style: italic; }
+  .chip.a { background: #f4f0fb; border-color: #e2d6f7; color: var(--violet); }
+  @media (prefers-color-scheme: dark) {
+    .chip.k { background: #16273f; border-color: #25456e; color: #6cb4ff; }
+    .chip.a { background: #2c2140; border-color: #443065; color: #b794f0; }
+  }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 980px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .note { background: #fffbe6; border: 1px solid #ffe7a3; border-radius: 8px; padding: 12px 14px; margin: 14px 0; font-size: 13.5px; color: #6b4f00; }
+  .note.bad { background: #ffeeed; border-color: #f9d2cf; color: #8c1f15; }
+  .note.ok  { background: #e9f7ee; border-color: #c8e8d4; color: #155b2a; }
+  @media (prefers-color-scheme: dark) {
+    .note     { background: #2e2812; border-color: #4a3e18; color: #e0c97a; }
+    .note.bad { background: #341a18; border-color: #5a2723; color: #f0a097; }
+    .note.ok  { background: #16301f; border-color: #244d33; color: #84d6a0; }
+  }
+
+  /* mermaid container */
+  .mermaid-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 14px 0; overflow-x: auto; }
+  .mermaid { font-family: var(--sans) !important; min-width: 600px; }
+
+  /* compact lists */
+  .keys { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .keys .chip { font-family: var(--mono); }
+
+  /* file path inline */
+  .path { font-family: var(--mono); font-size: 12.5px; color: var(--accent); background: var(--bg-code); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+
+  hr { border: 0; border-top: 1px solid var(--border); margin: 32px 0; }
+
+  footer { color: var(--fg-3); font-size: 12px; padding: 20px 0 0; border-top: 1px solid var(--border); margin-top: 36px; }
+  footer code { font-size: 11.5px; }
+
+  @media (max-width: 820px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; height: auto; max-height: 0; overflow: hidden; padding: 0 18px; border-right: 0; border-bottom: 1px solid var(--border); transition: max-height 0.2s ease, padding 0.2s ease; }
+    .nav-toggle:checked ~ nav.toc { max-height: 70vh; overflow-y: auto; padding: 16px 18px 24px; }
+    .nav-toggle-label { display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 50; padding: 12px 18px; background: var(--bg-alt); border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; cursor: pointer; }
+    .nav-toggle-label::before { content: "☰"; font-size: 16px; }
+    main { padding: 24px 18px 64px; }
+    .layout { display: block; }
+  }
+</style>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'default',
+    securityLevel: 'loose',
+    flowchart: { curve: 'basis', htmlLabels: true, padding: 10 },
+    themeVariables: {
+      primaryColor: '#eef5ff',
+      primaryTextColor: '#1d1d1f',
+      primaryBorderColor: '#0066cc',
+      lineColor: '#86868b',
+      secondaryColor: '#f5f5f7',
+      tertiaryColor: '#ffffff',
+      fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif'
+    }
+  });
+</script>
+</head>
+<body>
+<a class="skip" href="#intro">본문으로 건너뛰기</a>
+<input type="checkbox" id="nav-toggle" class="nav-toggle" hidden />
+<label for="nav-toggle" class="nav-toggle-label">목차</label>
+<div class="layout">
+
+<nav class="toc" aria-label="목차">
+  <div class="brand">pi-oven <span class="tag">omp plugin</span></div>
+  <div class="ver">pi-oven@kzk · v0.1.0</div>
+  <ul>
+    <li><a href="#intro">1. 개요</a></li>
+    <li><a href="#mental-model">2. 멘탈 모델</a></li>
+    <li><a href="#model-routing">3. 모델 라우팅 ★</a></li>
+    <li><a href="#usage-by-task">4. 작업 유형별 가이드</a></li>
+    <li><a href="#entry-points">5. 진입점 (다이어그램)</a>
+      <ul>
+        <li><a href="#flow-spec">5.1 spec → plan → execute</a></li>
+        <li><a href="#flow-auto">5.2 자율 실행</a></li>
+        <li><a href="#flow-commit">5.3 커밋 게이트</a></li>
+        <li><a href="#flow-debug">5.4 디버깅</a></li>
+      </ul>
+    </li>
+    <li><a href="#skills">6. 21개 스킬 카드</a>
+      <ul>
+        <li><a href="#s-spec-and-review">spec-and-review</a></li>
+        <li><a href="#s-writing-plans">writing-plans</a></li>
+        <li><a href="#s-subagent-driven-development">subagent-driven-development</a></li>
+        <li><a href="#s-large-task-delegation">large-task-delegation</a></li>
+        <li><a href="#s-codebase-survey">codebase-survey</a></li>
+        <li><a href="#s-pre-commit-gate">pre-commit-gate</a></li>
+        <li><a href="#s-autonomous-loop">autonomous-loop</a></li>
+        <li><a href="#s-fresh-verifier">fresh-verifier</a></li>
+        <li><a href="#s-brainstorming">brainstorming</a></li>
+        <li><a href="#s-deep-dive">deep-dive</a></li>
+        <li><a href="#s-deep-init">deep-init</a></li>
+        <li><a href="#s-tdd-strict">tdd-strict</a></li>
+        <li><a href="#s-code-quality-discipline">code-quality-discipline</a></li>
+        <li><a href="#s-systematic-debugging">systematic-debugging</a></li>
+        <li><a href="#s-improve-codebase-architecture">improve-codebase-architecture</a></li>
+        <li><a href="#s-receiving-code-review">receiving-code-review</a></li>
+        <li><a href="#s-git-workflow">git-workflow</a></li>
+        <li><a href="#s-aws">aws</a></li>
+        <li><a href="#s-bitbucket-pipeline">bitbucket-pipeline</a></li>
+        <li><a href="#s-cloudflare">cloudflare</a></li>
+        <li><a href="#s-html-research-orchestrator">html-research-orchestrator</a></li>
+      </ul>
+    </li>
+    <li><a href="#commands">7. 3개 커맨드</a></li>
+    <li><a href="#agents">8. 22개 에이전트 레지스트리</a></li>
+    <li><a href="#extension">9. Extension / hooks</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<section id="intro" class="hero">
+  <h1>pi-oven — omp 플러그인 스킬 &amp; 워크플로우 지도</h1>
+  <div class="sub">oh-my-pi (omp) 위에서 네이티브로 도는 큐레이티드 워크플로우 + 규율 레이어의 단일 페이지 레퍼런스: 22개 에이전트, 21개 스킬, 3개 커맨드, 그리고 omp extension 을 한 곳에서.</div>
+  <div class="meta">
+    <span><span class="dot"></span> 22개 file-based agents</span>
+    <span><span class="dot"></span> 21개 skills (3개 UC5 ops 포함)</span>
+    <span><span class="dot"></span> 3개 commands · 1개 omp extension</span>
+    <span><span class="dot amber"></span> 6개 model family heterogeneous</span>
+  </div>
+  <p>
+    <strong>pi-oven 는 omp 의 플러그인입니다</strong> (<code>oh-my-pi</code>, pi-coding-agent harness). 마켓플레이스 <code>kzk</code> 에 <code>pi-oven@kzk</code> 로 배포됩니다 (현재 <strong>v0.1.0</strong>, 설치 캐시 <code>kzk___pi-oven___0.1.0</code>).
+    4개 소스 — <strong>omc</strong> (oh-my-claudecode), <strong>omo</strong> (oh-my-openagent), <strong>Pocock</strong>, <strong>superpowers</strong> — 의 best part 를 흡수해 만든 워크플로우 + 규율 레이어입니다.
+  </p>
+  <p>
+    <strong>목표: omp 위에서 네이티브로 도는 최적의 에이전틱 워크플로우를 만드는 것.</strong> Claude Code 플러그인이 아닙니다 — Claude Code interop 은 부산물일 뿐, 유지보수 대상이 아닙니다.
+    각 규칙의 정식 소스는 <code>CLAUDE.md</code> + 각 <code>agents/pi-oven-*.md</code> + <code>skills/&lt;name&gt;/SKILL.md</code> + <code>.omp/extensions/pi-oven.ts</code>. 이 HTML 은 거기서 파생된 <em>읽기 전용 인덱스</em>입니다.
+  </p>
+  <div class="note">
+    <strong>pi-oven 의 차별점</strong>: 형제 프로젝트 <code>kzk-harness</code> 는 Claude Code (전부 Anthropic) 위에 markdown 스킬 + 훅을 얹습니다.
+    pi-oven 는 다릅니다 — 22개 에이전트가 <strong>이종(heterogeneous) 모델에 걸쳐</strong> 돌고 (gpt-5.4 · gemini-3-flash · gemini-3.5-flash · glm-5.1 · opus-4-8 · haiku-4-5), 각 에이전트 본문에 그 모델에 맞춰진 execution-context 블록을 담습니다.
+    Model-fit 이 일급(first-class) 관심사입니다. 자세한 내용은 <a href="#model-routing">§3 모델 라우팅</a>.
+  </div>
+  <div class="note">
+    <strong>omp 격리 + 프로젝트 CLAUDE.md</strong>: <code>/pi-oven:setup --isolate</code> 로 omp 가 글로벌 <code>~/.claude</code> 컨텍스트 레이어(omc <code>~/.claude/CLAUDE.md</code> + pi-oven skills/hooks)를 무시하게 만들 수 있습니다 — <code>~/.omp/agent/config.yml</code> 에 <code>disabledProviders: [claude]</code> 를 기록합니다. <code>claude</code> discovery provider 만 끄고 <code>claude-plugins</code> 는 <strong>의도적으로 유지</strong>합니다 — pi-oven 자신의 <code>/pi-oven:*</code> 커맨드가 바로 그 provider 로 등록되기 때문입니다 (trade-off: omc/agentmemory 마켓플레이스 커맨드는 계속 보임). 이 쓰기는 <strong>omp 전용이며 디스크의 <code>~/.claude</code> 는 절대 건드리지 않으므로</strong> 실제 Claude Code 세션은 영향이 없습니다. 동시에 런타임 extension 이 레포 루트 <code>CLAUDE.md</code> 를 읽어 메인·서브 에이전트 시스템 프롬프트에 주입하므로(omp 는 루트 <code>CLAUDE.md</code> 를 네이티브로 읽지 않습니다), 글로벌은 무시하되 프로젝트별 지침은 그대로 따릅니다. 되돌리려면 <code>/pi-oven:setup --no-isolate</code>.
+  </div>
+</section>
+
+<section id="mental-model">
+  <h2>2. 멘탈 모델</h2>
+  <p>
+    omp 는 4가지 구성 요소로 작동합니다: <strong>에이전트</strong>(file-based subagent), <strong>스킬</strong>(markdown), <strong>커맨드</strong>(LLM prompt template), <strong>extension</strong>(TS, load-time/이벤트 훅).
+    pi-oven 는 이 기본 요소 위에 <strong>22개 에이전트 + 21개 스킬 + 3개 커맨드 + 1개 extension</strong> 을 추가합니다.
+    새로운 런타임 기능을 만드는 것이 아니라 <em>규율</em>을 추가합니다 — 기존 기능의 일관되고 안전한 호출 패턴.
+  </p>
+  <div class="grid2">
+    <div class="card">
+      <div class="head"><span class="name">Agent</span><span class="badge">22 files</span></div>
+      <div class="blurb">file-based 서브에이전트 정의. frontmatter <code>name: pi-oven:&lt;role&gt;</code> (콜론), <code>model:</code> 배열(primary → alternate), <code>thinkingLevel</code>, <code>mode</code>, <code>tools</code>/<code>blocked_tools</code>, 본문 = system prompt.</div>
+      <h4>위치 / SoT</h4>
+      <ul>
+        <li>위치: <span class="path">agents/pi-oven-*.md</span> (22개)</li>
+        <li>본문은 hand-authored — <strong>안전하게 편집 가능</strong>; <code>--apply</code>/lint 는 frontmatter <code>model</code>+<code>thinkingLevel</code> 줄만 건드리고 본문은 verbatim 보존</li>
+        <li><code>model</code>/<code>thinkingLevel</code> 은 <span class="path">scripts/pi-oven-setup/profiles.ts</span> (PROFILE_A) 에서 파생되는 derived artifact</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="head"><span class="name">Skill</span><span class="badge">21 markdown</span></div>
+      <div class="blurb">프롬프트에 트리거 키워드가 나타나면 스킬 본문이 메인 컨텍스트에 자동 로드됩니다. 코드가 없습니다 — markdown 텍스트 자체가 규칙서입니다. 본문은 <strong>English-only</strong> (한국어는 trigger keyword 매칭 한정).</div>
+      <h4>위치 / 분류</h4>
+      <ul>
+        <li>위치: <span class="path">skills/&lt;name&gt;/SKILL.md</span> (+ <code>references/</code>)</li>
+        <li>4개 신규 규율 스킬: systematic-debugging · improve-codebase-architecture · receiving-code-review · git-workflow</li>
+        <li>badge 의미: <code>entry</code> 진입점 · <code>discipline</code> 규율 · <code>gate</code> 게이트 · <code>auto</code> 자동 호출</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="head"><span class="name">Command</span><span class="badge">3 templates</span></div>
+      <div class="blurb"><code>/pi-oven:&lt;name&gt;</code> 로 명시 호출하는 LLM prompt template. 슬래시 커맨드는 스킬과 달리 사용자가 직접 부릅니다. 파일명은 <strong><code>pi-oven-</code> 접두사 없이</strong> — Marketplace provider 가 <code>&lt;plugin&gt;:&lt;basename&gt;</code> 로 네임스페이싱.</div>
+      <h4>3개 커맨드</h4>
+      <ul>
+        <li><code>/pi-oven:setup</code> — 셋업 위저드 (모델 override / profile / isolate)</li>
+        <li><code>/pi-oven:doctor</code> — 진단 (10-check 헬스 매트릭스)</li>
+        <li><code>/pi-oven:release</code> — 릴리스 자동화 (version/manifest/changelog/publish gate)</li>
+      </ul>
+      <p style="margin:8px 0 0; font-size:13px; color:var(--fg-2);">자율 실행은 커맨드가 아니라 <a href="#s-autonomous-loop"><code>autonomous-loop</code></a> 스킬 키워드 트리거로 진입합니다.</p>
+    </div>
+    <div class="card">
+      <div class="head"><span class="name">Extension</span><span class="badge hook">1 TS</span></div>
+      <div class="blurb">omp extension — load-time 검증 + 이벤트 훅. <code>dist/</code> 로 번들됩니다 (<code>bun run build</code>). 스킬 markdown 이 스스로 강제할 수 없는 부분을 런타임에서 담당합니다.</div>
+      <h4><span class="path">.omp/extensions/pi-oven.ts</span></h4>
+      <ul>
+        <li>load-time <code>validateAgentRegistry</code> — provider whitelist 검사 (soft-error; hard 강제는 CI lint)</li>
+        <li><code>session_start</code> 이벤트 — 부모 세션 모델 캡처 + not-set-up 안내 + discipline rule rehydrate</li>
+        <li><code>pi-oven_ask</code> advisor 툴 등록 + <code>setLabel("pi-oven v0.1.0")</code></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="model-routing">
+  <h2>3. 모델 라우팅 — pi-oven 의 핵심 차별점 ★</h2>
+  <p>
+    22개 에이전트는 <strong>이종 모델에 걸쳐</strong> 돕니다. 에이전트가 전부 Anthropic 위에서 도는 것이 아닙니다.
+    PROFILE_A 는 22개 역할을 gpt-5.4 · gemini-3-flash · gemini-3.5-flash · glm-5.1 · opus-4-8 · haiku-4-5 에 분산합니다.
+  </p>
+
+  <h3>핵심 원칙 — 모델별 execution-context</h3>
+  <p>
+    각 에이전트 본문은 <strong>자신의 특정 모델에 맞춰진 execution-context 블록</strong>을 담습니다 — 제네릭 프롬프트가 아닙니다.
+    같은 "executor" 라도 codex 엔진과 opus 엔진은 다른 방식으로 다뤄야 최적 동작이 나오기 때문입니다.
+  </p>
+  <table>
+    <thead><tr><th>모델 패밀리</th><th>execution-context 튜닝 방향</th></tr></thead>
+    <tbody>
+      <tr><td><code>openai-codex/gpt-5.4</code></td><td><strong>Bias to action / XML-bound rules</strong> — upfront plan 선언 금지 (early stopping 유발), 합리적 가정으로 바로 실행, outcome-first 출력. 강한 규칙은 XML 태그로 바운드해 falsifiability/구조 강조 (executor/debugger/test-engineer/architect/metis). primary openai-codex → opencode-zen <code>gpt-5.4</code> fallback.</td></tr>
+      <tr><td><code>opencode-zen/gemini-3-flash</code></td><td><strong>Crisp + schema</strong> — 간결하고 schema 지향. 빠른 read-only 탐색/문서 생성에 최적. fallback <code>claude-haiku-4-5</code>.</td></tr>
+      <tr><td><code>opencode-zen/glm-5.1</code></td><td><strong>Structured + thinking-match</strong> — 구조화된 출력, thinking-level 에 맞춘 추론 깊이 (designer + verifier/code-reviewer/code-simplifier/tracer/analyst/librarian). fallback <code>claude-sonnet-4-6</code>.</td></tr>
+      <tr><td><code>opencode-zen/claude-haiku-4-5</code></td><td><strong>경량 추론 (git-master)</strong> — 커밋 스타일 추론 + concern 기반 분할 두 지점에만 light reasoning, 나머지는 기계적. fallback <code>claude-sonnet-4-6</code>.</td></tr>
+      <tr><td><code>anthropic/claude-opus-4-8</code></td><td><strong>XML-friendly</strong> — XML 구조에 친화적, 깊은 분석/리뷰 (critic/planner/security/oracle). fallback <code>opencode-zen/claude-opus-4-8</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>PROFILE_A 모델 맵 (릴리스 기본값) — 모델 패밀리별 그룹</h3>
+  <p style="font-size:13px; color:var(--fg-2);">SoT = <code>CLAUDE.md</code> "PROFILE_A model map". 표의 모델은 frontmatter <code>model:</code> 배열의 <strong>primary</strong>입니다.</p>
+  <table>
+    <thead><tr><th>모델</th><th>thinkingLevel</th><th>역할 (roles)</th></tr></thead>
+    <tbody>
+      <tr><td><code>anthropic/claude-opus-4-8</code></td><td>xhigh / high</td><td>critic, planner, security-reviewer, oracle</td></tr>
+      <tr><td><code>openai-codex/gpt-5.4</code></td><td>high / xhigh</td><td>executor, debugger, test-engineer, architect, metis (+ planner alt)</td></tr>
+      <tr><td><code>opencode-zen/gemini-3-flash</code></td><td>medium</td><td>explorer, writer, document-specialist, multimodal-looker</td></tr>
+      <tr><td><code>opencode-zen/gemini-3.5-flash</code></td><td>high</td><td>qa-tester (vision)</td></tr>
+      <tr><td><code>opencode-zen/glm-5.1</code></td><td>medium → xhigh</td><td>designer, verifier, code-reviewer, code-simplifier, tracer, analyst, librarian</td></tr>
+      <tr><td><code>opencode-zen/claude-haiku-4-5</code></td><td>low</td><td>git-master (gpt-5-nano 에서 재검증 후 승격)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>omp 의 모델 해석 (가장 흔한 혼동 지점)</h3>
+  <p>
+    <strong>omp 는 서브에이전트의 모델을 settings <code>task.agentModelOverrides</code> 에서만 해석합니다</strong>
+    (user-global <span class="path">~/.omp/agent/config.yml</span> 안의 <code>Record&lt;agentName, modelId&gt;</code>), <strong>콜론</strong> 이름 <code>pi-oven:&lt;role&gt;</code> 으로 키잉됩니다.
+  </p>
+  <div class="mermaid-wrap">
+<pre class="mermaid">
+flowchart LR
+  R["모델 해석 요청<br/>(pi-oven:role)"] --> O1{"task.agentModelOverrides<br/>[pi-oven:role] 존재?"}
+  O1 -->|YES| USE1["override 모델 사용<br/>(개인 머신-글로벌)"]
+  O1 -->|NO| O2{"agent-file<br/>model: frontmatter?"}
+  O2 -->|YES| USE2["frontmatter 모델 사용<br/>(= PROFILE_A 기본값)"]
+  O2 -->|NO| USE3["session default<br/>(silent fallback ⚠)"]
+
+  classDef pick fill:#e3ecfa,stroke:#0066cc,color:#1d1d1f;
+  classDef warn fill:#fbeee0,stroke:#b86e00,color:#1d1d1f;
+  class USE1,USE2 pick;
+  class USE3 warn;
+</pre>
+  </div>
+  <ul>
+    <li><strong>우선순위</strong>: <code>task.agentModelOverrides[pi-oven:&lt;role&gt;]</code> &gt; agent-file <code>model:</code> frontmatter &gt; session default.</li>
+    <li>PROFILE_A 는 <strong>릴리스 기본값</strong>(frontmatter 에 baked-in) + override 메커니즘입니다.</li>
+    <li><strong>개인 override (git dirt 없음)</strong>: <code>/pi-oven:setup --override &lt;role&gt;=&lt;model&gt;</code> → <code>~/.omp/agent/config.yml</code> 에 <code>task.agentModelOverrides["pi-oven:&lt;role&gt;"]</code> 기록 (machine-global, uncommitted). 에이전트 파일은 건드리지 않음.</li>
+    <li><strong>메인 오케스트레이터 모델</strong>: <code>/pi-oven:setup --profile</code> 는 22개 서브에이전트 외에 <strong>최상위 세션(오케스트레이터) 모델</strong>도 설정합니다 — omp <code>modelRoles.default</code> = canonical <code>gpt-5.4:high</code>, <code>modelRoles.title</code> = <code>gpt-5.4-mini:low</code> (provider prefix 없음 → openai-codex-first, opencode-zen fallback).</li>
+    <li>21개 스킬은 <strong>서브에이전트 디스패치 + right-agent 라우팅을 강제</strong>합니다 — 메인 레인에서의 직접 구현 대신 적합한 <code>pi-oven:&lt;role&gt;</code> 에이전트로 위임.</li>
+    <li>구 <code>settings.pi-oven</code> plugin-config 네임스페이스는 <strong>DEAD + 제거됨</strong> (Spec E / Option C) — per-role 모델 쓰기를 재도입하지 말 것.</li>
+  </ul>
+  <div class="note">
+    <strong>SoT 체인</strong>: <code>scripts/pi-oven-setup/profiles.ts</code> (PROFILE_A / PROFILE_B) → <code>agents/pi-oven-*.md</code> frontmatter → <code>lint-agents.ts</code> 가 동등성 강제.
+    frontmatter 의 <code>model</code>/<code>thinkingLevel</code> 은 derived artifact — <code>profiles.ts</code> 에서 바꾸고 maintainer-only <code>--apply</code> 로 재생성합니다.
+    <code>agent-rewriter.ts</code> 는 본문을 verbatim 보존 → <strong>에이전트 prose 본문 편집은 안전</strong>.
+  </div>
+  <div class="note">
+    <strong>Provider whitelist</strong> (load + CI lint 에서 강제): <code>opencode-zen/</code>, <code>openai-codex/</code> 는 항상 허용; <code>anthropic/</code> 는 에이전트 파일이 이미 <code>anthropic/*</code> 모델을 선언한 경우에만.
+    <strong>PROFILE_B</strong> (anthropic-promoted opt-in) 는 <strong>DEFERRED</strong> — 사용자 명시 지시 없이 bump/재정의 금지 (의도적으로 retired <code>opus-4-7</code> id 유지).
+  </div>
+</section>
+
+<section id="usage-by-task">
+  <h2>4. 작업 유형별 가이드</h2>
+  <p>각 시나리오는 prompt 패턴 → 자동 로드되는 스킬 → 디스패치되는 에이전트 → 피해야 할 것을 매핑합니다. 한국어 trigger phrase 는 키워드 매칭에 그대로 쓰이므로 chip 형식으로 표시합니다.</p>
+
+  <div class="card" id="task-1">
+    <div class="head"><span class="name">1. 단순 버그 픽스</span></div>
+    <p><em>1 파일 / ≤ 30 LoC / 명확한 증상</em></p>
+    <h4>좋은 prompt</h4>
+    <p><code class="chip k">&lt;X&gt; 가 &lt;Y&gt; 로 동작 안 함. 기대: &lt;Z&gt;. 고쳐줘.</code></p>
+    <h4>자동 로드 / 디스패치</h4>
+    <p>없음 (메인 직접 처리) + 항상 켜진 <a href="#s-code-quality-discipline"><span class="chip">code-quality-discipline</span></a>. 커밋 시 <code>commit</code> 발화로 <a href="#s-pre-commit-gate"><span class="chip">pre-commit-gate</span></a> 활성. 본격 디버깅이면 <a href="#s-systematic-debugging"><span class="chip">systematic-debugging</span></a> → <span class="chip a">pi-oven:debugger</span></p>
+    <h4>피하기</h4>
+    <p>단일 버그에 large-task / 전수조사 trigger 발화 → over-dispatch.</p>
+  </div>
+
+  <div class="card" id="task-2">
+    <div class="head"><span class="name">2. 다중 파일 / 검증 sweep (read-heavy)</span></div>
+    <p><em>3+ 파일 또는 5+ 파일 read 또는 모호한 증상</em></p>
+    <h4>좋은 prompt</h4>
+    <p><code class="chip k">버그 전수조사 해줘</code> &nbsp; <code class="chip k">코드서베이</code> &nbsp; <code class="chip k">호출부 전수 확인</code></p>
+    <h4>자동 로드 / 디스패치</h4>
+    <p><a href="#s-codebase-survey"><span class="chip">codebase-survey</span></a> + <a href="#s-large-task-delegation"><span class="chip">large-task-delegation</span></a> → <span class="chip a">pi-oven:explorer</span> <span class="chip a">pi-oven:tracer</span> <span class="chip a">pi-oven:librarian</span></p>
+    <h4>메인 역할</h4>
+    <p>5+ 파일 직접 read <strong>금지</strong>. explorer 서브에이전트 위임 → 결과 합성 → executor 위임 cycle. 메인은 orchestrate + verify + commit 만.</p>
+  </div>
+
+  <div class="card" id="task-3">
+    <div class="head"><span class="name">3. 중·대형 신기능 (spec → plan → execute)</span></div>
+    <p><em>3+ 파일 또는 200+ LoC — 새 spec / 큰 구조 변경</em></p>
+    <h4>좋은 prompt</h4>
+    <p>3-phase: (1) <code class="chip k">이 기능 spec 잡자: &lt;description&gt;</code> → (2) <code class="chip k">plan 만들어</code> → (3) <code>"ok 진행"</code> 또는 <code class="chip k">ralph로 돌려</code></p>
+    <h4>자동 로드 / 디스패치</h4>
+    <p>Phase 1: <a href="#s-spec-and-review"><span class="chip">spec-and-review</span></a> (Step 0 <a href="#s-codebase-survey"><span class="chip">codebase-survey</span></a> + brainstorming 선행) → <span class="chip a">pi-oven:architect</span> <span class="chip a">pi-oven:critic</span> <span class="chip a">pi-oven:analyst</span><br/>
+    Phase 2: <a href="#s-writing-plans"><span class="chip">writing-plans</span></a> → <span class="chip a">pi-oven:planner</span> <span class="chip a">pi-oven:metis</span><br/>
+    Phase 3: <a href="#s-subagent-driven-development"><span class="chip">subagent-driven-development</span></a> → <span class="chip a">pi-oven:executor</span> <span class="chip a">pi-oven:verifier</span> <span class="chip a">pi-oven:code-reviewer</span></p>
+    <h4>피하기</h4>
+    <p>대형 기능에 spec phase 건너뛰기. major design 에 codex review 생략.</p>
+  </div>
+
+  <div class="card" id="task-4">
+    <div class="head"><span class="name">4. 자율 실행 (장시간 / 사용자 부재)</span></div>
+    <h4>좋은 prompt</h4>
+    <p><code class="chip k">끝까지 끝내줘</code> &nbsp; <code class="chip k">자율로 돌려</code> &nbsp; <code class="chip k">자율 실행</code> &nbsp; <code class="chip k">계속 진행해</code> &nbsp; <code class="chip k">멈추지 말고 진행해</code> &nbsp; <code class="chip k">ralph로 돌려</code> &nbsp; <code class="chip k">ulw</code></p>
+    <h4>자동 로드 / 디스패치</h4>
+    <p><a href="#s-autonomous-loop"><span class="chip">autonomous-loop</span></a> (meta orchestrator) → <a href="#s-large-task-delegation"><span class="chip">large-task-delegation</span></a> → <a href="#s-fresh-verifier"><span class="chip">fresh-verifier</span></a> (exit gate) → <span class="chip a">pi-oven:executor</span> <span class="chip a">pi-oven:verifier</span> <span class="chip a">pi-oven:critic</span></p>
+    <h4>메인 역할 (필수)</h4>
+    <p>진입 전 <strong>ASK-FIRST 3-slot branch contract</strong> (목적지 / 브랜치명 / PR 모드) 명시 답 받기. 질문 응답 이후에는 <strong>같은 턴에서 즉시 다음 툴 디스패치</strong>. polite-stop 금지. cycle exit 은 <strong>fresh-agent verifier</strong> 필수 — 메인 자가 선언 PASS 금지.</p>
+    <h4>피하기</h4>
+    <p>contract 확인 전 자율 작업 시작. verifier 없이 완료 선언. <code>git push</code> 자동 (사용자 명시 인가 필수).</p>
+  </div>
+
+  <div class="card" id="task-5">
+    <div class="head"><span class="name">5. 디버깅 / 근본 원인 조사</span></div>
+    <h4>좋은 prompt</h4>
+    <p><code class="chip k">왜 깨지지</code> &nbsp; <code class="chip k">원인 찾아줘</code> &nbsp; <code class="chip k">버그 수정</code> &nbsp; <code class="chip k">flaky test</code></p>
+    <h4>자동 로드 / 디스패치</h4>
+    <p><a href="#s-systematic-debugging"><span class="chip">systematic-debugging</span></a> (root-cause-first) → <span class="chip a">pi-oven:tracer</span> <span class="chip a">pi-oven:debugger</span> <span class="chip a">pi-oven:test-engineer</span> <span class="chip a">pi-oven:oracle</span>. 인과 추적이 깊으면 <a href="#s-deep-dive"><span class="chip">deep-dive</span></a></p>
+    <h4>메인 역할</h4>
+    <p>4 phase + backward tracing + defense-in-depth. <strong>근본 원인 조사 전 어떤 fix 도 금지</strong>. 2+ 실패 시 <code>pi-oven:oracle</code> 컨설팅.</p>
+    <h4>피하기</h4>
+    <p>증상만 보고 바로 fix. 회귀 테스트 없이 fix 완료 선언.</p>
+  </div>
+
+  <div class="card" id="task-6">
+    <div class="head"><span class="name">6. 아키텍처 개선 / 리팩토링</span></div>
+    <h4>좋은 prompt</h4>
+    <p><code class="chip k">아키텍처 개선</code> &nbsp; <code class="chip k">리팩토링 기회</code> &nbsp; <code class="chip k">deepen modules</code> &nbsp; <code class="chip k">shallow module</code></p>
+    <h4>자동 로드 / 디스패치</h4>
+    <p><a href="#s-improve-codebase-architecture"><span class="chip">improve-codebase-architecture</span></a> → <span class="chip a">pi-oven:explorer</span> <span class="chip a">pi-oven:architect</span> <span class="chip a">pi-oven:code-simplifier</span> <span class="chip a">pi-oven:verifier</span></p>
+    <h4>메인 역할</h4>
+    <p>survey → before/after HTML report → grilling loop → 선택적 Design-It-Twice 인터페이스 대안. domain glossary + ADR 로 informed.</p>
+  </div>
+
+  <div class="card" id="task-7">
+    <div class="head"><span class="name">7. 리뷰 피드백 수신 / 커밋·PR</span></div>
+    <h4>좋은 prompt</h4>
+    <p><code class="chip k">리뷰 피드백 반영</code> &nbsp; <code class="chip k">codex review 결과 반영</code> &nbsp; <code class="chip k">PR 만들어</code> &nbsp; <code class="chip k">commit</code></p>
+    <h4>자동 로드 / 디스패치</h4>
+    <p><a href="#s-receiving-code-review"><span class="chip">receiving-code-review</span></a> (evaluate-before-implement) → <span class="chip a">pi-oven:verifier</span> <span class="chip a">pi-oven:executor</span><br/>
+    커밋/PR: <a href="#s-pre-commit-gate"><span class="chip">pre-commit-gate</span></a> + <a href="#s-git-workflow"><span class="chip">git-workflow</span></a> → <span class="chip a">pi-oven:git-master</span> <span class="chip a">pi-oven:qa-tester</span></p>
+    <h4>메인 역할</h4>
+    <p>리뷰 코멘트는 코드베이스에 대조 검증 후 적용 — performative agreement 금지, 근거로 push-back. 커밋은 11-gate 통과 후.</p>
+    <h4>피하기</h4>
+    <p>리뷰 코멘트 맹목 반영. Gate 통과 없이 commit. <code>git push</code> 사용자 확인 없이.</p>
+  </div>
+
+  <hr/>
+
+  <h3>메타 룰 (모든 작업 공통)</h3>
+  <ol>
+    <li><strong>5+ file read = 메인 금지</strong> — <code>pi-oven:explorer</code> 위임 (<a href="#s-codebase-survey">codebase-survey</a>).</li>
+    <li><strong>3+ file edit OR 200+ LoC = executor 위임</strong> — 메인은 dispatch + review + commit.</li>
+    <li><strong>새 spec / 큰 구조 변경 → spec-and-review</strong> (codex cross-vendor review loop) before code.</li>
+    <li><strong>코드 변경 → TDD-strict + pre-commit-gate</strong>.</li>
+    <li><strong>커밋 subject = what/why only</strong> — "Plan N" / "Task N" 진행 마커 금지.</li>
+    <li><strong><code>git push</code> 는 매번 사용자 명시 확인</strong> — 자율 모드도 자동 push 금지.</li>
+    <li><strong>외부 dispatch 금지</strong> — <code>oh-my-claudecode:*</code> / <code>omo:*</code> 는 401 (모델 문자열로 해석됨).</li>
+  </ol>
+</section>
+
+<section id="entry-points">
+  <h2>5. 진입점 — 다이어그램</h2>
+
+  <h3 id="flow-spec">5.1 spec → plan → execute</h3>
+  <p>트리거: <code class="chip k">spec 잡자</code> <code class="chip k">plan 만들어</code>. 새 기능/큰 구조 변경의 정석 경로. spec-and-review 의 cross-vendor critic loop (Codex + Zen GLM/Qwen fan-out) 가 PASS 할 때까지 순환하고, plan 작성 후 task 당 fresh subagent 로 실행됩니다.</p>
+  <div class="mermaid-wrap">
+<pre class="mermaid">
+flowchart TD
+  P["spec 잡자 / 큰 기능"] --> S0["Step 0 · codebase-survey<br/>pi-oven:explorer"]
+  S0 --> SM1["Step -1 · brainstorming<br/>main-agent Socratic Q&amp;A"]
+  SM1 --> DRAFT["Draft<br/>pi-oven:architect"]
+  DRAFT --> CODEX["codex CLI + Zen GLM/Qwen<br/>fan-out review"]
+  CODEX --> SYN["Synthesize<br/>BLOCKER / NIT / PUSHBACK<br/>pi-oven:critic"]
+  SYN --> GATE{Gate}
+  GATE -->|CONTINUE| DRAFT
+  GATE -->|PASS 0 BLOCKER| WP["writing-plans<br/>pi-oven:planner"]
+  WP --> SDD["subagent-driven-development<br/>task 당 fresh subagent<br/>pi-oven:executor"]
+  SDD --> REV["2-stage review<br/>spec compliance → code quality<br/>pi-oven:verifier + pi-oven:code-reviewer"]
+  REV --> NEXT{다음 task?}
+  NEXT -->|YES| SDD
+  NEXT -->|완료| COMMIT["pre-commit-gate"]
+
+  classDef entry fill:#e3ecfa,stroke:#0066cc,color:#1d1d1f;
+  classDef gate fill:#fbeee0,stroke:#b86e00,color:#1d1d1f;
+  classDef skill fill:#ffffff,stroke:#d2d2d7,color:#1d1d1f;
+  class S0,SM1,WP,SDD entry;
+  class GATE,NEXT gate;
+  class DRAFT,CODEX,SYN,REV,COMMIT skill;
+</pre>
+  </div>
+
+  <h3 id="flow-auto">5.2 자율 실행</h3>
+  <p>트리거: <code class="chip k">자율 실행</code> <code class="chip k">자율실행</code> <code class="chip k">끝까지 끝내줘</code> <code class="chip k">계속 진행해</code> <code class="chip k">멈추지 말고 진행해</code> <code class="chip k">ralph로 돌려</code>. autonomous-loop 가 ASK-FIRST 3-slot branch contract 를 먼저 받고, brainstorming 선행 조건이 있으면 먼저 처리하며, polite-stop 을 금지합니다. 종료는 fresh-verifier exit gate (4 sub-check) 를 반드시 통과해야 합니다.</p>
+  <div class="mermaid-wrap">
+<pre class="mermaid">
+flowchart TD
+  P["자율 실행"] --> AL["autonomous-loop"]
+  AL --> ASK{"ASK-FIRST<br/>branch contract"}
+  ASK -->|"destination<br/>branch name<br/>PR mode"| WORK["Work cycle<br/>pi-oven:executor / pi-oven:planner"]
+  WORK --> POLITE{"polite-stop<br/>충동?"}
+  POLITE -->|감지| SG["Runtime stop-guard<br/>nextTurn 큐잉"]
+  SG --> WORK
+  POLITE -->|미감지| DONE{"Done?"}
+  DONE -->|NO| WORK
+  DONE -->|YES| FV["fresh-verifier (exit gate)<br/>pi-oven:verifier"]
+  FV --> SUB["4 sub-check<br/>prod-build · stub sweep<br/>SoT align · spec-freeze"]
+  SUB -->|PASS| END["Exit 완료"]
+  SUB -->|BLOCK| WORK
+
+  classDef boundary fill:#e3ecfa,stroke:#0066cc,color:#1d1d1f;
+  classDef loop fill:#e9f7ee,stroke:#1f8a3a,color:#1d1d1f;
+  classDef gate fill:#fbeee0,stroke:#b86e00,color:#1d1d1f;
+  class AL,FV boundary;
+  class WORK,SUB loop;
+  class ASK,POLITE,DONE gate;
+</pre>
+  </div>
+  <div class="note bad">
+    <strong>금지</strong>: fresh-agent verifier 없이 메인이 스스로 완료를 선언하는 것. 자율 스코프 내 polite-stop ("X 완료, 다음은?", "진행 전 확인 대기") 도 금지. <code>git push</code> 자동도 금지.
+  </div>
+
+  <h3 id="flow-commit">5.3 커밋 게이트 (pre-commit-gate)</h3>
+  <p>트리거: <code class="chip k">git commit</code> <code class="chip k">git push</code> <code class="chip k">gh pr</code> <code class="chip k">커밋 전 점검</code>. 11개 gate 가 순서대로 실행되고, 하나라도 FAIL 이면 즉시 차단됩니다. 새 commit 만 — <code>--amend</code> 금지.</p>
+  <div class="mermaid-wrap">
+<pre class="mermaid">
+flowchart TD
+  C["commit request"] --> G0["Gate 0 · AGENTS.md sync"]
+  G0 --> G1["Gate 1 · freshness"]
+  G1 --> G2["Gate 2 · ai-slop"]
+  G2 --> G3["Gate 3 · secrets AKIA/ASIA"]
+  G3 --> G4["Gate 4 · prod code-first"]
+  G4 --> G5["Gate 5 · build"]
+  G5 --> G6["Gate 6 · test"]
+  G6 --> G7["Gate 7 · docker smoke"]
+  G7 --> G8["Gate 8 · Playwright UI<br/>pi-oven:qa-tester"]
+  G8 --> G9["Gate 9 · fix-scope"]
+  G9 --> G10["Gate 10 · fresh-verifier<br/>pi-oven:verifier"]
+  G10 --> OK["commit proceeds"]
+
+  classDef gate fill:#fbeee0,stroke:#b86e00,color:#1d1d1f;
+  class G0,G1,G2,G3,G4,G5,G6,G7,G8,G9,G10 gate;
+</pre>
+  </div>
+
+  <h3 id="flow-debug">5.4 디버깅 (systematic-debugging)</h3>
+  <p>트리거: <code class="chip k">버그 수정</code> <code class="chip k">왜 깨지지</code> <code class="chip k">원인 찾아줘</code>. root-cause-first 규율 — 근본 원인 조사 전 어떤 fix 도 금지합니다.</p>
+  <div class="mermaid-wrap">
+<pre class="mermaid">
+flowchart TD
+  P["버그 / test 실패"] --> SD["systematic-debugging"]
+  SD --> P1["Phase 1 · 증상 재현 + 격리"]
+  P1 --> P2["Phase 2 · backward tracing<br/>pi-oven:tracer"]
+  P2 --> P3["Phase 3 · 경쟁 가설 + 증거 순위<br/>pi-oven:debugger"]
+  P3 --> RC{"근본 원인<br/>확정?"}
+  RC -->|NO| P2
+  RC -->|"2+ 실패"| ORACLE["pi-oven:oracle<br/>전략 컨설팅"]
+  ORACLE --> P3
+  RC -->|YES| P4["Phase 4 · 회귀 test red<br/>pi-oven:test-engineer"]
+  P4 --> FIX["minimal-diff fix<br/>pi-oven:executor"]
+  FIX --> VERIFY["defense-in-depth verify<br/>pi-oven:verifier"]
+
+  classDef entry fill:#e3ecfa,stroke:#0066cc,color:#1d1d1f;
+  classDef skill fill:#ffffff,stroke:#d2d2d7,color:#1d1d1f;
+  classDef gate fill:#fbeee0,stroke:#b86e00,color:#1d1d1f;
+  class SD entry;
+  class P1,P2,P3,P4,FIX,VERIFY,ORACLE skill;
+  class RC gate;
+</pre>
+  </div>
+</section>
+
+<section id="skills">
+  <h2>6. 21개 스킬 카드</h2>
+  <p>각 카드는 스킬 <strong>이름</strong>, <strong>badge</strong>, <strong>blurb</strong>, <strong>트리거 chip</strong>, 디스패치되는 <strong><code>pi-oven:&lt;role&gt;</code> 에이전트</strong> 링크를 요약합니다. badge 의미:</p>
+  <div class="keys">
+    <span class="chip"><span class="badge entry">entry</span> 사용자 프롬프트 키워드가 주 진입점</span>
+    <span class="chip"><span class="badge disc">discipline</span> 규율 — 다른 스킬/플로우에서 체인</span>
+    <span class="chip"><span class="badge gate">gate</span> 커밋 / 사이클-exit 게이트</span>
+    <span class="chip"><span class="badge auto">auto</span> 자동 호출 (툴 콜 / 키워드)</span>
+  </div>
+
+  <div class="card" id="s-spec-and-review">
+    <div class="head"><span class="name">spec-and-review</span><span class="badge entry">entry</span></div>
+    <div class="blurb">cross-vendor critic loop (omp 내부 multi-provider task fan-out — Codex + Zen GLM/Qwen 동시) 으로 spec/plan 작성. Draft → Critic → Synthesize → Gate 를 PASS 또는 HALT 까지 반복.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">new spec/plan draft</span><span class="chip k">spec 잡자</span><span class="chip k">스펙 잡자</span><span class="chip k">기획안 작성</span><span class="chip k">plan draft</span><span class="chip k">codex review</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:librarian</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:document-specialist</span></a><a href="#agents"><span class="chip a">pi-oven:critic</span></a><a href="#agents"><span class="chip a">pi-oven:analyst</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-writing-plans">
+    <div class="head"><span class="name">writing-plans</span><span class="badge disc">discipline</span></div>
+    <div class="blurb">승인된 spec 을 bite-sized · placeholder-free 구현 plan 으로 변환 (Goal/Architecture/Tech Stack 헤더 + full code block) — subagent dispatch 준비 완료.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">post-brainstorming spec approved</span><span class="chip k">plan it</span><span class="chip k">write plan</span><span class="chip k">plan만들어</span><span class="chip k">계획 세워줘</span><span class="chip k">구현 계획</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:metis</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:planner</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-subagent-driven-development">
+    <div class="head"><span class="name">subagent-driven-development</span><span class="badge disc">discipline</span></div>
+    <div class="blurb">구현 plan 을 task 당 fresh subagent 로 실행. sequential 2-stage review (spec compliance → code quality) + controller 가 plan checkbox 추적.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">execute plan</span><span class="chip k">implement plan</span><span class="chip k">계획 실행해줘</span><span class="chip k">플랜대로 구현</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:planner</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-large-task-delegation">
+    <div class="head"><span class="name">large-task-delegation</span><span class="badge disc">discipline</span></div>
+    <div class="blurb">3+ 파일 edit, 200+ LoC, 5+ 파일 read, 또는 multi-stage workflow 를 서브에이전트로 라우팅. 메인은 dispatch + review 만 담당.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">3+ files</span><span class="chip k">200+ LoC</span><span class="chip k">5+ file reads</span><span class="chip k">큰 작업</span><span class="chip k">대규모 수정</span><span class="chip k">여러 파일 변경</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:planner</span></a><a href="#agents"><span class="chip a">pi-oven:critic</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:writer</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-codebase-survey">
+    <div class="head"><span class="name">codebase-survey</span><span class="badge disc">discipline</span></div>
+    <div class="blurb">spec/plan/fix-start 전 필수 pre-planning 8-step deep read 를 explore 서브에이전트로 디스패치. 메인의 5+ 파일 직접 read 를 대체.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">5+ file reads required</span><span class="chip k">spec/plan draft</span><span class="chip k">코드서베이</span><span class="chip k">전수조사</span><span class="chip k">코드베이스 조사</span><span class="chip k">호출부 전수 확인</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:document-specialist</span></a><a href="#agents"><span class="chip a">pi-oven:librarian</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-pre-commit-gate">
+    <div class="head"><span class="name">pre-commit-gate</span><span class="badge gate">gate</span></div>
+    <div class="blurb">11-gate sequential pre-commit 체크 (AGENTS.md sync, freshness, ai-slop, secrets, prod code-first, build, test, docker smoke, Playwright UI, fix-scope, fresh-verifier). 하나라도 FAIL 이면 즉시 차단. 새 commit, never --amend.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">git commit</span><span class="chip k">git push</span><span class="chip k">gh pr</span><span class="chip k">커밋 전 점검</span><span class="chip k">프리커밋 게이트</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:qa-tester</span></a><a href="#agents"><span class="chip a">pi-oven:git-master</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-autonomous-loop">
+    <div class="head"><span class="name">autonomous-loop</span><span class="badge entry">entry</span></div>
+    <div class="blurb">multi-cycle 자율 실행 (ultrawork / ralph / autopilot) 의 meta orchestrator. ASK-FIRST 3-slot branch contract, polite-stop ban, fresh-agent verifier exit gate, rate-limit/compact resilience. 자율 실행은 커맨드가 아니라 이 스킬의 키워드 트리거로 진입.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">자율 실행</span><span class="chip k">자율실행</span><span class="chip k">자율로 돌려</span><span class="chip k">자동으로 끝내줘</span><span class="chip k">끝까지 끝내줘</span><span class="chip k">자는 동안 진행해</span><span class="chip k">알아서 진행해</span><span class="chip k">계속 진행해</span><span class="chip k">멈추지 말고 진행해</span><span class="chip k">스탑하지마</span><span class="chip k">ralph로 돌려</span><span class="chip k">ralph</span><span class="chip k">autopilot</span><span class="chip k">ultrawork</span><span class="chip k">ulw</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:planner</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:code-simplifier</span></a><a href="#agents"><span class="chip a">pi-oven:debugger</span></a><a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:critic</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-fresh-verifier">
+    <div class="head"><span class="name">fresh-verifier</span><span class="badge gate">gate</span></div>
+    <div class="blurb">cycle-exit 필수 fresh-agent verifier — 4 sub-check (prod-build smoke, stub sweep, SoT alignment, spec-freeze) + 4 Q-halt 패턴. 메인 자가 선언 "PASS" / "done" / "loop exit" 는 이 스킬 없이는 금지.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">autonomous cycle exit</span><span class="chip k">MILESTONE:</span><span class="chip k">CYCLE-EXIT:</span><span class="chip k">STUB-CLEAR:</span><span class="chip k">verify</span><span class="chip k">최종 검증</span><span class="chip k">완료 전 검증</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-brainstorming">
+    <div class="head"><span class="name">brainstorming</span><span class="badge gate">gate</span></div>
+    <div class="blurb">raw 아이디어를 Socratic Q&amp;A 로 사용자 승인 spec 으로 변환. design 이 명시 승인될 때까지 모든 구현을 hard-gate.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">brainstorm</span><span class="chip k">brainstorming</span><span class="chip k">브레인스토밍</span><span class="chip k">아이디어 정리</span><span class="chip k">같이 설계</span><span class="chip k">설계부터 하자</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:metis</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:writer</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-deep-dive">
+    <div class="head"><span class="name">deep-dive</span><span class="badge entry">entry</span></div>
+    <div class="blurb">bug-investigation pipeline — 3개 병렬 autonomous tracer lane 으로 인과 조사 후, trace-unresolvable unknown 만 bounded clarification.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">deep dive</span><span class="chip k">deep-dive</span><span class="chip k">trace and clarify</span><span class="chip k">깊게 파봐</span><span class="chip k">심층 분석</span><span class="chip k">원인 추적</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-deep-init">
+    <div class="head"><span class="name">deep-init</span><span class="badge entry">entry</span></div>
+    <div class="blurb">코드베이스 모든 디렉토리에 계층형 AGENTS.md 문서를 자동 생성 — per-directory 스캔, 모듈 목적/export 요약, per-dir context 파일 출력.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">deepinit</span><span class="chip k">deep-init</span><span class="chip k">init project context</span><span class="chip k">딥이닛</span><span class="chip k">프로젝트 컨텍스트 초기화</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:writer</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-tdd-strict">
+    <div class="head"><span class="name">tdd-strict</span><span class="badge disc">discipline</span></div>
+    <div class="blurb">Red → Green → Refactor + 변경 파일 100% line/branch coverage 강제. 자율 메인이 직접 Red 진입 시 Q-TDD-MAIN halt.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">tdd</span><span class="chip k">test first</span><span class="chip k">테스트 먼저</span><span class="chip k">테스트부터</span><span class="chip x">+ autonomous + code-write</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:test-engineer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:debugger</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-code-quality-discipline">
+    <div class="head"><span class="name">code-quality-discipline</span><span class="badge auto">auto · alwaysApply</span></div>
+    <div class="blurb">모든 code-write 툴 콜에서 DRY/YAGNI/KISS, deletion test, depth-before-width, immutability 강제. 기본으로 항상 켜짐 (<code>alwaysApply: true</code>).</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">Edit</span><span class="chip k">Write</span><span class="chip k">MultiEdit</span><span class="chip k">ast_grep_replace</span><span class="chip k">코드 수정</span><span class="chip k">버그 수정</span><span class="chip k">리팩토링</span><span class="chip k">DRY 체크</span><span class="chip k">YAGNI 체크</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:code-simplifier</span></a><a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:analyst</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-systematic-debugging">
+    <div class="head"><span class="name">systematic-debugging</span><span class="badge disc">discipline</span><span class="badge entry">신규</span></div>
+    <div class="blurb">root-cause-first 디버깅 규율 (4 phase + backward tracing + defense-in-depth). 사전 근본 원인 조사 없는 어떤 fix 도 금지.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">bug</span><span class="chip k">test failure</span><span class="chip k">flaky test</span><span class="chip k">performance regression</span><span class="chip k">버그 수정</span><span class="chip k">디버깅</span><span class="chip k">원인 찾아줘</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:debugger</span></a><a href="#agents"><span class="chip a">pi-oven:test-engineer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-improve-codebase-architecture">
+    <div class="head"><span class="name">improve-codebase-architecture</span><span class="badge entry">entry</span><span class="badge entry">신규</span></div>
+    <div class="blurb">deepening 기회 (shallow → deep module) 를 survey · before/after HTML report · grilling loop · 선택적 Design-It-Twice 인터페이스 대안으로 도출. domain glossary + ADR 로 informed.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">improve architecture</span><span class="chip k">deepen modules</span><span class="chip k">shallow module</span><span class="chip k">deletion test</span><span class="chip k">아키텍처 개선</span><span class="chip k">구조 개선</span><span class="chip k">리팩토링 기회</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:code-simplifier</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-receiving-code-review">
+    <div class="head"><span class="name">receiving-code-review</span><span class="badge disc">discipline</span><span class="badge entry">신규</span></div>
+    <div class="blurb">incoming 리뷰 피드백 (human / external / cross-vendor codex) 에 대한 evaluate-before-implement 규율 — 코드베이스에 대조 검증, 근거로 push-back, 절대 performative agreement 금지.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">code review feedback</span><span class="chip k">PR review comments</span><span class="chip k">apply review</span><span class="chip k">fix the comments</span><span class="chip k">리뷰 피드백 반영</span><span class="chip k">리뷰 코멘트 대응</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-git-workflow">
+    <div class="head"><span class="name">git-workflow</span><span class="badge disc">discipline</span><span class="badge entry">신규</span></div>
+    <div class="blurb">feature 작업의 isolated-workspace 라이프사이클 — 시작 시 worktree 셋업, 끝에서 merge / PR / keep / discard. 동일한 환경 감지 로직이 양쪽 경계를 다룸.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">worktree</span><span class="chip k">finish branch</span><span class="chip k">merge</span><span class="chip k">create PR</span><span class="chip k">discard branch</span><span class="chip k">브랜치 정리</span><span class="chip k">워크트리 시작</span><span class="chip k">작업 마무리</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:git-master</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-aws">
+    <div class="head"><span class="name">aws</span><span class="badge auto">UC5 ops</span></div>
+    <div class="blurb">UC5 read-only AWS 프로덕션 커넥터 — 인벤토리 · 배포 상태 · CloudFront/S3/ECR/EC2/CloudWatch 점검. mutation 은 code-first 경계 (AI 가 스크립트만 작성, 실행은 사용자/CI). credential 은 gitignored <code>.external-credentials</code>.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">AWS</span><span class="chip k">cloud infra</span><span class="chip k">S3</span><span class="chip k">CloudFront</span><span class="chip k">EC2</span><span class="chip k">ECR</span><span class="chip k">Route53</span><span class="chip k">CloudWatch</span><span class="chip k">prod read</span><span class="chip k">프로덕션 조회</span><span class="chip k">운영 인프라 조회</span><span class="chip k">AWS 상태 확인</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:debugger</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-bitbucket-pipeline">
+    <div class="head"><span class="name">bitbucket-pipeline</span><span class="badge auto">UC5 ops</span></div>
+    <div class="blurb">UC5 Bitbucket Cloud 커넥터 — pipeline run 상태 · step 진단 · 로그 · repository variable 점검. read-only 점검 + code-first mutation 경계. credential 은 gitignored <code>.external-credentials</code>.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">Bitbucket</span><span class="chip k">pipeline</span><span class="chip k">CI/CD</span><span class="chip k">deploy pipeline</span><span class="chip k">build failed</span><span class="chip k">비트버킷 파이프라인</span><span class="chip k">파이프라인 실패</span><span class="chip k">빌드 실패 로그</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:debugger</span></a><a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-cloudflare">
+    <div class="head"><span class="name">cloudflare</span><span class="badge auto">UC5 ops</span></div>
+    <div class="blurb">UC5 Cloudflare DNS 커넥터 — zone/DNS 점검 · propagation 체크 · DNS-to-origin 진단으로 domain-layer ops 커버리지를 마감. read-only + code-first mutation 경계. credential 은 gitignored <code>.external-credentials</code>.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">Cloudflare</span><span class="chip k">DNS</span><span class="chip k">zone</span><span class="chip k">CNAME</span><span class="chip k">A record</span><span class="chip k">클라우드플레어</span><span class="chip k">DNS 점검</span><span class="chip k">레코드 확인</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a>
+    </div>
+  </div>
+
+  <div class="card" id="s-html-research-orchestrator">
+    <div class="head"><span class="name">html-research-orchestrator</span><span class="badge entry">entry</span></div>
+    <div class="blurb">리서치 기반 self-contained HTML 산출물을 위한 재사용 오케스트레이터 — 2단계 디스패치: ① citation 강제 외부 리서치(claim 마다 source URL · primary source 우선 · confidence high/med/low), ② 결정론적 report section 합성 후 OS temp dir 에 HTML 작성. 생성 산출물의 repo commit 은 엄격히 금지하고, 메인 레인 inline 리서치/직접 작성도 금지하는 orchestration-only 스킬.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">html report</span><span class="chip k">research html</span><span class="chip k">synthesize html output</span><span class="chip k">citation-backed report</span><span class="chip k">temp-dir html deliverable</span><span class="chip k">HTML 리포트</span><span class="chip k">조사 보고서 HTML</span><span class="chip k">리서치 HTML</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:document-specialist</span></a><a href="#agents"><span class="chip a">pi-oven:librarian</span></a><a href="#agents"><span class="chip a">pi-oven:writer</span></a>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>4개 신규 규율 스킬</strong>: <code>systematic-debugging</code> · <code>improve-codebase-architecture</code> · <code>receiving-code-review</code> · <code>git-workflow</code>.
+    Pocock / superpowers 계열에서 흡수해 omp-native 로 재작성했습니다.
+  </div>
+  <div class="note">
+    <strong>3개 UC5 ops 커넥터</strong>: <code>aws</code> · <code>bitbucket-pipeline</code> · <code>cloudflare</code>.
+    read-only 프로덕션 점검 전용 — mutation 은 code-first 경계 (AI 는 스크립트만 작성, 실행은 사용자/CI). credential 은 gitignored <code>.external-credentials</code> (schema: <code>.external-credentials.example</code>).
+  </div>
+</section>
+
+<section id="commands">
+  <h2>7. 3개 커맨드</h2>
+  <p>
+    omp 는 마켓플레이스 커맨드를 <code>&lt;plugin&gt;:&lt;file-basename&gt;</code> 로 네임스페이싱하므로, <span class="path">commands/*.md</span> 파일명은 <strong><code>pi-oven-</code> 접두사 없이</strong> (<code>setup.md</code> → <code>/pi-oven:setup</code>) 여야 합니다. 자율 실행은 커맨드가 아니라 <a href="#s-autonomous-loop"><code>autonomous-loop</code></a> 스킬 키워드로 진입합니다.
+  </p>
+  <table>
+    <thead><tr><th>커맨드</th><th>역할</th><th>주요 인자</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>/pi-oven:setup</code></td>
+        <td>agent 모델 라우팅 셋업 위저드 — Profile A (릴리스 기본) 또는 Profile B (Anthropic opt-in). 메인 오케스트레이터 모델도 설정.</td>
+        <td><code>--status</code> · <code>--reset</code> · <code>--import &lt;file&gt;</code> · <code>--apply --profile A|B</code> · <code>--validate smoke|full|none</code> · <code>--override &lt;role&gt;=&lt;model&gt;</code> · <code>--isolate</code> | <code>--no-isolate</code></td>
+      </tr>
+      <tr>
+        <td><code>/pi-oven:doctor</code></td>
+        <td>설치 헬스 진단 — <strong>10-check 매트릭스</strong> (omp version, bun, git, provider auth, MCP, skills, agents, state dir, eval runner, UC5 ops connector). read-only, 설정 mutate 안 함.</td>
+        <td>인자 없음. <code>pi-oven-doctor.ts</code> 를 Bash 로 dispatch.</td>
+      </tr>
+      <tr>
+        <td><code>/pi-oven:release</code></td>
+        <td>안전한 릴리스 자동화 — version bump + 3-manifest SoT sync + changelog + publish gate. 기본은 안전 (<code>--dry-run</code>).</td>
+        <td><code>--bump major|minor|patch</code> | <code>--version X.Y.Z</code> · <code>--from-tag vX.Y.Z</code> · <code>--dry-run</code> · <code>--publish</code> · <code>--update-changelog</code> · <code>--sync-label</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <strong>doctor 의 10-check</strong> 중 check 4 (provider auth) · 5 (MCP) · 10 (UC5 credential) 은 환경 이슈라 WARN 만 — 절대 FAIL 안 함. check 6/7/9 (skills/agents/eval-runner) 와 10-missing-skills 는 install-integrity FAIL. exit code 는 FAIL 만 반영 (WARN 은 acceptable).
+  </div>
+</section>
+
+<section id="agents">
+  <h2>8. 22개 에이전트 레지스트리</h2>
+  <p>
+    각 에이전트는 <span class="path">agents/pi-oven-*.md</span> 의 frontmatter (<code>name: pi-oven:&lt;role&gt;</code> 콜론, <code>model:</code> 배열 primary→alternate, <code>thinkingLevel</code>, <code>mode</code>, <code>tools</code>/<code>blocked_tools</code>) 와 hand-authored 본문 (그 모델에 맞춘 execution-context 블록 포함) 으로 구성됩니다.
+    아래 표는 primary 모델 패밀리별로 그룹화되어 있습니다.
+  </p>
+
+  <h3><code>anthropic/claude-opus-4-8</code> — 깊은 분석 / 리뷰 (4)</h3>
+  <p style="font-size:13px; color:var(--fg-2);">alternate fallback: <code>opencode-zen/claude-opus-4-8</code>.</p>
+  <table>
+    <thead><tr><th>role</th><th>thinkingLevel</th><th>용도</th></tr></thead>
+    <tbody>
+      <tr><td><code>pi-oven:critic</code></td><td>xhigh</td><td>brutally honest 품질 게이트 — 구조적 gap 분석, multi-perspective 리뷰, severity-rated verdict (READONLY, no Bash)</td></tr>
+      <tr><td><code>pi-oven:planner</code></td><td>high</td><td>bite-sized task 분해 + actionable plan 작성 — interview-driven, spec-compliant, commit-aware (alt: openai-codex/gpt-5.4)</td></tr>
+      <tr><td><code>pi-oven:security-reviewer</code></td><td>xhigh</td><td>보안 취약점 탐지 — OWASP Top 10, STRIDE, secrets, supply chain, CI/CD</td></tr>
+      <tr><td><code>pi-oven:oracle</code></td><td>xhigh</td><td>전략 기술 자문 — 아키텍처 결정, codebase Q&amp;A, 2+ 실패 후 hard debugging 컨설팅 (READONLY)</td></tr>
+    </tbody>
+  </table>
+
+  <h3><code>openai-codex/gpt-5.4</code> — 코드 실행 / 테스트 / 설계 (5)</h3>
+  <p class="note">codex 역할은 frontmatter model 배열로 <code>openai-codex/gpt-5.4</code> primary → <code>opencode-zen/gpt-5.4</code> fallback 라우팅.</p>
+  <table>
+    <thead><tr><th>role</th><th>thinkingLevel</th><th>용도</th></tr></thead>
+    <tbody>
+      <tr><td><code>pi-oven:executor</code></td><td>high</td><td>정밀 코드 구현 — smallest viable diff, spec-compliant, TDD-aware</td></tr>
+      <tr><td><code>pi-oven:debugger</code></td><td>high</td><td>근본 원인 조사 — causal tracing, 경쟁 가설, 증거 순위, minimal-diff fix 권고</td></tr>
+      <tr><td><code>pi-oven:test-engineer</code></td><td>high</td><td>테스트 전략, TDD 강제, unit/integration/e2e 커버리지, flaky test 강화</td></tr>
+      <tr><td><code>pi-oven:architect</code></td><td>xhigh</td><td>cross-cutting 아키텍처 분석 — ADR 작성, coupling/cohesion, 마이그레이션 전략, 시스템 경계 (READ-ONLY)</td></tr>
+      <tr><td><code>pi-oven:metis</code></td><td>xhigh</td><td>요구사항 명료화 + 경량 pre-planning 컨설턴트 — Socratic 인터뷰로 모호 요청 결정화. spawn whitelist: explorer/librarian/document-specialist</td></tr>
+    </tbody>
+  </table>
+
+  <h3><code>opencode-zen/glm-5.1</code> — 구조화 리뷰 / 추적 / 디자인 (7)</h3>
+  <p style="font-size:13px; color:var(--fg-2);">alternate fallback: <code>opencode-zen/claude-sonnet-4-6</code>.</p>
+  <table>
+    <thead><tr><th>role</th><th>thinkingLevel</th><th>용도</th></tr></thead>
+    <tbody>
+      <tr><td><code>pi-oven:designer</code></td><td>high</td><td>UI/UX 디자인 구현 — 컴포넌트 spec, layout, accessibility, design system, mockup handoff</td></tr>
+      <tr><td><code>pi-oven:verifier</code></td><td>high</td><td>fresh-agent cycle-exit verifier — 4 sub-check, evidence-based PASS or BLOCK</td></tr>
+      <tr><td><code>pi-oven:code-reviewer</code></td><td>high</td><td>spec-first 코드 리뷰 — severity-rated, logic 정확성, SOLID, 보안, 회귀 표면</td></tr>
+      <tr><td><code>pi-oven:code-simplifier</code></td><td>xhigh</td><td>deletion-first 단순화 — dead code, AI slop, 불필요 복잡도 제거 (정확한 동작 보존)</td></tr>
+      <tr><td><code>pi-oven:tracer</code></td><td>high</td><td>인과 조사 — call graph, 실행 trace, 의존성 매핑, 경쟁 가설, 증거 순위, next-probe 권고 (no fix)</td></tr>
+      <tr><td><code>pi-oven:analyst</code></td><td>xhigh</td><td>데이터 분석 + metric 조사 — 정량/정성 분석, log mining, 통계 요약, 이상 탐지</td></tr>
+      <tr><td><code>pi-oven:librarian</code></td><td>medium</td><td>웹 리서치 + 외부 문서 — 공식 docs, SDK reference, OSS 예제, citation-backed (READONLY)</td></tr>
+    </tbody>
+  </table>
+
+  <h3><code>opencode-zen/gemini-3-flash</code> — crisp 탐색 / 문서 (4)</h3>
+  <p style="font-size:13px; color:var(--fg-2);">alternate fallback: <code>opencode-zen/claude-haiku-4-5</code> (multimodal-looker 는 <code>claude-sonnet-4-6</code>).</p>
+  <table>
+    <thead><tr><th>role</th><th>thinkingLevel</th><th>용도</th></tr></thead>
+    <tbody>
+      <tr><td><code>pi-oven:explorer</code></td><td>medium</td><td>read-only codebase 검색 — 파일, 패턴, 관계</td></tr>
+      <tr><td><code>pi-oven:writer</code></td><td>medium</td><td>기술 문서 — README, API docs, changelog, inline comment, user guide</td></tr>
+      <tr><td><code>pi-oven:document-specialist</code></td><td>medium</td><td>외부 docs + SDK reference — local repo docs first, curated backend, WebFetch fallback (no 재귀 dispatch)</td></tr>
+      <tr><td><code>pi-oven:multimodal-looker</code></td><td>medium</td><td>vision + 이미지 분석 — 스크린샷, UI mockup, 다이어그램, PDF (READONLY)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>단일 모델 패밀리 — vision / git (2)</h3>
+  <table>
+    <thead><tr><th>role</th><th>모델 (primary → alt)</th><th>thinkingLevel</th><th>용도</th></tr></thead>
+    <tbody>
+      <tr><td><code>pi-oven:qa-tester</code></td><td><code>opencode-zen/gemini-3.5-flash</code> → <code>claude-haiku-4-5</code></td><td>high</td><td>E2E + 통합 테스트 — dev server health check, Playwright visual 검증, 회귀 suite, console error gating</td></tr>
+      <tr><td><code>pi-oven:git-master</code></td><td><code>opencode-zen/claude-haiku-4-5</code> → <code>claude-sonnet-4-6</code></td><td>low</td><td>git 전문 — atomic commit, style-matched message, rebase, safe branch 관리</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    git-master 는 라우팅 재검증에서 <code>opencode-zen/gpt-5-nano</code>/<code>minimal</code> 에서 <code>opencode-zen/claude-haiku-4-5</code>/<code>low</code> 로 승격됐습니다 — 커밋 메시지 스타일 추론 + concern 기반 분할 + rebase 안전성은 기계적이지 않아 경량 추론이 필요하기 때문입니다.
+  </div>
+</section>
+
+<section id="extension">
+  <h2>9. Extension / hooks</h2>
+  <p>
+    스킬 본문은 markdown 이라 스스로 행동을 강제할 수 없습니다. omp extension 이 load-time 검증 + 이벤트 훅을 런타임에서 담당합니다.
+  </p>
+
+  <div class="card">
+    <div class="head"><span class="name">.omp/extensions/pi-oven.ts</span><span class="badge hook">omp extension</span></div>
+    <div class="blurb">omp 가 로드하는 단일 extension. <code>dist/</code> 로 번들 (<code>bun run build</code>). load-time agent registry 검증 + session_start 이벤트 훅 + advisor 툴 등록을 담당합니다.</div>
+    <h4>1. <code>validateAgentRegistry</code> — provider whitelist (load-time)</h4>
+    <ul>
+      <li><strong>Pass 1</strong>: 모든 <code>agents/pi-oven-*.md</code> 의 <code>model:</code> 배열을 메모리로 읽음.</li>
+      <li><code>getAllowedPrefixes</code> 동적 계산: base = <code>["opencode-zen/", "openai-codex/"]</code>; 어떤 에이전트 파일이라도 <code>anthropic/*</code> 모델을 선언하면 <code>"anthropic/"</code> 추가 (agent-file-presence 신호, Spec B §10.5 option c).</li>
+      <li><strong>Pass 2</strong>: 각 파일의 모델 배열을 동적 prefix 리스트에 대조. 위반 시 <code>logger.error</code> ("WHITELIST VIOLATION") — <strong>throw 하지 않음</strong> (soft-error). hard 강제는 CI lint (<code>lint-agents.ts</code>).</li>
+      <li>빈 <code>model:</code> → "Profile A guarantee broken" 에러 (runtime fallback to omp default 위험 경고).</li>
+    </ul>
+    <h4>2. <code>session_start</code> — 부모 모델 캡처 + not-set-up 안내 + rehydrate (이벤트)</h4>
+    <ul>
+      <li><code>ctx.getModel()</code> 로 active 부모 세션 모델 id 를 읽어 <span class="path">~/.omp/plugins/pi-oven-session-model.json</span> 에 <code>{ model, capturedAt }</code> 형태로 기록 (Spec B §6 / §9.6).</li>
+      <li>setup-completion 마커가 없으면 <strong>once-per-session non-blocking "not set up" 안내</strong>를 띄움.</li>
+      <li>discipline rule 을 session_start hot-context 에서 rehydrate (Layer 4). FS 에러는 debug 로그로 swallow (세션 차단 안 함).</li>
+    </ul>
+    <h4>3. <code>pi-oven_ask</code> — advisor 툴</h4>
+    <ul>
+      <li>단일 선택 질문을 omp 의 <code>SelectList</code> 로 라이브 렌더링하며, 각 옵션에 per-option 설명을 함께 표시. 등록 실패는 fail-open (로드 차단 안 함).</li>
+    </ul>
+    <h4>4. 기타</h4>
+    <ul>
+      <li><code>pi.setLabel("pi-oven v0.1.0")</code> + <code>pi.logger.info("pi-oven loaded")</code>.</li>
+    </ul>
+  </div>
+
+  <div class="note ok">
+    <strong>omp-runtime 레이어</strong>: extension 은 스킬 markdown 이 강제할 수 없는 부분(provider whitelist, parent-model 캡처, advisor 툴, discipline rehydrate)만 런타임에서 담당합니다.
+    <code>autonomous-loop</code> 자율 실행은 <strong>의도적으로 LLM-driven</strong> 으로 유지되어 TS state machine 으로 하드코딩되지 않습니다 — 스킬 markdown 규칙 + runtime hot-context 주입으로 구동됩니다.
+  </div>
+</section>
+
+<footer>
+  생성 출처: <code>CLAUDE.md</code> + <code>agents/pi-oven-*.md</code> (22) + <code>skills/*/SKILL.md</code> (21) + <code>commands/*.md</code> (3) + <code>.omp/extensions/pi-oven.ts</code>.
+  pi-oven = <code>oh-my-pi</code> (omp) 플러그인, 마켓플레이스 <code>kzk</code>, <code>pi-oven@kzk</code> (v0.1.0).
+  이 페이지는 읽기 전용 인덱스입니다 — 규칙 충돌 시 위 소스가 우선합니다.
+</footer>
+
+</main>
+</div>
+
+<script>
+  // Scroll-spy: highlight the active TOC entry. No network, no deps.
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a[href^="#"]'));
+    var map = {};
+    links.forEach(function (a) {
+      var id = a.getAttribute('href').slice(1);
+      var el = document.getElementById(id);
+      if (el) map[id] = a;
+    });
+    var targets = Object.keys(map).map(function (id) { return document.getElementById(id); });
+    if (!('IntersectionObserver' in window) || targets.length === 0) return;
+    var active = null;
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          if (active) active.classList.remove('active');
+          active = map[e.target.id];
+          if (active) active.classList.add('active');
+        }
+      });
+    }, { rootMargin: '0px 0px -75% 0px', threshold: 0 });
+    targets.forEach(function (t) { obs.observe(t); });
+  })();
+</script>
+</body>
+</html>

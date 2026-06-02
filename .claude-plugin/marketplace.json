@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "pi-oven",
-      "description": "Curated omp workflow + discipline layer absorbed from 5 frozen sources (omc/omo/Pocock/superpowers/pi-oven)",
+      "description": "Curated omp workflow + discipline layer absorbed from 4 frozen sources (omc/omo/Pocock/superpowers)",
       "source": {
         "source": "git-subdir",
         "url": "https://github.com/kimzerokim/pi-oven.git",

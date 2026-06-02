@@ -16,7 +16,7 @@ const ALWAYS_ALLOWED_PREFIXES = ["opencode-zen/", "openai-codex/"];
 const ANTHROPIC_PREFIX = "anthropic/";
 
 export interface ImportInput {
-  pi-oven?: {
+  "pi-oven"?: {
     profile?: "A" | "B";
     models?: Partial<Record<Role, Partial<ModelEntry>>>;
     provider?: { anthropic?: { enabled?: boolean } };
@@ -50,14 +50,14 @@ export function validateImport(
   }
 
   const root = input as Record<string, unknown>;
-  const pi-oven = root["pi-oven"] as Record<string, unknown> | undefined;
-  if (!pi-oven || typeof pi-oven !== "object") {
+  const piOven = root["pi-oven"] as Record<string, unknown> | undefined;
+  if (!piOven || typeof piOven !== "object") {
     errors.push("Import must contain a top-level 'pi-oven' object.");
     return { ok: false, errors };
   }
 
   // Validate profile — 'custom' is no longer a valid profile
-  const profile = pi-oven["profile"];
+  const profile = piOven["profile"];
   if (profile !== undefined && !["A", "B"].includes(profile as string)) {
     errors.push(`Invalid profile value "${profile}". Allowed: "A", "B".`);
   }
@@ -69,7 +69,7 @@ export function validateImport(
   }
 
   // Validate models
-  const models = pi-oven["models"];
+  const models = piOven["models"];
   if (models !== undefined && typeof models === "object" && models !== null) {
     const rolesSet = new Set<string>(ROLES as readonly string[]);
     const rolesEnumeration = ROLES.join(", ");
@@ -159,7 +159,7 @@ export async function runImport(
     };
   }
 
-  const importInput = (parsed as ImportInput).pi-oven!;
+  const importInput = (parsed as ImportInput)["pi-oven"]!;
   const models = importInput.models;
 
   // No models block → write 0 entries, succeed

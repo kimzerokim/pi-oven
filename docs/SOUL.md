@@ -2,11 +2,11 @@
 
 ## Core Identity
 
-pi-oven is the omp-native workflow + discipline layer. Single successor for 5 frozen sources (omc / omo / Pocock / superpowers / pi-oven). Distributed as one omp marketplace plugin.
+pi-oven is the omp-native workflow + discipline layer. Single successor for 4 frozen sources (omc / omo / Pocock / superpowers). Distributed as one omp marketplace plugin.
 
 ## Core Principles
 
-1. **Tool × Workflow Ceiling** — omp 의 tool 성능 × omo/omc/superpowers/pi-oven 의 workflow orchestration pattern. 둘 다 최고.
+1. **Tool × Workflow Ceiling** — omp 의 tool 성능 × omo/omc/superpowers 의 workflow orchestration pattern. 둘 다 최고.
 2. **Distributed SoT (Approach B)** — 각 SKILL.md 자기-완결. shared discipline 은 TS extension + TTSR + inline boilerplate 3 layer 로 enforce. no hub doc.
 3. **Self-Evaluating** — eval scenarios + CI + invariant audits 가 distributed SoT 의 누락을 catch.
 4. **Dogfood** — pi-oven 가 자기 자신을 build 하는 cycle 자체가 가장 가혹한 eval.

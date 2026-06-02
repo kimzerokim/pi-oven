@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "kzk-pi",
+      "name": "pi-oven",
       "dependencies": {
         "@oh-my-pi/pi-coding-agent": "*",
       },

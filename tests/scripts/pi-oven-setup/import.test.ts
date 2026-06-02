@@ -45,7 +45,7 @@ ${rows}
 describe("validateImport", () => {
   it("accepts a valid Profile A import with opencode-zen prefix", () => {
     const input = {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           executor: {
@@ -63,7 +63,7 @@ describe("validateImport", () => {
 
   it("accepts a valid Profile B import with anthropic prefix when allowAnthropic=true", () => {
     const input = {
-      pi-oven: {
+      "pi-oven": {
         profile: "B",
         models: {
           executor: {
@@ -82,7 +82,7 @@ describe("validateImport", () => {
 
   it("rejects anthropic/* prefix when allowAnthropic=false", () => {
     const input = {
-      pi-oven: {
+      "pi-oven": {
         profile: "B",
         models: {
           executor: {
@@ -100,7 +100,7 @@ describe("validateImport", () => {
 
   it("rejects non-whitelisted prefix (e.g. gpt-4o)", () => {
     const input = {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           executor: {
@@ -118,7 +118,7 @@ describe("validateImport", () => {
 
   it("rejects unknown role name and enumerates all 22 allowed roles in error", () => {
     const input = {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           "my-role": {
@@ -141,7 +141,7 @@ describe("validateImport", () => {
 
   it("rejects invalid profile value", () => {
     const input = {
-      pi-oven: {
+      "pi-oven": {
         profile: "X",
         models: {},
       },
@@ -153,7 +153,7 @@ describe("validateImport", () => {
 
   it("rejects 'custom' profile value", () => {
     const input = {
-      pi-oven: {
+      "pi-oven": {
         profile: "custom",
         models: {},
       },
@@ -165,7 +165,7 @@ describe("validateImport", () => {
 
   it("rejects invalid thinkingLevel value", () => {
     const input = {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           executor: {
@@ -183,7 +183,7 @@ describe("validateImport", () => {
 
   it("accepts partial models (only some roles specified)", () => {
     const input = {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           executor: {
@@ -240,7 +240,7 @@ describe("runImport", () => {
 
   it("returns exitCode 1 on validation failure (unknown role)", async () => {
     const p = writeJson(tempDir, "config.json", {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           "unknown-role": {
@@ -258,7 +258,7 @@ describe("runImport", () => {
 
   it("returns exitCode 1 on validation failure (non-whitelisted prefix)", async () => {
     const p = writeJson(tempDir, "config.json", {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           executor: {
@@ -281,7 +281,7 @@ describe("runImport", () => {
   it("valid import sets pi-oven:executor via omp config set (colon key)", async () => {
     const primary = "opencode-zen/gpt-5.3-codex";
     const p = writeJson(tempDir, "config.json", {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           executor: {
@@ -339,7 +339,7 @@ describe("runImport", () => {
   it("import does NOT touch agents/ files (no agent-rewriter call)", async () => {
     const primary = "opencode-zen/gpt-5.3-codex";
     const p = writeJson(tempDir, "config.json", {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           executor: { primary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
@@ -380,7 +380,7 @@ describe("runImport", () => {
   it("import rejects whitelisted-but-unresolvable primary (exit 1, no config set)", async () => {
     const primary = "opencode-zen/nonexistent-model";
     const p = writeJson(tempDir, "config.json", {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           executor: { primary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
@@ -418,7 +418,7 @@ describe("runImport", () => {
 
   it("import with no models block writes 0 entries and exits 0", async () => {
     const p = writeJson(tempDir, "config.json", {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
       },
     });
@@ -443,7 +443,7 @@ describe("runImport", () => {
   it("import does NOT write plugin-config namespace (no pi-oven.profile or pi-oven.models.* in args)", async () => {
     const primary = "opencode-zen/gpt-5.3-codex";
     const p = writeJson(tempDir, "config.json", {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           executor: { primary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
@@ -481,7 +481,7 @@ describe("runImport", () => {
     const goodPrimary = "opencode-zen/gpt-5.3-codex";
     const badPrimary = "opencode-zen/does-not-exist";
     const p = writeJson(tempDir, "config.json", {
-      pi-oven: {
+      "pi-oven": {
         profile: "A",
         models: {
           executor: { primary: goodPrimary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },

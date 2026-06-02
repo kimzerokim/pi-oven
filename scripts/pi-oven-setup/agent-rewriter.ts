@@ -138,7 +138,7 @@ function parseAgentFile(filePath: string, content: string): AgentFileEntry | nul
   if (!nameLine) return null;
   const nameVal = nameLine.replace(/^name:\s*/, "").trim();
   // nameVal is like "pi-oven:executor" or "pi-oven:code-reviewer"
-  const rolePart = nameVal.startsWith("pi-oven:") ? nameVal.slice(4) : nameVal;
+  const rolePart = nameVal.startsWith("pi-oven:") ? nameVal.slice("pi-oven:".length) : nameVal;
   const role = rolePart as Role;
   if (!(ROLES as readonly string[]).includes(role)) return null;
 

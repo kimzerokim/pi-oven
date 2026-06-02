@@ -4,7 +4,7 @@ Last updated: 2026-06-02
 
 ## Purpose
 
-pi-oven v1 build. omp marketplace plugin as single successor for 5 frozen sources (omc / omo / Pocock / superpowers / pi-oven).
+pi-oven v1 build. omp marketplace plugin as single successor for 4 frozen sources (omc / omo / Pocock / superpowers).
 
 ## Current Status (v0.1.0)
 

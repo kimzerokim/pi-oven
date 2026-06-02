@@ -131,7 +131,7 @@ describe("pi-oven-setup CLI dispatcher", () => {
     writeFileSync(
       importFile,
       JSON.stringify({
-        pi-oven: {
+        "pi-oven": {
           profile: "A",
           models: {
             executor: {
@@ -153,7 +153,7 @@ describe("pi-oven-setup CLI dispatcher", () => {
   });
 
   it("--profile B: exits 0 with validateMode=none", async () => {
-    writeFileSync(lockPath, JSON.stringify({ settings: { pi-oven: {} } }), "utf-8");
+    writeFileSync(lockPath, JSON.stringify({ settings: { "pi-oven": {} } }), "utf-8");
     for (const role of ROLES) {
       makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
     }
@@ -179,7 +179,7 @@ describe("pi-oven-setup CLI dispatcher", () => {
 
   it("dispatch precedence: --reset takes priority over --import", async () => {
     const importFile = join(tempDir, "config.json");
-    writeFileSync(importFile, JSON.stringify({ pi-oven: { profile: "A", models: {} } }), "utf-8");
+    writeFileSync(importFile, JSON.stringify({ "pi-oven": { profile: "A", models: {} } }), "utf-8");
 
     const { exitCode, stdout } = await runCLI(["--reset", "--import", importFile], {
       PI_OVEN_MOCK_SPAWN: "1",

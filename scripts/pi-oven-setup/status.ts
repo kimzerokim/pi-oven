@@ -37,7 +37,7 @@ export async function runStatus(
   const strayWarnings: string[] = [];
   for (const key of Object.keys(overrides)) {
     if (key.startsWith("pi-oven:")) {
-      const role = key.slice(4);
+      const role = key.slice("pi-oven:".length);
       if (!(ROLES as readonly string[]).includes(role)) {
         strayWarnings.push(`  WARNING: unknown role override key "${key}" (not in ROLES)`);
       }

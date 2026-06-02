@@ -26,9 +26,9 @@
     "./skills/cloudflare/SKILL.md"
   ],
   "commands": [
-    "./commands/pi-oven-setup.md",
-    "./commands/pi-oven-doctor.md",
-    "./commands/pi-oven-autonomous.md"
+    "./commands/setup.md",
+    "./commands/doctor.md",
+    "./commands/release.md"
   ],
   "hooks": [],
   "mcpServers": {}

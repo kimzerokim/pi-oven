@@ -29,9 +29,9 @@ const EXPECTED_SKILLS = [
 ] as const;
 
 const EXPECTED_COMMANDS = [
-  "./commands/pi-oven-setup.md",
-  "./commands/pi-oven-doctor.md",
-  "./commands/pi-oven-autonomous.md",
+  "./commands/setup.md",
+  "./commands/doctor.md",
+  "./commands/release.md",
 ] as const;
 
 // Number of skill directories on disk that contain a SKILL.md. Computed from

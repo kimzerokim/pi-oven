@@ -30,6 +30,11 @@ Providers carry an `id` + `priority`; capabilities merge by provider priority
 | `agents-md` | 10 | repo-root + ancestor `AGENTS.md` (walk-up from cwd; skips dot-dirs) |
 | `codex` / `gemini` / `opencode` | — | `~/.codex/AGENTS.md`, `GEMINI.md`, opencode skills |
 
+The `claude-plugins` ("Claude Code Marketplace") provider registers a
+marketplace-plugin's **commands** (and skills) as `<plugin>:<file-basename>`
+colon namespacing — so a command file's basename becomes the slash name and
+must NOT carry the plugin-name prefix. See `omp-marketplace-command-namespacing.md`.
+
 ## The single isolation knob: `disabledProviders`
 
 `src/config/settings-schema.ts:337` `disabledProviders: array`. At startup

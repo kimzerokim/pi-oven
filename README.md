@@ -425,10 +425,9 @@ pi-oven/
 │   ├── plugin/
 │   └── scripts/
 ├── commands/                # slash command prompt templates
-│   ├── pi-oven-setup.md
-│   ├── pi-oven-doctor.md
-│   ├── pi-oven-autonomous.md
-│   └── pi-oven-release.md
+│   ├── setup.md
+│   ├── doctor.md
+│   └── release.md
 └── docs/
     ├── specs/               # design specs (foundation + agent registry + setup wizard + skill rewrite)
     ├── plans/               # implementation plans

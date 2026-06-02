@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 const SKILL_PATH = path.resolve(__dirname, "../../skills/autonomous-loop/SKILL.md");
-const COMMAND_PATH = path.resolve(__dirname, "../../commands/pi-oven-autonomous.md");
 const PLANNER_PATH = path.resolve(__dirname, "../../agents/pi-oven-planner.md");
 const CODEBASE_SURVEY_ADVERSARIAL_PATH = path.resolve(__dirname, "../../evals/codebase-survey/scenarios/adversarial.yaml");
 
@@ -24,17 +23,7 @@ describe("autonomous delegation-first policy", () => {
     expect(content).toContain("MUST NOT implement inline code");
   });
 
-  it("command flow requires delegation-first execution and wiring audit", async () => {
-    const content = await readFile(COMMAND_PATH, "utf-8");
-    expect(content).toContain("Per-cycle work (delegation-first, no inline implementation)");
-    expect(content).toContain("dispatch `pi-oven:explorer` + `pi-oven:tracer` + `pi-oven:analyst` in parallel");
-    expect(content).toContain("full inventory audit over `skills/`, `commands/`, `agents/`, and `evals/`; no sampling");
-    expect(content).toContain("Planner input contract: `pi-oven:planner` MUST receive the full-sweep findings");
-    expect(content).toContain("MUST NOT produce a plan from partial subsystem reads");
-    expect(content).toContain("Agent-wiring audit: run");
-    expect(content).toContain("scripts/lint-skills.ts");
-    expect(content).toContain("Main agent is orchestrator only");
-
+  it("planner and survey eval enforce full-sweep, no-sampling evidence", async () => {
     const plannerContent = await readFile(PLANNER_PATH, "utf-8");
     expect(plannerContent).toContain("pi-oven self-improvement or plugin-surface planning");
     expect(plannerContent).toContain("MUST require full-sweep, no-sampling survey evidence");

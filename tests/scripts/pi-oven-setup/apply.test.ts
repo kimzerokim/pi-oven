@@ -169,12 +169,137 @@ describe("runApply", () => {
   });
 
   // -------------------------------------------------------------------------
-  // No agentsDir → validate only, no file mutation
+  // No agentsDir (user setup) → writes the MAIN ORCHESTRATOR model roles only
+  // -------------------------------------------------------------------------
+
+  // Mock that serves `omp config get modelRoles --json` as a record (with a
+  // sibling key to assert preservation), and exit-0 for every other call.
+  function makeUserPathSpawn(siblings: Record<string, string> = { someSibling: "keep" }) {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      if (args[0] === "config" && args[1] === "get" && args[2] === "modelRoles") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(
+            JSON.stringify({ key: "modelRoles", value: siblings, type: "record", description: "" })
+          ),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+    return { spawnCalls, mockSpawnFn };
+  }
+
+  it("runApply WITHOUT agentsDir writes exactly ONE whole-record `modelRoles` (default+title merged, NOT dotted) and ZERO task.agentModelOverrides", async () => {
+    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
+
+    await runApply({
+      profile: "A",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      // agentsDir intentionally omitted → user setup path
+    });
+
+    // Exactly ONE atomic whole-record write, keyed `modelRoles` (NOT dotted).
+    const modelRoleSets = spawnCalls.filter(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
+    );
+    expect(modelRoleSets.length).toBe(1);
+
+    // No dotted modelRoles.* write may exist (omp rejects undeclared dotted keys).
+    const dottedSets = spawnCalls.filter(
+      (c) =>
+        c.args[0] === "config" &&
+        c.args[1] === "set" &&
+        typeof c.args[2] === "string" &&
+        c.args[2].startsWith("modelRoles.")
+    );
+    expect(dottedSets.length).toBe(0);
+
+    // Merged whole-record contains the new default+title AND preserves the sibling.
+    const merged = JSON.parse(modelRoleSets[0].args[3]);
+    expect(merged.default).toBe("openai-codex/gpt-5.4:high");
+    expect(merged.title).toBe("openai-codex/gpt-5.4-mini:low");
+    expect(merged.someSibling).toBe("keep");
+
+    // Anti-Spec-E regression: NO task.agentModelOverrides may be written.
+    const overrideWrites = spawnCalls.filter(
+      (c) =>
+        c.args[0] === "config" &&
+        c.args[1] === "set" &&
+        c.args[2] === "task.agentModelOverrides"
+    );
+    expect(overrideWrites.length).toBe(0);
+  });
+
+  it("runApply WITHOUT agentsDir writes PROFILE_A orchestrator values for profile A", async () => {
+    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
+
+    await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const setCall = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
+    );
+    const merged = JSON.parse(setCall!.args[3]);
+    expect(merged.default).toBe("openai-codex/gpt-5.4:high");
+    expect(merged.title).toBe("openai-codex/gpt-5.4-mini:low");
+  });
+
+  it("runApply WITHOUT agentsDir writes PROFILE_B orchestrator values for profile B", async () => {
+    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
+
+    await runApply({ profile: "B", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const setCall = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
+    );
+    const merged = JSON.parse(setCall!.args[3]);
+    expect(merged.default).toBe("anthropic/claude-opus-4-7:high");
+    expect(merged.title).toBe("anthropic/claude-haiku-4-5:low");
+  });
+
+  it("runApply WITH agentsDir rewrites agent files and writes ZERO modelRoles", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    populateAgents(agentsDir, PROFILE_B);
+
+    await runApply({
+      profile: "A",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      agentsDir,
+    });
+
+    // Maintainer path rewrote frontmatter…
+    const entries = await readAgentFiles(agentsDir);
+    const executor = entries.find((e) => e.role === "executor")!;
+    expect(executor.currentModel[0]).toBe(PROFILE_A.executor.primary);
+
+    // …and wrote NO modelRoles (orchestrator write is the user-setup path only),
+    // neither the whole-record `modelRoles` key nor any dotted modelRoles.*.
+    const modelRoleSets = spawnCalls.filter(
+      (c) =>
+        c.args[0] === "config" &&
+        c.args[1] === "set" &&
+        typeof c.args[2] === "string" &&
+        (c.args[2] === "modelRoles" || c.args[2].startsWith("modelRoles."))
+    );
+    expect(modelRoleSets.length).toBe(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // No agentsDir → no file mutation
   // -------------------------------------------------------------------------
 
   it("runApply without agentsDir runs validate only, no file mutation", async () => {
-    const mockSpawnFn = (_cmd: string, _args: string[]) =>
-      ({ exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any);
+    // User path: serve a valid modelRoles record for the get, exit-0 otherwise.
+    const { mockSpawnFn } = makeUserPathSpawn();
 
     // Populate the dir but do NOT pass it — files must remain untouched
     populateAgents(agentsDir, PROFILE_A);

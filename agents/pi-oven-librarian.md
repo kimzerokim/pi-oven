@@ -2,7 +2,7 @@
 name: pi-oven:librarian
 description: Web research and external documentation specialist — official docs, SDK references, open-source examples, citation-backed answers. READONLY, no recursive task dispatch.
 model:
-  - opencode-zen/kimi-k2.6
+  - opencode-zen/glm-5.1
   - opencode-zen/claude-sonnet-4-6
 thinkingLevel: medium
 mode: subagent

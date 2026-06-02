@@ -1,13 +1,30 @@
 /**
  * --apply subcommand for pi-oven setup wizard.
- * Spec E §3.3 — MAINTAINER-GENERATE ONLY.
- * Generates repo agents/ frontmatter from PROFILE_A/B via agent-rewriter.
- * Does NOT write plugin-config keys. Personal override is the --override path (Task 2.1).
+ *
+ * Two modes, keyed on whether `agentsDir` is supplied:
+ * - WITH agentsDir = maintainer generate: rewrites repo agents/ frontmatter
+ *   (model: array + thinkingLevel) from PROFILE_A/B via agent-rewriter. Writes
+ *   NO config keys.
+ * - WITHOUT agentsDir = user setup: writes the MAIN ORCHESTRATOR model pair
+ *   (the `default` + `title` keys of the `modelRoles` record) from
+ *   PROFILE_*_ORCHESTRATOR in ONE atomic whole-record merge-write.
+ *   It NEVER writes task.agentModelOverrides (the 22 subagent overrides) — that
+ *   per-role write is banned by Spec E (frozen). modelRoles.default is the
+ *   top-level session/orchestrator model, which is orthogonal and allowed.
+ *
+ * Personal per-role override is the --override path (Task 2.1).
  */
 
 import { rewriteAllAgents } from "./agent-rewriter";
 import { runValidate } from "./validate";
-import { PROFILE_A, PROFILE_B, type ProfileMap } from "./profiles";
+import { setModelRoles } from "./config-yml";
+import {
+  PROFILE_A,
+  PROFILE_B,
+  PROFILE_A_ORCHESTRATOR,
+  PROFILE_B_ORCHESTRATOR,
+  type ProfileMap,
+} from "./profiles";
 
 export interface ApplyOptions {
   profile: "A" | "B";
@@ -17,23 +34,40 @@ export interface ApplyOptions {
 }
 
 /**
- * Apply a profile (maintainer-generate only):
+ * Apply a profile:
  * 1. Resolve profileMap = PROFILE_A or PROFILE_B.
- * 2. If agentsDir provided, rewrite agent files (maintainer generate).
+ * 2. WITH agentsDir → rewrite agent files (maintainer generate); write NO config.
+ *    WITHOUT agentsDir → user setup: write the MAIN ORCHESTRATOR model pair
+ *    (the modelRoles record's default + title keys) from PROFILE_*_ORCHESTRATOR
+ *    in ONE atomic whole-record merge-write.
  * 3. runValidate per validateMode (default smoke).
  * 4. Return exit 0 if all ok; exit 1 if validation fails.
  *
- * Does NOT write any plugin-config (omp plugin config set) keys.
- * Personal override is the --override path (runOverride, Task 2.1).
+ * NEVER writes task.agentModelOverrides (the 22 subagent overrides) — Spec E
+ * (frozen) bans that per-role write. modelRoles.default is the top-level
+ * session/orchestrator model and is orthogonal/allowed. Personal per-role
+ * override is the --override path (runOverride, Task 2.1).
  */
 export async function runApply(
   opts: ApplyOptions
 ): Promise<{ exitCode: number; output: string }> {
   const profileMap: ProfileMap = opts.profile === "B" ? PROFILE_B : PROFILE_A;
 
-  // Rewrite agent files (maintainer generate — only when agentsDir given)
   if (opts.agentsDir) {
+    // Maintainer generate: rewrite agent files only, write no config keys.
     await rewriteAllAgents(opts.agentsDir, profileMap);
+  } else {
+    // User setup: write the MAIN ORCHESTRATOR model pair (modelRoles default +
+    // title) in ONE atomic whole-record merge-write. omp's schema declares
+    // `modelRoles` as a record, so dotted `modelRoles.default` writes are
+    // rejected — setModelRoles read-merge-writes the whole record, preserving
+    // sibling roles. Never task.agentModelOverrides (anti-Spec-E).
+    const orchestrator =
+      opts.profile === "B" ? PROFILE_B_ORCHESTRATOR : PROFILE_A_ORCHESTRATOR;
+    await setModelRoles(
+      { default: orchestrator.default, title: orchestrator.title },
+      { spawnFn: opts.spawnFn }
+    );
   }
 
   // Validate

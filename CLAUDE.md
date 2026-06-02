@@ -27,7 +27,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 526 pass currently
+bun test             # 544 pass currently
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -48,13 +48,13 @@ bun run release:pi-oven -- --bump patch --dry-run  # release automation (safe de
 | Model | thinkingLevel | Roles |
 |---|---|---|
 | `anthropic/claude-opus-4-8` | xhigh / high | critic, planner, security-reviewer, oracle |
-| `openai-codex/gpt-5.3-codex` | high | executor, debugger, test-engineer |
-| `openai-codex/gpt-5.4` | xhigh | architect, metis (+ planner alt) |
-| `opencode-zen/kimi-k2.6` | med→xhigh | verifier, code-reviewer, code-simplifier, tracer, analyst, librarian |
+| `openai-codex/gpt-5.4` | high / xhigh | executor, debugger, test-engineer, architect, metis (+ planner alt) |
 | `opencode-zen/gemini-3-flash` | medium | explorer, writer, document-specialist, multimodal-looker |
 | `opencode-zen/gemini-3.5-flash` | high | qa-tester (vision) |
-| `opencode-zen/glm-5.1` | high | designer |
+| `opencode-zen/glm-5.1` | med→xhigh | designer, verifier, code-reviewer, code-simplifier, tracer, analyst, librarian |
 | `opencode-zen/claude-haiku-4-5` | low | git-master (re-validated off gpt-5-nano 2026-05-29) |
+
+`/pi-oven:setup --profile` now also sets the main orchestrator model (`modelRoles.default` + `modelRoles.title`), separate from the 22 subagent roles.
 
 Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/` always; `anthropic/` only if an agent file already declares an `anthropic/*` model. **PROFILE_B** (anthropic-promoted opt-in) is **DEFERRED** — do not bump/redefine without explicit user instruction (still on retired `opus-4-7` ids by design).
 

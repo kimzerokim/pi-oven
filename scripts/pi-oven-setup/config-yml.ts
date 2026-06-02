@@ -237,6 +237,66 @@ export async function deletePiOvenAgentModelOverrides(
 }
 
 // ---------------------------------------------------------------------------
+// modelRoles (RECORD) — the MAIN orchestrator model pair (default + title).
+// Same whole-record merge transport as task.agentModelOverrides: omp config get
+// modelRoles --json → in-memory merge → omp config set modelRoles '<json>'.
+// omp's settings schema declares `modelRoles` as a `record` (NOT individual
+// `modelRoles.<role>` dotted keys), so `omp config set modelRoles.default <v>`
+// is REJECTED ("Unknown setting") — the write MUST target the whole record.
+// This is ORTHOGONAL to task.agentModelOverrides: modelRoles holds the launched
+// top-level session/orchestrator model, NOT a subagent override (Spec E's
+// per-role-write ban applies only to task.agentModelOverrides).
+// ---------------------------------------------------------------------------
+
+/**
+ * STRICT read for the WRITE path (fail-closed). Spawns
+ * `omp config get modelRoles --json` and parses the `{type:"record"}` shape via
+ * the shared parseGetOutput helper. Returns { ok: true, record } or
+ * { ok: false, error }. Callers MUST abort on ok:false — never merge-into-{}
+ * then set (that would wipe sibling modelRoles the user set themselves).
+ */
+export async function readModelRolesStrict(
+  opts?: ConfigYmlOpts
+): Promise<{ ok: true; record: Record<string, string> } | { ok: false; error: string }> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "get", "modelRoles", "--json"]);
+
+  if (result.exitCode !== 0) {
+    return { ok: false, error: `omp config get exited ${String(result.exitCode)}` };
+  }
+
+  const stdout = result.stdout?.toString() ?? "";
+  return parseGetOutput(stdout);
+}
+
+/**
+ * SET the MAIN orchestrator model roles atomically: readModelRolesStrict → if
+ * !ok ABORT(throw, never merge-into-{}) → merge the provided roles into the
+ * record (preserving all sibling keys) → ONE `omp config set modelRoles
+ * '<whole-merged-json>'` write. Throws (including stderr) on a non-zero set exit.
+ */
+export async function setModelRoles(
+  roles: Record<string, string>,
+  opts?: ConfigYmlOpts
+): Promise<void> {
+  const readResult = await readModelRolesStrict(opts);
+  if (!readResult.ok) {
+    throw new Error(`setModelRoles: readModelRolesStrict failed — ${readResult.error}`);
+  }
+
+  const merged = { ...readResult.record, ...roles };
+
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const setResult = spawn("omp", ["config", "set", "modelRoles", JSON.stringify(merged)]);
+
+  if (setResult.exitCode !== 0) {
+    throw new Error(
+      `setModelRoles: omp config set modelRoles failed (exit ${String(setResult.exitCode)}): ${setResult.stderr?.toString() ?? ""}`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // disabledProviders (ARRAY) — the ~/.claude isolation toggle.
 // Same transport as the overrides path: omp config get disabledProviders --json
 // → in-memory merge → omp config set disabledProviders '<whole-merged-json>'.

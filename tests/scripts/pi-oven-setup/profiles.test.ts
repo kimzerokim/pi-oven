@@ -4,6 +4,8 @@ import {
   ROLES,
   PROFILE_A,
   PROFILE_B,
+  PROFILE_A_ORCHESTRATOR,
+  PROFILE_B_ORCHESTRATOR,
 } from "../../../scripts/pi-oven-setup/profiles";
 
 /**
@@ -55,6 +57,38 @@ describe("profiles", () => {
         expect(ok).toBe(true);
       }
     });
+
+    // Retired-model invariants: kimi-k2.6 and gpt-5.3-codex were swapped out of
+    // PROFILE_A (kimi→glm-5.1 reasoning roles; gpt-5.3-codex→gpt-5.4 codex roles).
+    // These pin the swap so a regression that reintroduces either id fails CI.
+    it("executor/debugger/test-engineer primary is openai-codex/gpt-5.4", () => {
+      for (const role of ["executor", "debugger", "test-engineer"] as const) {
+        expect(PROFILE_A[role].primary).toBe("openai-codex/gpt-5.4");
+      }
+    });
+
+    it("the 6 reasoning roles primary is opencode-zen/glm-5.1", () => {
+      for (const role of [
+        "verifier",
+        "code-reviewer",
+        "code-simplifier",
+        "tracer",
+        "analyst",
+        "librarian",
+      ] as const) {
+        expect(PROFILE_A[role].primary).toBe("opencode-zen/glm-5.1");
+      }
+    });
+
+    it("contains no kimi-k2.6 and no gpt-5.3-codex anywhere", () => {
+      for (const role of ROLES) {
+        const { primary, registry_alternate } = PROFILE_A[role];
+        for (const id of [primary, registry_alternate]) {
+          expect(id).not.toContain("kimi-k2.6");
+          expect(id).not.toContain("gpt-5.3-codex");
+        }
+      }
+    });
   });
 
   describe("PROFILE_B", () => {
@@ -86,6 +120,24 @@ describe("profiles", () => {
         expect(allowed.has(PROFILE_A[role].thinkingLevel)).toBe(true);
         expect(allowed.has(PROFILE_B[role].thinkingLevel)).toBe(true);
       }
+    });
+  });
+
+  describe("orchestrator models", () => {
+    it("PROFILE_A_ORCHESTRATOR sets the main session + title models", () => {
+      expect(PROFILE_A_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.4:high");
+      expect(PROFILE_A_ORCHESTRATOR.title).toBe(
+        "openai-codex/gpt-5.4-mini:low"
+      );
+    });
+
+    it("PROFILE_B_ORCHESTRATOR reuses deferred-B anthropic ids", () => {
+      expect(PROFILE_B_ORCHESTRATOR.default).toBe(
+        "anthropic/claude-opus-4-7:high"
+      );
+      expect(PROFILE_B_ORCHESTRATOR.title).toBe(
+        "anthropic/claude-haiku-4-5:low"
+      );
     });
   });
 });

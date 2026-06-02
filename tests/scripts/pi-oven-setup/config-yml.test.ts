@@ -9,6 +9,8 @@ import {
   readDisabledProvidersStrict,
   setPiOvenDisabledProviders,
   clearPiOvenDisabledProviders,
+  readModelRolesStrict,
+  setModelRoles,
   PI_OVEN_MANAGED_PROVIDERS,
   PI_OVEN_DEPRECATED_PROVIDERS,
 } from "../../../scripts/pi-oven-setup/config-yml";
@@ -61,6 +63,21 @@ function okGetArrayResult(value: string[]): SpawnResult {
         key: "disabledProviders",
         value,
         type: "array",
+        description: "",
+      })
+    ),
+    stderr: Buffer.from(""),
+  };
+}
+
+function okGetModelRolesResult(value: Record<string, string>): SpawnResult {
+  return {
+    exitCode: 0,
+    stdout: Buffer.from(
+      JSON.stringify({
+        key: "modelRoles",
+        value,
+        type: "record",
         description: "",
       })
     ),
@@ -555,6 +572,118 @@ describe("setPiOvenDisabledProviders", () => {
 // ---------------------------------------------------------------------------
 // clearPiOvenDisabledProviders
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// readModelRolesStrict — fail-closed strict read of the modelRoles record
+// ---------------------------------------------------------------------------
+
+describe("readModelRolesStrict", () => {
+  it("ok:true on record shape, spawns `omp config get modelRoles --json`", async () => {
+    const { fn, calls } = makeSpawnFn([
+      okGetModelRolesResult({ default: "m", title: "t" }),
+    ]);
+    const result = await readModelRolesStrict({ spawnFn: fn });
+    expect(calls[0]).toEqual(["omp", "config", "get", "modelRoles", "--json"]);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.record).toEqual({ default: "m", title: "t" });
+  });
+
+  it("ok:true record:{} on fresh empty value", async () => {
+    const { fn } = makeSpawnFn([okGetModelRolesResult({})]);
+    const result = await readModelRolesStrict({ spawnFn: fn });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.record).toEqual({});
+  });
+
+  it("ok:false on malformed JSON (fail-closed)", async () => {
+    const { fn } = makeSpawnFn([
+      { exitCode: 0, stdout: Buffer.from("not json{{{"), stderr: Buffer.from("") },
+    ]);
+    const result = await readModelRolesStrict({ spawnFn: fn });
+    expect(result.ok).toBe(false);
+  });
+
+  it("ok:false on get non-zero exit", async () => {
+    const { fn } = makeSpawnFn([
+      { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("err") },
+    ]);
+    const result = await readModelRolesStrict({ spawnFn: fn });
+    expect(result.ok).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setModelRoles — atomic whole-record merge-write of modelRoles
+// ---------------------------------------------------------------------------
+
+describe("setModelRoles", () => {
+  it("read-merge-writes the WHOLE modelRoles record (key is exactly `modelRoles`, NOT dotted) and PRESERVES siblings", async () => {
+    const { fn, calls } = makeSpawnFn([
+      okGetModelRolesResult({ default: "old", title: "old", someSibling: "keep" }),
+      okSetResult(),
+    ]);
+    await setModelRoles(
+      { default: "openai-codex/gpt-5.4:high", title: "openai-codex/gpt-5.4-mini:low" },
+      { spawnFn: fn }
+    );
+
+    // get call
+    expect(calls[0]).toEqual(["omp", "config", "get", "modelRoles", "--json"]);
+
+    // exactly ONE set call, whole-record (NOT modelRoles.default / modelRoles.title)
+    const setCalls = calls.filter((c) => c[2] === "set");
+    expect(setCalls.length).toBe(1);
+    expect(setCalls[0][3]).toBe("modelRoles");
+    expect(setCalls[0][3]).not.toBe("modelRoles.default");
+    expect(setCalls[0][3]).not.toBe("modelRoles.title");
+
+    // value is the MERGED whole-record JSON: new default+title AND preserved sibling
+    const merged = JSON.parse(setCalls[0][4]);
+    expect(merged).toEqual({
+      default: "openai-codex/gpt-5.4:high",
+      title: "openai-codex/gpt-5.4-mini:low",
+      someSibling: "keep",
+    });
+  });
+
+  it("ABORTS on corrupt get — set NOT called (never merge-into-{})", async () => {
+    const { fn, calls } = makeSpawnFn([
+      { exitCode: 0, stdout: Buffer.from("not json{{{"), stderr: Buffer.from("") },
+    ]);
+    await expect(
+      setModelRoles({ default: "x", title: "y" }, { spawnFn: fn })
+    ).rejects.toThrow();
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
+  });
+
+  it("throws when get exits non-zero — set NOT called", async () => {
+    const { fn, calls } = makeSpawnFn([
+      { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("err") },
+    ]);
+    await expect(
+      setModelRoles({ default: "x", title: "y" }, { spawnFn: fn })
+    ).rejects.toThrow();
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
+  });
+
+  it("throws (including stderr) when omp config set exits non-zero", async () => {
+    const { fn } = makeSpawnFn([
+      okGetModelRolesResult({}),
+      { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("boom") },
+    ]);
+    await expect(
+      setModelRoles({ default: "x", title: "y" }, { spawnFn: fn })
+    ).rejects.toThrow(/boom/);
+  });
+
+  it("writes onto a fresh empty modelRoles record", async () => {
+    const { fn, calls } = makeSpawnFn([okGetModelRolesResult({}), okSetResult()]);
+    await setModelRoles({ default: "d", title: "t" }, { spawnFn: fn });
+    const setCalls = calls.filter((c) => c[2] === "set");
+    expect(setCalls[0][3]).toBe("modelRoles");
+    expect(JSON.parse(setCalls[0][4])).toEqual({ default: "d", title: "t" });
+  });
+});
 
 describe("clearPiOvenDisabledProviders", () => {
   it("removes managed + legacy providers, preserves siblings, returns removed sorted", async () => {

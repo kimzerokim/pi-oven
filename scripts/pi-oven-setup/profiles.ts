@@ -45,8 +45,10 @@ export type ProfileMap = Record<Role, ModelEntry>;
  * Benchmark + cost-optimized routing (2026-05-29 OPTIMIZED-MODEL revision).
  * 3 high-stakes roles (critic, security-reviewer, oracle) use anthropic/ primary.
  * 5 roles use openai-codex/ subscription as primary
- * (executor/debugger/test-engineer = gpt-5.3-codex;
+ * (executor/debugger/test-engineer = gpt-5.4;
  *  architect/metis = gpt-5.4; planner alternate = gpt-5.4).
+ * 6 reasoning roles (verifier, code-reviewer, code-simplifier, tracer,
+ *  analyst, librarian) use opencode-zen/glm-5.1 as primary.
  * Default fallback policy: opencode-zen/ wrapper of the same model id.
  * Exception: planner falls back to openai-codex/gpt-5.4 for codex-review
  * cross-validation per user policy.
@@ -54,8 +56,8 @@ export type ProfileMap = Record<Role, ModelEntry>;
  */
 export const PROFILE_A: ProfileMap = {
   executor: {
-    primary: "openai-codex/gpt-5.3-codex",
-    registry_alternate: "opencode-zen/gpt-5.3-codex",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4-pro",
     thinkingLevel: "high",
   },
   explorer: {
@@ -64,7 +66,7 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "medium",
   },
   verifier: {
-    primary: "opencode-zen/kimi-k2.6",
+    primary: "opencode-zen/glm-5.1",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "high",
   },
@@ -79,18 +81,18 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "high",
   },
   "code-reviewer": {
-    primary: "opencode-zen/kimi-k2.6",
+    primary: "opencode-zen/glm-5.1",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "high",
   },
   debugger: {
-    primary: "openai-codex/gpt-5.3-codex",
-    registry_alternate: "opencode-zen/gpt-5.3-codex",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4-pro",
     thinkingLevel: "high",
   },
   "test-engineer": {
-    primary: "openai-codex/gpt-5.3-codex",
-    registry_alternate: "opencode-zen/gpt-5.3-codex",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4-pro",
     thinkingLevel: "high",
   },
   "security-reviewer": {
@@ -109,7 +111,7 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "high",
   },
   "code-simplifier": {
-    primary: "opencode-zen/kimi-k2.6",
+    primary: "opencode-zen/glm-5.1",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "xhigh",
   },
@@ -129,12 +131,12 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "medium",
   },
   tracer: {
-    primary: "opencode-zen/kimi-k2.6",
+    primary: "opencode-zen/glm-5.1",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "high",
   },
   analyst: {
-    primary: "opencode-zen/kimi-k2.6",
+    primary: "opencode-zen/glm-5.1",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "xhigh",
   },
@@ -144,7 +146,7 @@ export const PROFILE_A: ProfileMap = {
     thinkingLevel: "xhigh",
   },
   librarian: {
-    primary: "opencode-zen/kimi-k2.6",
+    primary: "opencode-zen/glm-5.1",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
     thinkingLevel: "medium",
   },
@@ -163,6 +165,31 @@ export const PROFILE_A: ProfileMap = {
     registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "xhigh",
   },
+};
+
+/**
+ * The MAIN ORCHESTRATOR (top-level session) model pair, distinct from the 22
+ * subagent roles above. Maps to omp `modelRoles.default` (the launched session /
+ * orchestrator model, resolved at main.ts:575 / sdk.ts:1003) and
+ * `modelRoles.title` (the cheap model omp uses to auto-title sessions). These
+ * live OUTSIDE ProfileMap so it stays exactly 22 roles for lint-agents.
+ * Written by `/pi-oven:setup --profile` (the user-setup apply path), NOT by the
+ * maintainer agent-frontmatter generate path. PROFILE_B reuses only ids that
+ * PROFILE_B already declares (B is DEFERRED — no new B ids introduced here).
+ */
+export interface OrchestratorModels {
+  default: string;
+  title: string;
+}
+
+export const PROFILE_A_ORCHESTRATOR: OrchestratorModels = {
+  default: "openai-codex/gpt-5.4:high",
+  title: "openai-codex/gpt-5.4-mini:low",
+};
+
+export const PROFILE_B_ORCHESTRATOR: OrchestratorModels = {
+  default: "anthropic/claude-opus-4-7:high",
+  title: "anthropic/claude-haiku-4-5:low",
 };
 
 /**

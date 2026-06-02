@@ -17,6 +17,12 @@ Two conditions independently trigger this skill:
 
 Do not invoke this skill without an approved spec in `docs/specs/`. If no spec exists, redirect to `brainstorming` first.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews; it never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
+
+Route to the RIGHT agent (model-fit + role-fit is first-class; use these exact `pi-oven:<role>` names): plan authoring from survey evidence → `pi-oven:planner`; architecture trade-offs → `pi-oven:architect`.
+
 ## Plan document header
 
 Every plan file opens with this exact header block:

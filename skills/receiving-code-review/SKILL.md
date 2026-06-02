@@ -14,6 +14,10 @@ Whenever review feedback arrives and you are about to act on it — from the use
 
 **Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched. Main only dispatches, synthesizes, and reviews — never implements inline. Match the agent to the work (model-fit + role-fit is first-class): re-review / verify the feedback technically → `pi-oven:code-reviewer` or `pi-oven:critic` before implementing. (See `large-task-delegation` + `subagent-driven-development`.)
+
 ## Response pattern
 
 1. **READ** — absorb the complete feedback set before reacting to any single item.

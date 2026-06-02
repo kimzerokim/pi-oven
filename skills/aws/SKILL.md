@@ -12,6 +12,10 @@ alwaysApply: false
 
 Provide a safe AWS connector for UC5 operations dogfooding. This skill is optimized for **read-only production inspection** and must follow the production-access boundary.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1-2 file simple edits (≤30 LoC) or operational commands (git status / ls / install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`). Route by model-fit AND role-fit: multi-step infra changes → `pi-oven:executor`; IAM / security review → `pi-oven:security-reviewer`.
+
 ## Credential source
 
 Use the first existing file from this precedence list:

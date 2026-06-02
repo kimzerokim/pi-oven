@@ -8,6 +8,12 @@ alwaysApply: false
 
 # codebase-survey
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+ENFORCEMENT: Main does NOT do this skill's substantive work inline. Main's direct-action budget is narrow — 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation MUST be dispatched. Main only dispatches, synthesizes, and reviews — it never reads 5+ files or implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
+
+RIGHT-AGENT ROUTING (model-fit + role-fit is first-class; use these exact names): read-heavy survey → `pi-oven:explorer`; causal trace → `pi-oven:tracer`; structural analysis → `pi-oven:analyst`.
+
 ## When to use
 
 Trigger this skill when any of the following is true:

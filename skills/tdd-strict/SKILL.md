@@ -8,6 +8,10 @@ alwaysApply: false
 
 # tdd-strict
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1-2 simple file edits (≤ 30 LoC) or operational commands (git status, ls, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline. Match the agent to the work (model-fit + role-fit is first-class): red/green implementation → `pi-oven:executor`; coverage + integration tests → `pi-oven:test-engineer`. In autonomous mode the TDD Red phase requires a FRESH dispatch — main must never write the failing test itself. See `large-task-delegation` + `subagent-driven-development`.
+
 ## When to use
 
 **Auto-trigger (autonomous mode)** — fires when all three conditions hold simultaneously:

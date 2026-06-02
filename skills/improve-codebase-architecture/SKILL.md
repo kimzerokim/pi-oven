@@ -10,6 +10,12 @@ alwaysApply: false
 
 Surface architectural friction and propose **deepening opportunities** — refactors that turn shallow modules into deep ones. The aim is testability and AI-navigability. The main agent dispatches and synthesises; it does not run the survey or draw the report inline.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+ENFORCEMENT: do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow — 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation MUST go to a subagent; main only dispatches, synthesises, and reviews — never implements inline (see `large-task-delegation` + `subagent-driven-development`).
+
+RIGHT-AGENT ROUTING — match the agent to the work (model-fit + role-fit is first-class), using these exact names: architecture deepening → `pi-oven:architect`; coupling / testability analysis → `pi-oven:analyst`.
+
 ## Vocabulary (use exactly)
 
 Consistent language is the point. Do not drift into "component", "service", "API", "boundary", "layer", or "wrapper".

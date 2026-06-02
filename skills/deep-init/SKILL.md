@@ -12,6 +12,12 @@ alwaysApply: false
 
 Generates hierarchical AGENTS.md documentation across an entire codebase. Every directory receives an AI-readable context file that summarizes its purpose, key files, subdirectories, and agent instructions. These files persist between sessions, letting agents understand module ownership and conventions without re-reading source every time.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+ENFORCEMENT: do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow — a 1-2 file simple edit (≤ 30 LoC) or an operational command (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched. Main only dispatches, synthesizes, and reviews — never implements inline (see `large-task-delegation` + `subagent-driven-development`).
+
+RIGHT-AGENT ROUTING: match the agent to the work — model-fit + role-fit is first-class. Hierarchical doc generation → `pi-oven:explorer` (map + read) + `pi-oven:document-specialist` (per-dir context authoring) + `pi-oven:librarian` (cross-reference + hierarchy validation).
+
 ## When to use
 
 - Starting work in an unfamiliar codebase and AGENTS.md files are absent

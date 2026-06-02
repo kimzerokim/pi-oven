@@ -8,6 +8,12 @@ alwaysApply: false
 
 # fresh-verifier
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1-2 file simple edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews; never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
+
+Call the RIGHT agent — model-fit + role-fit is first-class. Completion verification → freshly-dispatched `pi-oven:verifier` (no shared context); main may not self-declare PASS.
+
 ## When to use
 
 Three contexts require a fresh-verifier dispatch:

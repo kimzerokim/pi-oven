@@ -12,6 +12,11 @@ alwaysApply: false
 
 Provide a Cloudflare DNS connector to close UC5 operations coverage for domain-layer diagnostics.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+ENFORCEMENT: Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow (1-2 file simple edits ≤ 30 LoC, or operational commands like `git status` / `ls` / install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
+RIGHT-AGENT ROUTING: Match the agent to the work (model-fit + role-fit is first-class) — multi-step config / deploy work → `pi-oven:executor`.
+
 ## Credential source
 
 Use the first existing file from this precedence list:

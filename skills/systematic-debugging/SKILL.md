@@ -16,6 +16,12 @@ NO FIX WITHOUT ROOT-CAUSE INVESTIGATION FIRST
 
 Symptom patches mask bugs and spawn new ones. If Phase 1 is not complete, you cannot propose a fix. Violating the letter of this process is violating its spirit.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Do NOT run this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 file simple edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
+
+Match the agent to the work (model-fit + role-fit is first-class): root-cause isolation → `pi-oven:debugger`; evidence tracing → `pi-oven:tracer`. Full role map in **Agent Dispatch (omp)** below.
+
 ## When to use
 
 Any technical defect: test failures, production bugs, unexpected behavior, performance regressions, build failures, integration breaks, flaky tests.

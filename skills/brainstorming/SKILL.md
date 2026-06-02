@@ -19,6 +19,10 @@ Four conditions each independently trigger this skill:
 - User asks "what should we build" or equivalent open-ended design question
 - Any implementation request that lacks a written spec in `docs/specs/`
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 file simple edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`). Route by model-fit + role-fit (first-class): design exploration / trade-off analysis → `pi-oven:planner` or `pi-oven:architect`. Main stays the facilitator, not the implementer.
+
 ## HARD-GATE
 
 > "You are BLOCKED from invoking any implementation skill, writing any code, creating any scaffold, or calling any file-write tool until the user has explicitly approved the design." — superpowers:brainstorming

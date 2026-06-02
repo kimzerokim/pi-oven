@@ -12,6 +12,11 @@ One skill, two boundaries of a development branch: **start** (isolate) and **fin
 
 **Core principle:** Detect existing isolation before creating any. Defer to the harness's native worktree tooling. Fall back to raw `git worktree` only when no native tool exists. Never fight the harness with phantom state it cannot see.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched. Main only dispatches, synthesizes, and reviews — it never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
+**Right-agent routing** (model-fit + role-fit is first-class — use these exact names): complex history surgery / multi-file staging / rebase / any git mutation → `pi-oven:git-master`; clean-baseline + pre-finish test evidence → `pi-oven:verifier`; unclear isolation/worktree state recon → `pi-oven:explorer`.
+
 ## When to use
 
 - **Start**: beginning feature work that must not touch the current branch, or before executing a `writing-plans` plan.

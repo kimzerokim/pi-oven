@@ -29,6 +29,11 @@ deep-dive is **not** a relentless requirements interview — when full spec conv
 - User wants trace only without requirements gathering
 - User says "just do it" or "skip the investigation" — respect the intent
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+**Do NOT run this skill's substantive work in the main context.** Main's direct-action budget is narrow: 1–2 file simple edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`).
+**Right-agent routing** (model-fit + role-fit is first-class — use these exact names): causal investigation → `pi-oven:tracer`; deep analysis → `pi-oven:analyst`; broad read → `pi-oven:explorer`.
+
 ## Phase 1: Initialize
 
 1. Parse the user's idea from the trigger input

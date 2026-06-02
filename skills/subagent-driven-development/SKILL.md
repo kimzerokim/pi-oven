@@ -104,4 +104,6 @@ A single-session implementation flow chains dedicated agents:
 - Evidence-based verification per task: dispatch `pi-oven:verifier`.
 - Severity-rated review after implementation: dispatch `pi-oven:code-reviewer`.
 
-The main agent orchestrates only; it does not write code or evaluate completion itself.
+The main agent orchestrates ONLY: it MUST NOT implement inline. Any multi-file change, 3+ file reads, or 200+ LoC MUST go to a subagent — main may not absorb the work itself, and may not self-evaluate completion.
+
+**Right-agent routing (model-fit + role-fit is first-class):** match the agent to the work — one FRESH `pi-oven:executor` per task; two-stage review via `pi-oven:code-reviewer` then `pi-oven:verifier`.

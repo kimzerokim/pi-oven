@@ -117,7 +117,9 @@ Regardless of mode, invoke skills in this order each cycle:
 9. `pre-commit-gate` — run after each commit boundary (Gates 0–4.5, all modes)
 10. `fresh-verifier` — mandatory before exit (all modes, see Exit gate section)
 
-Main agent role: orchestrator only — dispatch, sequence, synthesize evidence, and queue next subagent work in the same turn. Main MUST NOT implement inline code, inline tests, or inline refactors during autonomous-loop execution.
+Main agent role: orchestrator only — dispatch, sequence, synthesize evidence, and queue next subagent work in the same turn. Main MUST NOT implement inline code, inline tests, or inline refactors during autonomous-loop execution. Any work touching multiple files, requiring 3+ reads, or exceeding 200 LoC MUST be dispatched to a subagent — main doing it inline is a hard violation, not a shortcut.
+
+Route to the RIGHT agent — match model-fit and role-fit to the work (first-class concern): explore (`pi-oven:explorer` / `pi-oven:tracer` / `pi-oven:analyst`) → plan (`pi-oven:planner`) → implement (`pi-oven:executor` / `pi-oven:debugger`) → verify (`pi-oven:verifier` / `pi-oven:security-reviewer` / `pi-oven:code-reviewer`). Main never implements inline.
 
 ---
 

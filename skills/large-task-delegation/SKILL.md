@@ -22,12 +22,15 @@ Keyword triggers: "큰 작업", "버그 전수조사", "마무리 해줘", "사�
 
 ## Main = dispatch + review only
 
-Main does not edit files, read 5+ files inline, or execute multi-stage workflows directly.
-Main's role is: **scope estimation → dispatch → three-stage review → commit gate**.
+Main MUST NOT implement inline. Multi-file work, 3+ file reads, and 200+ LoC MUST go to a subagent — no exceptions.
+Main MUST NOT edit files, read 5+ files inline, or execute multi-stage workflows directly.
+Main's role is exactly: **scope estimation → dispatch → three-stage review → commit gate**.
 All reads, writes, and test execution happen inside subagents.
 
-If mid-execution main reads 5+ files → halt immediately, re-route via `explore` subagent.
-If mid-execution scope expands to 3+ files → halt, restart with executor dispatch.
+**Match the agent to the work (model-fit + role-fit is first-class):** implementation → `pi-oven:executor`; review lane → `pi-oven:code-reviewer` / `pi-oven:critic` / `pi-oven:verifier`.
+
+If mid-execution main reads 5+ files → halt immediately, re-route via `pi-oven:explorer` subagent.
+If mid-execution scope expands to 3+ files → halt, restart with `pi-oven:executor` dispatch.
 
 User override accepted with one line ("just do it from main" / "just proceed"). Hard rules survive the override:
 mid-execution 5+ file reads → halt + re-route regardless of prior override.

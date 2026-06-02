@@ -19,6 +19,10 @@ Invoke when any of the following is true:
 
 Do not invoke for doc-only edits, changelog entries, or minor README updates. Those do not need a critic loop.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits (≤30 LoC) or operational commands (git status / ls / install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`). Match the agent to the work (model-fit + role-fit is first-class): cross-vendor critique → `pi-oven:critic`; design pressure-test → `pi-oven:architect`; plan synthesis → `pi-oven:planner`.
+
 ## Step 0 — codebase-survey precondition
 
 Before writing any draft, confirm a valid survey exists via 3-tier lookup (in order):

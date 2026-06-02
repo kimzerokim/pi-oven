@@ -12,6 +12,10 @@ alwaysApply: false
 
 Fires on every code-write tool call — `Edit`, `Write`, `MultiEdit`, `ast_grep_replace` — regardless of change size. No N-file threshold. A 2-line fix carries the same obligation as a 200-line feature. The three self-questions take seconds; skipping them costs hours.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Main does NOT do this skill's substantive work inline. Main's direct-action budget is narrow: 1–2 file simple edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`). Route by model-fit + role-fit (use these exact names): cleanup/refactor → `pi-oven:code-simplifier`; correctness/quality review → `pi-oven:code-reviewer`.
+
 ## Core principles
 
 - **DRY** — identical logic must not exist in two places. Find it before writing it.

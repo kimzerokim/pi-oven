@@ -10,6 +10,12 @@ alwaysApply: false
 
 Produce a deterministic, research-backed HTML deliverable by routing work through two dispatch stages. This skill is orchestration-only: no inline deep research and no direct final writing in the main lane.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+ENFORCEMENT: never do this skill's substantive work in the main context. Main's direct-action budget is narrow — 1-2 file simple edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent. Main only dispatches, synthesizes, and reviews — never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
+
+RIGHT-AGENT ROUTING (model-fit + role-fit is first-class): external research → `pi-oven:document-specialist`; synthesis + writing → `pi-oven:writer`; visual inspection → `pi-oven:multimodal-looker`.
+
 ## Contract
 
 1. External research dispatch with citations.

@@ -14,6 +14,11 @@ Run before every `git commit` executed via Bash — applies in interactive mode 
 
 Do not bypass with `--no-verify` unless the user explicitly orders it. Partial gate runs are not valid passes.
 
+## Dispatch discipline (main orchestrates, subagents do the work)
+
+Do NOT run this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`).
+Match the agent to the work (model-fit + role-fit is first-class): gate verification → `pi-oven:verifier`; code review → `pi-oven:code-reviewer`; security pass → `pi-oven:security-reviewer`.
+
 ## Gate sequence (11 gates)
 
 | Gate | Name | Trigger condition | Bypass env |

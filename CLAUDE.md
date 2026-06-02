@@ -1,6 +1,6 @@
 # CLAUDE.md — pi-oven
 
-> Project guide for agents working **on** this repo. Terse by design (token budget). Facts here override stale prose in `REVIEW-ME.md`, old specs, and `docs/WORKING-CONTEXT.md` when they conflict.
+> Project guide for agents working **on** this repo. Terse by design (token budget). Facts here override stale prose in old specs and `docs/WORKING-CONTEXT.md` when they conflict.
 
 ## What this is
 
@@ -67,23 +67,11 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 - Smallest viable diff; match existing patterns; no external dispatch (`oh-my-claudecode:*` / `omo:*` → 401, they resolve as model strings).
 - Big structural change / new spec → `spec-and-review` (codex cross-vendor review loop) before code. Touching code → TDD-strict + `pre-commit-gate`.
 
-## Status (current — 2026-06-02)
+## Status
 
-**v0.1.0 is the shipped HEAD/tag, PUSHED to `origin/main`** (commit `6f58e95`, tag `v0.1.0`; CI run 26789877692 green). This is the first push of this line — `origin/main` now serves the full plugin (22 agents + extension). Version SoT unified at **0.1.0** across `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`. (v0.1.0 — commit `9278b2a` — had added `/pi-oven:setup` primary-language selection + per-project default-language injection + a global-install script-path fix.)
+**Current: v0.1.0** — shipped + pushed to `origin/main` (tag `v0.1.0`). Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
 
-**v0.1.0 bundles, on top of v0.1.0:** `/pi-oven:setup` accepts a **free-form custom primary language** beyond ko/en (sanitized in `.omp/extensions/pi-oven-runtime/language.ts` `resolveLanguage`; unicode-name whitelist + 40-char cap = the **system-prompt injection boundary**, re-validated on both write and read so a hand-edited `.pi-oven/config.json` cannot poison the prompt). ko/en keep their rich directives; any other language gets a generic English directive. Added a **setup-completion marker** `setupCompletedAt` in `.pi-oven/config.json` (written on `--apply`/`--profile`/`--override`/`--import` success only, cleared by `--reset`) that drives a **once-per-session, non-blocking `ctx.ui.notify` "not set up" notice** at `session_start` (tells the user to run `/pi-oven:setup` or uninstall). README gained a **one-shot copy-paste install block** ending in `omp "/pi-oven:setup"` (install automatic → setup interactive) plus doc-staleness fixes (test count 433→474, submodules 11→13; `commands/pi-oven-setup.md` 23→22 roles). Then added **repo-root `CLAUDE.md` injection**: the runtime extension reads `<repoRoot>/CLAUDE.md` at load (`readProjectInstructions`, fail-open + 256 KB cap) and injects it into the **main + sub** agent system prompt via the `before_agent_start` `RulesInjector` (new dedup key `pi-oven:project-instructions`; default ON, opt out per-project with `.pi-oven/config.json` `{ "projectInstructions": false }`). This fills an omp gap — omp's `claude` discovery provider reads `~/.claude/CLAUDE.md` + `<cwd>/.claude/CLAUDE.md` only, **never the repo-root `CLAUDE.md`** (the Claude Code project-memory convention) — so omp now honors a project's local CLAUDE.md while the global `~/.claude` layer is ignored separately via the user-global `~/.omp/agent/config.yml` knob `disabledProviders: [claude, claude-plugins]` (omp-only; never touches `~/.claude` on disk, so real Claude Code sessions are unaffected). That isolation knob is now first-class in the wizard: **`/pi-oven:setup --isolate`** (and `--no-isolate`) read/merge/write `disabledProviders` via the same `omp config get/set` transport as `task.agentModelOverrides` (`scripts/pi-oven-setup/config-yml.ts` + `isolate.ts`; array-typed, fail-closed read, preserves sibling providers; combinable with `--apply`). README gained an "omp isolation & project CLAUDE.md" section; `skill-flow.ko.html` got an isolation note and had all "new" badges/chips + TOC `✦` markers stripped (the `★` model-routing differentiator marker stays). 515 tests pass.
-
-Historical narrative only:
-- **v0.4.x** (`v0.1.0`→`v0.1.0`) — UC5 ops connectors (`aws` / `bitbucket-pipeline` / `cloudflare` skills, read-only inspection with a code-first mutation boundary; credentials via gitignored `.external-credentials`), the `pi-oven_ask` advisor path, relentless brainstorming convergence, off-spine prune; later registered `html-research-orchestrator` + dynamic version test.
-- **v0.1.0** — FF merge of `feature/standard-expansion`, first local tag.
-
-Done & local: Plan 0 (v0.1.0) · Plan 1 (v0.1.0, 12 skills) · Spec A (23 agents) · Spec B (setup wizard) · Spec C (15 skills) · Spec D (skill↔agent dispatch, both cycles applied) · **Spec E = FROZEN v3 + implemented** (Option C settings-override; 4 commits `72b7b3a`→`05a3662`; dead-spine grep clean) · v0.1.0 / v0.4.x releases (local) · v0.1.0 (local, `9278b2a`) · **v0.1.0 = HEAD/tag, PUSHED to origin (`6f58e95`)**. Plan 2 (33-skill expansion) = **SUPERSEDED**.
-
-**Remaining work (verified):**
-1. **Push to origin = DONE** — v0.1.0 pushed to `origin/main` (HEAD `6f58e95`, tag `v0.1.0`, CI green); first remote publish of this line. Local tags `v0.1.0`→`v0.1.0` remain local-only; only `v0.1.0` is on the remote so far. Version SoT reconciled at 0.1.0 across all three manifests. (Future pushes still need explicit per-push consent.)
-2. **Plan 3 omp-native runtime — IMPLEMENTED** (commits f61e091/cc71d03: gate FSM + rules-injector + hardened forbidden-floor). Formal ADR for non-goal closure not yet written.
-3. **Plan 4 remainder** — `/pi-oven:doctor` is **fully implemented** (10-check health matrix incl. UC5 ops connector readiness); real-eval pipeline gated on LLM keys (`ci.yml` comment); key onboarding pending.
-4. **PROFILE_B redefinition** — deferred (`skill-agent-dispatch.md:267`), user decision.
+Live status, open work, and the execution log → **`docs/WORKING-CONTEXT.md`**. Per-release history → `CHANGELOG.md` + git. This file is the stable guide, not a changelog — don't restate version/plan history here.
 
 ## docs/ map
 

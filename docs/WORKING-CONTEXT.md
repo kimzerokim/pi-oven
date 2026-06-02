@@ -1,26 +1,24 @@
 # Working Context
 
-Last updated: 2026-05-29
+Last updated: 2026-06-02
 
 ## Purpose
 
 pi-oven v1 build. omp marketplace plugin as single successor for 5 frozen sources (omc / omo / Pocock / superpowers / pi-oven).
 
-## Current Sprint
+## Current Status (v0.1.0)
 
-- **Model routing + subagent consolidation initiative** (post-v0.1.0). 3-spec split + per-spec semantic commit + autonomous overnight run on `feature/standard-expansion`:
-  - **Spec A — Agent registry** — **ACCEPT cycle 4** + IMPL complete: 23 pi-oven-prefixed agent files (`agents/pi-oven-*.md`), load-time validator in `.omp/extensions/pi-oven.ts`, CI-time hard lint (`scripts/lint-agents.ts` + `package.json scripts.lint:agents`), 18 tests pass.
-  - **Spec B — Setup wizard** — **ACCEPT cycle 4** + IMPL complete: `/pi-oven:setup` LLM-driven prompt template (`commands/pi-oven-setup.md`), batch CLI (`scripts/pi-oven-setup.ts` + 11 submodules under `scripts/pi-oven-setup/`), Profile A (opencode-zen+openai-codex default) / Profile B (anthropic opt-in), agent-file source-of-truth + plugin-config informational, `session_start` drift detection + parent-session capture, agent-file-presence ALLOWED_PREFIXES (no `pi.getPluginSettings` from extension), 145 tests pass.
-  - **Spec C — Skill rewrite + new skills (deep-init, deep-dive, team)** — **ACCEPT cycle 3** + IMPL complete: 12 SKILL.md sweep (omc/omo refs → pi-oven:*, narrative Korean → English, references/* in scope), 3 new skills (deep-init / deep-dive / team) with 9 scenarios, autonomous-loop boost (autopilot + ralph + ultrawork patterns, 129→192 lines), fresh-verifier boost (verify + verification-before-completion, 80→135 lines), plugin.json + marketplace.json + pi-oven.ts setLabel → v0.1.0, 152 tests pass.
+**v0.1.0 shipped + pushed** to `origin/main` (tag `v0.1.0`, CI green) — first remote publish of this line. The plugin: 22 `pi-oven:*` agents · 21 runtime skills · 3 commands · 1 omp extension (tool-boundary gate + rules / repo-CLAUDE.md / language injection). `/pi-oven:setup` wizard (model routing Profile A/B + `--isolate`), `/pi-oven:doctor` 10-check health matrix. Zero external dispatch dependency. Per-release detail → `CHANGELOG.md` + git.
 
-**v0.1.0 baseline ready**: 23 pi-oven-* agents + /pi-oven:setup wizard + 15 self-contained skills + provider whitelist (opencode-zen + openai-codex + anthropic opt-in). Zero external dispatch dependency.
-- **Push deferred** — overnight commits stay local; user wake review per `docs/harness/user-queue.md` Q-NIGHTLY-AB-C-REVIEW-001.
+## Open Work
 
-## Active Queues
-
-- Plan 0: 8 tasks (scaffold + publish + install verify)
-- Plan 1 (queued): Bootstrap 12 core skills
-- Plan 2/3/4 (deferred): Standard expansion / TS extension / Polish + release
+- **PROFILE_B redefinition** — deferred, user decision (still on retired `opus-4-7` ids by design; see `docs/specs/...skill-agent-dispatch`).
+- **UC4 release-orchestration** — version bump is automated (`release:pi-oven --publish`); fuller orchestration (changelog curation, GH release notes) TBD.
+- **UC1/UC2 project-wide regression gate** — TDD is still touched-files-only; no repo-wide regression gate.
+- **`pi-oven_ask` multi-select / multi-question** — v1 is single-select.
+- **CLI-level `--isolate` integration test** — unit-covered; no end-to-end CLI test (verifier-flagged, non-blocking).
+- **Real-eval pipeline** — gated on LLM provider keys (`ci.yml` comment); key onboarding pending.
+- **omp-native runtime ADR** — runtime gate/injector implemented; formal non-goal-closure ADR not yet written.
 
 ## Current Constraints
 
@@ -29,6 +27,8 @@ pi-oven v1 build. omp marketplace plugin as single successor for 5 frozen source
 - Codex OAuth + Zen 양대 default. Anthropic native opt-in.
 
 ## Latest Execution Notes
+
+- 2026-06-02: **v0.1.0 → v0.1.0 releases + omp-isolation feature set** (per-release detail → `CHANGELOG.md` + git). v0.1.0–v0.4.x: standard expansion, UC5 ops connectors (aws / bitbucket-pipeline / cloudflare), `pi-oven_ask` advisor, html-research-orchestrator. v0.1.0: `/pi-oven:setup` primary-language selection + per-project default language. **v0.1.0** (first push to origin, `6f58e95`): (1) **repo-root `CLAUDE.md` injection** into the main+sub agent system prompt via `before_agent_start` (`readProjectInstructions` → `RulesInjector`; default ON, `.pi-oven/config.json {"projectInstructions":false}` opt-out; fail-open + 256 KB cap) — omp doesn't read repo-root CLAUDE.md natively; (2) **`/pi-oven:setup --isolate`** writing `disabledProviders:[claude,claude-plugins]` to `~/.omp/agent/config.yml` so omp ignores the `~/.claude` omc/pi-oven layer (`--no-isolate` undoes; array-typed fail-closed read, preserves siblings). Docs: deleted stale root `REVIEW-ME.md`, slimmed `CLAUDE.md` Status to point here, README "omp isolation" section, `skill-flow.ko.html` isolation note + "new"-flag strip. 515 tests, CI green.
 
 - 2026-05-29: **Opus 4.8 release — mechanical model-id update**. `anthropic/claude-opus-4-7` → `anthropic/claude-opus-4-8` (and `opencode-zen/claude-opus-4-7` → `opencode-zen/claude-opus-4-8`) across PROFILE_A 의 4 anthropic-primary roles (planner / critic / security-reviewer / oracle). 4-8 catalog: anthropic provider 1M / 128K / 5-step thinking / vision yes (= 4-7 capability). opencode-zen wrapper of 4-8 is preview (222K, no thinking) — used as alternate when registry-only failover. Surface: profiles.ts + 4 agent files + 2 specs (setup-wizard.md §4, agent-registry.md §5/§5.1/§6) + OPTIMIZED-MODEL.md (sed file-wide). PROFILE_B untouched. Structural concern raised by user — repo agent file 의 model frontmatter 가 SoT 강제 → 사용자 customization 이 git tree dirty → user-local override 구조 필요. omp 의 agent discovery 가 project + user home walk-up 지원 확인됨 → Spec E (옵션 B) draft 작성. **옵션 C 채택 (FROZEN v3)**: user-global `~/.omp/agent/config.yml` 의 `task.agentModelOverrides` 를 override transport 로 채택. 옵션 B phantom path (user-home walk-up agent file) 폐기.
 

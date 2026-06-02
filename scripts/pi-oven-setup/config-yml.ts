@@ -1,7 +1,6 @@
 /**
  * OMP-delegated task.agentModelOverrides read/merge-write/delete helper.
  * Transport: omp config get → in-memory merge → omp config set (whole-record replace).
- * Plan: docs/plans/2026-05-29-pi-oven-setup-option-c-plan.md §Task 1.1
  */
 
 export interface ConfigYmlOpts {
@@ -314,7 +313,7 @@ export async function setModelRoles(
 export const PI_OVEN_MANAGED_PROVIDERS = ["claude"] as const;
 
 /**
- * Legacy providers an earlier (buggy, pre-0.1.0) isolate added to
+ * Legacy providers an earlier (buggy, pre-0.5.3) isolate added to
  * `disabledProviders`. They are ALWAYS purged on either toggle to heal those
  * configs: disabling `claude-plugins` removed pi-oven's own `/pi-oven:*` commands, so
  * `--isolate` strips it back out and `--no-isolate` removes it alongside the
@@ -438,7 +437,7 @@ export async function setPiOvenDisabledProviders(opts?: ConfigYmlOpts): Promise<
  * DISABLE isolation: readDisabledProvidersStrict → if !ok ABORT(throw) →
  * mergeDisabledProviders(remove the UNION of PI_OVEN_MANAGED_PROVIDERS +
  * PI_OVEN_DEPRECATED_PROVIDERS) → set, so it strips BOTH `claude` and any legacy
- * `claude-plugins` a buggy pre-0.1.0 isolate left behind. Returns the sorted
+ * `claude-plugins` a buggy pre-0.5.3 isolate left behind. Returns the sorted
  * list of providers actually removed (union ∩ current). Preserves sibling
  * providers. No-op (skips the set call) when none of those providers are present
  * (e.g. [claude,claude-plugins]→[] removed [claude,claude-plugins];

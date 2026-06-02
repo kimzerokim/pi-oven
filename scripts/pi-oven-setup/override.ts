@@ -2,7 +2,6 @@
  * --override subcommand for pi-oven setup wizard.
  * Spec E §3.3/§3.4 — per-role model override written to user-global config.yml
  * via OMP-delegated transport (omp config get → merge → omp config set).
- * Plan: docs/plans/2026-05-29-pi-oven-setup-option-c-plan.md §Task 2.1
  */
 
 import { ROLES, type Role } from "./profiles";

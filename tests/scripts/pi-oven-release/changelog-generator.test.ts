@@ -25,7 +25,7 @@ function okSpawn(stdout: string): SpawnFn {
 describe("changelog-generator", () => {
   it("collects commits without writing when disabled", () => {
     const result = updateChangelog({
-      version: "0.1.0",
+      version: "0.5.0",
       dryRun: true,
       updateChangelog: false,
       spawnFn: okSpawn("feat: a\nfix: b\n"),
@@ -36,7 +36,7 @@ describe("changelog-generator", () => {
 
   it("writes changelog entry when enabled", () => {
     const result = updateChangelog({
-      version: "0.1.0",
+      version: "0.5.0",
       dryRun: false,
       updateChangelog: true,
       date: "2026-06-01",
@@ -45,7 +45,7 @@ describe("changelog-generator", () => {
 
     expect(result.updated).toBe(true);
     const content = readFileSync("CHANGELOG.md", "utf8");
-    expect(content).toContain("## v0.1.0 - 2026-06-01");
+    expect(content).toContain("## v0.5.0 - 2026-06-01");
     expect(content).toContain("- feat: release");
   });
 
@@ -53,7 +53,7 @@ describe("changelog-generator", () => {
     const spawn: SpawnFn = () => ({ exitCode: 1, stdout: "", stderr: "no repo" });
     expect(() =>
       updateChangelog({
-        version: "0.1.0",
+        version: "0.5.0",
         dryRun: true,
         updateChangelog: true,
         spawnFn: spawn,

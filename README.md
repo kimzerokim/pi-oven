@@ -431,13 +431,6 @@ pi-oven/
 │   └── release.md
 └── docs/
     ├── specs/               # design specs (foundation + agent registry + setup wizard + skill rewrite)
-    ├── plans/               # implementation plans
-    ├── decisions/           # post-implementation decision records (e.g., dogfood switch)
-    ├── adr/                 # architecture decision records (e.g., marketplace distribution)
-    ├── instincts/           # observed-behavior notes (e.g., omp install layout)
-    ├── harness/             # harness-flow progress + user queue
-    ├── research/            # codex-reviews / surveys
-    ├── WORKING-CONTEXT.md   # current sprint state
     └── SOUL.md              # project identity
 ```
 
@@ -452,14 +445,12 @@ pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin.
 ## Documentation
 
 - `docs/specs/2026-05-27-pi-oven-foundation-design.md` — foundation design (omp-native pivot)
-- `docs/specs/2026-05-28-pi-oven-agent-registry.md` — Spec A (23 agents + validator + lint)
+- `docs/specs/2026-05-28-pi-oven-agent-registry.md` — Spec A (agents + validator + lint)
 - `docs/specs/2026-05-28-pi-oven-setup-wizard.md` — Spec B (`/pi-oven:setup` wizard)
 - `docs/specs/2026-05-28-pi-oven-skill-rewrite-and-new-skills.md` — Spec C (skill sweep + 3 new skills)
-- `docs/adr/0001-omp-marketplace-distribution.md` — Marketplace as sole distribution
-- `docs/decisions/0001-dogfood-switch.md` — v0.1.0 dogfood switch threshold
-- `docs/harness/harness-flow-progress.md` — Cycle-by-cycle build log
-- `docs/WORKING-CONTEXT.md` — Current sprint state
-- `docs/research/codex-reviews/` — Critic verdicts from spec-and-review cycles
+- `docs/specs/2026-05-29-pi-oven-omp-runtime-layer.md` — omp runtime layer (gate FSM + rules injection)
+- `docs/specs/2026-05-29-pi-oven-user-local-override.md` — user-local model override (Spec E)
+- `docs/SOUL.md` — project identity
 
 ---
 

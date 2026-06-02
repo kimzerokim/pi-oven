@@ -18,14 +18,14 @@ function makeSpawn(failures: Record<string, boolean> = {}): { spawn: SpawnFn; ca
 describe("release-publisher", () => {
   it("skips when publish=false", () => {
     const { spawn, calls } = makeSpawn();
-    const result = publishRelease({ version: "0.1.0", publish: false, dryRun: false, spawnFn: spawn });
+    const result = publishRelease({ version: "0.5.0", publish: false, dryRun: false, spawnFn: spawn });
     expect(result.performed).toBe(false);
     expect(calls.length).toBe(0);
   });
 
   it("publishing dry-run performs no git writes", () => {
     const { spawn, calls } = makeSpawn();
-    const result = publishRelease({ version: "0.1.0", publish: true, dryRun: true, spawnFn: spawn });
+    const result = publishRelease({ version: "0.5.0", publish: true, dryRun: true, spawnFn: spawn });
     expect(result.performed).toBe(true);
     expect(result.commit).toBeUndefined();
     expect(result.tag).toBeUndefined();
@@ -35,10 +35,10 @@ describe("release-publisher", () => {
 
   it("publishing non-dry-run executes commit/tag/push", () => {
     const { spawn, calls } = makeSpawn();
-    const result = publishRelease({ version: "0.1.0", publish: true, dryRun: false, spawnFn: spawn });
+    const result = publishRelease({ version: "0.5.0", publish: true, dryRun: false, spawnFn: spawn });
     expect(result.performed).toBe(true);
-    expect(result.commit?.args).toEqual(["commit", "-am", "release: v0.1.0"]);
-    expect(result.tag?.args).toEqual(["tag", "v0.1.0"]);
-    expect(calls).toEqual(["commit -am release: v0.1.0", "tag v0.1.0", "push origin main", "push origin v0.1.0"]);
+    expect(result.commit?.args).toEqual(["commit", "-am", "release: v0.5.0"]);
+    expect(result.tag?.args).toEqual(["tag", "v0.5.0"]);
+    expect(calls).toEqual(["commit -am release: v0.5.0", "tag v0.5.0", "push origin main", "push origin v0.5.0"]);
   });
 });

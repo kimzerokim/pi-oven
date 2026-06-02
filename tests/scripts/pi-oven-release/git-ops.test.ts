@@ -35,22 +35,22 @@ describe("git-ops", () => {
 
   it("createReleaseCommit and createReleaseTag are no-ops in dry-run", () => {
     const spawn = makeSpawn({});
-    expect(createReleaseCommit("0.1.0", true, spawn)).toBeUndefined();
-    expect(createReleaseTag("0.1.0", true, spawn)).toBeUndefined();
-    expect(pushRelease("0.1.0", true, spawn)).toEqual([]);
+    expect(createReleaseCommit("0.5.0", true, spawn)).toBeUndefined();
+    expect(createReleaseTag("0.5.0", true, spawn)).toBeUndefined();
+    expect(pushRelease("0.5.0", true, spawn)).toEqual([]);
   });
 
   it("createReleaseCommit/createReleaseTag/pushRelease emit expected git commands", () => {
     const spawn = makeSpawn({});
-    const commit = createReleaseCommit("0.1.0", false, spawn);
-    const tag = createReleaseTag("0.1.0", false, spawn);
-    const pushes = pushRelease("0.1.0", false, spawn);
+    const commit = createReleaseCommit("0.5.0", false, spawn);
+    const tag = createReleaseTag("0.5.0", false, spawn);
+    const pushes = pushRelease("0.5.0", false, spawn);
 
-    expect(commit).toEqual({ command: "git", args: ["commit", "-am", "release: v0.1.0"] });
-    expect(tag).toEqual({ command: "git", args: ["tag", "v0.1.0"] });
+    expect(commit).toEqual({ command: "git", args: ["commit", "-am", "release: v0.5.0"] });
+    expect(tag).toEqual({ command: "git", args: ["tag", "v0.5.0"] });
     expect(pushes).toEqual([
       { command: "git", args: ["push", "origin", "main"] },
-      { command: "git", args: ["push", "origin", "v0.1.0"] },
+      { command: "git", args: ["push", "origin", "v0.5.0"] },
     ]);
   });
 });

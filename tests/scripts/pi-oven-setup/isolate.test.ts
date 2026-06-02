@@ -49,7 +49,7 @@ describe("runIsolate — enable", () => {
     expect(JSON.parse(calls[1][4])).toEqual(["codex", "claude"]);
   });
 
-  it("migrates a buggy pre-0.1.0 [claude, claude-plugins] config to [claude]", async () => {
+  it("migrates a buggy pre-0.5.3 [claude, claude-plugins] config to [claude]", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude", "claude-plugins"]), okSetResult()]);
     const result = await runIsolate({ enable: true, spawnFn: fn });
     expect(result.exitCode).toBe(0);

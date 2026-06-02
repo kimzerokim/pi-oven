@@ -1,6 +1,5 @@
 /**
  * project-config.ts — per-project, machine-local pi-oven config.
- * Plan: docs/plans/2026-06-02-setup-language-selection.md §1.
  *
  * Persists `{ language }` to `<cwd>/.pi-oven/config.json` (machine-local,
  * gitignored). This is the project default RESPONSE language honored by the

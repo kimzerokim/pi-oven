@@ -42,7 +42,7 @@ export type ProfileMap = Record<Role, ModelEntry>;
 
 /**
  * Profile A — Release default.
- * Benchmark + cost-optimized routing (2026-05-29 OPTIMIZED-MODEL revision).
+ * Benchmark + cost-optimized routing.
  * 3 high-stakes roles (critic, security-reviewer, oracle) use anthropic/ primary.
  * 5 roles use openai-codex/ subscription as primary
  * (executor/debugger/test-engineer = gpt-5.4;

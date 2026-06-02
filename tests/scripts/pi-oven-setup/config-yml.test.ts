@@ -530,7 +530,7 @@ describe("setPiOvenDisabledProviders", () => {
     expect(JSON.parse(calls[1][4])).toEqual(["claude"]);
   });
 
-  it("migrates a buggy pre-0.1.0 [claude, claude-plugins] config to [claude]", async () => {
+  it("migrates a buggy pre-0.5.3 [claude, claude-plugins] config to [claude]", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude", "claude-plugins"]), okSetResult()]);
     const result = await setPiOvenDisabledProviders({ spawnFn: fn });
     expect(result).toEqual(["claude"]);
@@ -693,7 +693,7 @@ describe("clearPiOvenDisabledProviders", () => {
     expect(JSON.parse(calls[1][4])).toEqual(["codex"]);
   });
 
-  it("removes a buggy pre-0.1.0 [claude, claude-plugins] config to []", async () => {
+  it("removes a buggy pre-0.5.3 [claude, claude-plugins] config to []", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude", "claude-plugins"]), okSetResult()]);
     const removed = await clearPiOvenDisabledProviders({ spawnFn: fn });
     expect(removed).toEqual(["claude", "claude-plugins"]);

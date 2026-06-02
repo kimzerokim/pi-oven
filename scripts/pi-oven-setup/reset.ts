@@ -2,7 +2,6 @@
  * --reset subcommand for pi-oven setup wizard.
  * Spec E §3.3 — delete only pi-oven:* keys from task.agentModelOverrides (config.yml).
  * Agent files are NOT touched — they are the committed PROFILE_A baseline.
- * Plan: docs/plans/2026-05-29-pi-oven-setup-option-c-plan.md §Task 2.4
  */
 
 import { deletePiOvenAgentModelOverrides } from "./config-yml";

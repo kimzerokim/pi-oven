@@ -35,16 +35,16 @@ function makeFakeCacheEntry(
 }
 
 describe("compareSemver", () => {
-  it("0.1.0 < 0.1.0", () => {
-    expect(compareSemver("0.1.0", "0.1.0")).toBeLessThan(0);
+  it("0.1.0 < 0.10.0", () => {
+    expect(compareSemver("0.1.0", "0.10.0")).toBeLessThan(0);
   });
 
-  it("0.1.0 < 0.1.0", () => {
-    expect(compareSemver("0.1.0", "0.1.0")).toBeLessThan(0);
+  it("0.10.0 < 0.20.0", () => {
+    expect(compareSemver("0.10.0", "0.20.0")).toBeLessThan(0);
   });
 
-  it("1.0.0 > 0.1.0", () => {
-    expect(compareSemver("1.0.0", "0.1.0")).toBeGreaterThan(0);
+  it("1.0.0 > 0.99.99", () => {
+    expect(compareSemver("1.0.0", "0.99.99")).toBeGreaterThan(0);
   });
 
   it("0.1 == 0.1.0 (missing patch treated as 0)", () => {
@@ -78,10 +78,10 @@ describe("resolveCacheAgentsDir", () => {
     expect(result).toBe(agentsDir);
   });
 
-  it("picks the highest semver when multiple versions exist (0.1.0, 0.1.0, 0.1.0)", async () => {
+  it("picks the highest semver when multiple versions exist (0.1.0, 0.2.0, 0.10.0)", async () => {
     makeFakeCacheEntry(tempDir, "0.1.0", 1);
-    makeFakeCacheEntry(tempDir, "0.1.0", 1);
-    const latestAgentsDir = makeFakeCacheEntry(tempDir, "0.1.0", 1);
+    makeFakeCacheEntry(tempDir, "0.2.0", 1);
+    const latestAgentsDir = makeFakeCacheEntry(tempDir, "0.10.0", 1);
     const result = await resolveCacheAgentsDir(tempDir);
     expect(result).toBe(latestAgentsDir);
   });

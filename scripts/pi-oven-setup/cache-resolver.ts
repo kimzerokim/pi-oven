@@ -15,7 +15,7 @@ const DEFAULT_CACHE_ROOT = path.resolve(
 );
 
 /**
- * Compare two semver strings (e.g. "0.1.0", "0.1.0").
+ * Compare two semver strings (e.g. "0.1.0", "0.10.0").
  * Returns negative if a < b, positive if a > b, 0 if equal.
  * Missing segments are treated as 0 (e.g. "0.1" == "0.1.0").
  */
@@ -43,8 +43,8 @@ export async function resolveCacheAgentsDir(
   if (piOvenDirs.length === 0) return null;
   // Pick latest installed version by semver sort (descending)
   piOvenDirs.sort((a, b) => {
-    const va = a.split("___")[2] ?? "0.1.0";
-    const vb = b.split("___")[2] ?? "0.1.0";
+    const va = a.split("___")[2] ?? "0.0.0";
+    const vb = b.split("___")[2] ?? "0.0.0";
     return compareSemver(vb, va);
   });
   return path.join(root, piOvenDirs[0], "agents");

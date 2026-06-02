@@ -11,7 +11,6 @@ const COMMANDS_DIR = path.resolve(__dirname, "../../commands");
 // as the redundant `/pi-oven:pi-oven-setup` (double "pi-oven"), never matching the
 // documented `/pi-oven:setup`. Command filenames therefore MUST NOT carry the
 // `pi-oven-` plugin-name prefix; the basename alone becomes the slash command.
-// Ref: docs/instincts/omp-marketplace-command-namespacing.md
 describe("command file namespacing", () => {
   it("no command file basename carries a redundant `pi-oven-` prefix", () => {
     const offenders = fs

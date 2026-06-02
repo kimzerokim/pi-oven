@@ -1,7 +1,6 @@
 /**
  * Tests for scripts/pi-oven-setup/override.ts
  * TDD red phase — written before implementation.
- * Plan: docs/plans/2026-05-29-pi-oven-setup-option-c-plan.md §Task 2.1
  */
 
 import { describe, it, expect } from "bun:test";

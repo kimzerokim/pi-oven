@@ -1,6 +1,6 @@
 # CLAUDE.md — pi-oven
 
-> Project guide for agents working **on** this repo. Terse by design (token budget). Facts here override stale prose in old specs and `docs/WORKING-CONTEXT.md` when they conflict.
+> Project guide for agents working **on** this repo. Terse by design (token budget). Facts here override stale prose in old specs when they conflict.
 
 ## What this is
 
@@ -21,7 +21,7 @@
 | `scripts/pi-oven-release/` | Release automation modules (version bump, SoT sync, changelog, publish gate). | code |
 | `scripts/lint-{agents,skills}.ts` | CI hard lints. | code |
 | `.omp/extensions/pi-oven.ts` | omp extension: load-time `validateAgentRegistry` (provider whitelist) + `session_start` parent-model capture. Built to `dist/`. | code |
-| `docs/` | specs / plans / decisions / adr / harness / research / instincts / contexts / eval. | see map below |
+| `docs/` | design specs + project identity (`SOUL.md`). | see map below |
 
 ## Commands (bun)
 
@@ -69,12 +69,12 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 
 ## Status
 
-**Current: v0.1.0** — committed locally on `main`, pending push to `origin/main`. Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
+**Current: v0.1.0** — initial release on `origin/main`. Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
 
 **Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@pi-oven (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 
-Live status, open work, and the execution log → **`docs/WORKING-CONTEXT.md`**. Per-release history → `CHANGELOG.md` + git. This file is the stable guide, not a changelog — don't restate version/plan history here.
+Per-release history → `CHANGELOG.md` + git. This file is the stable guide, not a changelog — don't restate version history here.
 
 ## docs/ map
 
-`specs/` design specs (foundation, agent-registry, setup-wizard, skill-rewrite, skill-agent-dispatch=Spec D, user-local-override=Spec E) · `plans/` impl plans · `decisions/` + `adr/` decision records · `harness/` `harness-flow-progress.md` (cycle log), `surveys/`, `user-queue.md` · `research/codex-reviews/` critic verdicts · `instincts/` durable facts (omp install layout) · `contexts/` omp mode contexts (autonomous/dev/research/review) · `eval/history/` · `WORKING-CONTEXT.md` (live scratch — may lag).
+`specs/` design specs (foundation, agent-registry, setup-wizard, skill-rewrite, skill-agent-dispatch, user-local-override) · `SOUL.md` project identity.

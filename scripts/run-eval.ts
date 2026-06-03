@@ -76,27 +76,30 @@ async function makeSession(modelPattern?: string): Promise<SessionLike> {
       return session.subscribe((sdkEvent) => {
         // Adapt SDK AgentSessionEvent → RunnerEvent.
         //
-        // We read the authoritative output from the COMPLETED assistant message
-        // (`message_end.message.content`) rather than streamed `text_delta` events.
-        // Two reasons: (1) streamed text deltas proved unreliable across models
-        // (reasoning models stream via non-text channels), and (2) `tool_execution_start`
-        // fires AFTER the assistant message_end — but the runner unsubscribes on the
-        // first message_end, so executed-tool events are missed. The assistant message's
-        // own content already carries the requested tool-call blocks, which is exactly
-        // the "did this skill cause a task dispatch" signal the matchers check.
+        // Capture from the COMPLETED **assistant** message (`message_end.message`)
+        // rather than streamed `text_delta` events. Reasons: (1) streamed text deltas
+        // proved unreliable across models (reasoning models stream via non-text
+        // channels); (2) `tool_execution_start` fires after the assistant message_end,
+        // so the assistant message's own content blocks are the authoritative record of
+        // the text it produced and the tool calls it requested. The role guard is
+        // essential — message_end also fires for the user echo and tool-result messages,
+        // and capturing those would match the user's own prompt (false positives).
         if (sdkEvent.type === "message_end") {
-          const msg = (sdkEvent as { message?: { content?: unknown } }).message;
-          const blocks = Array.isArray(msg?.content)
-            ? (msg!.content as Array<Record<string, unknown>>)
-            : [];
-          for (const b of blocks) {
-            if (b && b.type === "text" && typeof b.text === "string") {
-              listener({ type: "message_update", delta: b.text });
-            } else if (b && typeof b.name === "string" && b.type !== "text") {
-              // ToolCall / tool_use content block — record the requested tool name.
-              listener({ type: "tool_execution_start", toolName: b.name as string, toolCallId: "" });
+          const msg = (sdkEvent as { message?: { role?: string; content?: unknown } }).message;
+          if (msg?.role === "assistant" && Array.isArray(msg.content)) {
+            for (const b of msg.content as Array<Record<string, unknown>>) {
+              if (b && b.type === "text" && typeof b.text === "string") {
+                listener({ type: "message_update", delta: b.text });
+              } else if (b && typeof b.name === "string" && b.type !== "text") {
+                // ToolCall / tool_use content block — record the requested tool name.
+                listener({ type: "tool_execution_start", toolName: b.name as string, toolCallId: "" });
+              }
             }
           }
+        } else if (sdkEvent.type === "agent_end") {
+          // Signal turn completion only when the whole agent run ends, so multi-step
+          // turns (assistant → tool → assistant) are fully captured before the runner
+          // unsubscribes — and a user/tool-result message_end never resolves early.
           listener({ type: "message_end" });
         }
       });

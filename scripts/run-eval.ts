@@ -53,7 +53,7 @@ async function listScenarios(rootDir: string, args: Args): Promise<string[]> {
  *  subscribe() forwards to session.subscribe() with event shape adaptation.
  *  prompt() returns Promise<void> — matching the real SDK signature exactly.
  */
-async function makeSession(): Promise<SessionLike> {
+async function makeSession(modelPattern?: string): Promise<SessionLike> {
   const auth = await discoverAuthStorage();
   const models = new ModelRegistry(auth);
   await models.refresh();
@@ -61,19 +61,42 @@ async function makeSession(): Promise<SessionLike> {
     sessionManager: SessionManager.inMemory(),
     authStorage: auth,
     modelRegistry: models,
+    // Headless eval: no UI to approve tool calls, so auto-approve every tier —
+    // otherwise the agent blocks forever on the first task/Bash approval prompt
+    // (the eval runner has no interactive approver). hasUI:false also keeps the
+    // agent from invoking interactive ask/pi-oven_ask tools mid-scenario.
+    autoApprove: true,
+    hasUI: false,
+    // Wire --model so evals can pin a fast model (e.g. a flash/haiku tier);
+    // the session default can be a slow reasoning model that times out scenarios.
+    ...(modelPattern ? { modelPattern } : {}),
   });
   return {
     subscribe(listener: (event: RunnerEvent) => void): () => void {
       return session.subscribe((sdkEvent) => {
-        // Adapt SDK AgentSessionEvent → RunnerEvent using proper type narrowing
-        if (sdkEvent.type === "tool_execution_start") {
-          listener({ type: "tool_execution_start", toolName: sdkEvent.toolName, toolCallId: sdkEvent.toolCallId });
-        } else if (sdkEvent.type === "message_update") {
-          const ame = sdkEvent.assistantMessageEvent;
-          if (ame.type === "text_delta") {
-            listener({ type: "message_update", delta: ame.delta });
+        // Adapt SDK AgentSessionEvent → RunnerEvent.
+        //
+        // We read the authoritative output from the COMPLETED assistant message
+        // (`message_end.message.content`) rather than streamed `text_delta` events.
+        // Two reasons: (1) streamed text deltas proved unreliable across models
+        // (reasoning models stream via non-text channels), and (2) `tool_execution_start`
+        // fires AFTER the assistant message_end — but the runner unsubscribes on the
+        // first message_end, so executed-tool events are missed. The assistant message's
+        // own content already carries the requested tool-call blocks, which is exactly
+        // the "did this skill cause a task dispatch" signal the matchers check.
+        if (sdkEvent.type === "message_end") {
+          const msg = (sdkEvent as { message?: { content?: unknown } }).message;
+          const blocks = Array.isArray(msg?.content)
+            ? (msg!.content as Array<Record<string, unknown>>)
+            : [];
+          for (const b of blocks) {
+            if (b && b.type === "text" && typeof b.text === "string") {
+              listener({ type: "message_update", delta: b.text });
+            } else if (b && typeof b.name === "string" && b.type !== "text") {
+              // ToolCall / tool_use content block — record the requested tool name.
+              listener({ type: "tool_execution_start", toolName: b.name as string, toolCallId: "" });
+            }
           }
-        } else if (sdkEvent.type === "message_end") {
           listener({ type: "message_end" });
         }
       });
@@ -91,7 +114,7 @@ async function main() {
   if (files.length === 0) {
     process.exit(0);
   }
-  const session = await makeSession();
+  const session = await makeSession(args.model);
   const verdicts = [];
   for (const file of files) {
     const text = await fs.readFile(file, "utf8");

@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from four frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-545%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-549%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 

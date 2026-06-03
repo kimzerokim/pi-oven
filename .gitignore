@@ -9,6 +9,9 @@
 # Harness working artifacts — per-session survey reports etc., regenerated on demand.
 docs/harness/
 
+# Claude Code local state / agent worktrees
+.claude/
+
 # omp local session state (Claude Code / OMC artifacts during bootstrap phase)
 .omc/
 

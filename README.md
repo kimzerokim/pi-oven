@@ -37,7 +37,7 @@ omp plugin install pi-oven@kzk --force
 
 # 3. Verify
 omp plugin list | grep pi-oven
-# Expected: pi-oven@kzk (0.1.0)
+# Expected: pi-oven@kzk (0.1.1)
 ```
 
 ### One-shot (install automatic, setup interactive)

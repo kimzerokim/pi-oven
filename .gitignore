@@ -1,6 +1,14 @@
 # pi-oven runtime state (machine-readable, regeneratable)
 .pi-oven/
 
+# omp agent mirror — regenerated from SoT agents/ by the pi-oven extension
+# (syncPiOvenAgentMirrors) on every session_start; never a load source. Keep
+# .omp/extensions/ tracked (it is source); only the derived mirror is ignored.
+.omp/agents/
+
+# Harness working artifacts — per-session survey reports etc., regenerated on demand.
+docs/harness/
+
 # omp local session state (Claude Code / OMC artifacts during bootstrap phase)
 .omc/
 

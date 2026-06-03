@@ -5,6 +5,7 @@ import path from "node:path";
 const ROOT = path.resolve(__dirname, "../../");
 
 const EXPECTED_SKILLS = [
+  "./skills/memory-discipline/SKILL.md",
   "./skills/code-quality-discipline/SKILL.md",
   "./skills/tdd-strict/SKILL.md",
   "./skills/brainstorming/SKILL.md",
@@ -68,7 +69,7 @@ describe("plugin.json manifest SoT alignment", () => {
   it("plugin.skills length matches the number of skill dirs on disk", async () => {
     const plugin = await Bun.file(path.join(ROOT, ".claude-plugin/plugin.json")).json();
     expect(plugin.skills.length).toBe(countSkillDirsOnDisk());
-    expect(plugin.skills.length).toBe(21);
+    expect(plugin.skills.length).toBe(22);
   });
 
   it("loads exactly the 3 SoT commands", async () => {

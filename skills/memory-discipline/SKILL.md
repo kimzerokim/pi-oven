@@ -25,7 +25,6 @@ Recall query patterns:
 - `"past failures in <area>"`
 - `"open questions from last session"`
 
-Provisional call syntax (TODO-verify schema against omp tool registration):
 ```
 recall({query: "prior decisions for <feature>"})
 ```
@@ -44,18 +43,16 @@ Retain immediately after any of the following events:
 
 Format: batch of self-contained factual statements (who/what/when/why). No speculation. No "we decided to" — state facts only. `retain` takes a batch, not a single positional string.
 
-Provisional call syntax (TODO-verify schema):
 ```
-retain([{fact: "…"}, {fact: "…"}])
+retain({items: [{content: "…"}, {content: "…"}]})
 ```
 
 ## When to `reflect` (synthesis)
 
 After retaining 3 or more related items in a session, call `reflect` to synthesise them into a higher-level insight and retain the synthesis.
 
-Provisional call syntax (TODO-verify schema):
 ```
-reflect({context: "session topic"})
+reflect({query: "session topic", context: "session topic"})
 ```
 
 ## When NOT to retain

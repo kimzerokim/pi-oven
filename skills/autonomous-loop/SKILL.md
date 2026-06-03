@@ -38,7 +38,7 @@ Before dispatching ANY tool call, collect all three slots in a single question t
 - Do NOT end the turn after receiving answers. After user confirms all 3 slots, dispatch the first tool call in the SAME turn.
 - Violation = silently branching, or ending turn with "understood, I'll begin now" without dispatching.
 
-**Memory at loop entry (TODO-verify param schema against omp tool registration):**
+**Memory at loop entry:**
 Before the first tool call of the loop, call `recall({query: "prior cycle failures, blockers, and incomplete tasks for this project"})`. If the backend is not available (memory.backend = "off"), skip gracefully — do not fail. If prior failures are found, surface them to the planner before spec/plan dispatch.
 
 **External knowledge:** If the task requires external knowledge, SOTA research, papers, or unfamiliar domains — dispatch `pi-oven:deep-researcher` as a sibling alongside the initial planner/architect call (before committing to the implementation plan). Do not invoke for routine coding tasks.
@@ -123,7 +123,7 @@ Regardless of mode, invoke skills in this order each cycle:
 9. `pre-commit-gate` — run after each commit boundary (Gates 0–4.5, all modes)
 10. `fresh-verifier` — mandatory before exit (all modes, see Exit gate section)
 
-**Milestone retain (TODO-verify param schema against omp tool registration):** At each confirmed MILESTONE (story acceptance criteria verified, phase complete, or spec approved), call `retain({items:[{content:"<milestone description and outcome>", context:"autonomous-loop cycle <N>"}]})`. If the backend is not available, skip gracefully.
+**Milestone retain:** At each confirmed MILESTONE (story acceptance criteria verified, phase complete, or spec approved), call `retain({items:[{content:"<milestone description and outcome>", context:"autonomous-loop cycle <N>"}]})`. If the backend is not available, skip gracefully.
 
 Main agent role: orchestrator only — dispatch, sequence, synthesize evidence, and queue next subagent work in the same turn. Main MUST NOT implement inline code, inline tests, or inline refactors during autonomous-loop execution. Any work touching multiple files, requiring 3+ reads, or exceeding 200 LoC MUST be dispatched to a subagent — main doing it inline is a hard violation, not a shortcut.
 
@@ -187,7 +187,7 @@ Before declaring any cycle or loop complete:
 
 Main cannot self-declare PASS. Only `pi-oven:verifier` `VERDICT: PASS` output counts.
 
-**Memory at loop exit (TODO-verify param schema against omp tool registration):** After `pi-oven:verifier` issues `VERDICT: PASS`, call `reflect()` to consolidate what was learned this loop. If the backend is not available, skip gracefully.
+**Memory at loop exit:** After `pi-oven:verifier` issues `VERDICT: PASS`, call `reflect({query: "what was learned and accomplished this loop"})` to consolidate what was learned this loop. If the backend is not available, skip gracefully.
 
 ---
 

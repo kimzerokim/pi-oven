@@ -53,15 +53,13 @@ Before presenting hypotheses to the user, call `recall` to retrieve any prior in
 recall({query: "deep dive investigation <component-or-slug>"})
 ```
 
-If prior findings exist, surface a brief summary to the user before the confirmation round and use them to seed hypothesis generation. TODO-verify exact recall param schema against omp tool registration before shipping.
+If prior findings exist, surface a brief summary to the user before the confirmation round and use them to seed hypothesis generation.
 
 When the investigation is complete and a root cause is confirmed, call `retain` to persist the finding:
 
 ```
 retain({items: [{content: "Root cause confirmed: <one-sentence summary>", context: "deep-dive/<slug>"}]})
 ```
-
-TODO-verify exact retain param schema against omp tool registration before shipping.
 
 ## Phase 2: Lane confirmation
 

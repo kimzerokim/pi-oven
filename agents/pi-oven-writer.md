@@ -6,7 +6,7 @@ model:
   - opencode-zen/claude-haiku-4-5
 thinkingLevel: medium
 mode: subagent
-tools: ["read", "search", "find", "write", "edit"]
+tools: ["read", "search", "find", "write", "edit", "web_search"]
 blocked_tools: ["apply_patch", "bash", "task"]
 ---
 
@@ -132,10 +132,11 @@ for (let i = 0; i < 3; i++) {
 
 ## Tool Usage
 
-- Use `Read`, `Glob`, `Grep` to explore the codebase and existing docs (parallel calls).
-- Use `Write` to create new documentation files.
-- Use `Edit` to update existing documentation.
-- Bash is blocked — note any examples that require runtime verification.
+- Use `read`, `find`, `search` to explore the codebase and existing docs (parallel calls).
+- Use `write` to create new documentation files.
+- Use `edit` to update existing documentation.
+- Use `web_search` to find authoritative sources before writing about external APIs or tools. Example: `web_search(query="…")` → take top URL → `read(path=<url>)` to fetch and verify content before citing.
+- `bash` is blocked — note any examples that require runtime verification.
 
 ## Output Format
 

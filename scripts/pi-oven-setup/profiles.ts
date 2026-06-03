@@ -1,9 +1,9 @@
 /**
- * Profile A/B default model maps for all 22 pi-oven roles.
+ * Profile A/B default model maps for all 24 pi-oven roles.
  * Source of truth: Spec B §4 (Profile A) and §5 (Profile B).
  */
 
-export const EXPECTED_AGENT_COUNT = 22; // matches Spec A §4 taxonomy
+export const EXPECTED_AGENT_COUNT = 24; // matches Spec A §4 taxonomy
 
 export const ROLES = [
   "executor",
@@ -28,6 +28,8 @@ export const ROLES = [
   "multimodal-looker",
   "oracle",
   "metis",
+  "deep-researcher",
+  "data-runner",
 ] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -165,14 +167,24 @@ export const PROFILE_A: ProfileMap = {
     registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "xhigh",
   },
+  "deep-researcher": {
+    primary: "opencode-zen/gemini-3-flash",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    thinkingLevel: "high",
+  },
+  "data-runner": {
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
+    thinkingLevel: "high",
+  },
 };
 
 /**
- * The MAIN ORCHESTRATOR (top-level session) model pair, distinct from the 22
+ * The MAIN ORCHESTRATOR (top-level session) model pair, distinct from the 24
  * subagent roles above. Maps to omp `modelRoles.default` (the launched session /
  * orchestrator model, resolved at main.ts:575 / sdk.ts:1003) and
  * `modelRoles.title` (the cheap model omp uses to auto-title sessions). These
- * live OUTSIDE ProfileMap so it stays exactly 22 roles for lint-agents.
+ * live OUTSIDE ProfileMap so it stays exactly 24 roles for lint-agents.
  * Written by `/pi-oven:setup --profile` (the user-setup apply path), NOT by the
  * maintainer agent-frontmatter generate path. PROFILE_B reuses only ids that
  * PROFILE_B already declares (B is DEFERRED — no new B ids introduced here).
@@ -315,5 +327,15 @@ export const PROFILE_B: ProfileMap = {
     primary: "anthropic/claude-opus-4-7",
     registry_alternate: "opencode-zen/claude-opus-4-7",
     thinkingLevel: "xhigh",
+  },
+  "deep-researcher": {
+    primary: "anthropic/claude-sonnet-4-6",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    thinkingLevel: "high",
+  },
+  "data-runner": {
+    primary: "anthropic/claude-sonnet-4-6",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    thinkingLevel: "high",
   },
 };

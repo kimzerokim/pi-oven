@@ -228,7 +228,7 @@ describe("rewriteAllAgents", () => {
     );
 
     const { rewritten, skipped } = await rewriteAllAgents(tempDir, PROFILE_B);
-    expect(rewritten.length).toBe(22);
+    expect(rewritten.length).toBe(ROLES.length);
     expect(skipped.length).toBe(0);
 
     // Verify executor now has anthropic primary
@@ -250,7 +250,7 @@ describe("rewriteAllAgents", () => {
 
     const { rewritten, skipped } = await rewriteAllAgents(tempDir, PROFILE_B);
     expect(rewritten.length).toBe(3);
-    expect(skipped.length).toBe(19);
+    expect(skipped.length).toBe(ROLES.length - 3);
   });
 });
 

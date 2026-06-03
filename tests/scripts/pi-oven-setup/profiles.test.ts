@@ -22,8 +22,8 @@ describe("profiles", () => {
       expect(ROLES.length).toBe(EXPECTED_AGENT_COUNT);
     });
 
-    it("EXPECTED_AGENT_COUNT is 22", () => {
-      expect(EXPECTED_AGENT_COUNT).toBe(22);
+    it("EXPECTED_AGENT_COUNT is 24", () => {
+      expect(EXPECTED_AGENT_COUNT).toBe(24);
     });
   });
 

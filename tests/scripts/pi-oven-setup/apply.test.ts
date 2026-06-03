@@ -142,7 +142,7 @@ describe("runApply", () => {
     });
 
     const entries = await readAgentFiles(agentsDir);
-    expect(entries.length).toBe(22);
+    expect(entries.length).toBe(ROLES.length);
     const executor = entries.find((e) => e.role === "executor")!;
     expect(executor.currentModel[0]).toBe(PROFILE_A.executor.primary);
     expect(executor.currentModel[1]).toBe(PROFILE_A.executor.registry_alternate);
@@ -162,7 +162,7 @@ describe("runApply", () => {
     });
 
     const entries = await readAgentFiles(agentsDir);
-    expect(entries.length).toBe(22);
+    expect(entries.length).toBe(ROLES.length);
     const executor = entries.find((e) => e.role === "executor")!;
     expect(executor.currentModel[0]).toBe(PROFILE_B.executor.primary);
     expect(executor.currentModel[1]).toBe(PROFILE_B.executor.registry_alternate);

@@ -15,7 +15,7 @@
 | Dir | What | SoT? |
 |---|---|---|
 | `agents/pi-oven-*.md` | 24 subagent definitions. Frontmatter `name: pi-oven:<role>` (colon), `model:` array, `thinkingLevel`, body = system prompt. | body hand-authored; `model`/`thinkingLevel` derived from profiles.ts |
-| `skills/<name>/SKILL.md` | 21 authored skills; runtime loads the 21-skill SoT set from `.claude-plugin/plugin.json`. Bodies **English-only**. | hand-authored |
+| `skills/<name>/SKILL.md` | 22 authored skills; runtime loads the 22-skill SoT set from `.claude-plugin/plugin.json`. Bodies **English-only**. | hand-authored |
 | `commands/*.md` | 3 command templates (setup, doctor, release). omp registers each as `/pi-oven:<basename>` via the Claude Code Marketplace provider, which namespaces marketplace commands as `<plugin>:<file-basename>` — command files MUST NOT carry a `pi-oven-` prefix. Autonomous mode is entered via the `autonomous-loop` / `autonomous-boundary` skill keyword triggers (no command). | hand-authored |
 | `scripts/pi-oven-setup/` | Setup-wizard CLI modules (TS, bun). | code |
 | `scripts/pi-oven-release/` | Release automation modules (version bump, SoT sync, changelog, publish gate). | code |
@@ -27,7 +27,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 545 pass currently
+bun test             # 563 pass currently
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -77,4 +77,4 @@ Per-release history → `CHANGELOG.md` + git. This file is the stable guide, not
 
 ## docs/ map
 
-`specs/` design specs (foundation, agent-registry, setup-wizard, skill-rewrite, skill-agent-dispatch, user-local-override) · `SOUL.md` project identity.
+`specs/` design specs (foundation, agent-registry, setup-wizard, skill-rewrite, skill-agent-dispatch, user-local-override) · `plans/` design + execution plans (includes `2026-06-04-agents-omp-native-upgrade-design.md` + `*-plan.md`) · `SOUL.md` project identity.

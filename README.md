@@ -2,14 +2,14 @@
 
 > A curated omp marketplace plugin distilled from four frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-545%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-563%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
 ## What you get
 
-- **22 self-contained agents** under the `pi-oven:` namespace — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis. Each is a markdown file in `agents/` with locked model + tool whitelist.
-- **21 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, git-workflow, aws, bitbucket-pipeline, cloudflare.
+- **24 self-contained agents** under the `pi-oven:` namespace — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis, deep-researcher, data-runner. All 24 are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier use `report_finding` for structured findings. Each is a markdown file in `agents/` with locked model + tool whitelist.
+- **22 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, git-workflow, aws, bitbucket-pipeline, cloudflare, memory-discipline (always-on mnemopi backend: recall/retain injected at 5 entry points).
 - **`/pi-oven:setup` wizard** — Profile A (release default, opencode-zen + openai-codex) or Profile B (Anthropic Pro/Max opt-in), agent-file source of truth, drift detection on every session.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
 - **Project `CLAUDE.md` injection + omp isolation** — the runtime extension reads your repo-root `CLAUDE.md` and injects it into the main + sub agent system prompt (omp does not read repo-root `CLAUDE.md` natively). `/pi-oven:setup --isolate` then makes omp ignore the global `~/.claude` context layer (`~/.claude/CLAUDE.md` + pi-oven skills/hooks), so omp runs as a pi-oven-first environment. It keeps the `claude-plugins` provider enabled (that is how pi-oven's own `/pi-oven:*` commands load), so omc/agentmemory marketplace plugin commands remain visible — the trade-off for not killing pi-oven's own commands. See [omp isolation & project CLAUDE.md](#omp-isolation--project-claudemd).
@@ -77,7 +77,7 @@ The wizard will:
 1. Detect which providers are authenticated (`opencode-zen`, `openai-codex`, `anthropic`).
 2. Offer Profile A (release default) or Profile B (Anthropic opt-in, if available).
 3. Optionally let you override individual agent roles.
-4. Persist your choice to plugin config + rewrite all 22 agent files in-place.
+4. Persist your choice to plugin config + rewrite all 24 agent files in-place.
 5. Run a smoke validation (7 MUST-tier roles pinged) and report the result.
 
 ### 2. Dispatch agents directly
@@ -150,7 +150,7 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 
 ## Agent roster
 
-22 agents, grouped by purpose. Each agent's `model:` field locks the LLM choice; the validator at plugin load rejects any agent whose model prefix is outside the whitelist (`opencode-zen/`, `openai-codex/`, or `anthropic/` when Profile B is active).
+24 agents, grouped by purpose. All agents are omp-native (read/search/find/bash/web_search + killer tools debug/eval/browser/retain/recall/reflect/lsp/ast_grep; irc auto-injected). Each agent's `model:` field locks the LLM choice; the validator at plugin load rejects any agent whose model prefix is outside the whitelist (`opencode-zen/`, `openai-codex/`, or `anthropic/` when Profile B is active).
 
 ### MUST tier (always available, core workflow)
 
@@ -188,6 +188,8 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 | `pi-oven:multimodal-looker` | Vision / image / screenshot analysis |
 | `pi-oven:oracle` | Codebase knowledge Q&A |
 | `pi-oven:metis` | Requirements clarification (Socratic interview) |
+| `pi-oven:deep-researcher` | Web research + arxiv-PDF fetch + adversarial synthesis (`opencode-zen/gemini-3-flash`, high) |
+| `pi-oven:data-runner` | Eval REPL data execution + batch result analysis (`openai-codex/gpt-5.4`, high) |
 
 ---
 
@@ -216,6 +218,7 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 | `aws` | ops (UC5) | AWS production read inspection and infra diagnostics |
 | `bitbucket-pipeline` | ops (UC5) | Bitbucket pipeline status/log/variables connector |
 | `cloudflare` | ops (UC5) | Cloudflare DNS/zone read connector |
+| `memory-discipline` | core (alwaysApply) | mnemopi backend: memory recall/retain at 5 entry points; sets `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true` |
 
 See `skills/<name>/SKILL.md` for the complete body and `evals/<skill>/scenarios/*.yaml` for behavioral test fixtures.
 
@@ -230,10 +233,10 @@ The wizard accepts subcommands:
 | `/pi-oven:setup` | Interactive first-run flow (default) |
 | `/pi-oven:setup --status` | Show current Profile + per-role models + drift status |
 | `/pi-oven:setup --reset` | Clear all pi-oven plugin config + revert agent files to Profile A |
-| `/pi-oven:setup --import <file>` | Apply a JSON config (validated against the 22-role schema + provider whitelist) |
+| `/pi-oven:setup --import <file>` | Apply a JSON config (validated against the 24-role schema + provider whitelist) |
 | `/pi-oven:setup --reapply` | Re-apply the persisted Profile to agent files (used after `omp plugin upgrade`) |
 | `/pi-oven:setup --apply --profile A` | Non-interactive apply with explicit profile |
-| `/pi-oven:setup --apply --profile B --validate full` | Full 22-role smoke ping (default is 7 MUST-tier) |
+| `/pi-oven:setup --apply --profile B --validate full` | Full 24-role smoke ping (default is 7 MUST-tier) |
 | `/pi-oven:setup --apply --profile A --override executor=openai-codex/gpt-5.4` | Per-role override (repeatable) |
 | `/pi-oven:setup --isolate` | Make omp ignore the `~/.claude` context layer (writes `disabledProviders: [claude]`; keeps `claude-plugins` so pi-oven's own `/pi-oven:*` commands survive). Combinable, e.g. `--apply --profile A --isolate` |
 | `/pi-oven:setup --no-isolate` | Re-enable the `~/.claude` layer in omp (removes `claude` + any legacy `claude-plugins`) |
@@ -248,7 +251,7 @@ Optimized for users with **OpenCode Zen + OpenAI Codex subscriptions** — no An
 - Structured review / design (designer, verifier, code-reviewer, code-simplifier, tracer, analyst, librarian): `opencode-zen/glm-5.1`
 - Vision (qa-tester): `opencode-zen/gemini-3.5-flash` · Cheap git (git-master): `opencode-zen/claude-haiku-4-5`
 
-Beyond the 22 subagent roles, `/pi-oven:setup --profile` also sets the **main orchestrator** model — omp `modelRoles.default` = canonical `gpt-5.4` (openai-codex-first, opencode-zen fallback). The 21 skills enforce subagent dispatch so the orchestrator routes work to the right agent instead of doing it inline.
+Beyond the 24 subagent roles, `/pi-oven:setup --profile` also sets the **main orchestrator** model — omp `modelRoles.default` = canonical `gpt-5.4` (openai-codex-first, opencode-zen fallback). The 22 skills enforce subagent dispatch so the orchestrator routes work to the right agent instead of doing it inline.
 
 ### Profile B (Anthropic opt-in)
 
@@ -326,11 +329,11 @@ The drift detector emits a warning at session start if it notices the agent file
 
 ### Install cache must be populated
 
-After installing pi-oven@kzk from the marketplace, ensure the install cache has the 22 agent files:
+After installing pi-oven@kzk from the marketplace, ensure the install cache has the 24 agent files:
 
 ```sh
 ls ~/.omp/plugins/cache/plugins/kzk___pi-oven___*/agents/ | wc -l
-# Expected: 22
+# Expected: 24
 ```
 
 If empty (`0`), force a reinstall:
@@ -362,7 +365,7 @@ The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pi-oven-*.md` a
 ### Test suite
 
 ```sh
-bun test       # 515 tests across 42 files
+bun test       # 563 tests across 42 files
 bun check      # tsc --noEmit typecheck
 bun run build  # extension bundle (pi-oven.js)
 bun run lint:agents  # CI-grade agent file lint
@@ -385,7 +388,7 @@ If you're hacking on pi-oven itself, point omp at your local checkout instead of
 ```sh
 cd /path/to/pi-oven
 bun install
-bun test           # baseline 515 passing
+bun test           # baseline 563 passing
 bun check          # typecheck clean
 bun run build      # extension bundles to dist/pi-oven.js
 bun run lint:agents
@@ -403,13 +406,13 @@ In dev mode, agent file edits are picked up immediately (no `omp plugin install 
 ```
 pi-oven/
 ├── .claude-plugin/
-│   ├── plugin.json          # plugin manifest (21 skills, version, commands)
+│   ├── plugin.json          # plugin manifest (22 skills, version, commands)
 │   └── marketplace.json     # marketplace catalog (plugins[0].version)
 ├── .omp/extensions/
 │   └── pi-oven.ts               # load-time validator + session_start drift hook
-├── agents/                  # 22 pi-oven-prefixed agent files (file-based registry)
+├── agents/                  # 24 pi-oven-prefixed agent files (file-based registry)
 │   └── pi-oven-*.md
-├── skills/                  # 21 authored skills (all runtime-loaded)
+├── skills/                  # 22 authored skills (all runtime-loaded)
 │   └── <skill-name>/
 │       ├── SKILL.md
 │       └── references/      # progressive disclosure docs
@@ -421,7 +424,7 @@ pi-oven/
 │   ├── pi-oven-setup.ts         # /pi-oven:setup batch CLI
 │   ├── pi-oven-release/         # release automation modules (bump/sync/changelog/publish)
 │   ├── pi-oven-setup/           # 13 submodules (profiles, persist, apply, ...)
-├── tests/                   # bun test suite (515 tests, 1235 expect calls, 42 files)
+├── tests/                   # bun test suite (563 tests, 42 files)
 │   ├── extensions/
 │   ├── plugin/
 │   └── scripts/
@@ -438,7 +441,7 @@ pi-oven/
 
 ## Architecture in one paragraph
 
-pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin. The 22 agent files in `agents/pi-oven-*.md` are the single source of truth for model routing — each file's frontmatter `model:` array names the primary + alternate that the omp `task` tool will resolve at dispatch time. A load-time TypeScript validator (`.omp/extensions/pi-oven.ts`) enforces the provider whitelist by reading the agent files themselves: if any file references an `anthropic/*` model, the validator includes `anthropic/` in `ALLOWED_PREFIXES`; otherwise Profile A is in effect. The `/pi-oven:setup` wizard mutates the agent files in-place to switch Profiles; the `session_start` hook detects drift between agent files and persisted plugin config and emits a warning. 21 skills layer workflow discipline on top, including UC5 ops connectors (`aws`, `bitbucket-pipeline`, `cloudflare`).
+pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin. The 24 agent files in `agents/pi-oven-*.md` are the single source of truth for model routing — each file's frontmatter `model:` array names the primary + alternate that the omp `task` tool will resolve at dispatch time. All 24 agents are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier emit structured findings via `report_finding`. A load-time TypeScript validator (`.omp/extensions/pi-oven.ts`) enforces the provider whitelist by reading the agent files themselves: if any file references an `anthropic/*` model, the validator includes `anthropic/` in `ALLOWED_PREFIXES`; otherwise Profile A is in effect. The `/pi-oven:setup` wizard mutates the agent files in-place to switch Profiles; the `session_start` hook detects drift between agent files and persisted plugin config and emits a warning. 22 skills layer workflow discipline on top, including UC5 ops connectors (`aws`, `bitbucket-pipeline`, `cloudflare`) and the always-on `memory-discipline` skill (mnemopi backend).
 
 ---
 

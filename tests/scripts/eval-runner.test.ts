@@ -196,6 +196,226 @@ expected:
     });
   });
 
+  describe("runScenario — abort-signal timeout (Issue 1)", () => {
+    /**
+     * RED: prompt() never settles (simulates a hung LLM stream).
+     * The runner must ABORT the turn at turnTimeoutMs, set timedOut, and stop
+     * the scenario — not hang forever.
+     * The session's prompt() receives an AbortSignal that gets aborted when the
+     * timer fires (so a real session.prompt would reject/resolve).
+     */
+    it("aborts a hung prompt() at turnTimeoutMs and timedOut stops the scenario", async () => {
+      let receivedSignal: AbortSignal | undefined;
+      let abortCalled = false;
+
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          // No events emitted — simulates a completely silent/hung stream
+          return () => {};
+        },
+        async prompt(_msg: string, options?: { signal?: AbortSignal }): Promise<void> {
+          receivedSignal = options?.signal;
+          // Block forever unless the signal fires
+          await new Promise<void>((resolve, reject) => {
+            if (options?.signal?.aborted) {
+              reject(new DOMException("aborted", "AbortError"));
+              return;
+            }
+            options?.signal?.addEventListener("abort", () => {
+              abortCalled = true;
+              reject(new DOMException("aborted", "AbortError"));
+            });
+          });
+        },
+      };
+
+      const scenario = parseScenario(`
+name: abort-signal-test
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "first"
+  - turn: 2
+    user: "second"
+expected:
+  - skill_triggered: false
+      `.trim());
+
+      const t0 = Date.now();
+      const result = await Promise.race([
+        runScenario(scenario, fakeSession, { turnTimeoutMs: 200 }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("HANG: runScenario did not complete within timeout")), 3000)
+        ),
+      ]);
+
+      const elapsed = Date.now() - t0;
+      // Must complete near turnTimeoutMs (not run the second turn)
+      expect(elapsed).toBeLessThan(2000);
+      // Should have received a signal
+      expect(receivedSignal).toBeDefined();
+      // Signal should have been aborted
+      expect(abortCalled).toBe(true);
+      // Scenario stops after first timedOut turn — only 1 turn attempted, result is a Verdict
+      expect((result as { scenario: string }).scenario).toBe("abort-signal-test");
+    });
+
+    /**
+     * RED: scenario with 2 turns — if turn 1 times out, turn 2 must NOT execute.
+     * This verifies the `if (lastBuf.timedOut) break` guard.
+     */
+    it("does not execute subsequent turns after a timed-out turn", async () => {
+      let promptCallCount = 0;
+
+      const fakeSession: SessionLike = {
+        subscribe(_listener) {
+          return () => {};
+        },
+        async prompt(_msg: string, options?: { signal?: AbortSignal }): Promise<void> {
+          promptCallCount++;
+          // Block until aborted
+          await new Promise<void>((resolve, reject) => {
+            if (options?.signal?.aborted) {
+              reject(new DOMException("aborted", "AbortError"));
+              return;
+            }
+            options?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("aborted", "AbortError"));
+            });
+            // If no signal, just resolve immediately (shouldn't happen for turn 1 but guard)
+            if (!options?.signal) resolve();
+          });
+        },
+      };
+
+      const scenario = parseScenario(`
+name: two-turns
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "first"
+  - turn: 2
+    user: "second"
+expected:
+  - skill_triggered: false
+      `.trim());
+
+      await Promise.race([
+        runScenario(scenario, fakeSession, { turnTimeoutMs: 150 }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("HANG")), 2000)
+        ),
+      ]);
+
+      // Only 1 prompt call — second turn was skipped due to timedOut break
+      expect(promptCallCount).toBe(1);
+    });
+  });
+
+  describe("runScenario — per-scenario wall-clock cap (Issue 3)", () => {
+    /**
+     * RED: a scenario with many turns each completing JUST under turnTimeoutMs
+     * (so per-turn cap never fires) but whose TOTAL exceeds scenarioTimeoutMs.
+     * Without a per-scenario cap the runner loops all turns; with the cap it must
+     * stop early and return a timed-out verdict, then the outer runner continues.
+     *
+     * Implementation target: runScenario accepts options.scenarioTimeoutMs; when
+     * the wall-clock for the whole scenario exceeds it, runScenario resolves with
+     * a timed-out Verdict (passed:false, failures includes "scenario_timeout").
+     */
+    it("bounds a scenario whose total turns exceed scenarioTimeoutMs even though no single turn exceeds turnTimeoutMs", async () => {
+      let promptCallCount = 0;
+
+      // Each turn completes quickly (50ms), well under any turnTimeoutMs.
+      // But with 10 turns * 50ms = ~500ms total, which exceeds scenarioTimeoutMs=200ms.
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_update", delta: "ok" });
+            listener({ type: "message_end" });
+          }, 50);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+
+      const turns = Array.from({ length: 10 }, (_, i) => `  - turn: ${i + 1}\n    user: "msg${i + 1}"`).join("\n");
+      const scenario = parseScenario(
+        `name: scenario-deadline\nskill: x\ntag: smoke\ninput:\n${turns}\nexpected:\n  - skill_triggered: false`.trim()
+      );
+
+      const t0 = Date.now();
+      const result = await Promise.race([
+        runScenario(scenario, fakeSession, { turnTimeoutMs: 500, scenarioTimeoutMs: 200 }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("HANG: scenario-deadline cap did not fire")), 3000)
+        ),
+      ]);
+      const elapsed = Date.now() - t0;
+
+      // Must complete well under the sum of all turns (10 * 50ms = 500ms)
+      expect(elapsed).toBeLessThan(450);
+      // Scenario must be marked as failed (timed out)
+      expect((result as { passed: boolean }).passed).toBe(false);
+      expect((result as { failures: string[] }).failures.some((f) => f.includes("scenario_timeout"))).toBe(true);
+      // Must not have run all 10 prompts (cap stopped it early)
+      expect(promptCallCount).toBeLessThan(10);
+    });
+
+    it("continues to the next scenario after a scenario deadline fires", async () => {
+      const results: Array<Awaited<ReturnType<typeof runScenario>>> = [];
+
+      // Slow session: each turn takes 80ms
+      const slowSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_update", delta: "slow" });
+            listener({ type: "message_end" });
+          }, 80);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+
+      const mkScenario = (name: string, numTurns: number) => {
+        const turns = Array.from({ length: numTurns }, (_, i) => `  - turn: ${i + 1}\n    user: "go"`).join("\n");
+        return parseScenario(`name: ${name}\nskill: x\ntag: smoke\ninput:\n${turns}\nexpected:\n  - skill_triggered: false`.trim());
+      };
+
+      // Scenario 1: 5 turns * 80ms = 400ms total — exceeds scenarioTimeoutMs=150ms
+      const verdict1 = await runScenario(mkScenario("slow-scenario", 5), slowSession, {
+        turnTimeoutMs: 500,
+        scenarioTimeoutMs: 150,
+      });
+      results.push(verdict1);
+
+      // Scenario 2: 1 turn — should complete normally (fresh session simulated by fast turns)
+      const fastSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const verdict2 = await runScenario(mkScenario("fast-scenario", 1), fastSession, {
+        turnTimeoutMs: 500,
+        scenarioTimeoutMs: 5000,
+      });
+      results.push(verdict2);
+
+      // Scenario 1 timed out
+      expect(results[0].passed).toBe(false);
+      expect(results[0].failures.some((f) => f.includes("scenario_timeout"))).toBe(true);
+      // Scenario 2 passed (runner continued after scenario 1's deadline)
+      expect(results[1].scenario).toBe("fast-scenario");
+      expect(results[1].passed).toBe(true);
+    });
+  });
+
   describe("runScenario — session lifecycle fixes", () => {
     /**
      * RED: turn ends via 'error' event (non-message_end terminal).

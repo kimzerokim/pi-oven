@@ -23,16 +23,22 @@ export type RunnerEvent =
 
 /** Contract that mirrors real AgentSession subscribe/prompt API.
  *  Real SDK: session.subscribe(listener) returns unsubscribe fn; session.prompt() returns Promise<void>.
+ *  The optional options.signal is wired to an AbortController so the in-flight
+ *  turn can be cancelled when the per-turn timeout fires.
  */
 export interface SessionLike {
   subscribe(listener: (event: RunnerEvent) => void): () => void;
-  prompt(message: string): Promise<void>;
+  prompt(message: string, options?: { signal?: AbortSignal }): Promise<void>;
 }
 
 /** Options passed to runScenario to control runner behaviour. */
 export interface RunnerOptions {
   /** Max ms to wait for any single turn's terminal event. Default: 90_000 ms. */
   turnTimeoutMs?: number;
+  /** Max ms for the entire scenario wall-clock. Default: 5 * turnTimeoutMs. */
+  scenarioTimeoutMs?: number;
+  /** Max number of turns to execute per scenario. Default: unbounded. */
+  maxTurns?: number;
 }
 
 /** Terminal event types: anything that ends a turn (success OR failure path). */
@@ -52,14 +58,18 @@ async function runTurn(
 ): Promise<TurnBuffer> {
   const buf: TurnBuffer = { content: "", toolCalls: [] };
 
-  // Fix 1: resolve on ANY terminal event (message_end, error, abort, …)
-  //         AND resolve after a finite timeout so a missing terminal cannot hang.
+  // Per-turn AbortController: aborted when the timeout fires, so the in-flight
+  // session.prompt() (which accepts signal) is actually cancelled — not just
+  // ignored by a dangling setTimeout that only guards terminalPromise.
+  const controller = new AbortController();
+
   const terminalPromise = new Promise<void>((resolve) => {
     let done = false;
     const timeoutHandle = setTimeout(() => {
       if (!done) {
         done = true;
         buf.timedOut = true;
+        controller.abort();   // cancel the in-flight prompt()
         unsubscribe();
         resolve();
       }
@@ -83,11 +93,16 @@ async function runTurn(
     });
   });
 
-  // Fix 3: guard prompt() — only call if session is not already streaming.
-  // SessionLike.prompt() is the real SDK contract; callers that wrap a real
-  // session should ensure isStreaming is false before calling. At this layer
-  // we simply await prompt() and then await the terminal signal.
-  await session.prompt(userMessage);
+  // Race prompt() against the timeout: if prompt() is a blocking real SDK call
+  // the AbortController signal aborts it; if it's a mock that ignores signal the
+  // terminalPromise timeout still fires and resolves the race.
+  // Errors from prompt() (e.g. AbortError when signal fires) are swallowed —
+  // a timed-out turn is recorded via buf.timedOut, not thrown.
+  await Promise.race([
+    session.prompt(userMessage, { signal: controller.signal }).catch(() => {}),
+    terminalPromise,
+  ]);
+  // Ensure terminalPromise is also awaited so subscription cleanup runs
   await terminalPromise;
   return buf;
 }
@@ -98,15 +113,46 @@ export async function runScenario(
   options?: RunnerOptions
 ): Promise<Verdict> {
   const turnTimeoutMs = options?.turnTimeoutMs ?? 90_000;
+  const scenarioTimeoutMs = options?.scenarioTimeoutMs ?? 5 * turnTimeoutMs;
+  const maxTurns = options?.maxTurns;
   const t0 = performance.now();
   const failures: string[] = [];
   const observations: string[] = [];
 
+  // Per-scenario wall-clock deadline: resolves to a sentinel after scenarioTimeoutMs
+  let scenarioTimedOut = false;
+  const scenarioDeadlinePromise = new Promise<"scenario_deadline">((resolve) =>
+    setTimeout(() => {
+      scenarioTimedOut = true;
+      resolve("scenario_deadline");
+    }, scenarioTimeoutMs)
+  );
+
   // Aggregate across all turns; evaluations run against the LAST turn's buffer
   let lastBuf: TurnBuffer = { content: "", toolCalls: [] };
+  let turnIndex = 0;
   for (const turn of scenario.input) {
-    lastBuf = await runTurn(session, turn.user, turnTimeoutMs);
+    if (scenarioTimedOut) break;
+    if (maxTurns !== undefined && turnIndex >= maxTurns) break;
+    turnIndex++;
+
+    const turnResult = await Promise.race([
+      runTurn(session, turn.user, turnTimeoutMs),
+      scenarioDeadlinePromise,
+    ]);
+
+    if (turnResult === "scenario_deadline") {
+      scenarioTimedOut = true;
+      break;
+    }
+
+    lastBuf = turnResult;
     observations.push(`turn ${turn.turn}: tools=[${lastBuf.toolCalls.join(",")}] content="${lastBuf.content.slice(0, 80)}"`);
+    if (lastBuf.timedOut) break;  // timed-out turn: stop scenario, don't run subsequent turns
+  }
+
+  if (scenarioTimedOut) {
+    failures.push(`scenario_timeout: scenario exceeded ${scenarioTimeoutMs}ms wall-clock cap`);
   }
 
   for (const exp of scenario.expected) {

@@ -8,5 +8,5 @@ input:
 expected:
   - skill_triggered: "autonomous-loop"
   - agent_response_must_contain: ["branch", "destination"]
+    agent_response_must_contain_match: any
   - tool_calls_required: ["ask|AskUserQuestion"]
-  - match: any

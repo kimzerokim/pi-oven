@@ -7,4 +7,4 @@ input:
 expected:
   - skill_triggered: "code-quality-discipline"
   - agent_response_must_contain: ["DRY", "YAGNI"]
-  - match: any
+    agent_response_must_contain_match: any

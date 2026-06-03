@@ -7,4 +7,4 @@ input:
 expected:
   - skill_triggered: "pre-commit-gate"
   - agent_response_must_contain: ["Gate", "build"]
-  - match: any
+    agent_response_must_contain_match: any

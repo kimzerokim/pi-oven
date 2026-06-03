@@ -7,5 +7,5 @@ input:
 expected:
   - skill_triggered: "spec-and-review"
   - agent_response_must_contain: ["survey", "critic"]
+    agent_response_must_contain_match: any
   - tool_calls_required: ["Task|task"]
-  - match: any

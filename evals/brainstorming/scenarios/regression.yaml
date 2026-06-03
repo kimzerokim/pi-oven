@@ -7,5 +7,5 @@ input:
 expected:
   - skill_triggered: "brainstorming"
   - agent_response_must_contain: ["spec", "approved"]
+    agent_response_must_contain_match: any
   - tool_calls_forbidden_first: ["Write src", "Edit src"]
-  - match: any

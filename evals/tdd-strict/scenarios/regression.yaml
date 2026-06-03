@@ -7,4 +7,4 @@ input:
 expected:
   - skill_triggered: "tdd-strict"
   - agent_response_must_contain: ["Red", "test"]
-  - match: any
+    agent_response_must_contain_match: any

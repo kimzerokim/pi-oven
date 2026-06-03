@@ -7,5 +7,5 @@ input:
 expected:
   - skill_triggered: "writing-plans"
   - agent_response_must_contain: ["bite-sized", "checkbox"]
+    agent_response_must_contain_match: any
   - tool_calls_required: ["Write"]
-  - match: any

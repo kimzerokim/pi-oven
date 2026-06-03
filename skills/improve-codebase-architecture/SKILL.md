@@ -10,6 +10,8 @@ alwaysApply: false
 
 Surface architectural friction and propose **deepening opportunities** — refactors that turn shallow modules into deep ones. The aim is testability and AI-navigability. The main agent dispatches and synthesises; it does not run the survey or draw the report inline.
 
+This skill is the **single entry point for all refactoring**. A plain "refactor module X" request lands here; Step 0 classifies the intent and routes — light DRY/YAGNI/KISS cleanup to `code-quality-discipline` + `pi-oven:code-simplifier`, deepening / seam work through the full process below.
+
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
 ENFORCEMENT: do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow — 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation MUST go to a subagent; main only dispatches, synthesises, and reviews — never implements inline (see `large-task-delegation` + `subagent-driven-development`).
@@ -38,11 +40,20 @@ This skill is *informed* by the project's domain model. If a `CONTEXT.md` / doma
 
 ## Process
 
+### 0. Refactor-type detection (route first)
+
+Classify the refactor intent before doing anything else:
+
+- **Pure DRY/YAGNI/KISS cleanup** — duplication removal, local simplification, no interface reshaping. Apply the `code-quality-discipline` checklist and dispatch `pi-oven:code-simplifier`. Skip Steps 1–5.
+- **Shallow→deep deepening, or tightly-coupled consolidation / seam work** — run the full process below (Steps 1–5: survey → candidates → grilling → interface design → verify).
+
+When in doubt, treat it as deepening and run the full process.
+
 ### 1. Survey (dispatch — do not read inline)
 
 Before exploring, read any domain glossary and the ADRs in the area being touched. If the survey will require 5+ file reads, route through `codebase-survey` rather than reading in the main session.
 
-Dispatch `pi-oven:explorer` to walk the codebase organically and note friction — not rigid heuristics. Have it report, with file + line evidence:
+Dispatch `pi-oven:explorer` AND `pi-oven:analyst` in parallel: the explorer walks the codebase organically and notes friction — not rigid heuristics; the analyst assesses coupling and testability. Have both report, with file + line evidence:
 
 - Where understanding one concept means bouncing between many small modules.
 - Where modules are **shallow** — interface nearly as complex as implementation.
@@ -57,6 +68,8 @@ Apply the **deletion test** to each suspect. A "yes, concentrates complexity" is
 Dispatch `pi-oven:architect` to synthesise the explorer's findings into deepening candidates and write a self-contained HTML report to the OS temp dir — never into the repo. Resolve the temp dir from `$TMPDIR` (fall back to `/tmp`, `%TEMP%` on Windows) and write `<tmpdir>/architecture-review-<timestamp>.html`. Open it (`open` on macOS, `xdg-open` on Linux, `start` on Windows) and report the absolute path.
 
 The report uses **Tailwind via CDN** for layout and **Mermaid via CDN** for graph-shaped diagrams (call graphs, dependencies, sequences). Mix Mermaid with hand-built divs / inline SVG for editorial visuals (mass diagrams, cross-sections, call-graph collapse) so it doesn't read as generic. Each candidate gets a **before/after** visualisation — the diagrams carry the weight; prose is sparse.
+
+Each candidate must pass a `code-quality-discipline` check before it earns a card: **DRY** (does it open a true new seam, not a pass-through wrapper?), **YAGNI** (do ≥2 distinct callers already exist?), **KISS** (is this the simplest expression of the deepening?). A candidate failing any of these is dropped or folded into an existing module.
 
 Each candidate is one card:
 
@@ -93,7 +106,11 @@ Each agent returns: interface (types + invariants + ordering + error modes), a c
 
 ### 5. Verify before claiming improvement
 
-When a deepening lands as code, dispatch `pi-oven:code-simplifier` to confirm the wrappers actually collapsed and a separate `pi-oven:verifier` to confirm the interface still passes its tests. The main agent must not self-approve the refactor in the same context.
+Each deepening must **preserve behavior under `tdd-strict`** — tests green before AND after the change; author or extend tests for the deepened interface first, then land the deepening.
+
+When a deepening lands as code, dispatch `pi-oven:code-simplifier` to confirm the wrappers actually collapsed and a separate `pi-oven:verifier` to confirm the interface still passes its tests. Once both PASS (collapse confirmed + interface tests green), dispatch `pi-oven:code-reviewer` for a separate code-quality review — no new coupling or `code-quality-discipline` violations introduced by the deepening. The main agent must not self-approve the refactor in the same context.
+
+The landed refactor exits through `pre-commit-gate`, consistent with the other flows.
 
 ## Anti-patterns
 
@@ -113,5 +130,6 @@ The main agent dispatches and synthesises; the heavy work routes to per-model ag
 - **Interface alternatives** → 3+ parallel `pi-oven:architect` agents, one constraint each (Step 4).
 - **Collapse verification** → `pi-oven:code-simplifier` — confirms shallow wrappers actually disappeared after a landed deepening (Step 5).
 - **Test-surface verification** → `pi-oven:verifier` — confirms the deepened interface still passes its tests; separate context from the author (Step 5).
+- **Code-quality review** → `pi-oven:code-reviewer` — after collapse + interface tests both PASS, confirms the deepening introduced no new coupling or `code-quality-discipline` violations (Step 5).
 
 Agents return findings and designs; the main agent makes the call and runs the grilling loop with the user.

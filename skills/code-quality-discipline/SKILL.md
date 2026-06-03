@@ -79,3 +79,5 @@ In an omp session, push quality checks to specialised agents:
 - Quantitative metrics analysis when needed: dispatch `pi-oven:analyst`.
 
 Outside omp the main agent runs the same checklist inline.
+
+**Refactor-type routing.** DRY/YAGNI/KISS cleanup (duplication removal, local simplification) → `pi-oven:code-simplifier`. Architectural refactors (shallow→deep deepening, seam consolidation, coupling reduction) → the `improve-codebase-architecture` skill; its Step 0 classifies the intent and routes.

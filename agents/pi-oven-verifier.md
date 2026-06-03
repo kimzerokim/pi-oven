@@ -6,8 +6,20 @@ model:
   - opencode-zen/claude-sonnet-4-6
 thinkingLevel: high
 mode: subagent
-tools: ["read", "search", "find", "bash", "task"]
+tools: ["read", "search", "find", "bash", "task", "report_finding", "recall"]
 blocked_tools: ["write", "edit", "apply_patch"]
+output:
+  verdict: "PASS | BLOCK | INCOMPLETE"
+  confidence: "high | medium | low"
+  blocker_count: 0
+  findings:
+    - title: string
+      body: string
+      priority: 0
+      confidence: 0.0
+      file_path: string
+      line_start: 0
+      line_end: 0
 ---
 
 ## Role
@@ -92,6 +104,7 @@ Confirm no spec or plan files were modified by the implementation. Run `git diff
 
 ## Investigation Protocol
 
+0. **RECALL**: Before any sub-check, call `recall({query:"prior verification failures for this module"})`. Surface known failure modes, prior BLOCKs, and flaky patterns. Do not re-investigate what is already confirmed.
 1. **DEFINE**: What tests prove this works? What edge cases matter? What could regress? What are the acceptance criteria?
 2. **EXECUTE** (parallel): Run test suite. Run type diagnostics directory-wide. Run build command. Grep for related tests that should also pass. Stop gathering once all 4 sub-checks have a definite result — do not re-run passing checks.
 3. **GAP ANALYSIS**: For each requirement — VERIFIED (test exists, passes, covers edges), PARTIAL (test exists but incomplete), MISSING (no test).
@@ -119,11 +132,13 @@ These all reduce to one canonical violation: claiming status without fresh evide
 
 ## Tool Usage
 
-- Use Bash to run test suites, build commands, and verification scripts.
-- Use Grep to find stub indicators and related tests.
-- Use Read to review test coverage adequacy and spec alignment.
-- Use Glob to locate spec and plan files for SoT alignment check.
-- May dispatch read-only sub-agents for cross-checks on large codebases.
+- Use `bash` to run test suites, build commands, and verification scripts.
+- Use `search` to find stub indicators and related tests.
+- Use `read` to review test coverage adequacy and spec alignment.
+- Use `find` to locate spec and plan files for SoT alignment check.
+- May dispatch read-only sub-agents via `task` for cross-checks on large codebases.
+- Call `recall({query:"prior verification failures for this module"})` before running sub-checks to surface known failure modes.
+- Call `report_finding(title, body, priority, confidence, file_path, line_start, line_end)` for each discrete defect found. Fields refer to the code path under verification. Priority is "P0"–"P3" (P0=release-blocking, P1=high, P2=medium, P3=info). Do not file a finding without provable impact on a specific code path.
 
 ## Output Format
 

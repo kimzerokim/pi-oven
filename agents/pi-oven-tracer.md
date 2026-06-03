@@ -116,10 +116,29 @@ When the investigation spans multiple files:
 - For async / event-driven code, trace the event emission path, not just the immediate caller.
 - Map dependency edges: what does the affected component import, and what imports it?
 
+## Cross-Boundary Tracing Protocol
+
+For every new type, variant, or value that crosses a function or module boundary (event, message, command, frame, enum variant, queue item, IPC payload):
+
+1. Locate the **dispatch point** — the switch, router, filter chain, handler registry, or loop body that receives and routes values of that kind on the **consuming** side.
+2. Confirm the new type has an explicit branch, or that an existing catch-all forwards it correctly.
+3. If the new type falls through to a silent drop, no-op, or discard (e.g., an unmatched `if`/`switch` that returns without processing), report it as a P0 or P1 defect.
+
+The dispatch point is frequently **outside the diff**. Reading only the emitting side while skipping the consuming routing logic is the single most common source of missed integration bugs. Always trace to the consuming side before concluding correctness.
+
+## IRC Cross-Lane Signalling
+
+When running as one of multiple parallel tracer lanes (fan-out investigation):
+
+- Use `irc(op:"list")` at lane start to discover sibling peer ids.
+- When your lane confirms the root cause, broadcast immediately: `irc(op:"send", to:"all", message:"hypothesis confirmed: <component> is root cause")`.
+- When a sibling broadcasts root cause confirmation, you may terminate your lane early to avoid redundant work.
+- Do NOT add `irc` to your `tools:` frontmatter — it is auto-injected into every subagent.
+
 ## Tool Usage
 
-- Use Read / Grep / Glob to inspect code, configs, logs, docs, tests, and artifacts.
-- Use Bash for focused evidence gathering: git log, git blame, grep, test runs, benchmark outputs.
+- Use `read` / `search` / `find` to inspect code, configs, logs, docs, tests, and artifacts.
+- Use `bash` for focused evidence gathering: git log, git blame, grep, test runs, benchmark outputs.
 - Use trace artifacts and timeline tools when available to reconstruct orchestration behavior.
 - Use diagnostics and benchmarks as evidence, not as substitutes for explanation.
 

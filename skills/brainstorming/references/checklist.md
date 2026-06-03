@@ -9,6 +9,7 @@ Source: superpowers:brainstorming (ported to pi-oven)
 - Read `docs/` and `src/` for adjacent modules and naming conventions
 - Identify existing patterns the new feature must conform to
 - Check `docs/specs/` for any prior spec on the same topic
+- If this brainstorming is part of a `spec-and-review` flow, confirm `codebase-survey` (Step 0) has run and cite its report during Q&A — brainstorming is NOT a replacement for the survey (sequence: `codebase-survey` → `brainstorming` → drafting)
 - Do not skip: building on wrong assumptions wastes the entire Q&A phase
 
 ## Step 2 — Visual Companion offer (v1 stub)
@@ -25,10 +26,11 @@ Source: superpowers:brainstorming (ported to pi-oven)
 - For single-select option questions, prefer the `pi-oven_ask` tool with options as `{label, description}` so each option's rationale shows beside it in the live picker; keep the built-in `ask` for multi-select or free-form questions
 - Walk every branch of the design tree, resolving inter-decision dependencies one-by-one
 - Explore instead of asking: when an answer is discoverable in the codebase, read the code rather than asking the user
+- Dispatch for external docs: when a design question depends on external API/SDK/library behavior, dispatch `pi-oven:document-specialist` (or `pi-oven:librarian` for web/citations) to fetch current docs rather than asking the user
 - Sharpen fuzzy or overloaded terms into a precise canonical term; challenge any term that conflicts with existing project language ("you say 'account' — Customer or User?")
 - Stress-test with concrete edge-case scenarios that force precision on concept boundaries
 - Cross-reference each stated claim against the code; surface contradictions explicitly
-- **Convergence gate, not a count:** continue until every design dimension (Goals, Non-goals, Constraints, Data model, API surface, Open questions) is resolved or explicitly deferred by the user. Do not stop because you "feel" you have enough — track each dimension and keep questioning the unresolved ones. There is no fixed question count
+- **Convergence gate, not a count:** continue until every design dimension (Goals, Non-goals, Constraints, Data model, API surface, Open questions) is resolved or explicitly deferred by the user. Do not stop because you "feel" you have enough — track each dimension and keep questioning the unresolved ones. There is no per-question target — the interview MAY ask up to ~50 questions across the session (one per turn), a high upper bound, not a goal: stop the moment the gate is satisfied, and the ~50 cap also ends the loop if reached first
 - **Stall rule:** if a dimension stops converging after a few rounds, surface the stall and ask the user to decide it directly or mark it OPEN
 
 ## Step 4 — 2–3 approaches

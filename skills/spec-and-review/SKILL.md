@@ -119,7 +119,9 @@ Pattern loop detail: skill://pi-oven/spec-and-review/references/pattern-loop.md
 When running spec-and-review inside omp:
 
 - Step 0 (codebase survey precondition): dispatch `pi-oven:explorer`, and `pi-oven:librarian` when external research is needed.
-- Step 1 (draft authoring): the main agent leads; consult `pi-oven:architect` for system-design decisions and `pi-oven:document-specialist` for SDK accuracy.
+- Step 1 (draft authoring): the main agent leads; consult `pi-oven:architect` for system-design decisions. If the draft will reference external SDK/framework APIs, dispatch `pi-oven:document-specialist` BEFORE writing the API-surface section to verify signatures and version compatibility — do not draft external API surfaces from memory.
 - Step 2 (cross-vendor review): dispatch `pi-oven:critic` as the BLOCKER/NIT quality gate.
 - Step 3 (synthesis and acceptance loop): the main agent owns synthesis.
 - Experiment-style verification (falsifiability) when relevant: dispatch `pi-oven:analyst`.
+
+**External-research trigger heuristic.** Dispatch `pi-oven:librarian` (Step 0) or `pi-oven:document-specialist` (Step 1) when the survey or draft involves an external API, SDK, third-party service, open-source library, or external data source whose behavior is not adequately documented in the codebase. When the codebase already pins the behavior (existing wrappers, recorded contracts, in-repo docs), no external research is needed.

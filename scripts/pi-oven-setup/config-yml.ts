@@ -319,6 +319,46 @@ export async function setModelRoles(
 }
 
 // ---------------------------------------------------------------------------
+// setMemoryAndAsyncConfig — writes 4 global scalar keys for mnemopi + async.
+// Each key is a simple dotted scalar (not a record), so individual
+// `omp config set <dotted.key> <value>` calls are used — no read-merge-write
+// needed. Does NOT touch task.agentModelOverrides (Spec E boundary preserved).
+// ---------------------------------------------------------------------------
+
+/**
+ * Write the 4 global keys required for native mnemopi memory and irc:
+ *   memory.backend=mnemopi  — BLOCKER: without this retain/recall/reflect are inert
+ *   mnemopi.noEmbeddings=true — zero-network local-only mode
+ *   mnemopi.llmMode=none    — zero-network local-only mode
+ *   async.enabled=true      — enables in-call irc sibling fan-out (main session only)
+ *
+ * Uses individual `omp config set <dotted.key> <value>` calls (one per key).
+ * These are scalar values so dotted-key writes are accepted (unlike record-typed
+ * keys such as modelRoles, which require whole-record replacement).
+ * Throws (including stderr) on any non-zero exit. Never touches
+ * task.agentModelOverrides (Spec E boundary).
+ */
+export async function setMemoryAndAsyncConfig(opts?: ConfigYmlOpts): Promise<void> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+
+  const keys: Array<[string, string]> = [
+    ["memory.backend", "mnemopi"],
+    ["mnemopi.noEmbeddings", "true"],
+    ["mnemopi.llmMode", "none"],
+    ["async.enabled", "true"],
+  ];
+
+  for (const [key, value] of keys) {
+    const result = spawn("omp", ["config", "set", key, value]);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `setMemoryAndAsyncConfig: omp config set ${key} failed (exit ${String(result.exitCode)}): ${result.stderr?.toString() ?? ""}`
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // disabledProviders (ARRAY) — the ~/.claude isolation toggle.
 // Same transport as the overrides path: omp config get disabledProviders --json
 // → in-memory merge → omp config set disabledProviders '<whole-merged-json>'.

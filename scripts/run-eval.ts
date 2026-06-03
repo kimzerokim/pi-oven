@@ -91,11 +91,13 @@ async function main() {
   if (files.length === 0) {
     process.exit(0);
   }
-  const session = await makeSession();
+  // Fix 2: create a fresh session per scenario so a stuck/aborted scenario
+  // cannot poison the next one (per-scenario isolation).
   const verdicts = [];
   for (const file of files) {
     const text = await fs.readFile(file, "utf8");
     const scenario = parseScenario(text);
+    const session = await makeSession();
     const verdict = await runScenario(scenario, session);
     verdicts.push(verdict);
     console.log(`${verdict.passed ? "✓" : "✗"} ${verdict.skill}/${verdict.scenario} (${verdict.latency_ms}ms)`);

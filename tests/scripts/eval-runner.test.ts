@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { parseScenario, runScenario, type SessionLike } from "../../scripts/lib/eval-runner";
+import { parseScenario, runScenario, type SessionLike, type RunnerEvent } from "../../scripts/lib/eval-runner";
 
 describe("eval-runner", () => {
   describe("parseScenario", () => {
@@ -193,6 +193,141 @@ expected:
       `.trim());
       const verdict = await runScenario(scenario, fakeSession);
       expect(verdict.passed).toBe(true);
+    });
+  });
+
+  describe("runScenario — session lifecycle fixes", () => {
+    /**
+     * RED: turn ends via 'error' event (non-message_end terminal).
+     * The runner must NOT hang — must complete within the turn timeout.
+     * The scenario must still return a Verdict (not throw / not hang forever).
+     */
+    it("completes without hanging when turn ends via non-message_end terminal event (error)", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_update", delta: "partial" });
+            // Emit 'error' terminal — NOT 'message_end'
+            listener({ type: "error" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: error-terminal
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "trigger error"
+expected:
+  - skill_triggered: false
+      `.trim());
+
+      // Must resolve within 2 s (well under any ~23 min hang).
+      const result = await Promise.race([
+        runScenario(scenario, fakeSession),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("HANG: runScenario did not complete within timeout")), 2000)
+        ),
+      ]);
+      // Should return a Verdict, not throw
+      expect(result).toBeDefined();
+      expect((result as { scenario: string }).scenario).toBe("error-terminal");
+    });
+
+    /**
+     * RED: turn ends via 'abort' event (non-message_end terminal).
+     * Second call to runScenario on the SAME session must also succeed
+     * (per-scenario isolation or reset guard).
+     */
+    it("does not throw AgentBusyError on next scenario after abort-terminal turn", async () => {
+      let callCount = 0;
+      const listeners: Array<(e: RunnerEvent) => void> = [];
+
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          listeners.push(listener);
+          return () => {
+            const idx = listeners.indexOf(listener);
+            if (idx !== -1) listeners.splice(idx, 1);
+          };
+        },
+        async prompt(_msg: string): Promise<void> {
+          callCount++;
+          setTimeout(() => {
+            for (const l of listeners) {
+              if (callCount === 1) {
+                // First scenario: ends via 'abort' — NOT 'message_end'
+                l({ type: "message_update", delta: "aborting" });
+                l({ type: "abort" });
+              } else {
+                // Second scenario: normal completion
+                l({ type: "message_update", delta: "ok" });
+                l({ type: "message_end" });
+              }
+            }
+          }, 0);
+        },
+      };
+
+      const mkScenario = (name: string) =>
+        parseScenario(
+          `name: ${name}\nskill: x\ntag: smoke\ninput:\n  - turn: 1\n    user: "go"\nexpected:\n  - skill_triggered: false`.trim()
+        );
+
+      // First scenario — ends via abort
+      await Promise.race([
+        runScenario(mkScenario("s1"), fakeSession),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("HANG on scenario 1")), 2000)
+        ),
+      ]);
+
+      // Second scenario — must NOT throw AgentBusyError or hang
+      const result2 = await Promise.race([
+        runScenario(mkScenario("s2"), fakeSession),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("HANG on scenario 2 — AgentBusyError or stuck")), 2000)
+        ),
+      ]);
+      expect((result2 as { scenario: string }).scenario).toBe("s2");
+    });
+
+    /**
+     * RED: runScenario must complete within a finite timeout even if NO terminal
+     * event is ever emitted (simulates a completely silent / dropped stream).
+     */
+    it("completes within timeout when no terminal event is ever emitted", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            // Only a partial update — no message_end, no error, no abort
+            listener({ type: "message_update", delta: "stuck partial" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: timeout-scenario
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "silent"
+expected:
+  - skill_triggered: false
+      `.trim());
+
+      const result = await Promise.race([
+        runScenario(scenario, fakeSession, { turnTimeoutMs: 300 }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("HANG: no terminal event and no timeout fired")), 2000)
+        ),
+      ]);
+      expect((result as { scenario: string }).scenario).toBe("timeout-scenario");
     });
   });
 });

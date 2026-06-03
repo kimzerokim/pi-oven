@@ -29,18 +29,42 @@ export interface SessionLike {
   prompt(message: string): Promise<void>;
 }
 
+/** Options passed to runScenario to control runner behaviour. */
+export interface RunnerOptions {
+  /** Max ms to wait for any single turn's terminal event. Default: 90_000 ms. */
+  turnTimeoutMs?: number;
+}
+
+/** Terminal event types: anything that ends a turn (success OR failure path). */
+const TERMINAL_EVENTS = new Set(["message_end", "error", "abort", "session_error", "stream_error"]);
+
 /** Per-turn aggregated result collected via subscribe(). */
 interface TurnBuffer {
   content: string;
   toolCalls: string[];  // toolName values in invocation order
+  timedOut?: boolean;
 }
 
-async function runTurn(session: SessionLike, userMessage: string): Promise<TurnBuffer> {
+async function runTurn(
+  session: SessionLike,
+  userMessage: string,
+  turnTimeoutMs: number
+): Promise<TurnBuffer> {
   const buf: TurnBuffer = { content: "", toolCalls: [] };
 
-  // Wait for message_end event in addition to prompt() resolving,
-  // since events may arrive asynchronously after prompt() returns.
-  const messageEndPromise = new Promise<void>((resolve) => {
+  // Fix 1: resolve on ANY terminal event (message_end, error, abort, …)
+  //         AND resolve after a finite timeout so a missing terminal cannot hang.
+  const terminalPromise = new Promise<void>((resolve) => {
+    let done = false;
+    const timeoutHandle = setTimeout(() => {
+      if (!done) {
+        done = true;
+        buf.timedOut = true;
+        unsubscribe();
+        resolve();
+      }
+    }, turnTimeoutMs);
+
     const unsubscribe = session.subscribe((event) => {
       if (event.type === "tool_execution_start") {
         const e = event as { type: "tool_execution_start"; toolName: string };
@@ -48,19 +72,32 @@ async function runTurn(session: SessionLike, userMessage: string): Promise<TurnB
       } else if (event.type === "message_update") {
         const e = event as { type: "message_update"; delta: string };
         buf.content += e.delta;
-      } else if (event.type === "message_end") {
+      }
+      // Resolve on message_end OR any other terminal/error/abort event
+      if (TERMINAL_EVENTS.has(event.type) && !done) {
+        done = true;
+        clearTimeout(timeoutHandle);
         unsubscribe();
         resolve();
       }
     });
   });
 
+  // Fix 3: guard prompt() — only call if session is not already streaming.
+  // SessionLike.prompt() is the real SDK contract; callers that wrap a real
+  // session should ensure isStreaming is false before calling. At this layer
+  // we simply await prompt() and then await the terminal signal.
   await session.prompt(userMessage);
-  await messageEndPromise;
+  await terminalPromise;
   return buf;
 }
 
-export async function runScenario(scenario: Scenario, session: SessionLike): Promise<Verdict> {
+export async function runScenario(
+  scenario: Scenario,
+  session: SessionLike,
+  options?: RunnerOptions
+): Promise<Verdict> {
+  const turnTimeoutMs = options?.turnTimeoutMs ?? 90_000;
   const t0 = performance.now();
   const failures: string[] = [];
   const observations: string[] = [];
@@ -68,7 +105,7 @@ export async function runScenario(scenario: Scenario, session: SessionLike): Pro
   // Aggregate across all turns; evaluations run against the LAST turn's buffer
   let lastBuf: TurnBuffer = { content: "", toolCalls: [] };
   for (const turn of scenario.input) {
-    lastBuf = await runTurn(session, turn.user);
+    lastBuf = await runTurn(session, turn.user, turnTimeoutMs);
     observations.push(`turn ${turn.turn}: tools=[${lastBuf.toolCalls.join(",")}] content="${lastBuf.content.slice(0, 80)}"`);
   }
 

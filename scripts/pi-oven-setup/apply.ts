@@ -53,6 +53,8 @@ export async function runApply(
 ): Promise<{ exitCode: number; output: string }> {
   const profileMap: ProfileMap = opts.profile === "B" ? PROFILE_B : PROFILE_A;
 
+  let memoryConfigLine = "";
+
   if (opts.agentsDir) {
     // Maintainer generate: rewrite agent files only, write no config keys.
     await rewriteAllAgents(opts.agentsDir, profileMap);
@@ -71,6 +73,8 @@ export async function runApply(
     // Write mnemopi memory backend + async.enabled for native memory/irc.
     // Does NOT touch task.agentModelOverrides (Spec E boundary preserved).
     await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });
+    memoryConfigLine =
+      "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled\n";
   }
 
   // Validate
@@ -102,6 +106,7 @@ export async function runApply(
     exitCode: 0,
     output:
       `Profile ${opts.profile} active. ${summaryParts.join(", ")}.\n` +
+      memoryConfigLine +
       `Setup complete.\n`,
   };
 }

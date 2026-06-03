@@ -1,11 +1,11 @@
 ---
 name: pi-oven-doctor
-description: Install health check — runs the pi-oven 10-check matrix (omp version, bun, git, provider auth, MCP, skills, agents, state dir, eval runner, UC5 ops connector)
+description: Install health check — runs the pi-oven 11-check matrix (omp version, bun, git, provider auth, MCP, skills, agents, state dir, eval runner, UC5 ops connector, memory/killer-tools)
 ---
 
 # /pi-oven:doctor
 
-You are running a read-only install-health diagnostic for the pi-oven omp plugin. The actual checks run in the `pi-oven-doctor.ts` script (resolved per the note below). You dispatch that script via Bash, then interpret its 10-check report and give the user fix guidance.
+You are running a read-only install-health diagnostic for the pi-oven omp plugin. The actual checks run in the `pi-oven-doctor.ts` script (resolved per the note below). You dispatch that script via Bash, then interpret its 11-check report and give the user fix guidance.
 
 This command is purely diagnostic. It NEVER mutates configuration, agent files, skills, or git state. The only filesystem touch is a create+write probe of the gitignored `.pi-oven/` state dir (check #8), which removes its own probe file.
 
@@ -69,7 +69,16 @@ in omp (opencode-zen is the release default), then re-run /pi-oven:doctor.
 
 This is the onboarding bridge to the gated real-eval pipeline.
 
-## The 10-check reference
+### Step 4 — Interpret memory / killer-tool check (#11)
+
+Check #11 probes `omp config get` for memory and killer-tool readiness. Walk each non-PASS sub-result:
+
+- **memory.backend != "mnemopi" (WARN)** — native memory is off. Tell the user: run `/pi-oven:setup` to enable the mnemopi backend; the `retain`, `recall`, and `reflect` killer tools will not work without it.
+- **mnemopi config incomplete (WARN)** — `mnemopi.noEmbeddings` or `mnemopi.llmMode` is absent. Both keys must be present for the backend to initialise correctly; point the user to `/pi-oven:setup --memory` to repopulate them.
+- **async.enabled != true (WARN)** — background task dispatch is off, which degrades throughput for autonomous flows; point the user to `/pi-oven:setup` to enable it.
+- **killer-tool note (INFO)** — the debug, eval, browser, lsp, ast_grep, and irc killer tools are omp defaults and are always on; no action is needed. Only `retain`, `recall`, and `reflect` require `memory.backend=mnemopi` (covered above).
+
+## The 11-check reference
 
 | # | Check | PASS | WARN | FAIL |
 |---|---|---|---|---|
@@ -83,8 +92,9 @@ This is the onboarding bridge to the gated real-eval pipeline.
 | 8 | state dir | `.pi-oven/` creatable + writable | — | not writable |
 | 9 | eval runner | `scripts/run-eval.ts` present AND ≥1 smoke-tagged scenario enumerable | runner present but 0 smoke scenarios | runner script absent |
 | 10 | UC5 ops connector | `skills/aws`, `skills/bitbucket-pipeline`, `skills/cloudflare` present + credential file (`.external-credentials` or `.external_certificate`; legacy `.external_cerficate` alias also accepted) detected | skill files present but no credential file | any connector skill file missing |
+| 11 | memory / killer-tools | `memory.backend == "mnemopi"` AND `mnemopi.noEmbeddings` + `mnemopi.llmMode` present AND `async.enabled == true` | any of: backend not mnemopi, mnemopi config keys absent, or async disabled | — |
 
-Checks 4 and 5 can only WARN (never FAIL) — auth and MCP are environmental, not install-integrity, defects. Check 10 WARN is also environmental (credential file not yet onboarded). Checks 6, 7, 9-runner-absent, and 10-missing-skills are install-integrity FAILs. The script's exit code reflects only FAILs.
+Checks 4 and 5 can only WARN (never FAIL) — auth and MCP are environmental, not install-integrity, defects. Check 10 WARN is also environmental (credential file not yet onboarded). Check 11 can only WARN — memory/async are configuration choices, not install-integrity defects. Checks 6, 7, 9-runner-absent, and 10-missing-skills are install-integrity FAILs. The script's exit code reflects only FAILs.
 
 ## Important rules
 

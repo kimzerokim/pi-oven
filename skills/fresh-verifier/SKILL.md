@@ -8,6 +8,10 @@ alwaysApply: false
 
 # fresh-verifier
 
+## Memory — recall prior verification failures at dispatch
+
+Before dispatching the fresh `pi-oven:verifier`, call `recall(query="prior verification failures and BLOCK verdicts for this project")` to surface previously failed sub-checks, known recurring BLOCK patterns, and past `Q-VERIFIER-FAIL` entries. Pass any matching recalled failures as explicit checklist items in the verifier dispatch prompt so the fresh agent focuses its investigation on historically problematic areas first.
+
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
 Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1-2 file simple edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews; never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)

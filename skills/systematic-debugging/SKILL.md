@@ -8,6 +8,10 @@ alwaysApply: false
 
 # systematic-debugging
 
+## Memory — recall prior failure modes at flow start
+
+Before beginning Phase 1 investigation, call `recall(query="prior failure modes and root causes for bugs in this codebase")` to surface known recurring failure patterns, prior root-cause findings, and previously observed regressions. This prevents re-investigating already-solved causes and seeds Phase 1 with confirmed prior art. If a recalled failure mode matches the current symptom, validate it first before exploring new hypotheses.
+
 ## Iron law
 
 ```

@@ -215,6 +215,7 @@
         <li><a href="#flow-auto">5.2 자율 실행</a></li>
         <li><a href="#flow-commit">5.3 커밋 게이트</a></li>
         <li><a href="#flow-debug">5.4 디버깅</a></li>
+        <li><a href="#flow-refactor">5.5 리팩토링</a></li>
       </ul>
     </li>
     <li><a href="#skills">6. 21개 스킬 카드</a>
@@ -449,7 +450,8 @@ flowchart LR
     <h4>좋은 prompt</h4>
     <p><code class="chip k">끝까지 끝내줘</code> &nbsp; <code class="chip k">자율로 돌려</code> &nbsp; <code class="chip k">자율 실행</code> &nbsp; <code class="chip k">계속 진행해</code> &nbsp; <code class="chip k">멈추지 말고 진행해</code> &nbsp; <code class="chip k">ralph로 돌려</code> &nbsp; <code class="chip k">ulw</code></p>
     <h4>자동 로드 / 디스패치</h4>
-    <p><a href="#s-autonomous-loop"><span class="chip">autonomous-loop</span></a> (meta orchestrator) → <a href="#s-large-task-delegation"><span class="chip">large-task-delegation</span></a> → <a href="#s-fresh-verifier"><span class="chip">fresh-verifier</span></a> (exit gate) → <span class="chip a">pi-oven:executor</span> <span class="chip a">pi-oven:verifier</span> <span class="chip a">pi-oven:critic</span></p>
+    <p><a href="#s-autonomous-loop"><span class="chip">autonomous-loop</span></a> (meta orchestrator) → WORK-TYPE 라우팅 [버그 → <a href="#s-systematic-debugging"><span class="chip">systematic-debugging</span></a> · 리팩토링 → <a href="#s-improve-codebase-architecture"><span class="chip">improve-codebase-architecture</span></a> · 깊은 조사 → <a href="#s-deep-dive"><span class="chip">deep-dive</span></a> · 그 외 → <a href="#s-subagent-driven-development"><span class="chip">subagent-driven-development</span></a>] → <a href="#s-large-task-delegation"><span class="chip">large-task-delegation</span></a> (3+ 파일/200+ LoC) → <a href="#s-pre-commit-gate"><span class="chip">pre-commit-gate</span></a> → <a href="#s-fresh-verifier"><span class="chip">fresh-verifier</span></a> (exit gate)</p>
+    <p>자율 개선(plugin-surface): spec/plan 전에 <code>skills/</code>+<code>agents/</code>+<code>commands/</code>+<code>evals/</code> exhaustive sweep (<span class="chip a">pi-oven:explorer</span>) → 결과를 planner 입력으로.</p>
     <h4>메인 역할 (필수)</h4>
     <p>진입 전 <strong>ASK-FIRST 3-slot branch contract</strong> (목적지 / 브랜치명 / PR 모드) 명시 답 받기. 질문 응답 이후에는 <strong>같은 턴에서 즉시 다음 툴 디스패치</strong>. polite-stop 금지. cycle exit 은 <strong>fresh-agent verifier</strong> 필수 — 메인 자가 선언 PASS 금지.</p>
     <h4>피하기</h4>
@@ -461,7 +463,7 @@ flowchart LR
     <h4>좋은 prompt</h4>
     <p><code class="chip k">왜 깨지지</code> &nbsp; <code class="chip k">원인 찾아줘</code> &nbsp; <code class="chip k">버그 수정</code> &nbsp; <code class="chip k">flaky test</code></p>
     <h4>자동 로드 / 디스패치</h4>
-    <p><a href="#s-systematic-debugging"><span class="chip">systematic-debugging</span></a> (root-cause-first) → <span class="chip a">pi-oven:tracer</span> <span class="chip a">pi-oven:debugger</span> <span class="chip a">pi-oven:test-engineer</span> <span class="chip a">pi-oven:oracle</span>. 인과 추적이 깊으면 <a href="#s-deep-dive"><span class="chip">deep-dive</span></a></p>
+    <p><a href="#s-systematic-debugging"><span class="chip">systematic-debugging</span></a> (root-cause-first) → <span class="chip a">pi-oven:tracer</span> <span class="chip a">pi-oven:debugger</span> <span class="chip a">pi-oven:test-engineer</span> <span class="chip a">pi-oven:oracle</span>. Phase 1.5 가 깊거나 다중 출처면 <a href="#s-deep-dive"><span class="chip">deep-dive</span></a> 로 에스컬레이션 (3 lane + <span class="chip a">pi-oven:analyst</span> 합성); fix 는 <a href="#s-tdd-strict"><span class="chip">tdd-strict</span></a> (failing test 먼저) → <span class="chip a">pi-oven:verifier</span> → <span class="chip a">pi-oven:code-reviewer</span> (2-stage) → <a href="#s-pre-commit-gate"><span class="chip">pre-commit-gate</span></a> + <a href="#s-fresh-verifier"><span class="chip">fresh-verifier</span></a> exit.</p>
     <h4>메인 역할</h4>
     <p>4 phase + backward tracing + defense-in-depth. <strong>근본 원인 조사 전 어떤 fix 도 금지</strong>. 2+ 실패 시 <code>pi-oven:oracle</code> 컨설팅.</p>
     <h4>피하기</h4>
@@ -473,7 +475,7 @@ flowchart LR
     <h4>좋은 prompt</h4>
     <p><code class="chip k">아키텍처 개선</code> &nbsp; <code class="chip k">리팩토링 기회</code> &nbsp; <code class="chip k">deepen modules</code> &nbsp; <code class="chip k">shallow module</code></p>
     <h4>자동 로드 / 디스패치</h4>
-    <p><a href="#s-improve-codebase-architecture"><span class="chip">improve-codebase-architecture</span></a> → <span class="chip a">pi-oven:explorer</span> <span class="chip a">pi-oven:architect</span> <span class="chip a">pi-oven:code-simplifier</span> <span class="chip a">pi-oven:verifier</span></p>
+    <p><a href="#s-improve-codebase-architecture"><span class="chip">improve-codebase-architecture</span></a> (모든 리팩토링 단일 진입점) → Step 0 유형 감지 [DRY/KISS 정리 → <a href="#s-code-quality-discipline"><span class="chip">code-quality-discipline</span></a> + <span class="chip a">pi-oven:code-simplifier</span> · deepening → 전체 프로세스] → survey (<span class="chip a">pi-oven:explorer</span> + <span class="chip a">pi-oven:analyst</span>) → candidates (code-quality gate) → <a href="#s-tdd-strict"><span class="chip">tdd-strict</span></a> 행동보존 → <span class="chip a">pi-oven:code-simplifier</span> + <span class="chip a">pi-oven:verifier</span> + <span class="chip a">pi-oven:code-reviewer</span> → <a href="#s-pre-commit-gate"><span class="chip">pre-commit-gate</span></a></p>
     <h4>메인 역할</h4>
     <p>survey → before/after HTML report → grilling loop → 선택적 Design-It-Twice 인터페이스 대안. domain glossary + ADR 로 informed.</p>
   </div>
@@ -516,6 +518,7 @@ flowchart TD
   P["spec 잡자 / 큰 기능"] --> S0["Step 0 · codebase-survey<br/>pi-oven:explorer"]
   S0 --> SM1["Step -1 · brainstorming<br/>main-agent Socratic Q&amp;A"]
   SM1 --> DRAFT["Draft<br/>pi-oven:architect"]
+  EXT["외부 리서치(필요시)<br/>pi-oven:librarian / document-specialist"] -.-> DRAFT
   DRAFT --> CODEX["codex CLI + Zen GLM/Qwen<br/>fan-out review"]
   CODEX --> SYN["Synthesize<br/>BLOCKER / NIT / PUSHBACK<br/>pi-oven:critic"]
   SYN --> GATE{Gate}
@@ -530,9 +533,11 @@ flowchart TD
   classDef entry fill:#e3ecfa,stroke:#0066cc,color:#1d1d1f;
   classDef gate fill:#fbeee0,stroke:#b86e00,color:#1d1d1f;
   classDef skill fill:#ffffff,stroke:#d2d2d7,color:#1d1d1f;
+  classDef research fill:#f4f0fb,stroke:#6c3bbf,color:#1d1d1f;
   class S0,SM1,WP,SDD entry;
   class GATE,NEXT gate;
   class DRAFT,CODEX,SYN,REV,COMMIT skill;
+  class EXT research;
 </pre>
   </div>
 
@@ -543,13 +548,25 @@ flowchart TD
 flowchart TD
   P["자율 실행"] --> AL["autonomous-loop"]
   AL --> ASK{"ASK-FIRST<br/>branch contract"}
-  ASK -->|"destination<br/>branch name<br/>PR mode"| WORK["Work cycle<br/>pi-oven:executor / pi-oven:planner"]
+  ASK -->|"destination<br/>branch name<br/>PR mode"| SCOPE{"self-improvement<br/>scope?"}
+  SCOPE -->|"plugin-surface"| SWEEP["skills/+agents/+commands/+evals/<br/>exhaustive sweep<br/>pi-oven:explorer → planner 입력"]
+  SCOPE -->|"일반 작업"| ROUTE
+  SWEEP --> ROUTE{"WORK-TYPE<br/>라우팅"}
+  ROUTE -->|"버그"| WSD["systematic-debugging"]
+  ROUTE -->|"리팩토링"| WRA["improve-codebase-architecture"]
+  ROUTE -->|"깊은 조사"| WDD["deep-dive"]
+  ROUTE -->|"그 외"| WSDD["subagent-driven-development"]
+  WSD --> WORK["Work / execution<br/>pi-oven:executor / pi-oven:planner"]
+  WRA --> WORK
+  WDD --> WORK
+  WSDD --> WORK
   WORK --> POLITE{"polite-stop<br/>충동?"}
   POLITE -->|감지| SG["Runtime stop-guard<br/>nextTurn 큐잉"]
   SG --> WORK
   POLITE -->|미감지| DONE{"Done?"}
   DONE -->|NO| WORK
-  DONE -->|YES| FV["fresh-verifier (exit gate)<br/>pi-oven:verifier"]
+  DONE -->|YES| PCG["pre-commit-gate"]
+  PCG --> FV["fresh-verifier (exit gate)<br/>pi-oven:verifier"]
   FV --> SUB["4 sub-check<br/>prod-build · stub sweep<br/>SoT align · spec-freeze"]
   SUB -->|PASS| END["Exit 완료"]
   SUB -->|BLOCK| WORK
@@ -557,9 +574,11 @@ flowchart TD
   classDef boundary fill:#e3ecfa,stroke:#0066cc,color:#1d1d1f;
   classDef loop fill:#e9f7ee,stroke:#1f8a3a,color:#1d1d1f;
   classDef gate fill:#fbeee0,stroke:#b86e00,color:#1d1d1f;
+  classDef route fill:#f4f0fb,stroke:#6c3bbf,color:#1d1d1f;
   class AL,FV boundary;
-  class WORK,SUB loop;
-  class ASK,POLITE,DONE gate;
+  class WORK,SUB,PCG loop;
+  class ASK,POLITE,DONE,SCOPE,ROUTE gate;
+  class SWEEP,WSD,WRA,WDD,WSDD route;
 </pre>
   </div>
   <div class="note bad">
@@ -590,28 +609,63 @@ flowchart TD
   </div>
 
   <h3 id="flow-debug">5.4 디버깅 (systematic-debugging)</h3>
-  <p>트리거: <code class="chip k">버그 수정</code> <code class="chip k">왜 깨지지</code> <code class="chip k">원인 찾아줘</code>. root-cause-first 규율 — 근본 원인 조사 전 어떤 fix 도 금지합니다.</p>
+  <p>트리거: <code class="chip k">버그 수정</code> <code class="chip k">왜 깨지지</code> <code class="chip k">원인 찾아줘</code>. root-cause-first 규율 — 근본 원인 조사 전 어떤 fix 도 금지합니다. Phase 1.5 backward tracing 이 깊거나 다중 출처면 deep-dive 로 에스컬레이션, 종료는 code-reviewer 2-stage → pre-commit-gate + fresh-verifier.</p>
   <div class="mermaid-wrap">
 <pre class="mermaid">
 flowchart TD
   P["버그 / test 실패"] --> SD["systematic-debugging"]
   SD --> P1["Phase 1 · 증상 재현 + 격리"]
-  P1 --> P2["Phase 2 · backward tracing<br/>pi-oven:tracer"]
-  P2 --> P3["Phase 3 · 경쟁 가설 + 증거 순위<br/>pi-oven:debugger"]
+  P1 --> P15["Phase 1.5 · backward tracing<br/>pi-oven:tracer"]
+  P15 --> DEEP{"깊음 / 다중 출처?"}
+  DEEP -->|YES| DD["deep-dive<br/>3 병렬 lane<br/>pi-oven:tracer → pi-oven:analyst 합성"]
+  DEEP -->|NO| P3
+  DD --> P3["Phase 3 · 경쟁 가설 + 증거 순위<br/>pi-oven:debugger"]
   P3 --> RC{"근본 원인<br/>확정?"}
-  RC -->|NO| P2
+  RC -->|NO| P15
   RC -->|"2+ 실패"| ORACLE["pi-oven:oracle<br/>전략 컨설팅"]
   ORACLE --> P3
-  RC -->|YES| P4["Phase 4 · 회귀 test red<br/>pi-oven:test-engineer"]
+  RC -->|YES| P4["Phase 4 · 회귀 test red (tdd-strict)<br/>pi-oven:test-engineer"]
   P4 --> FIX["minimal-diff fix<br/>pi-oven:executor"]
   FIX --> VERIFY["defense-in-depth verify<br/>pi-oven:verifier"]
+  VERIFY --> CR["pi-oven:code-reviewer<br/>2-stage 리뷰"]
+  CR --> EXIT["pre-commit-gate + fresh-verifier"]
 
   classDef entry fill:#e3ecfa,stroke:#0066cc,color:#1d1d1f;
   classDef skill fill:#ffffff,stroke:#d2d2d7,color:#1d1d1f;
   classDef gate fill:#fbeee0,stroke:#b86e00,color:#1d1d1f;
+  classDef deep fill:#f4f0fb,stroke:#6c3bbf,color:#1d1d1f;
   class SD entry;
-  class P1,P2,P3,P4,FIX,VERIFY,ORACLE skill;
-  class RC gate;
+  class P1,P15,P3,P4,FIX,VERIFY,ORACLE,CR skill;
+  class RC,DEEP gate;
+  class DD,EXIT deep;
+</pre>
+  </div>
+
+  <h3 id="flow-refactor">5.5 리팩토링 (improve-codebase-architecture)</h3>
+  <p>트리거: <code class="chip k">아키텍처 개선</code> <code class="chip k">리팩토링 기회</code> <code class="chip k">deepen modules</code>. 모든 리팩토링의 단일 진입점 — Step 0 에서 유형을 감지해 DRY 정리(경량) 또는 deepening(전체 프로세스)으로 분기합니다.</p>
+  <div class="mermaid-wrap">
+<pre class="mermaid">
+flowchart TD
+  P["리팩토링 요청"] --> ICA["improve-codebase-architecture"]
+  ICA --> TYPE{"Step 0<br/>유형 감지"}
+  TYPE -->|"DRY/KISS 정리"| DRY["code-quality-discipline<br/>+ pi-oven:code-simplifier"]
+  TYPE -->|"deepening"| SURVEY["survey<br/>pi-oven:explorer + pi-oven:analyst"]
+  DRY --> PCG["pre-commit-gate"]
+  SURVEY --> CAND["candidates<br/>code-quality gate"]
+  CAND --> GRILL["grilling loop<br/>(before/after HTML report)"]
+  GRILL --> IFACE["interface design<br/>pi-oven:architect"]
+  IFACE --> TDD["tdd-strict 행동보존<br/>pi-oven:test-engineer"]
+  TDD --> SIMP["pi-oven:code-simplifier<br/>+ pi-oven:verifier<br/>+ pi-oven:code-reviewer"]
+  SIMP --> PCG
+
+  classDef entry fill:#e3ecfa,stroke:#0066cc,color:#1d1d1f;
+  classDef gate fill:#fbeee0,stroke:#b86e00,color:#1d1d1f;
+  classDef skill fill:#ffffff,stroke:#d2d2d7,color:#1d1d1f;
+  classDef deep fill:#f4f0fb,stroke:#6c3bbf,color:#1d1d1f;
+  class ICA entry;
+  class TYPE gate;
+  class SURVEY,CAND,GRILL,IFACE,TDD,SIMP skill;
+  class DRY,PCG deep;
 </pre>
   </div>
 </section>
@@ -630,7 +684,7 @@ flowchart TD
     <div class="head"><span class="name">spec-and-review</span><span class="badge entry">entry</span></div>
     <div class="blurb">cross-vendor critic loop (omp 내부 multi-provider task fan-out — Codex + Zen GLM/Qwen 동시) 으로 spec/plan 작성. Draft → Critic → Synthesize → Gate 를 PASS 또는 HALT 까지 반복.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">new spec/plan draft</span><span class="chip k">spec 잡자</span><span class="chip k">스펙 잡자</span><span class="chip k">기획안 작성</span><span class="chip k">plan draft</span><span class="chip k">codex review</span></div>
+    <div class="triggers"><span class="chip k">spec 잡자</span><span class="chip k">스펙 잡자</span><span class="chip k">기획안 작성</span><span class="chip k">plan draft</span><span class="chip k">codex review</span><span class="chip k">new spec/plan draft</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:librarian</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:document-specialist</span></a><a href="#agents"><span class="chip a">pi-oven:critic</span></a><a href="#agents"><span class="chip a">pi-oven:analyst</span></a>
@@ -641,7 +695,7 @@ flowchart TD
     <div class="head"><span class="name">writing-plans</span><span class="badge disc">discipline</span></div>
     <div class="blurb">승인된 spec 을 bite-sized · placeholder-free 구현 plan 으로 변환 (Goal/Architecture/Tech Stack 헤더 + full code block) — subagent dispatch 준비 완료.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">post-brainstorming spec approved</span><span class="chip k">plan it</span><span class="chip k">write plan</span><span class="chip k">plan만들어</span><span class="chip k">계획 세워줘</span><span class="chip k">구현 계획</span></div>
+    <div class="triggers"><span class="chip k">plan it</span><span class="chip k">write plan</span><span class="chip k">plan 만들어</span><span class="chip k">계획 세워줘</span><span class="chip k">구현 계획</span><span class="chip x">post-brainstorming spec approved</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:metis</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:planner</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a>
@@ -652,7 +706,7 @@ flowchart TD
     <div class="head"><span class="name">subagent-driven-development</span><span class="badge disc">discipline</span></div>
     <div class="blurb">구현 plan 을 task 당 fresh subagent 로 실행. sequential 2-stage review (spec compliance → code quality) + controller 가 plan checkbox 추적.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">execute plan</span><span class="chip k">implement plan</span><span class="chip k">계획 실행해줘</span><span class="chip k">플랜대로 구현</span></div>
+    <div class="triggers"><span class="chip k">계획 실행해줘</span><span class="chip k">플랜대로 구현</span><span class="chip k">execute plan</span><span class="chip k">implement plan</span><span class="chip x">plan exists + execution begins</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:planner</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a>
@@ -663,7 +717,7 @@ flowchart TD
     <div class="head"><span class="name">large-task-delegation</span><span class="badge disc">discipline</span></div>
     <div class="blurb">3+ 파일 edit, 200+ LoC, 5+ 파일 read, 또는 multi-stage workflow 를 서브에이전트로 라우팅. 메인은 dispatch + review 만 담당.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">3+ files</span><span class="chip k">200+ LoC</span><span class="chip k">5+ file reads</span><span class="chip k">큰 작업</span><span class="chip k">대규모 수정</span><span class="chip k">여러 파일 변경</span></div>
+    <div class="triggers"><span class="chip k">large task</span><span class="chip k">large change</span><span class="chip k">bulk edit</span><span class="chip k">multi-file change</span><span class="chip k">mass refactor</span><span class="chip k">sweeping change</span><span class="chip k">delegate this</span><span class="chip k">큰 작업</span><span class="chip k">대규모 수정</span><span class="chip k">여러 파일 변경</span><span class="chip x">3+ files / 200+ LoC / 5+ file reads / multi-stage</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:planner</span></a><a href="#agents"><span class="chip a">pi-oven:critic</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:writer</span></a>
@@ -674,7 +728,7 @@ flowchart TD
     <div class="head"><span class="name">codebase-survey</span><span class="badge disc">discipline</span></div>
     <div class="blurb">spec/plan/fix-start 전 필수 pre-planning 8-step deep read 를 explore 서브에이전트로 디스패치. 메인의 5+ 파일 직접 read 를 대체.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">5+ file reads required</span><span class="chip k">spec/plan draft</span><span class="chip k">코드서베이</span><span class="chip k">전수조사</span><span class="chip k">코드베이스 조사</span><span class="chip k">호출부 전수 확인</span></div>
+    <div class="triggers"><span class="chip k">codebase survey</span><span class="chip k">code survey</span><span class="chip k">survey the codebase</span><span class="chip k">audit all call sites</span><span class="chip k">find all usages</span><span class="chip k">full sweep</span><span class="chip k">full audit</span><span class="chip k">코드서베이</span><span class="chip k">전수조사</span><span class="chip k">코드베이스 조사</span><span class="chip k">호출부 전수 확인</span><span class="chip x">5+ file reads / spec·plan draft / fix-start</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:document-specialist</span></a><a href="#agents"><span class="chip a">pi-oven:librarian</span></a>
@@ -685,7 +739,7 @@ flowchart TD
     <div class="head"><span class="name">pre-commit-gate</span><span class="badge gate">gate</span></div>
     <div class="blurb">11-gate sequential pre-commit 체크 (AGENTS.md sync, freshness, ai-slop, secrets, prod code-first, build, test, docker smoke, Playwright UI, fix-scope, fresh-verifier). 하나라도 FAIL 이면 즉시 차단. 새 commit, never --amend.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">git commit</span><span class="chip k">git push</span><span class="chip k">gh pr</span><span class="chip k">커밋 전 점검</span><span class="chip k">프리커밋 게이트</span></div>
+    <div class="triggers"><span class="chip k">git commit</span><span class="chip k">git push</span><span class="chip k">gh pr</span><span class="chip k">커밋 전 점검</span><span class="chip k">프리커밋 게이트</span><span class="chip x">commit/push/pr Bash tool-call</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:qa-tester</span></a><a href="#agents"><span class="chip a">pi-oven:git-master</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a>
@@ -694,12 +748,12 @@ flowchart TD
 
   <div class="card" id="s-autonomous-loop">
     <div class="head"><span class="name">autonomous-loop</span><span class="badge entry">entry</span></div>
-    <div class="blurb">multi-cycle 자율 실행 (ultrawork / ralph / autopilot) 의 meta orchestrator. ASK-FIRST 3-slot branch contract, polite-stop ban, fresh-agent verifier exit gate, rate-limit/compact resilience. 자율 실행은 커맨드가 아니라 이 스킬의 키워드 트리거로 진입.</div>
+    <div class="blurb">multi-cycle 자율 실행 (ultrawork / ralph / autopilot) 의 meta orchestrator. ASK-FIRST 3-slot branch contract, polite-stop ban, fresh-agent verifier exit gate, rate-limit/compact resilience. 자율 실행은 커맨드가 아니라 이 스킬의 키워드 트리거로 진입. WORK-TYPE 라우팅: 버그 → systematic-debugging, 리팩토링 → improve-codebase-architecture, 깊은 조사 → deep-dive, 그 외 → subagent-driven-development. plugin-surface 자율 개선 시 spec/plan 전에 <code>skills/</code>+<code>agents/</code>+<code>commands/</code>+<code>evals/</code> exhaustive sweep (pi-oven:explorer) → 결과를 planner 입력으로.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">자율 실행</span><span class="chip k">자율실행</span><span class="chip k">자율로 돌려</span><span class="chip k">자동으로 끝내줘</span><span class="chip k">끝까지 끝내줘</span><span class="chip k">자는 동안 진행해</span><span class="chip k">알아서 진행해</span><span class="chip k">계속 진행해</span><span class="chip k">멈추지 말고 진행해</span><span class="chip k">스탑하지마</span><span class="chip k">ralph로 돌려</span><span class="chip k">ralph</span><span class="chip k">autopilot</span><span class="chip k">ultrawork</span><span class="chip k">ulw</span></div>
+    <div class="triggers"><span class="chip k">자율 실행</span><span class="chip k">자율실행</span><span class="chip k">자율로 돌려</span><span class="chip k">자동으로 끝내줘</span><span class="chip k">끝까지 끝내줘</span><span class="chip k">자는 동안 진행해</span><span class="chip k">알아서 진행해</span><span class="chip k">멈추지 말고 진행해</span><span class="chip k">계속 진행해</span><span class="chip k">스탑하지마</span><span class="chip k">ralph로 돌려</span><span class="chip k">ralph</span><span class="chip k">autopilot</span><span class="chip k">ultrawork</span><span class="chip k">ulw</span><span class="chip k">full auto</span><span class="chip k">don't stop</span><span class="chip k">must complete</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
-      <a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:planner</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:code-simplifier</span></a><a href="#agents"><span class="chip a">pi-oven:debugger</span></a><a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:critic</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a>
+      <a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:planner</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:code-simplifier</span></a><a href="#agents"><span class="chip a">pi-oven:debugger</span></a><a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:critic</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:test-engineer</span></a><a href="#agents"><span class="chip a">pi-oven:analyst</span></a>
     </div>
   </div>
 
@@ -707,7 +761,7 @@ flowchart TD
     <div class="head"><span class="name">fresh-verifier</span><span class="badge gate">gate</span></div>
     <div class="blurb">cycle-exit 필수 fresh-agent verifier — 4 sub-check (prod-build smoke, stub sweep, SoT alignment, spec-freeze) + 4 Q-halt 패턴. 메인 자가 선언 "PASS" / "done" / "loop exit" 는 이 스킬 없이는 금지.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">autonomous cycle exit</span><span class="chip k">MILESTONE:</span><span class="chip k">CYCLE-EXIT:</span><span class="chip k">STUB-CLEAR:</span><span class="chip k">verify</span><span class="chip k">최종 검증</span><span class="chip k">완료 전 검증</span></div>
+    <div class="triggers"><span class="chip k">autonomous cycle exit</span><span class="chip k">MILESTONE:</span><span class="chip k">CYCLE-EXIT:</span><span class="chip k">STUB-CLEAR:</span><span class="chip k">verify</span><span class="chip k">verification</span><span class="chip k">pre-completion gate</span><span class="chip k">최종 검증</span><span class="chip k">완료 전 검증</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a>
@@ -716,23 +770,23 @@ flowchart TD
 
   <div class="card" id="s-brainstorming">
     <div class="head"><span class="name">brainstorming</span><span class="badge gate">gate</span></div>
-    <div class="blurb">raw 아이디어를 Socratic Q&amp;A 로 사용자 승인 spec 으로 변환. design 이 명시 승인될 때까지 모든 구현을 hard-gate.</div>
+    <div class="blurb">raw 아이디어를 Socratic Q&amp;A 로 사용자 승인 spec 으로 변환. design 이 명시 승인될 때까지 모든 구현을 hard-gate. 종료 조건 = 모든 설계 차원(Goals/Non-goals/Constraints/Data model/API surface/Open questions)이 해결 또는 명시 보류될 때까지, 최소 15개·최대 100개 질문 (1질문/턴); 사용자 승인 시 writing-plans 로.</div>
     <h4>트리거</h4>
     <div class="triggers"><span class="chip k">brainstorm</span><span class="chip k">brainstorming</span><span class="chip k">브레인스토밍</span><span class="chip k">아이디어 정리</span><span class="chip k">같이 설계</span><span class="chip k">설계부터 하자</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
-      <a href="#agents"><span class="chip a">pi-oven:metis</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:writer</span></a>
+      <a href="#agents"><span class="chip a">pi-oven:metis</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:writer</span></a><a href="#agents"><span class="chip a">pi-oven:document-specialist</span></a><a href="#agents"><span class="chip a">pi-oven:librarian</span></a>
     </div>
   </div>
 
   <div class="card" id="s-deep-dive">
     <div class="head"><span class="name">deep-dive</span><span class="badge entry">entry</span></div>
-    <div class="blurb">bug-investigation pipeline — 3개 병렬 autonomous tracer lane 으로 인과 조사 후, trace-unresolvable unknown 만 bounded clarification.</div>
+    <div class="blurb">bug-investigation pipeline — 3개 병렬 autonomous tracer lane 으로 인과 조사 후, trace-unresolvable unknown 만 bounded clarification. systematic-debugging 의 심층 조사 leg — Phase 1/1.5에서 단일 lane 으로 원인 격리 실패 시 진입; pi-oven:analyst 가 lane 합성.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">deep dive</span><span class="chip k">deep-dive</span><span class="chip k">trace and clarify</span><span class="chip k">깊게 파봐</span><span class="chip k">심층 분석</span><span class="chip k">원인 추적</span></div>
+    <div class="triggers"><span class="chip k">deep dive</span><span class="chip k">deep-dive</span><span class="chip k">trace and clarify</span><span class="chip k">deep investigation</span><span class="chip k">깊게 파봐</span><span class="chip k">심층 분석</span><span class="chip k">원인 추적</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
-      <a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a>
+      <a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:analyst</span></a>
     </div>
   </div>
 
@@ -740,7 +794,7 @@ flowchart TD
     <div class="head"><span class="name">deep-init</span><span class="badge entry">entry</span></div>
     <div class="blurb">코드베이스 모든 디렉토리에 계층형 AGENTS.md 문서를 자동 생성 — per-directory 스캔, 모듈 목적/export 요약, per-dir context 파일 출력.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">deepinit</span><span class="chip k">deep-init</span><span class="chip k">init project context</span><span class="chip k">딥이닛</span><span class="chip k">프로젝트 컨텍스트 초기화</span></div>
+    <div class="triggers"><span class="chip k">deepinit</span><span class="chip k">deep-init</span><span class="chip k">init project context</span><span class="chip k">deep init</span><span class="chip k">딥이닛</span><span class="chip k">프로젝트 컨텍스트 초기화</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:writer</span></a>
@@ -751,7 +805,7 @@ flowchart TD
     <div class="head"><span class="name">tdd-strict</span><span class="badge disc">discipline</span></div>
     <div class="blurb">Red → Green → Refactor + 변경 파일 100% line/branch coverage 강제. 자율 메인이 직접 Red 진입 시 Q-TDD-MAIN halt.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">tdd</span><span class="chip k">test first</span><span class="chip k">테스트 먼저</span><span class="chip k">테스트부터</span><span class="chip x">+ autonomous + code-write</span></div>
+    <div class="triggers"><span class="chip k">tdd</span><span class="chip k">test first</span><span class="chip k">테스트 먼저</span><span class="chip k">테스트부터</span><span class="chip x">code-write tool-call in autonomous mode</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:test-engineer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:debugger</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a>
@@ -762,7 +816,7 @@ flowchart TD
     <div class="head"><span class="name">code-quality-discipline</span><span class="badge auto">auto · alwaysApply</span></div>
     <div class="blurb">모든 code-write 툴 콜에서 DRY/YAGNI/KISS, deletion test, depth-before-width, immutability 강제. 기본으로 항상 켜짐 (<code>alwaysApply: true</code>).</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">Edit</span><span class="chip k">Write</span><span class="chip k">MultiEdit</span><span class="chip k">ast_grep_replace</span><span class="chip k">코드 수정</span><span class="chip k">버그 수정</span><span class="chip k">리팩토링</span><span class="chip k">DRY 체크</span><span class="chip k">YAGNI 체크</span></div>
+    <div class="triggers"><span class="chip k">코드 변경</span><span class="chip k">코드 수정</span><span class="chip k">버그 수정</span><span class="chip k">버그 잡기</span><span class="chip k">bug fix</span><span class="chip k">리팩토링</span><span class="chip k">refactor</span><span class="chip k">TDD</span><span class="chip k">테스트 주도 개발</span><span class="chip k">코드 품질 점검</span><span class="chip k">DRY 체크</span><span class="chip k">YAGNI 체크</span><span class="chip x">Edit/Write/MultiEdit/NotebookEdit/ast_grep_replace tool-call</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:code-simplifier</span></a><a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:analyst</span></a>
@@ -771,23 +825,23 @@ flowchart TD
 
   <div class="card" id="s-systematic-debugging">
     <div class="head"><span class="name">systematic-debugging</span><span class="badge disc">discipline</span><span class="badge entry">신규</span></div>
-    <div class="blurb">root-cause-first 디버깅 규율 (4 phase + backward tracing + defense-in-depth). 사전 근본 원인 조사 없는 어떤 fix 도 금지.</div>
+    <div class="blurb">root-cause-first 디버깅 규율 (4 phase + backward tracing + defense-in-depth). 사전 근본 원인 조사 없는 어떤 fix 도 금지. 깊으면 deep-dive 에스컬레이션, 종료는 pre-commit-gate + fresh-verifier, verifier 후 code-reviewer 2-stage 리뷰.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">bug</span><span class="chip k">test failure</span><span class="chip k">flaky test</span><span class="chip k">performance regression</span><span class="chip k">버그 수정</span><span class="chip k">디버깅</span><span class="chip k">원인 찾아줘</span></div>
+    <div class="triggers"><span class="chip k">bug</span><span class="chip k">test failure</span><span class="chip k">flaky test</span><span class="chip k">unexpected behavior</span><span class="chip k">performance regression</span><span class="chip k">race condition</span><span class="chip k">regression</span><span class="chip k">버그 수정</span><span class="chip k">디버깅</span><span class="chip k">왜 깨지지</span><span class="chip k">원인 찾아줘</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
-      <a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:debugger</span></a><a href="#agents"><span class="chip a">pi-oven:test-engineer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a>
+      <a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:debugger</span></a><a href="#agents"><span class="chip a">pi-oven:test-engineer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a><a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a>
     </div>
   </div>
 
   <div class="card" id="s-improve-codebase-architecture">
     <div class="head"><span class="name">improve-codebase-architecture</span><span class="badge entry">entry</span><span class="badge entry">신규</span></div>
-    <div class="blurb">deepening 기회 (shallow → deep module) 를 survey · before/after HTML report · grilling loop · 선택적 Design-It-Twice 인터페이스 대안으로 도출. domain glossary + ADR 로 informed.</div>
+    <div class="blurb">deepening 기회 (shallow → deep module) 를 survey · before/after HTML report · grilling loop · 선택적 Design-It-Twice 인터페이스 대안으로 도출. domain glossary + ADR 로 informed. 모든 리팩토링의 단일 진입점 (Step 0 유형 감지); tdd-strict 행동보존 + code-quality-discipline 후보 게이트 + code-reviewer 리뷰.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">improve architecture</span><span class="chip k">deepen modules</span><span class="chip k">shallow module</span><span class="chip k">deletion test</span><span class="chip k">아키텍처 개선</span><span class="chip k">구조 개선</span><span class="chip k">리팩토링 기회</span></div>
+    <div class="triggers"><span class="chip k">improve architecture</span><span class="chip k">deepen modules</span><span class="chip k">find refactoring opportunities</span><span class="chip k">consolidate tightly-coupled modules</span><span class="chip k">shallow module</span><span class="chip k">deletion test</span><span class="chip k">seam</span><span class="chip k">아키텍처 개선</span><span class="chip k">구조 개선</span><span class="chip k">리팩토링 기회</span><span class="chip k">모듈 깊게</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
-      <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:code-simplifier</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a>
+      <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:code-simplifier</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:analyst</span></a><a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a>
     </div>
   </div>
 
@@ -795,7 +849,7 @@ flowchart TD
     <div class="head"><span class="name">receiving-code-review</span><span class="badge disc">discipline</span><span class="badge entry">신규</span></div>
     <div class="blurb">incoming 리뷰 피드백 (human / external / cross-vendor codex) 에 대한 evaluate-before-implement 규율 — 코드베이스에 대조 검증, 근거로 push-back, 절대 performative agreement 금지.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">code review feedback</span><span class="chip k">PR review comments</span><span class="chip k">apply review</span><span class="chip k">fix the comments</span><span class="chip k">리뷰 피드백 반영</span><span class="chip k">리뷰 코멘트 대응</span></div>
+    <div class="triggers"><span class="chip k">code review feedback</span><span class="chip k">review comments</span><span class="chip k">reviewer suggestions</span><span class="chip k">PR feedback</span><span class="chip k">apply review</span><span class="chip k">fix the comments</span><span class="chip k">reviewer said</span><span class="chip k">codex review 결과 반영</span><span class="chip k">리뷰 피드백 적용</span><span class="chip k">리뷰 코멘트 반영</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a>
@@ -806,7 +860,7 @@ flowchart TD
     <div class="head"><span class="name">git-workflow</span><span class="badge disc">discipline</span><span class="badge entry">신규</span></div>
     <div class="blurb">feature 작업의 isolated-workspace 라이프사이클 — 시작 시 worktree 셋업, 끝에서 merge / PR / keep / discard. 동일한 환경 감지 로직이 양쪽 경계를 다룸.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">worktree</span><span class="chip k">finish branch</span><span class="chip k">merge</span><span class="chip k">create PR</span><span class="chip k">discard branch</span><span class="chip k">브랜치 정리</span><span class="chip k">워크트리 시작</span><span class="chip k">작업 마무리</span></div>
+    <div class="triggers"><span class="chip k">worktree</span><span class="chip k">isolated workspace</span><span class="chip k">finish branch</span><span class="chip k">merge branch</span><span class="chip k">create PR</span><span class="chip k">discard branch</span><span class="chip k">branch cleanup</span><span class="chip k">워크트리</span><span class="chip k">브랜치 정리</span><span class="chip k">작업 마무리</span><span class="chip k">PR 만들어</span><span class="chip k">머지</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:git-master</span></a><a href="#agents"><span class="chip a">pi-oven:verifier</span></a><a href="#agents"><span class="chip a">pi-oven:explorer</span></a>
@@ -817,7 +871,7 @@ flowchart TD
     <div class="head"><span class="name">aws</span><span class="badge auto">UC5 ops</span></div>
     <div class="blurb">UC5 read-only AWS 프로덕션 커넥터 — 인벤토리 · 배포 상태 · CloudFront/S3/ECR/EC2/CloudWatch 점검. mutation 은 code-first 경계 (AI 가 스크립트만 작성, 실행은 사용자/CI). credential 은 gitignored <code>.external-credentials</code>.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">AWS</span><span class="chip k">cloud infra</span><span class="chip k">S3</span><span class="chip k">CloudFront</span><span class="chip k">EC2</span><span class="chip k">ECR</span><span class="chip k">Route53</span><span class="chip k">CloudWatch</span><span class="chip k">prod read</span><span class="chip k">프로덕션 조회</span><span class="chip k">운영 인프라 조회</span><span class="chip k">AWS 상태 확인</span></div>
+    <div class="triggers"><span class="chip k">AWS</span><span class="chip k">aws</span><span class="chip k">cloud infra</span><span class="chip k">S3</span><span class="chip k">CloudFront</span><span class="chip k">EC2</span><span class="chip k">ECR</span><span class="chip k">Route53</span><span class="chip k">CloudWatch</span><span class="chip k">prod read</span><span class="chip k">프로덕션 조회</span><span class="chip k">운영 인프라 조회</span><span class="chip k">AWS 상태 확인</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a><a href="#agents"><span class="chip a">pi-oven:debugger</span></a>
@@ -828,7 +882,7 @@ flowchart TD
     <div class="head"><span class="name">bitbucket-pipeline</span><span class="badge auto">UC5 ops</span></div>
     <div class="blurb">UC5 Bitbucket Cloud 커넥터 — pipeline run 상태 · step 진단 · 로그 · repository variable 점검. read-only 점검 + code-first mutation 경계. credential 은 gitignored <code>.external-credentials</code>.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">Bitbucket</span><span class="chip k">pipeline</span><span class="chip k">CI/CD</span><span class="chip k">deploy pipeline</span><span class="chip k">build failed</span><span class="chip k">비트버킷 파이프라인</span><span class="chip k">파이프라인 실패</span><span class="chip k">빌드 실패 로그</span></div>
+    <div class="triggers"><span class="chip k">Bitbucket</span><span class="chip k">bitbucket</span><span class="chip k">pipeline</span><span class="chip k">pipelines</span><span class="chip k">CI</span><span class="chip k">CI/CD</span><span class="chip k">deploy pipeline</span><span class="chip k">build failed</span><span class="chip k">비트버킷 파이프라인</span><span class="chip k">파이프라인 실패</span><span class="chip k">빌드 실패 로그</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:debugger</span></a><a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a>
@@ -839,7 +893,7 @@ flowchart TD
     <div class="head"><span class="name">cloudflare</span><span class="badge auto">UC5 ops</span></div>
     <div class="blurb">UC5 Cloudflare DNS 커넥터 — zone/DNS 점검 · propagation 체크 · DNS-to-origin 진단으로 domain-layer ops 커버리지를 마감. read-only + code-first mutation 경계. credential 은 gitignored <code>.external-credentials</code>.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">Cloudflare</span><span class="chip k">DNS</span><span class="chip k">zone</span><span class="chip k">CNAME</span><span class="chip k">A record</span><span class="chip k">클라우드플레어</span><span class="chip k">DNS 점검</span><span class="chip k">레코드 확인</span></div>
+    <div class="triggers"><span class="chip k">Cloudflare</span><span class="chip k">cloudflare</span><span class="chip k">DNS</span><span class="chip k">zone</span><span class="chip k">CNAME</span><span class="chip k">A record</span><span class="chip k">클라우드플레어</span><span class="chip k">DNS 점검</span><span class="chip k">레코드 확인</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:tracer</span></a><a href="#agents"><span class="chip a">pi-oven:executor</span></a>

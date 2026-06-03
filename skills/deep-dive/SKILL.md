@@ -32,7 +32,7 @@ deep-dive is **not** a relentless requirements interview — when full spec conv
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
 **Do NOT run this skill's substantive work in the main context.** Main's direct-action budget is narrow: 1–2 file simple edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`).
-**Right-agent routing** (model-fit + role-fit is first-class — use these exact names): causal investigation → `pi-oven:tracer`; deep analysis → `pi-oven:analyst`; broad read → `pi-oven:explorer`.
+**Right-agent routing** (model-fit + role-fit is first-class — use these exact names): causal investigation → `pi-oven:tracer`; deep analysis → `pi-oven:analyst`; broad read → `pi-oven:explorer`; prior-art / known-issues research → `pi-oven:deep-researcher` (co-spawned sibling in Phase 3); REPL log/trace data execution → `pi-oven:data-runner` (conditional post-lane probe in Phase 3).
 
 ## Phase 1: Initialize
 
@@ -44,6 +44,24 @@ deep-dive is **not** a relentless requirements interview — when full spec conv
    - **Lane 2**: Config / environment / orchestration cause
    - **Lane 3**: Measurement / verification methodology cause — covers verification-method defects, not just system defects (e.g., the verification query uses the wrong key, the comparison filter shape does not match the schema grain)
 5. For brownfield: also pass codebase area context to the trace lanes from the explorer's findings
+
+## Memory: recall on entry, retain on exit
+
+Before presenting hypotheses to the user, call `recall` to retrieve any prior investigation of this component or system area:
+
+```
+recall({query: "deep dive investigation <component-or-slug>"})
+```
+
+If prior findings exist, surface a brief summary to the user before the confirmation round and use them to seed hypothesis generation. TODO-verify exact recall param schema against omp tool registration before shipping.
+
+When the investigation is complete and a root cause is confirmed, call `retain` to persist the finding:
+
+```
+retain({items: [{content: "Root cause confirmed: <one-sentence summary>", context: "deep-dive/<slug>"}]})
+```
+
+TODO-verify exact retain param schema against omp tool registration before shipping.
 
 ## Phase 2: Lane confirmation
 
@@ -65,7 +83,11 @@ Present the 3 hypotheses to the user via `ask` for a single confirmation round:
 
 ## Phase 3: Trace execution
 
-Dispatch `pi-oven:tracer` (agent file: `agents/pi-oven-tracer.md`) for each confirmed hypothesis. Fire all 3 in parallel — one `task` call per lane, all in the same response turn, each with `run_in_background: true`.
+Dispatch `pi-oven:tracer` (agent file: `agents/pi-oven-tracer.md`) for each confirmed hypothesis, and co-spawn `pi-oven:deep-researcher` as ONE additional sibling in the same `task` call. All agents run concurrently — one task entry per tracer lane plus one for deep-researcher, all in the same response turn, each with `run_in_background: true`.
+
+`pi-oven:deep-researcher` is NOT a numbered hypothesis lane. Its role is to surface prior art and known issues for the problem area. Its output feeds Phase-4 Injection-2 (codebase/context) — not the `## Ranked Hypotheses` table. Do not use "4th parallel lane" framing; lane count = N confirmed hypotheses.
+
+**irc coordination.** Each tracer and deep-researcher should call `irc(op:"list")` on start to discover co-resident sibling peer ids. When a tracer lane confirms the root cause, it broadcasts in plain prose: `irc(op:"send", to:"all", message:"root cause confirmed in <component>: <summary>")` — other lanes may terminate early on receiving this. When deep-researcher completes its prior-art sweep, it broadcasts: `irc(op:"send", to:"all", message:"prior-art research complete: <key finding>")`.
 
 This parallel dispatch pattern is established in `skills/large-task-delegation/SKILL.md:51`: "multiple task calls in one response, each with run_in_background: true".
 
@@ -76,8 +98,9 @@ Each tracer lane must:
 - Name the critical unknown for the lane
 - Recommend the best discriminating probe
 
-After all 3 tracer lanes complete:
+After all tracer lanes and deep-researcher complete:
 - Run synthesis: rank hypotheses by confidence, detect convergence (if two hypotheses reduce to the same mechanism, merge explicitly)
+- **Conditional REPL probe:** if static trace analysis is insufficient (e.g., log parsing, metric correlation, or trace file analysis is needed to confirm/rule out a hypothesis), dispatch `pi-oven:data-runner` via `task` to run a targeted REPL probe. This is a conditional post-lane dispatch — not a hypothesis lane and not part of the parallel fan-out. Dispatch only when static analysis leaves a hypothesis unresolved by evidence.
 - Produce the trace output structure (see below)
 - Save to `.omc/specs/deep-dive-trace-{slug}.md`
 

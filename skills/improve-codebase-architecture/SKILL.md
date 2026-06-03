@@ -40,6 +40,10 @@ This skill is *informed* by the project's domain model. If a `CONTEXT.md` / doma
 
 ### 1. Survey (dispatch — do not read inline)
 
+**Memory first.** Before dispatching any subagent, call `recall(query="architecture decisions and ADRs for this codebase")` to retrieve prior architecture decisions, ADRs, and previous refactor outcomes. This prevents re-litigating settled decisions and seeds the survey with known friction.
+
+**Pre-survey research.** If the architecture area involves unfamiliar patterns, academic techniques, or ecosystem-level design decisions, dispatch `pi-oven:deep-researcher` before the explorer to research relevant architecture patterns, prior art, and known trade-offs. The deep-researcher returns a synthesis with citations; feed it as context into the explorer brief.
+
 Before exploring, read any domain glossary and the ADRs in the area being touched. If the survey will require 5+ file reads, route through `codebase-survey` rather than reading in the main session.
 
 Dispatch `pi-oven:explorer` to walk the codebase organically and note friction — not rigid heuristics. Have it report, with file + line evidence:
@@ -51,6 +55,8 @@ Dispatch `pi-oven:explorer` to walk the codebase organically and note friction �
 - Which parts are untested or hard to test through their current interface.
 
 Apply the **deletion test** to each suspect. A "yes, concentrates complexity" is the signal worth surfacing.
+
+**Benchmark baseline.** After the explorer returns its friction report, dispatch `pi-oven:data-runner` to run a benchmark/performance baseline in the REPL for any modules flagged as performance-sensitive or high-churn. This establishes a pre-change baseline so that any recommended deepening can be validated against real numbers, not assumptions.
 
 ### 2. Candidates as an HTML report
 
@@ -79,6 +85,7 @@ Once the user picks a candidate, walk the design tree with them — constraints,
 - **Deepened module named after a concept not in the domain glossary** → add the term to `CONTEXT.md` (create lazily if absent).
 - **A fuzzy term sharpened mid-conversation** → update `CONTEXT.md` right there.
 - **User rejects a candidate with a load-bearing reason** → offer an ADR ("Want me to record this so future reviews don't re-suggest it?"). Only when a future explorer would genuinely need it — skip ephemeral ("not worth it now") and self-evident reasons.
+- **User accepts a candidate** → call `retain(items=[{content:"<module> deepened: <one-sentence summary of change and rationale>", context:"architecture decision"}])` so future sessions recall the accepted change and do not re-propose it.
 
 ### 4. Interface design (optional — Design It Twice)
 
@@ -108,6 +115,8 @@ When a deepening lands as code, dispatch `pi-oven:code-simplifier` to confirm th
 
 The main agent dispatches and synthesises; the heavy work routes to per-model agents.
 
+- **Pre-survey research** → `pi-oven:deep-researcher` — researches architecture patterns, prior art, and ecosystem-level design decisions before the explorer survey (Step 1). Dispatch when the area involves unfamiliar patterns or academic techniques.
+- **Benchmark baseline** → `pi-oven:data-runner` — runs benchmark/performance baseline in REPL after the survey, before recommending changes (Step 1 post-survey). Dispatch when modules are performance-sensitive or high-churn.
 - **Survey / friction walk** → `pi-oven:explorer` — organic codebase exploration, returns file+line friction evidence (Step 1). For 5+ reads, go through `codebase-survey` first.
 - **Candidate synthesis + HTML report** → `pi-oven:architect` — turns friction into deepening candidates and writes the before/after report (Step 2).
 - **Interface alternatives** → 3+ parallel `pi-oven:architect` agents, one constraint each (Step 4).

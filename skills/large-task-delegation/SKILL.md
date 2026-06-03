@@ -46,8 +46,10 @@ mid-execution 5+ file reads → halt + re-route regardless of prior override.
 | Implementation (substantive) | `pi-oven:executor` | `model="sonnet"` |
 | Implementation (mechanical) | `pi-oven:executor` | `model="haiku"` |
 | Documentation | `pi-oven:writer` | `model="sonnet"` |
+| External / SOTA research | `pi-oven:deep-researcher` | omit model (inherits parent version) |
+| REPL data execution / empirical validation | `pi-oven:data-runner` | omit model (inherits parent version) |
 
-`model="opus"` MUST NOT be specified in any dispatch. Omit model for critic/verifier/planner — this inherits the parent version and avoids version mismatch.
+`model="opus"` MUST NOT be specified in any dispatch. Omit model for critic/verifier/planner/deep-researcher/data-runner — this inherits the parent version and avoids version mismatch.
 
 ## Parallel dispatch
 
@@ -56,6 +58,14 @@ Fire file-scope-disjoint tasks simultaneously: multiple `task` calls in one resp
 - Max 5 parallel subagents per wave
 - Same file region = sequential (one subagent owns it)
 - Git push race → subagent handles with `git fetch && rebase && push`
+
+**irc coordination (parallel executor waves):** When two or more `pi-oven:executor` subagents are running in the same wave, use irc to coordinate before they write. At wave start, each executor calls `irc({op:"list"})` to see which files siblings have claimed. Before touching a file, an executor sends `irc({op:"send", to:"<sibling-name>", message:"claiming <file-path> — confirm no overlap"})` and awaits the reply. If a collision is detected, the later executor halts and reports back to main for re-sequencing. irc is auto-injected — do not add it to tools: frontmatter.
+
+## Memory — recall before dispatch, retain after
+
+Before dispatching any subagent on a task meeting the trigger threshold, call `recall(query="prior delegation outcomes and lessons for tasks of this type")` to surface past delegation results, known failure modes, and scope-expansion patterns. Seed the dispatch prompt's **Task body** with any relevant recall findings so subagents benefit from prior cycle learning.
+
+After the delegation wave completes and the review stage produces a verdict, call `retain(items=[{content:"<delegation outcome + key lessons>", context:"large-task-delegation"}])` to persist the result for future cycles. Retain on both PASS and BLOCK verdicts — blocked outcomes carry the most useful lessons.
 
 ## Dispatch prompt anatomy
 
@@ -80,6 +90,12 @@ Every dispatch prompt must include all of the following sections (60-150 lines f
    - CRG refresh between plans
    - Commit convention (English conventional commits, no Co-Authored-By)
 7. **Output contract** — ≤100 words; expected return format on success and on BLOCKED
+
+## Step 0b = deep-researcher and data-runner augmentation
+
+When the task involves unfamiliar external libraries, SOTA techniques, or academic patterns, dispatch `pi-oven:deep-researcher` before the executor wave. Feed its synthesis (citations + key findings) into the executor dispatch prompt's **Task body**. This runs in parallel with Step 0 survey when the domain is known; runs first when the domain is novel.
+
+When the task involves empirical metrics, performance baselines, or numeric validation, dispatch `pi-oven:data-runner` after the executor wave completes but before the review stage. `pi-oven:data-runner` runs REPL-based validation and returns numeric evidence that the review lane can evaluate against spec claims.
 
 ## Step 0 = codebase-survey precondition
 

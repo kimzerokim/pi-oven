@@ -38,6 +38,11 @@ Before dispatching ANY tool call, collect all three slots in a single question t
 - Do NOT end the turn after receiving answers. After user confirms all 3 slots, dispatch the first tool call in the SAME turn.
 - Violation = silently branching, or ending turn with "understood, I'll begin now" without dispatching.
 
+**Memory at loop entry (TODO-verify param schema against omp tool registration):**
+Before the first tool call of the loop, call `recall({query: "prior cycle failures, blockers, and incomplete tasks for this project"})`. If the backend is not available (memory.backend = "off"), skip gracefully — do not fail. If prior failures are found, surface them to the planner before spec/plan dispatch.
+
+**External knowledge:** If the task requires external knowledge, SOTA research, papers, or unfamiliar domains — dispatch `pi-oven:deep-researcher` as a sibling alongside the initial planner/architect call (before committing to the implementation plan). Do not invoke for routine coding tasks.
+
 ---
 
 ## Execution modes
@@ -114,8 +119,11 @@ Regardless of mode, invoke skills in this order each cycle:
 6. Execution phase — mode-specific: ultrawork waves / ralph loop / autopilot lifecycle
 7. `large-task-delegation` routing — if any single task is 3+ files or 200+ LoC
 8. `tdd-strict` — enforced inside executor subagents (Red→Green→Refactor), not in main
+8.5. `pi-oven:data-runner` — conditional: if the cycle touches metrics, benchmarks, or performance, dispatch `pi-oven:data-runner` via `task` after `pi-oven:test-engineer` to validate claims empirically via REPL. Skip for cycles with no metric/perf scope.
 9. `pre-commit-gate` — run after each commit boundary (Gates 0–4.5, all modes)
 10. `fresh-verifier` — mandatory before exit (all modes, see Exit gate section)
+
+**Milestone retain (TODO-verify param schema against omp tool registration):** At each confirmed MILESTONE (story acceptance criteria verified, phase complete, or spec approved), call `retain({items:[{content:"<milestone description and outcome>", context:"autonomous-loop cycle <N>"}]})`. If the backend is not available, skip gracefully.
 
 Main agent role: orchestrator only — dispatch, sequence, synthesize evidence, and queue next subagent work in the same turn. Main MUST NOT implement inline code, inline tests, or inline refactors during autonomous-loop execution. Any work touching multiple files, requiring 3+ reads, or exceeding 200 LoC MUST be dispatched to a subagent — main doing it inline is a hard violation, not a shortcut.
 
@@ -178,6 +186,19 @@ Before declaring any cycle or loop complete:
 5. 2 consecutive verifier FAILs → append `Q-VERIFIER-FAIL` to `docs/harness/user-queue.md` and halt to user
 
 Main cannot self-declare PASS. Only `pi-oven:verifier` `VERDICT: PASS` output counts.
+
+**Memory at loop exit (TODO-verify param schema against omp tool registration):** After `pi-oven:verifier` issues `VERDICT: PASS`, call `reflect()` to consolidate what was learned this loop. If the backend is not available, skip gracefully.
+
+---
+
+## IRC coordination — parallel executor dispatch
+
+When `large-task-delegation` fans out executor agents in a single `task({agent, tasks:[...]})` call (isolated worktrees), each executor discovers sibling peer ids via `irc(op:"list")`. Broadcast on completion or blocker using plain prose messages only (no JSON payloads):
+
+- On completion: `irc(op:"send", to:"all", message:"executor done: <task-summary>")`
+- On blocker: `irc(op:"send", to:"all", message:"blocker: <description>, pausing")`
+
+Executors use `irc(op:"list")` to check for cancellation signals from siblings. The orchestrator waits for all tasks to complete (not a poll loop) before collecting results. `irc` is auto-injected into every subagent — it need not appear in agent `tools:` frontmatter. Only `op:"send"` and `op:"list"` exist; there is no channel create/open op. This coordination only works for sibling subagents co-spawned in a single `task` call at recursion depth ≤ 2.
 
 ---
 

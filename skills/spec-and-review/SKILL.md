@@ -118,10 +118,15 @@ Pattern loop detail: skill://pi-oven/spec-and-review/references/pattern-loop.md
 
 When running spec-and-review inside omp:
 
+**Memory (Hindsight).** At flow entry, before any agent dispatch: `recall({query: "prior specs decisions <topic>"})` to surface relevant prior decisions, past spec outcomes, and rejected alternatives. After Gate PASS (plan approved): `retain({items: [{content: "<spec-name> approved — key decisions: <summary>", context: "spec-and-review"}]})`. If `memory.backend` is not configured, skip gracefully without error.
+
 - Step 0 (codebase survey precondition): dispatch `pi-oven:explorer`, and `pi-oven:librarian` when external research is needed.
 - Step 0b (novel domain / SOTA research): dispatch `pi-oven:deep-researcher` for academic papers, external library research, or SOTA landscape — runs alongside librarian, not as a replacement.
 - Step 1 (draft authoring): the main agent leads; consult `pi-oven:architect` for system-design decisions and `pi-oven:document-specialist` for SDK accuracy.
 - Step 2 (cross-vendor review): dispatch `pi-oven:critic` as the BLOCKER/NIT quality gate.
+
+**irc coordination at critic fan-out.** When dispatching the two-provider critic review (Codex + Zen), each critic subagent must: (1) call `irc(op:"list")` to discover sibling peer ids; (2) broadcast confirmed P0/P1 findings via `irc(op:"send", to:"all", message:"P0 finding confirmed in <file>: <summary>", awaitReply:false)` so the other critic and the orchestrator are immediately notified. The orchestrator awaits all critic replies before synthesizing — do not poll; await the task results directly.
+
 - Step 3 (synthesis and acceptance loop): the main agent owns synthesis.
 - Experiment-style verification (falsifiability) when relevant: dispatch `pi-oven:analyst`.
 - Empirical metric / performance spec validation: dispatch `pi-oven:data-runner` to confirm numeric claims before locking the spec.

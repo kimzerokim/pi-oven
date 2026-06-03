@@ -1,0 +1,10 @@
+name: improve-codebase-architecture-smoke-001
+skill: improve-codebase-architecture
+tag: smoke
+input:
+  - turn: 1
+    user: "Refactor the order-intake module."
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["Step 0", "refactor-type", "cleanup", "deepening", "explorer", "analyst"]
+  - tool_calls_required: ["task|Task"]

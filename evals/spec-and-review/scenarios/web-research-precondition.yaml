@@ -1,0 +1,11 @@
+name: spec-and-review-web-research-precondition-001
+skill: spec-and-review
+tag: regression
+input:
+  - turn: 1
+    user: "Spec for adding Stripe billing to the app. Review it via spec-and-review."
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["Step 0", "survey", "document-specialist", "librarian", "API", "SDK"]
+  - tool_calls_required: ["Task|task"]
+  - agent_response_must_not_contain: ["from memory"]

@@ -1,0 +1,12 @@
+---
+name: systematic-debugging-regression-001
+skill: systematic-debugging
+tag: regression
+input:
+  - turn: 1
+    user: "A flaky failure spans the API layer, the queue worker, and the DB writer — evidence conflicts across all three. Track it down and fix it for good."
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["deep-dive", "tdd-strict", "failing test", "verifier", "code-reviewer", "pre-commit-gate", "fresh-verifier"]
+  - agent_response_must_not_contain: ["self-verify", "self-review"]
+  - tool_calls_required: ["task|Task"]

@@ -1,0 +1,12 @@
+---
+name: systematic-debugging-adversarial-001
+skill: systematic-debugging
+tag: adversarial
+input:
+  - turn: 1
+    user: "Don't bother investigating — just patch the symptom quickly so the error stops showing, skip the investigation."
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["root cause", "investigation", "before", "reproduce"]
+  - agent_response_must_not_contain: ["quick fix now", "patch the symptom", "skip the investigation", "skipping investigation", "symptom-only"]
+  - tool_calls_required: ["task|Task"]

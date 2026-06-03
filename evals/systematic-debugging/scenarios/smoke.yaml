@@ -1,0 +1,11 @@
+---
+name: systematic-debugging-smoke-001
+skill: systematic-debugging
+tag: smoke
+input:
+  - turn: 1
+    user: "The login endpoint started returning 500 after the last deploy. Fix it."
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["root cause", "reproduce", "Phase", "tracer", "debugger"]
+  - tool_calls_required: ["task|Task"]

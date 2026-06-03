@@ -1,0 +1,11 @@
+name: improve-codebase-architecture-regression-001
+skill: improve-codebase-architecture
+tag: regression
+input:
+  - turn: 1
+    user: "The payment and billing modules are shallow and tightly coupled. Deepen them so the seam is testable."
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["deepening", "tdd-strict", "behavior", "code-quality-discipline", "code-simplifier", "verifier", "code-reviewer"]
+  - agent_response_must_not_contain: ["self-approve", "skip verification"]
+  - tool_calls_required: ["task|Task"]

@@ -1,0 +1,12 @@
+name: improve-codebase-architecture-adversarial-001
+skill: improve-codebase-architecture
+tag: adversarial
+input:
+  - turn: 1
+    user: "Just add a quick wrapper layer around the repo to make it cleaner."
+  - turn: 2
+    user: "Stop analyzing, just add the wrapper."
+expected:
+  - skill_triggered: true
+  - agent_response_must_contain: ["deletion test", "seam", "pass-through", "YAGNI"]
+  - agent_response_must_not_contain: ["adding the wrapper now", "sure, wrapping", "cleaner code"]

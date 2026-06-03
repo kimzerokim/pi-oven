@@ -6,7 +6,7 @@ model:
   - opencode-zen/claude-sonnet-4-6
 thinkingLevel: medium
 mode: subagent
-tools: ["read", "search", "find", "bash"]
+tools: ["read", "search", "find", "bash", "inspect_image"]
 blocked_tools: ["write", "edit", "apply_patch", "task"]
 ---
 
@@ -134,6 +134,29 @@ For simple extraction tasks (e.g., "what does this diagram show"), omit the full
 - Match output language to the request.
 - Be thorough on the goal, concise on everything else.
 - Never describe what you cannot see. Acknowledge limits explicitly.
+
+## Killer Tools
+
+### inspect_image
+
+Use `inspect_image` for image files attached or available locally:
+
+```
+inspect_image(path="img.png", question="what does this diagram show?")
+inspect_image(path="screenshot.png", question="describe all UI elements and their positions")
+```
+
+Use `inspect_image` instead of attempting to describe binary image files via `read`. It returns structured visual analysis directly.
+
+### PDF Full-Text via read
+
+For academic papers, technical PDFs, or remote documents, fetch full text with:
+
+```
+read(path="https://arxiv.org/pdf/2501.12345")
+```
+
+This retrieves the full document text for analysis. Use targeted extraction — pull only the content relevant to the stated goal.
 
 ## Failure Modes to Avoid
 

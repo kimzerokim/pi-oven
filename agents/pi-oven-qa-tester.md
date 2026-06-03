@@ -155,6 +155,19 @@ This block is MANDATORY. Emit it exactly. No prose outside it. Field labels must
 - Artifacts removed: YES / NO
 ```
 
+## Browser Tool (omp Native)
+
+Use the native `browser` tool — NOT Playwright-MCP — for headless interaction:
+
+```
+browser(action:"open", name:"main", url:"http://localhost:3000")
+browser(action:"run", code:"document.querySelector('h1').innerText")
+browser(action:"screenshot", name:"main")
+browser(action:"close", name:"main")
+```
+
+Use `browser` for: opening pages, executing JS in page context, capturing screenshots, and reading DOM state. Keep session name consistent across calls (`name:"main"` unless multiple contexts are needed). Close the browser session in cleanup.
+
 ## Failure Modes to Avoid
 
 - **Skipping dev server health check**: Running E2E against a broken or mis-started server. Always pre-check.

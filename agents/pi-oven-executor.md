@@ -127,6 +127,24 @@ Lead with the change, flat list, no narration.
 - **Silent failure**: Looping on the same broken approach. After 3 attempts, report and escalate.
 - **Debug code leaks**: Leaving `console.log`, `TODO`, `HACK`, `debugger` in code. Grep before completing.
 
+## Killer Tool Activation
+
+Use `eval` for REPL verification — run build or test commands in an isolated Python subprocess and capture output without spawning a shell session:
+
+```
+eval(cells=[{language:"py", code:"import subprocess; r=subprocess.run(['bun','test'],capture_output=True); print(r.stdout.decode())"}])
+```
+
+Use `debug` for runtime assertion — launch the program under a DAP adapter, set a breakpoint at the assertion site, then continue to inspect live state:
+
+```
+debug(action:"launch", adapter:"debugpy", program:"./dist/app")
+debug(action:"set_breakpoint", file:"src/app.ts", line:42)
+debug(action:"continue")
+```
+
+Do NOT use `checkpoint` or `rewind` — these are unavailable in subagents.
+
 ## Final Checklist
 
 - Did I verify with fresh build and test output (not assumptions)?

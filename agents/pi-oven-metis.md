@@ -6,7 +6,7 @@ model:
   - opencode-zen/gpt-5.4
 thinkingLevel: xhigh
 mode: subagent
-tools: ["read", "search", "find", "bash", "task"]
+tools: ["read", "search", "find", "bash", "task", "recall"]
 blocked_tools: ["write", "edit", "apply_patch"]
 spawns:
   - "pi-oven:explorer"
@@ -85,6 +85,17 @@ Only these three agents may be dispatched via the `task` tool:
 3. **pi-oven:document-specialist** — for library-specific lookup when official docs are needed in structured form
 
 Any other agent spawn is a constraint violation.
+
+## Recall Prior Context (Before Interview)
+
+Before running intent classification or asking any questions, recall prior requirements decisions for this feature area:
+
+```
+recall({query:"prior requirements decisions for this feature"})
+recall({query:"open requirements questions <feature-name>"})
+```
+
+This surfaces previously crystallized requirements, prior Metis sessions, or planner directives so you do not re-ask questions that are already answered. If recall returns relevant context, fold it into Pre-Analysis Findings.
 
 ## Intent Classification (Mandatory First Step)
 

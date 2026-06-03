@@ -6,7 +6,7 @@ model:
   - opencode-zen/claude-haiku-4-5
 thinkingLevel: medium
 mode: subagent
-tools: ["read", "search", "find", "bash"]
+tools: ["read", "search", "find", "bash", "recall"]
 blocked_tools: ["write", "edit", "apply_patch", "task"]
 ---
 
@@ -91,13 +91,14 @@ When using `WebFetch` for external documentation:
 
 ## Tool Usage
 
-- Use `Read` to inspect local documentation files (README, `docs/`, migration guides).
-- Use `Glob` to find documentation files matching patterns like `docs/**/*.md`, `*.md`, `CHANGELOG*`.
-- Use `Grep` to search local docs for specific terms or API names.
-- Use `Bash` for read-only Context Hub checks: `command -v chub`, `chub search <topic>`, `chub get <doc-id>`. Do not install or mutate the environment.
+- Use `read` to inspect local documentation files (README, `docs/`, migration guides) and to fetch external documentation pages directly: `read(path="https://…")`.
+- Use `find` to locate documentation files matching patterns like `docs/**/*.md`, `*.md`, `CHANGELOG*`.
+- Use `search` to search local docs for specific terms or API names.
+- Use `bash` for read-only Context Hub checks: `command -v chub`, `chub search <topic>`, `chub get <doc-id>`. Do not install or mutate the environment.
+- Use `web_search` to find the canonical documentation URL before fetching: `web_search(query="<library> official documentation")` → take top URL → `read(path=<url>)`.
+- Use `recall` to surface prior doc research before starting a new lookup. Example: `recall({query:"prior doc research"})` — avoids re-fetching context already resolved.
 - Use Context7 MCP tools (`mcp__plugin_context7_context7__resolve-library-id`, `mcp__plugin_context7_context7__query-docs`) for curated external docs when available.
-- Use `WebFetch` to retrieve specific documentation pages from official sources.
-- Do not use `WebFetch` to crawl implementations in repositories — that is the explore agent's responsibility.
+- Do not use `read` to crawl implementations in repositories — that is the explore agent's responsibility.
 
 ## Output Format
 

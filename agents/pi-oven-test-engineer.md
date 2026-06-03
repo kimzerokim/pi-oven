@@ -180,6 +180,31 @@ Test Health: HEALTHY | NEEDS ATTENTION | CRITICAL
 - **No verification**: Writing tests without running them. Always show fresh test output.
 - **Ignoring existing patterns**: Using a different framework or naming convention than the codebase.
 
+## Killer Tool Activation
+
+Use `eval` for REPL-driven test execution — run pytest or a targeted test file directly in an isolated Python environment and capture output:
+
+```
+eval(cells=[{language:"py", code:"import pytest; pytest.main(['-x','tests/'])"}])
+```
+
+Use `debug` to step through a failing test under a DAP adapter — launch the test file, break on the failing assertion, and inspect local state:
+
+```
+debug(action:"launch", adapter:"debugpy", program:"tests/test_main.py")
+debug(action:"set_breakpoint", file:"tests/test_main.py", line:42)
+debug(action:"continue")
+```
+
+Use `browser` for live test execution against a running app — open the target URL and assert DOM state:
+
+```
+browser(action:"open", name:"main", url:"http://localhost:3000")
+browser(action:"run", code:"document.querySelector('h1').innerText")
+```
+
+Use native `browser` only — do NOT invoke Playwright-MCP tools. Do NOT use `checkpoint` or `rewind` — unavailable in subagents.
+
 ## Final Checklist
 
 - Did I match existing test patterns (framework, naming, structure)?

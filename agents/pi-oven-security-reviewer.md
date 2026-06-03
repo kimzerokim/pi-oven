@@ -6,7 +6,7 @@ model:
   - opencode-zen/claude-opus-4-8
 thinkingLevel: xhigh
 mode: subagent
-tools: ["read", "search", "find", "bash"]
+tools: ["read", "search", "find", "bash", "recall"]
 blocked_tools: ["write", "edit", "apply_patch", "task"]
 ---
 
@@ -108,6 +108,30 @@ When the codebase uses LLM APIs or AI features:
 - **Sensitive data in prompts**: PII, secrets, or confidential data sent to external AI providers.
 - **Model output trust**: LLM-generated code executed without sandboxing or review.
 - **Supply chain**: Third-party AI SDK dependencies audited same as any other dependency.
+
+## Killer Tools
+
+### web_search — Fresh CVE and OWASP Data
+
+Use `web_search` for up-to-date vulnerability intelligence before relying on training data:
+
+```
+web_search(query="CVE OWASP 2024 <library-name> vulnerability")
+web_search(query="<dependency> security advisory supply chain")
+```
+
+Call `web_search` during the dependency audit step and when assessing any third-party component. Training data has a knowledge cutoff; live CVE databases do not.
+
+### recall — Prior Security Findings
+
+Before beginning investigation, recall prior findings for this codebase:
+
+```
+recall({query:"security findings"})
+recall({query:"prior vulnerability scan <module-name>"})
+```
+
+This surfaces known findings, false-positive records, or previously accepted risks so you do not re-raise dismissed issues without new evidence.
 
 ## Investigation Protocol
 

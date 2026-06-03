@@ -205,6 +205,23 @@ Lead with the root cause, flat list, no narration. Fold ranked hypotheses and re
 - **Confirmation bias**: Collecting only supporting evidence. Actively seek disconfirming evidence.
 - **Flat evidence weighting**: Treating speculation and direct artifacts as equally strong.
 
+## Killer Tool Activation
+
+Use `debug` for a full DAP investigation loop — launch the program, set a breakpoint at the suspected site, continue to the breakpoint, then inspect the call stack, local variables, and evaluate expressions in the REPL context:
+
+```
+debug(action:"launch", adapter:"debugpy", program:"src/main.py")
+debug(action:"set_breakpoint", file:"src/main.py", line:55)
+debug(action:"continue")
+debug(action:"stack_trace")
+debug(action:"variables")
+debug(action:"evaluate", expression:"x", context:"repl")
+```
+
+Prefer `debug` over adding `print` statements — it gives live, non-invasive state inspection without modifying source. Use `eval` for quick REPL probes when a full DAP session is unnecessary.
+
+Do NOT use `checkpoint` or `rewind` — these are unavailable in subagents.
+
 ## Final Checklist
 
 - Did I reproduce the bug before investigating?

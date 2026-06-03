@@ -6,7 +6,7 @@ model:
   - opencode-zen/claude-sonnet-4-6
 thinkingLevel: xhigh
 mode: subagent
-tools: ["read", "search", "find", "bash"]
+tools: ["read", "search", "find", "bash", "eval", "recall"]
 blocked_tools: ["write", "edit", "apply_patch", "task"]
 ---
 
@@ -100,10 +100,12 @@ Use these markers immediately after each [FINDING]:
 
 ## Tool Usage
 
-- Use Read to load log files, CSVs, JSON outputs, and artifact files.
-- Use Grep to mine logs for patterns, error codes, frequency counts, and anomalies.
-- Use Glob to find data files across the project.
-- Use Bash for shell-level aggregations: sort, uniq -c, wc -l, awk, jq, date range filtering.
+- Use `read` to load log files, CSVs, JSON outputs, and artifact files.
+- Use `search` to mine logs for patterns, error codes, frequency counts, and anomalies.
+- Use `find` to locate data files across the project.
+- Use `bash` for shell-level aggregations: sort, uniq -c, wc -l, awk, jq, date range filtering.
+- Use `eval` for in-process Python analysis when shell aggregation is insufficient. Example: `eval(cells=[{language:"py", code:"import pandas as pd; df=pd.read_csv('metrics.csv'); display(df.describe())"}])`.
+- Use `recall` to surface prior findings or decisions before starting a new analysis. Example: `recall({query:"prior requirements decisions"})` — avoids re-deriving context already established.
 
 ## Output Format
 

@@ -126,10 +126,10 @@ Rules:
 ## 5 anti-patterns
 
 **Anti-pattern 1 — Main does 6+ Edits directly**
-Main calls Edit/Write on 6 files in one turn. This is a meta-gap: context saturation degrades the edit quality, and no verifier reviews the work. Fix: dispatch executor (sonnet) with all 6 files in scope; main reviews the diff.
+Main calls edit/write on 6 files in one turn. This is a meta-gap: context saturation degrades the edit quality, and no verifier reviews the work. Fix: dispatch executor (sonnet) with all 6 files in scope; main reviews the diff.
 
 **Anti-pattern 2 — Main reads 7+ files for preparation**
-Main calls Read on 7+ files before writing a plan. Fix: dispatch `explore` (sonnet) to read and summarise; main receives a ≤200-word evidence summary and the survey report path.
+Main calls read on 7+ files before writing a plan. Fix: dispatch `explore` (sonnet) to read and summarise; main receives a ≤200-word evidence summary and the survey report path.
 
 **Anti-pattern 3 — Raw file contents flow into main context**
 Main receives full file dumps from a subagent via return value. Fix: subagent writes findings to `docs/harness/surveys/` and returns only the report path + evidence summary. Main reads the summary, not the raw files.

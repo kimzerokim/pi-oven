@@ -1,0 +1,60 @@
+skills/html-research-orchestrator/SKILL.md:- Write to OS temp dir only:
+skills/systematic-debugging/SKILL.md:1. **Read the error completely**
+skills/systematic-debugging/SKILL.md:2. Read any reference implementation **completely**
+skills/systematic-debugging/SKILL.md:1. State ONE hypothesis: "I think X is root cause because Y." Write it down, be specific.
+skills/systematic-debugging/SKILL.md:- Write the failing test that pins the root cause
+skills/deep-init/SKILL.md:1. Read existing content
+skills/code-quality-discipline/SKILL.md:trigger: "tool_call.toolName in (Edit, Write, MultiEdit, NotebookEdit, ast_grep_replace)
+skills/code-quality-discipline/SKILL.md:Fires on every code-write tool call — `Edit`, `Write`, `MultiEdit`, `ast_grep_replace`
+skills/code-quality-discipline/SKILL.md:Answer all three out loud in the working notes before the first Edit or Write call.
+skills/code-quality-discipline/references/principles.md:Gate: N ≥ 2 distinct callers, both file paths cited in the working notes, before `Write` is called for a new module.
+skills/code-quality-discipline/references/principles.md:2. **"Stop searching. Add it now."** — The three self-questions are mandatory pre-conditions, not suggestions. Answer them before the first Edit.
+skills/tdd-strict/SKILL.md:trigger: "any code-write tool_call (Edit|Write|MultiEdit)
+skills/tdd-strict/SKILL.md:3. The tool call is `Edit`, `Write`, or `MultiEdit`.
+skills/tdd-strict/SKILL.md:| **Red** | Write the failing test. No production code yet.
+skills/tdd-strict/SKILL.md:| **Green** | Write the minimum production code
+skills/tdd-strict/SKILL.md:| 1 | **Test-from-impl** — read the implementation first, then write a test that mirrors it
+skills/tdd-strict/SKILL.md:| 7 | **Skip TDD for 1-liners**
+skills/tdd-strict/references/anti-patterns.md:Read the implementation first, then write a test that mirrors it line by line.
+skills/tdd-strict/references/anti-patterns.md:Write production code, then write the test, then argue
+skills/cloudflare/SKILL.md:- Read-only API calls are allowed.
+skills/cloudflare/SKILL.md:1. Read credentials file and parse `[cloudflare]` values.
+skills/cloudflare/SKILL.md:## Read-only operations
+skills/large-task-delegation/references/dispatch-anatomy.md:- Read-only inspection (aws s3 ls, describe-*,
+skills/pre-commit-gate/SKILL.md:description: "Sequential 11-gate pre-commit check
+skills/pre-commit-gate/SKILL.md:trigger: "git commit / git push / gh pr command via Bash
+skills/pre-commit-gate/SKILL.md:Run before every `git commit` executed via Bash
+skills/pre-commit-gate/SKILL.md:- **Plan 3**: TypeScript extension hook — `pi.on('tool_call', { tool: 'Bash' })`
+skills/pre-commit-gate/references/gate-detail.md:**Plan 1 vs Plan 3**: skill-layer in Plan 1. Plan 3 hook can re-run the grep inline before the Bash call completes.
+skills/pre-commit-gate/references/gate-detail.md:**Plan 1 vs Plan 3**: skill-layer in Plan 1. Plan 3 hook runs the grep inline as a pre-Bash-call check
+skills/pre-commit-gate/references/gate-detail.md:**Plan 1 vs Plan 3**: skill-layer in Plan 1. Plan 3 hook runs `npm run build` inline before allowing the `git commit` Bash call to proceed.
+skills/pre-commit-gate/references/gate-detail.md:**Plan 1 vs Plan 3**: skill-layer pre-check in Plan 1. Plan 3 hook can block the `git commit` Bash call
+skills/pre-commit-gate/references/gate-detail.md:**Plan 1 vs Plan 3**: skill-layer in Plan 1. Plan 3 hook dispatches the verifier inline before allowing the `git commit` Bash call.
+skills/bitbucket-pipeline/SKILL.md:1. Read credentials file and parse `[bitbucket]` values.
+skills/bitbucket-pipeline/SKILL.md:## Read-only operations
+skills/bitbucket-pipeline/SKILL.md:## Write operations
+skills/brainstorming/references/checklist.md:- Read `docs/` and `src/` for adjacent modules and naming conventions
+skills/autonomous-loop/SKILL.md:- Bash command stuck ≥ 3 min
+skills/codebase-survey/SKILL.md:3. **Step 2 — Deep read + history**: Read each in-scope file in parallel.
+skills/codebase-survey/SKILL.md:9. **Step 8 — Report**: Write a structured markdown report
+skills/codebase-survey/SKILL.md:  prompt: "Run codebase-survey 8-step checklist for <topic>. Write report to
+skills/codebase-survey/references/8-step-checklist.md:- Read all in-scope files in parallel (`read` tool, parallel calls).
+skills/codebase-survey/references/8-step-checklist.md:Write the final report to:
+skills/writing-plans/SKILL.md:- "Write the failing test for `parseConfig`
+skills/writing-plans/SKILL.md:Compound steps ("Write the test and implement the function") are forbidden.
+skills/writing-plans/references/template.md:- [ ] Write the failing test in `src/config.test.ts`
+skills/aws/SKILL.md:- Read-only calls are allowed when explicitly requested.
+skills/aws/SKILL.md:1. Read credentials file and parse `[aws]` values.
+skills/spec-and-review/references/pattern-loop.md:  prompt: "Draft a spec for <topic>. Survey report: <path>. Write to docs/plans/
+skills/spec-and-review/references/pattern-loop.md:Write the revised spec in-place.
+skills/subagent-driven-development/SKILL.md:| `DONE_WITH_CONCERNS` | Read concerns;
+skills/subagent-driven-development/references/prompts.md:    2. Write tests (follow tdd-strict
+skills/subagent-driven-development/references/prompts.md:    Read the actual code. Do not trust the report.
+commands/doctor.md:You are running a read-only install-health diagnostic
+commands/doctor.md:Dispatch via Bash (using the resolved `$PI_OVEN_DIR`):
+commands/doctor.md:- **Read-only diagnostic.**
+commands/doctor.md:- Dispatch `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-doctor.ts"` (resolve `$PI_OVEN_DIR` first) via the Bash tool
+commands/setup.md:Run via Bash:
+commands/setup.md:Read `~/.omp/plugins/pi-oven-session-model.json`
+commands/setup.md:On confirmation, dispatch via Bash (using the resolved `$PI_OVEN_DIR`):
+commands/setup.md:- Do NOT run the `pi-oven-setup.ts` script from inside this prompt template — you (the LLM) dispatch it via the Bash tool

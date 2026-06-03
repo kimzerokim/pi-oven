@@ -158,7 +158,7 @@ Present execution options to the user via `ask`. Always pass `spec_path` explici
 - `ask` for lane confirmation (Phase 2) and each bounded clarification question (Phase 4) — prefer `pi-oven_ask` with `{label, description}` options for single-select choices so rationales show beside each option; keep built-in `ask` for multi-select / free-form
 - `task` with `run_in_background: true` to dispatch 3 parallel `pi-oven:tracer` lanes (Phase 3)
 - `pi-oven:explorer` (model: haiku) for brownfield codebase detection (Phase 1)
-- `Write` to save trace result to `.omc/specs/deep-dive-trace-{slug}.md` and final spec to `.omc/specs/deep-dive-{slug}.md`
+- `write` to save trace result to `.omc/specs/deep-dive-trace-{slug}.md` and final spec to `.omc/specs/deep-dive-{slug}.md`
 
 ## Stop conditions
 

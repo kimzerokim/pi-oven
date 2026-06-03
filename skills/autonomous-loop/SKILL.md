@@ -134,7 +134,7 @@ Never stop in any of these situations — continue in the same turn:
 5. Build failed 1–2x → halted (threshold is 3 consecutive failures)
 6. Subagent dispatch returned → responded "Done, awaiting next instruction"
 7. `/compact` completed → ended turn instead of restating remaining tasks and resuming
-8. Edit/Write failed 1x → halted on same file (threshold is 2 consecutive failures)
+8. edit/write failed 1x → halted on same file (threshold is 2 consecutive failures)
 9. Cost/extra-usage/overage signal received → halted (cost-overage is NOT a halt condition)
 10. User says "계속 진행해줘" / "자율 실행해줘" after a checkpoint → treated as a new confirmation gate instead of immediate continuation
 

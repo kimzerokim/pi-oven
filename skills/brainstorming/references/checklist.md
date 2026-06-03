@@ -79,7 +79,7 @@ Check before presenting to user:
 
 - Invoke `writing-plans` with the spec file path as context
 - Do not invoke any other skill directly
-- Do not write code, create directories, or call `Edit`/`Write` on `src/`
+- Do not write code, create directories, or call `edit`/`write` on `src/`
 
 ---
 

@@ -38,7 +38,7 @@ Goal: find every file that is part of the blast radius before reading any of the
 
 ## Step 2 — Deep read + history
 
-- Read all in-scope files in parallel (`Read` tool, parallel calls).
+- Read all in-scope files in parallel (`read` tool, parallel calls).
 - For each file with 3+ recent commits, run: `git log --oneline -20 -- <file>` to surface churn hotspots.
 - Annotate the file list with: last-modified date, line count, churn count.
 - Do not summarise yet — raw observations only at this stage.
@@ -91,7 +91,7 @@ Patterns to look for:
 
 ## Step 7 — Env vars
 
-- Grep in-scope files for `process.env.`, `import.meta.env.`, `os.environ`, `os.getenv`.
+- search in-scope files for `process.env.`, `import.meta.env.`, `os.environ`, `os.getenv`.
 - Produce a list of every env var name referenced.
 - Cross-reference against `.env.example` (or equivalent). Mark each var as: `documented`, `undocumented`, or `documented-but-unused`.
 - Undocumented vars used in production paths are P0 findings — flag them in the report header.

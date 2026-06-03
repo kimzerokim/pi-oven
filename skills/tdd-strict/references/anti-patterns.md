@@ -27,7 +27,7 @@ The Iron Law has three clauses:
 
 **Halt sequence**:
 
-1. Stop. Do not call `Edit`, `Write`, or `MultiEdit` on any test or source file.
+1. Stop. Do not call `edit`, `write`, or `MultiEdit` on any test or source file.
 2. Append entry to queue file (`docs/harness/user-queue.md` if present, else `.omc/state/queue.md`):
    ```
    Q-TDD-MAIN | PENDING

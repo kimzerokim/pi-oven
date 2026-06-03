@@ -36,7 +36,7 @@ Run all steps in order inside the `explore` subagent. Do not skip steps.
 5. **Step 4 — Library knowledge**: For each external dependency, query Context7 first → matching pi-oven-* skill → WebSearch fallback. Record the source used.
 6. **Step 5 — Pattern extraction**: Identify naming, error-handling, async, and state-management patterns in the scope. Cite file + line for each.
 7. **Step 6 — Type contracts**: List all exported TypeScript types and interfaces. Run `lsp_find_references` on each to map reverse dependencies.
-8. **Step 7 — Env vars**: Grep for `process.env` and `import.meta.env`. Cross-reference against `.env.example`. Flag any used-but-undocumented vars.
+8. **Step 7 — Env vars**: search for `process.env` and `import.meta.env`. Cross-reference against `.env.example`. Flag any used-but-undocumented vars.
 9. **Step 8 — Report**: Write a structured markdown report to `docs/harness/surveys/<YYYY-MM-DD>-<topic>-survey.md`. Include a verbatim `code-review-graph status` block if CRG is configured.
 
 ## Delegate to explore subagent

@@ -30,9 +30,9 @@ Each cycle produces exactly three commits (or three logical checkpoints inside o
 
 | Phase | What happens | Allowed tool calls |
 |---|---|---|
-| **Red** | Write the failing test. No production code yet. Run the test suite; confirm the new test fails for the right reason. | `Write` / `Edit` test files only |
-| **Green** | Write the minimum production code that makes the failing test pass. Do not refactor yet. | `Write` / `Edit` source files |
-| **Refactor** | Clean up duplication, naming, structure. All tests stay green throughout. | `Edit` source and test files |
+| **Red** | Write the failing test. No production code yet. Run the test suite; confirm the new test fails for the right reason. | `write` / `edit` test files only |
+| **Green** | Write the minimum production code that makes the failing test pass. Do not refactor yet. | `write` / `edit` source files |
+| **Refactor** | Clean up duplication, naming, structure. All tests stay green throughout. | `edit` source and test files |
 
 Commit message convention: prefix with `test:` (Red), `feat:`/`fix:` (Green), `refactor:` (Refactor).
 

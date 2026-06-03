@@ -3,6 +3,8 @@ skill: code-quality-discipline
 tag: regression
 input:
   - turn: 1
-    user: "(placeholder for future regression test)"
+    user: "refactor the logger utility — DRY 체크 하고 중복 제거해줘"
 expected:
-  - skill_triggered: true
+  - skill_triggered: "code-quality-discipline"
+  - agent_response_must_contain: ["DRY", "YAGNI"]
+  - match: any

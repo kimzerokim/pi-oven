@@ -3,6 +3,8 @@ skill: tdd-strict
 tag: regression
 input:
   - turn: 1
-    user: "(placeholder for future regression test)"
+    user: "implement the parser using tdd, test first"
 expected:
-  - skill_triggered: true
+  - skill_triggered: "tdd-strict"
+  - agent_response_must_contain: ["Red", "test"]
+  - match: any

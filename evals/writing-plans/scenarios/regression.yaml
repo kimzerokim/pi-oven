@@ -3,6 +3,9 @@ skill: writing-plans
 tag: regression
 input:
   - turn: 1
-    user: "(placeholder for future regression test)"
+    user: "write a plan for the settings page feature"
 expected:
-  - skill_triggered: true
+  - skill_triggered: "writing-plans"
+  - agent_response_must_contain: ["bite-sized", "checkbox"]
+  - tool_calls_required: ["Write"]
+  - match: any

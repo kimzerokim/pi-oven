@@ -3,6 +3,9 @@ skill: fresh-verifier
 tag: regression
 input:
   - turn: 1
-    user: "(placeholder for future regression test)"
+    user: "최종 검증 해줘 — cycle complete, verify before exit"
 expected:
-  - skill_triggered: true
+  - skill_triggered: "fresh-verifier"
+  - agent_response_must_contain: ["verifier", "fresh"]
+  - tool_calls_required: ["Task|task"]
+  - match: any

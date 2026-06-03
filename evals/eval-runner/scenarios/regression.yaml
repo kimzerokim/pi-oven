@@ -3,6 +3,9 @@ skill: eval-runner
 tag: regression
 input:
   - turn: 1
-    user: "(placeholder for future regression test)"
+    user: "run the eval scenarios for the tdd-strict skill"
 expected:
-  - skill_triggered: true
+  - skill_triggered: "eval-runner"
+  - agent_response_must_contain: ["run-eval", "scenario"]
+  - tool_calls_required: ["bash|Bash"]
+  - match: any

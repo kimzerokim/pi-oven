@@ -4,6 +4,9 @@ skill: autonomous-loop
 tag: regression
 input:
   - turn: 1
-    user: "(placeholder for future regression test — e.g. ScheduleWakeup retry after rate-limit)"
+    user: "ralph로 돌려 — finish the remaining plan tasks without stopping"
 expected:
-  - skill_triggered: true
+  - skill_triggered: "autonomous-loop"
+  - agent_response_must_contain: ["branch", "destination"]
+  - tool_calls_required: ["ask|AskUserQuestion"]
+  - match: any

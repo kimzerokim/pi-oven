@@ -3,6 +3,9 @@ skill: brainstorming
 tag: regression
 input:
   - turn: 1
-    user: "(placeholder for future regression test)"
+    user: "let's brainstorm a CSV importer feature for the dashboard"
 expected:
-  - skill_triggered: true
+  - skill_triggered: "brainstorming"
+  - agent_response_must_contain: ["spec", "approved"]
+  - tool_calls_forbidden_first: ["Write src", "Edit src"]
+  - match: any

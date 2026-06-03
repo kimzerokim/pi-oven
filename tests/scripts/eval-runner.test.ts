@@ -550,4 +550,87 @@ expected:
       expect((result as { scenario: string }).scenario).toBe("timeout-scenario");
     });
   });
+
+  describe("runScenario — agent_response_must_contain any-of mode", () => {
+    it("passes when match:any and at least one phrase is present (partial match)", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_update", delta: "autonomous-loop activated" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: any-of-pass
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - agent_response_must_contain: ["autonomous-loop", "self-improve", "bugfix"]
+    agent_response_must_contain_match: "any"
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(true);
+    });
+
+    it("fails when match:any and none of the phrases are present", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_update", delta: "some unrelated output" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: any-of-fail
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - agent_response_must_contain: ["autonomous-loop", "self-improve", "bugfix"]
+    agent_response_must_contain_match: "any"
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(false);
+      expect(verdict.failures).toContain(
+        'agent_response_must_contain(any): none of ["autonomous-loop","self-improve","bugfix"] found'
+      );
+    });
+
+    it("default all-of mode still fails when one phrase is missing", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_update", delta: "autonomous-loop activated" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: all-of-fail
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - agent_response_must_contain: ["autonomous-loop", "self-improve"]
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(false);
+      expect(verdict.failures).toContain('agent_response_must_contain: missing "self-improve"');
+    });
+  });
 });

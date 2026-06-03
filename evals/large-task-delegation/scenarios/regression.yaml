@@ -3,6 +3,9 @@ skill: large-task-delegation
 tag: regression
 input:
   - turn: 1
-    user: "(placeholder for future regression test)"
+    user: "큰 작업: refactor the auth module across 5 files, ~300 LoC"
 expected:
-  - skill_triggered: true
+  - skill_triggered: "large-task-delegation"
+  - agent_response_must_contain: ["dispatch", "executor"]
+  - tool_calls_required: ["Task|task"]
+  - match: any

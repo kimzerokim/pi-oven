@@ -3,6 +3,9 @@ skill: subagent-driven-development
 tag: regression
 input:
   - turn: 1
-    user: "(placeholder for future regression test)"
+    user: "execute this plan with subagents — 계획 실행해줘"
 expected:
-  - skill_triggered: true
+  - skill_triggered: "subagent-driven-development"
+  - agent_response_must_contain: ["fresh subagent", "two-stage review"]
+  - tool_calls_required: ["Task|task"]
+  - match: any

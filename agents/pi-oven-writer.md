@@ -6,8 +6,8 @@ model:
   - opencode-zen/claude-haiku-4-5
 thinkingLevel: medium
 mode: subagent
-tools: ["Read", "Grep", "Glob", "Write", "Edit"]
-blocked_tools: ["apply_patch", "Bash", "task"]
+tools: ["read", "search", "find", "write", "edit"]
+blocked_tools: ["apply_patch", "bash", "task"]
 ---
 
 ## Role

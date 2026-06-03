@@ -6,8 +6,8 @@ model:
   - opencode-zen/claude-opus-4-8
 thinkingLevel: xhigh
 mode: subagent
-tools: ["Read", "Grep", "Glob"]
-blocked_tools: ["Write", "Edit", "apply_patch", "Bash", "task"]
+tools: ["read", "search", "find"]
+blocked_tools: ["write", "edit", "apply_patch", "bash", "task"]
 ---
 
 ## Role

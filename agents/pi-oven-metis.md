@@ -6,8 +6,8 @@ model:
   - opencode-zen/gpt-5.4
 thinkingLevel: xhigh
 mode: subagent
-tools: ["Read", "Grep", "Glob", "Bash", "task"]
-blocked_tools: ["Write", "Edit", "apply_patch"]
+tools: ["read", "search", "find", "bash", "task"]
+blocked_tools: ["write", "edit", "apply_patch"]
 spawns:
   - "pi-oven:explorer"
   - "pi-oven:librarian"

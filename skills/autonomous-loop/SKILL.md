@@ -108,11 +108,11 @@ Regardless of mode, invoke skills in this order each cycle:
 
 1. `freshness-guard` — stale meta-doc check before any reads (all modes)
 2. `codebase-survey` — mandatory pre-planning deep read via `pi-oven:explorer` (all modes, unless survey result exists)
-3. Broad exploration gate — if this is the first improvement scope in the run, dispatch `pi-oven:explorer` + `pi-oven:tracer` + `pi-oven:analyst` in parallel and record cross-subsystem evidence before scoping spec/plan
-4. `spec-and-review` — if the cycle introduces a new capability or design change (autopilot Phase 0/1)
-5. `writing-plans` — produce/update `docs/plans/` checkpoint (autopilot Phase 1)
-6. Execution phase — mode-specific: ultrawork waves / ralph loop / autopilot lifecycle
-7. `large-task-delegation` routing — if any single task is 3+ files or 200+ LoC
+3. Self-improvement sweep — if the cycle scope is self-improvement / plugin-surface (improving this harness itself), BEFORE spec/plan dispatch `pi-oven:explorer` (parallelizable across surfaces) to exhaustively sweep `skills/<skill>/SKILL.md` (cross-references + name consistency), `agents/pi-oven-<role>.md` (dispatch refs), `commands/`, and `evals/<skill>/scenarios/` (coverage gaps). Synthesize a "sweep findings" summary that MUST be passed into the planner/spec input — no partial-read plans.
+4. Broad exploration gate — if this is the first improvement scope in the run, dispatch `pi-oven:explorer` + `pi-oven:tracer` + `pi-oven:analyst` in parallel and record cross-subsystem evidence before scoping spec/plan
+5. `spec-and-review` — if the cycle introduces a new capability or design change (autopilot Phase 0/1)
+6. `writing-plans` — produce/update `docs/plans/` checkpoint (autopilot Phase 1)
+7. Execution phase — dispatch `subagent-driven-development` as the per-task execution orchestrator: one fresh subagent per plan task with two-stage review (spec-compliance pass, then code-quality pass). Route a single task to `large-task-delegation` if it exceeds 3+ files or 200+ LoC. Mode shapes the cadence: ultrawork waves / ralph loop / autopilot lifecycle.
 8. `tdd-strict` — enforced inside executor subagents (Red→Green→Refactor), not in main
 9. `pre-commit-gate` — run after each commit boundary (Gates 0–4.5, all modes)
 10. `fresh-verifier` — mandatory before exit (all modes, see Exit gate section)
@@ -120,6 +120,14 @@ Regardless of mode, invoke skills in this order each cycle:
 Main agent role: orchestrator only — dispatch, sequence, synthesize evidence, and queue next subagent work in the same turn. Main MUST NOT implement inline code, inline tests, or inline refactors during autonomous-loop execution. Any work touching multiple files, requiring 3+ reads, or exceeding 200 LoC MUST be dispatched to a subagent — main doing it inline is a hard violation, not a shortcut.
 
 Route to the RIGHT agent — match model-fit and role-fit to the work (first-class concern): explore (`pi-oven:explorer` / `pi-oven:tracer` / `pi-oven:analyst`) → plan (`pi-oven:planner`) → implement (`pi-oven:executor` / `pi-oven:debugger`) → verify (`pi-oven:verifier` / `pi-oven:security-reviewer` / `pi-oven:code-reviewer`). Main never implements inline.
+
+### Conditional sub-flow routing
+
+Before generic execution, detect the work TYPE and dispatch the specialized flow:
+
+- Bug / test-failure / unknown root cause → `systematic-debugging` (root-cause-first; `pi-oven:tracer` / `pi-oven:debugger` / `pi-oven:test-engineer` reproduce and locate the cause before any fix). Escalate to `deep-dive` when causal tracing is deep or spans multiple origins.
+- Refactor / architecture improvement / shallow-module deepening → `improve-codebase-architecture` (survey → candidates → grilling → interface design → verify) BEFORE writing any code.
+- New capability / design change → `spec-and-review` (see work-order step 5).
 
 ---
 

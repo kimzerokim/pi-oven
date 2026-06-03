@@ -49,6 +49,14 @@ mid-execution 5+ file reads → halt + re-route regardless of prior override.
 
 `model="opus"` MUST NOT be specified in any dispatch. Omit model for critic/verifier/planner — this inherits the parent version and avoids version mismatch.
 
+## Sub-flow routing for specialized work types
+
+Within a large task, route by work type before dispatching `pi-oven:executor` directly:
+
+- Investigation reveals a root-cause bug → route via `systematic-debugging` (tracer/debugger) before fixing.
+- Scope is refactoring or architecture → route via `improve-codebase-architecture` (survey/candidates) before implementing.
+- Otherwise → dispatch `pi-oven:executor` directly.
+
 ## Parallel dispatch
 
 Fire file-scope-disjoint tasks simultaneously: multiple `task` calls in one response, each with `run_in_background: true`. Main continues and gets notified on completion.

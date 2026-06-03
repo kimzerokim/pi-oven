@@ -175,9 +175,21 @@ export async function runScenario(
 
     // 2. agent_response_must_contain
     if (exp.agent_response_must_contain) {
-      for (const phrase of exp.agent_response_must_contain) {
-        if (!lastBuf.content.includes(phrase)) {
-          failures.push(`agent_response_must_contain: missing "${phrase}"`);
+      const matchMode = exp.agent_response_must_contain_match ?? "all";
+      if (matchMode === "any") {
+        const anyFound = exp.agent_response_must_contain.some((phrase) =>
+          lastBuf.content.includes(phrase)
+        );
+        if (!anyFound) {
+          failures.push(
+            `agent_response_must_contain(any): none of ${JSON.stringify(exp.agent_response_must_contain)} found`
+          );
+        }
+      } else {
+        for (const phrase of exp.agent_response_must_contain) {
+          if (!lastBuf.content.includes(phrase)) {
+            failures.push(`agent_response_must_contain: missing "${phrase}"`);
+          }
         }
       }
     }

@@ -10,6 +10,7 @@ export interface ScenarioTurn {
 export interface ScenarioExpectation {
   skill_triggered?: boolean | string;          // true = any activation, false = no activation, string = token must appear in tool-call name or response text
   agent_response_must_contain?: string[];      // substrings required in aggregated content
+  agent_response_must_contain_match?: "all" | "any";  // "all" (default) = every phrase required; "any" = at least one phrase required
   agent_response_must_not_contain?: string[];  // substrings forbidden in aggregated content
   tool_calls_required?: string[];              // regex patterns: at least one tool call must match each
   tool_calls_forbidden_first?: string[];       // regex patterns: first tool call must NOT match any

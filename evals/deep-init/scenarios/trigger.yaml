@@ -1,0 +1,8 @@
+name: deep-init-trigger
+skill: deep-init
+tag: trigger
+input:
+  - turn: 1
+    user: "Initialize hierarchical project context docs (AGENTS.md) across all directories. Which pi-oven skill handles this? Name the exact skill (its kebab-case id) and its first step in ONE short message. Do NOT call any tools and do NOT dispatch any subagent."
+expected:
+  - skill_triggered: "deep-init"

@@ -1,9 +1,7 @@
 ---
 name: fresh-verifier
 version: 0.1.0
-description: Cycle-exit mandatory fresh-agent verifier — pre-completion gate, no-self-verification rule, evidence output format, 4 sub-check (prod-build smoke, stub sweep, SoT alignment, spec-freeze) + 4 Q-halt patterns (Q-VERIFIER-FAIL, Q-VERIFIER-INVALID, Q-VERIFIER-DISPATCH-FAIL, Q-COMPLETION-SELF-VERIFY). Main self-declared "PASS" / "done" / "loop exit" is FORBIDDEN without this skill.
-trigger: "autonomous cycle exit OR large-cycle commit marker (MILESTONE: / CYCLE-EXIT: / STUB-CLEAR:), verify, verification, verification-before-completion, pre-completion gate, 최종 검증, 완료 전 검증"
-alwaysApply: false
+description: "Read this skill WHEN declaring a cycle complete, committing a MILESTONE:/CYCLE-EXIT:/STUB-CLEAR: marker, or reaching any pre-completion gate (triggers: verify, verification, 최종 검증, 완료 전 검증). Mandatory fresh-agent verifier — no-self-verification rule, 4 sub-checks, 4 Q-halt patterns; main self-declared PASS/done is FORBIDDEN without this skill."
 ---
 
 # fresh-verifier

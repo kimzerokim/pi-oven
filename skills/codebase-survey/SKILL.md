@@ -1,9 +1,7 @@
 ---
 name: codebase-survey
 version: 0.1.0
-description: Mandatory pre-planning 8-step deep codebase read via explore subagent before any spec, plan, or fix-start flow
-trigger: "5+ file reads required OR spec/plan draft OR fix-start phrases OR 코드서베이, 전수조사, 코드베이스 조사, 호출부 전수 확인"
-alwaysApply: false
+description: "Read this skill WHEN the task requires 5+ file reads, a new spec/plan/fix-start is requested, or user says 코드서베이/전수조사/코드베이스 조사/호출부 전수 확인. Runs mandatory 8-step deep codebase survey via explore subagent before any planning or fix flow."
 ---
 
 # codebase-survey

@@ -1,9 +1,7 @@
 ---
 name: subagent-driven-development
 version: 0.1.0
-description: Execute an implementation plan by dispatching a fresh subagent per task with sequential two-stage review (spec compliance then code quality) and continuous plan-checkbox tracking
-trigger: "plan exists + execution begins; execute plan OR implement plan keyword OR 계획 실행해줘, 플랜대로 구현"
-alwaysApply: false
+description: "Read this skill WHEN executing a written plan by dispatching subagents per task (triggers: execute plan, implement plan, 계획 실행해줘, 플랜대로 구현). Orchestrates fresh subagents per task with two-stage review and plan-checkbox tracking."
 ---
 
 # subagent-driven-development

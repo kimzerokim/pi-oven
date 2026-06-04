@@ -1,9 +1,7 @@
 ---
 name: code-quality-discipline
 version: 0.1.0
-description: DRY / YAGNI / KISS + Deletion test + Depth-before-width + Immutability principles — enforced by default on ALL code work: any code change, bug fix, refactor, or TDD cycle
-trigger: "tool_call.toolName in (Edit, Write, MultiEdit, NotebookEdit, ast_grep_replace) OR 코드 변경, 코드 수정, 버그 수정, 버그 잡기, bug fix, 리팩토링, refactor, TDD, 테스트 주도 개발, 코드 품질 점검, DRY 체크, YAGNI 체크"
-alwaysApply: true
+description: "Read this skill WHEN about to write or modify code (Edit, Write, MultiEdit, ast_grep_replace) or on any bug fix, refactor, or TDD cycle (triggers: 코드 변경, 코드 수정, 버그 수정, 리팩토링, refactor, TDD). Enforces DRY / YAGNI / KISS / Deletion test / Immutability before every code write."
 ---
 
 # code-quality-discipline

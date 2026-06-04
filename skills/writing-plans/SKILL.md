@@ -1,9 +1,7 @@
 ---
 name: writing-plans
 version: 0.1.0
-description: Transform an approved spec into a bite-sized, placeholder-free implementation plan ready for subagent dispatch
-trigger: "post-brainstorming spec approved OR explicit keyword: plan it / write plan / plan만들어 / 계획 세워줘 / 구현 계획"
-alwaysApply: false
+description: "Read this skill WHEN the user says plan it / write plan / 계획 세워줘 / 구현 계획 / plan만들어, or brainstorming hands off an approved spec. Transforms an approved spec into a bite-sized, placeholder-free implementation plan ready for subagent dispatch."
 ---
 
 # writing-plans

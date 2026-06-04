@@ -1,9 +1,7 @@
 ---
 name: large-task-delegation
 version: 0.1.0
-description: Large task delegation for 3+ file edits, 200+ LoC, 5+ file reads, or multi-stage workflows — main dispatches and reviews only
-trigger: "3+ files OR 200+ LoC OR 5+ file reads OR multi-stage workflow OR 큰 작업, 대규모 수정, 여러 파일 변경"
-alwaysApply: false
+description: "Read this skill WHEN the task involves 3+ file edits, 200+ LoC, 5+ file reads, or a multi-stage workflow. Governs dispatch-only main role: scope → subagent → review → commit gate. (triggers: 큰 작업, 대규모 수정, 여러 파일 변경, 버그 전수조사)"
 ---
 
 # large-task-delegation

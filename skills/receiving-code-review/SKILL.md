@@ -1,9 +1,7 @@
 ---
 name: receiving-code-review
 version: 0.1.0
-description: "Receiving code review feedback — evaluate before implementing, never performative agreement. Verify each item against THIS codebase, push back with technical reasoning when wrong, clarify unclear items before touching anything, YAGNI-check 'do it properly' suggestions. Cross-vendor codex review and external reviewers are SUGGESTIONS to evaluate, not orders. Triggers: code review feedback, review comments, reviewer suggestions, PR feedback, 'apply review', 'fix the comments', 'reviewer said', codex review 결과 반영, 리뷰 피드백 적용, 리뷰 코멘트 반영."
-trigger: "incoming code review feedback (human, external reviewer, or cross-vendor codex), PR review comments, apply review, fix the review comments, reviewer suggestions to evaluate, 리뷰 피드백 반영, 리뷰 코멘트 대응"
-alwaysApply: false
+description: "Read this skill WHEN code review feedback arrives and you are about to act on it — from a human, PR thread, external reviewer, or cross-vendor codex review (triggers: apply review, fix the comments, reviewer said, codex review 결과 반영, 리뷰 피드백 적용, 리뷰 코멘트 반영). Evaluate before implementing: verify each item against THIS codebase, push back with technical reasoning when wrong, YAGNI-check 'do it properly' suggestions — cross-vendor reviewers are SUGGESTIONS, not orders."
 ---
 
 # receiving-code-review

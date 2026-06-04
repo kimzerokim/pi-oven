@@ -1,9 +1,7 @@
 ---
 name: pre-commit-gate
 version: 0.1.0
-description: "Sequential 11-gate pre-commit check (AGENTS.md sync, freshness, ai-slop, secrets, prod code-first, build, test, docker smoke, Playwright UI, fix-scope, fresh-verifier) before every git commit via Bash. One FAIL blocks immediately. New commit, never --amend."
-trigger: "git commit / git push / gh pr command via Bash OR 커밋 전 점검, 프리커밋 게이트"
-alwaysApply: false
+description: "Read this skill WHEN about to run git commit, git push, or gh pr create — or on 커밋 전 점검 / 프리커밋 게이트. Runs 11 sequential gates (AGENTS.md sync, freshness, ai-slop, secrets, prod code-first, build, test, docker smoke, Playwright UI, fix-scope, fresh-verifier); one FAIL blocks immediately; new commit, never --amend."
 ---
 
 # pre-commit-gate

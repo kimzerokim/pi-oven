@@ -1,9 +1,7 @@
 ---
 name: deep-dive
 version: 0.1.0
-description: bug-investigation pipeline — 3 parallel autonomous tracer lanes, then a bounded clarification of only the trace-unresolvable unknowns
-trigger: "deep dive, deep-dive, trace and clarify, deep investigation, 깊게 파봐, 심층 분석, 원인 추적"
-alwaysApply: false
+description: "Read this skill WHEN the user wants deep bug investigation or root-cause tracing before planning (triggers: deep dive, deep-dive, trace and clarify, deep investigation, 깊게 파봐, 심층 분석, 원인 추적). Dispatches 3 parallel tracer lanes then bounded clarification of trace-unresolvable unknowns."
 ---
 
 # deep-dive

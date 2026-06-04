@@ -1,9 +1,7 @@
 ---
 name: improve-codebase-architecture
 version: 0.1.0
-description: Surface deepening opportunities in a codebase — refactors that turn shallow modules into deep ones for testability and AI-navigability. Informed by domain language and recorded architecture decisions. Triggers — improve architecture, deepen modules, find refactoring opportunities, consolidate tightly-coupled modules, shallow module, deletion test, seam, '아키텍처 개선', '리팩토링 기회', '모듈 깊게', '구조 개선'.
-trigger: "architecture improvement / deepening / refactor-opportunity request OR shallow-module / seam / deletion-test discussion OR 아키텍처 개선 / 구조 개선 / 리팩토링 기회"
-alwaysApply: false
+description: "Read this skill WHEN asked to improve architecture, deepen modules, find refactoring opportunities, consolidate tightly-coupled modules, or discuss shallow modules / seams / deletion tests (triggers: 아키텍처 개선, 구조 개선, 리팩토링 기회, 모듈 깊게). Surfaces deepening opportunities — refactors that turn shallow modules into deep ones for testability and AI-navigability."
 ---
 
 # improve-codebase-architecture

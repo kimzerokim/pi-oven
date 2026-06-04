@@ -1,9 +1,7 @@
 ---
 name: memory-discipline
 version: 0.1.0
-description: Defines when to retain, recall, and reflect — wires omp Hindsight memory into all pi-oven flows.
-alwaysApply: true
-trigger: "메모리 규율, 기억 저장, retain 정책, flow start, recall, cycle end"
+description: "Read this skill WHEN starting any planning/analysis flow, at cycle end, or on a memory/retain/recall event (triggers: 메모리 규율, 기억 저장, retain 정책, recall, cycle end). Defines when to retain, recall, and reflect — wires omp Hindsight memory into all pi-oven flows."
 ---
 
 # memory-discipline

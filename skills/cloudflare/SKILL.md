@@ -1,9 +1,7 @@
 ---
 name: cloudflare
 version: 0.1.0
-description: Cloudflare DNS connector for UC5. Use for Cloudflare zone/DNS inspection, propagation checks, and DNS-to-origin diagnostics.
-trigger: "Cloudflare, cloudflare, DNS, zone, CNAME, A record, 클라우드플레어, DNS 점검, 레코드 확인"
-alwaysApply: false
+description: "Read this skill WHEN working with Cloudflare DNS, zones, records, or propagation (triggers: Cloudflare, DNS 점검, 레코드 확인, CNAME, A record, 클라우드플레어). Provides DNS connector for zone inspection, propagation checks, and DNS-to-origin diagnostics."
 ---
 
 # cloudflare

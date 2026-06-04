@@ -1,9 +1,7 @@
 ---
 name: autonomous-loop
 version: 0.1.0
-description: Meta orchestrator for multi-cycle autonomous execution — delegation-first 8h+ long-haul loop, ASK-FIRST 3-slot branch contract, three execution modes (ultrawork / ralph / autopilot); self-improvement/plugin-surface cycles MUST run exhaustive `skills/`+`commands/`+`agents/`+`evals/` sweep before planner/spec, and planner MUST receive sweep findings (no partial-read plans); polite-stop ban, fresh-agent verifier exit gate, rate-limit/compact resilience
-trigger: "/pi-oven:autonomous, 자율 실행, 자율실행, 자율로 돌려, 자동으로 끝내줘, 끝까지 끝내줘, 자는 동안 진행해, 알아서 진행해, 멈추지 말고 진행해, 계속 진행해, 스탑하지마, ralph로 돌려, autopilot, ralph, ultrawork, ulw, full auto, don't stop, must complete"
-alwaysApply: false
+description: "Read this skill WHEN the user requests multi-cycle autonomous or unattended execution (triggers: 자율 실행, 자율실행, 자율로 돌려, 끝까지 끝내줘, 자는 동안 진행해, 계속 진행해, 멈추지 말고 진행해, ralph로 돌려, autopilot, ralph, ultrawork, ulw, full auto, don't stop, /pi-oven:autonomous). Meta orchestrator: delegation-first 8h+ loop, ASK-FIRST 3-slot branch contract, three modes (ultrawork/ralph/autopilot), exhaustive sweep before self-improvement plans, fresh-agent verifier exit gate."
 ---
 
 # autonomous-loop

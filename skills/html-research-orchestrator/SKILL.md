@@ -1,9 +1,7 @@
 ---
 name: html-research-orchestrator
 version: 0.1.0
-description: Reusable orchestrator for research-backed, self-contained HTML deliverables. Dispatches external research with citations, synthesizes deterministic report sections, writes HTML to OS temp dir, and forbids repo commits of generated artifacts. Triggers — html report, research html, synthesize html output, citation-backed report, temp-dir html deliverable, "HTML 리포트", "조사 보고서 HTML".
-trigger: "request for research-backed HTML deliverable or reusable HTML report generation flow, HTML 리포트, 조사 보고서 HTML, 리서치 HTML"
-alwaysApply: false
+description: "Read this skill WHEN asked to produce a research-backed HTML report, citation-backed HTML deliverable, or synthesized HTML output written to a temp dir (triggers: html report, research html, HTML 리포트, 조사 보고서 HTML, 리서치 HTML). Orchestrates document-specialist research + writer synthesis; forbids repo commits of generated artifacts."
 ---
 
 # html-research-orchestrator

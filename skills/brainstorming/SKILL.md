@@ -1,9 +1,7 @@
 ---
 name: brainstorming
 version: 0.1.0
-description: Transform a raw idea into an approved spec via Socratic Q&A — HARD-GATE blocks all implementation until design is explicitly approved
-trigger: "brainstorm, brainstorming, 브레인스토밍, 아이디어 정리, 같이 설계, 설계부터 하자"
-alwaysApply: false
+description: "Read this skill WHEN the user wants to brainstorm, design, or spec out a feature/project before coding — or when no approved spec exists for an implementation request. Socratic Q&A → approved spec with a HARD-GATE blocking all code until design is confirmed. (triggers: brainstorm, brainstorming, 브레인스토밍, 아이디어 정리, 같이 설계, 설계부터 하자)"
 ---
 
 # brainstorming

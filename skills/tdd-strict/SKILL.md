@@ -1,9 +1,7 @@
 ---
 name: tdd-strict
 version: 0.1.0
-description: TDD-strict enforcement — Red → Green → Refactor per cycle + 100% line/branch coverage on touched files + Q-TDD-MAIN halt when autonomous main attempts to enter Red directly
-trigger: "any code-write tool_call (Edit|Write|MultiEdit) in autonomous mode OR explicit user keyword: tdd, test first, 테스트 먼저, 테스트부터"
-alwaysApply: false
+description: "Read this skill WHEN writing or editing source code (Edit/Write/MultiEdit on *.ts/*.js/*.py/src/**) in autonomous mode, or when the user says tdd, test first, red-green, 테스트 먼저, 테스트부터. Enforces Red→Green→Refactor cycle with 100% coverage on touched files."
 ---
 
 # tdd-strict

@@ -33,6 +33,9 @@ export function compareSemver(a: string, b: string): number {
 /**
  * Resolves the agents/ directory of the latest installed pi-oven plugin version.
  * Returns null if no kzk___pi-oven___* directory exists under cacheRoot.
+ *
+ * This tool ONLY resolves from the global plugin cache. Project-local installs
+ * are unsupported.
  */
 export async function resolveCacheAgentsDir(
   cacheRoot?: string
@@ -71,18 +74,15 @@ export async function resolveCacheAgentsDir(
  * agentsDir was explicitly provided.
  */
 export async function resolveDefaultAgentsDir(
-  scriptDir: string,
+  _scriptDir: string,
   cacheRoot?: string
 ): Promise<string> {
-  const rel = path.resolve(scriptDir, "..", "agents");
-  const relPopulated = await fs
-    .readdir(rel)
-    .then((files) => files.some((f) => f.startsWith("pi-oven-") && f.endsWith(".md")))
-    .catch(() => false);
-  if (relPopulated) return rel;
-
+  // Global-only: resolve from cache first. Project-local lookup is unsupported.
   const cache = await resolveCacheAgentsDir(cacheRoot);
-  return cache ?? rel;
+  if (cache) return cache;
+  // Fallback to relative path ONLY for local development / testing scenarios
+  // where the plugin is run directly from its source tree.
+  return path.resolve(_scriptDir, "..", "agents");
 }
 
 /**

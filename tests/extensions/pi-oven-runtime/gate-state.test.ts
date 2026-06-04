@@ -21,6 +21,11 @@ function consentPath(dir: string): string {
   return join(dir, "state", "push-consent.json");
 }
 
+function branchContractPath(dir: string): string {
+  return join(dir, "state", "branch-contract.json");
+}
+
+
 describe("GateStateStore — read failure policy (AC6)", () => {
   let dir: string;
   beforeEach(() => { dir = makeTempDir(); });
@@ -219,5 +224,36 @@ describe("GateStateStore — file push-consent (AC5 file source single-use)", ()
     await store.consumeFileConsent();
     expect(existsSync(consentPath(dir))).toBe(false);
     expect((await store.readFileConsent()).valid).toBe(false);
+  });
+});
+
+describe("GateStateStore — branch contract marker", () => {
+  let dir: string;
+  beforeEach(() => { dir = makeTempDir(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("readBranchContract returns ABSENT when the marker file is missing", async () => {
+    const store = new GateStateStore(dir);
+    expect(await store.readBranchContract()).toEqual({ kind: "ABSENT" });
+  });
+
+  it("readBranchContract returns OK for a valid marker file", async () => {
+    const store = new GateStateStore(dir);
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(
+      branchContractPath(dir),
+      JSON.stringify({ destination: "worktree", branch: "feature/ws5", pr_mode: "draft" })
+    );
+    expect(await store.readBranchContract()).toEqual({
+      kind: "OK",
+      contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
+    });
+  });
+
+  it("readBranchContract returns CORRUPT for invalid marker JSON", async () => {
+    const store = new GateStateStore(dir);
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(branchContractPath(dir), JSON.stringify({ destination: "x", branch: "" }));
+    expect(await store.readBranchContract()).toEqual({ kind: "CORRUPT" });
   });
 });

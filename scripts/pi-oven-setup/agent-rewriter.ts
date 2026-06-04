@@ -182,46 +182,55 @@ function parseAgentFile(filePath: string, content: string): AgentFileEntry | nul
 function applyModelEntry(content: string, entry: ModelEntry): string {
   const split = splitFrontmatter(content);
   if (!split) return content;
-
   const { frontmatterLines, body } = split;
   const newLines: string[] = [];
   let inModelBlock = false;
-  let modelWritten = false;
-
+  let inToolsBlock = false;
+  let inBlockedToolsBlock = false;
   for (let i = 0; i < frontmatterLines.length; i++) {
     const line = frontmatterLines[i];
-
-    // Replace thinkingLevel
+    // thinkingLevel
     if (line.match(/^thinkingLevel:\s*/)) {
       newLines.push(`thinkingLevel: ${entry.thinkingLevel}`);
-      inModelBlock = false;
       continue;
     }
-
-    // Start of model block
+    // model block
     if (line.match(/^model:\s*$/)) {
       inModelBlock = true;
-      modelWritten = false;
+      inToolsBlock = false;
+      inBlockedToolsBlock = false;
       newLines.push("model:");
-      // Emit new model entries immediately
       newLines.push(`  - ${entry.primary}`);
       newLines.push(`  - ${entry.registry_alternate}`);
-      modelWritten = true;
       continue;
     }
-
+    // tools block
+    if (line.match(/^tools:\s*/)) {
+      inToolsBlock = true;
+      inModelBlock = false;
+      inBlockedToolsBlock = false;
+      newLines.push(`tools: ${JSON.stringify(entry.tools)}`);
+      continue;
+    }
+    // blocked_tools block
+    if (line.match(/^blocked_tools:\s*/)) {
+      inBlockedToolsBlock = true;
+      inModelBlock = false;
+      inToolsBlock = false;
+      newLines.push(`blocked_tools: ${JSON.stringify(entry.blocked_tools)}`);
+      continue;
+    }
     if (inModelBlock) {
-      // Skip old model list items
-      if (line.match(/^\s+-\s+/)) {
-        continue;
-      }
-      // End of model block (non-list line)
+      if (line.match(/^\s+-\s+/)) continue;
       inModelBlock = false;
     }
-
+    if (inToolsBlock || inBlockedToolsBlock) {
+      if (line.match(/^\s+-\s+/)) continue;
+      inToolsBlock = false;
+      inBlockedToolsBlock = false;
+    }
     newLines.push(line);
   }
-
   const newFrontmatter = newLines.join("\n");
   return `---${newFrontmatter}\n${body}`;
 }

@@ -19,6 +19,7 @@
  */
 
 import { promises as fs } from "node:fs";
+import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { compareSemver } from "./pi-oven-setup/cache-resolver";
 import { detectAuth, type AuthStatus } from "./pi-oven-setup/auth-detect";
@@ -261,20 +262,19 @@ export function evalAgents(fact: AgentsFact): CheckResult {
   };
 }
 
-/** (8) state dir: .pi-oven/ must be creatable + writable. */
+/** (8) state dir: .pi-oven/ must be writable. Config is optional (global-only install). */
 export function evalStateDir(fact: StateDirFact): CheckResult {
-  const name = "state dir";
-  if (fact.writable) {
-    return { name, status: "PASS", detail: `${fact.path}/ is creatable and writable.` };
-  }
+  const detail = fact.writable
+    ? `present and writable at ${fact.path}`
+    : `NOT writable at ${fact.path}${fact.error ? ` (${fact.error})` : ""}`;
+
   return {
-    name,
-    status: "FAIL",
-    detail: `${fact.path}/ is not writable${fact.error ? ` (${fact.error})` : ""}.`,
-    fix: `Ensure the working directory is writable so pi-oven can create ${fact.path}/.`,
+    name: "project state",
+    status: fact.writable ? "PASS" : "FAIL",
+    detail,
+    fix: fact.writable ? undefined : `chmod +w ${fact.path}`,
   };
 }
-
 /** (9) eval runner: scripts/run-eval.ts present AND can enumerate smoke scenarios. */
 export function evalEvalRunner(fact: EvalRunnerFact): CheckResult {
   const name = "eval runner";
@@ -520,15 +520,27 @@ function probeLintAgents(root: string): boolean {
 }
 
 async function probeStateDir(root: string): Promise<StateDirFact> {
-  const target = path.join(root, ".pi-oven");
-  const probeFile = path.join(target, `.doctor-probe-${process.pid}`);
+  const stateDir = path.resolve(root, ".pi-oven");
   try {
-    await fs.mkdir(target, { recursive: true });
-    await fs.writeFile(probeFile, "ok", "utf8");
-    await fs.unlink(probeFile).catch(() => {});
-    return { writable: true, path: ".pi-oven" };
-  } catch (err) {
-    return { writable: false, path: ".pi-oven", error: (err as Error)?.message ?? "unknown" };
+    // Check if we can write to the directory (or create it if missing)
+    const testFile = path.join(stateDir, `.probe-${Math.random().toString(36).slice(2)}`);
+    // Use async access/stat instead of sync here to keep it async-friendly
+    const exists = await fs.stat(stateDir).then(() => true).catch(() => false);
+    if (!exists) {
+      await fs.mkdir(stateDir, { recursive: true });
+    }
+    await fs.writeFile(testFile, "probe");
+    await fs.unlink(testFile);
+    return {
+      writable: true,
+      path: stateDir,
+    };
+  } catch (err: any) {
+    return {
+      writable: false,
+      path: stateDir,
+      error: err.message,
+    };
   }
 }
 

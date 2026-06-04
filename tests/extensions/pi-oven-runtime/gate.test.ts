@@ -196,3 +196,79 @@ describe("decideGate — push consent (AC5)", () => {
     expect(r.block).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// WS5 — branch-contract and skill-read gate
+// ---------------------------------------------------------------------------
+
+describe("decideGate — code-write branch-contract and skill-read gate", () => {
+  it("blocks code-write when the autonomous branch-contract marker is absent", () => {
+    const r = decideGate(
+      input("", {
+        toolName: "edit",
+        branchContract: { kind: "ABSENT" },
+        requiredSkills: [],
+        skillReads: [],
+      })
+    );
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/branch-contract\.json/i);
+  });
+
+  it("allows bootstrap write of the branch-contract marker before the marker exists", () => {
+    const r = decideGate(
+      input("", {
+        toolName: "write",
+        targetPath: ".pi-oven/state/branch-contract.json",
+        branchContract: { kind: "ABSENT" },
+        requiredSkills: [],
+        skillReads: [],
+      })
+    );
+    expect(r.block).toBe(false);
+  });
+
+  it("treats ast_edit as a code-write tool subject to the same branch-contract gate", () => {
+    const r = decideGate(
+      input("", {
+        toolName: "ast_edit",
+        branchContract: { kind: "ABSENT" },
+        requiredSkills: [],
+        skillReads: [],
+      })
+    );
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/branch-contract\.json/i);
+  });
+
+  it("blocks code-write when required skills remain unread", () => {
+    const r = decideGate(
+      input("", {
+        toolName: "edit",
+        branchContract: {
+          kind: "OK",
+          contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
+        },
+        requiredSkills: ["autonomous-loop", "large-task-delegation"],
+        skillReads: ["autonomous-loop"],
+      })
+    );
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/skill:\/\/large-task-delegation/i);
+  });
+
+  it("allows code-write once the branch contract exists and all required skills were read", () => {
+    const r = decideGate(
+      input("", {
+        toolName: "edit",
+        branchContract: {
+          kind: "OK",
+          contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
+        },
+        requiredSkills: ["autonomous-loop"],
+        skillReads: ["autonomous-loop"],
+      })
+    );
+    expect(r.block).toBe(false);
+  });
+});

@@ -141,12 +141,12 @@ Root causes and fixes:
 ## Tool Usage
 
 - Prefer the patch/edit (apply-patch) tool over rewriting files via shell. Run targeted test files in parallel where independent.
-- Use `Read` to review existing tests and code under test.
-- Use `Write` to create new test files.
-- Use `Edit` to fix existing tests.
-- Use `Bash` to run test suites (`bun test`, `npm test`, `pytest`, `go test`, `cargo test`).
-- Use `Grep` to find untested code paths.
-- Use `Glob` to locate test files matching a pattern.
+- Use `read` to review existing tests and code under test.
+- Use `write` to create new test files.
+- Use `edit` to fix existing tests.
+- Use `bash` to run test suites (`bun test`, `npm test`, `pytest`, `go test`, `cargo test`).
+- Use `search` to find untested code paths.
+- Use `find` to locate test files matching a pattern.
 
 ## Output Format
 

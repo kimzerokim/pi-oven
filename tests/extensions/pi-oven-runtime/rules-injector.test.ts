@@ -56,6 +56,15 @@ describe("RulesInjector — inject (AC3 step 1)", () => {
     const hits = sp.filter((s) => s.includes(DISCIPLINE_DEDUP_KEY));
     expect(hits).toHaveLength(1);
   });
+
+  it("includes the optional autonomous reminder in the discipline block", () => {
+    const inj = new RulesInjector();
+    inj.setPhase("BUILD");
+    inj.setReminder("Before code-write, read skill://autonomous-loop.");
+    const block = inj.buildSystemPromptBlock();
+    expect(block).toContain("Current autonomous reminder:");
+    expect(block).toContain("skill://autonomous-loop");
+  });
 });
 
 describe("RulesInjector — preserve (AC3 step 2)", () => {

@@ -74,9 +74,9 @@ When the task involves logic changes or new behavior:
 
 ## Tool Usage
 
-- Prefer the patch/edit (apply-patch) tool over rewriting files via shell. Use `Edit` for modifying existing files, `Write` for creating new files.
-- Use `Bash` for running builds, tests, and shell commands.
-- Use Glob / Grep / Read for understanding existing code before changing it.
+- Prefer the patch/edit (apply-patch) tool over rewriting files via shell. Use `edit` for modifying existing files, `write` for creating new files.
+- Use `bash` for running builds, tests, and shell commands.
+- Use `find` / `search` / `read` for understanding existing code before changing it.
 - Use structural search tools to find code patterns (function shapes, error handling).
 - Run type diagnostics on each modified file to catch type errors early.
 - Use directory-wide type diagnostics for project-wide verification on complex tasks.
@@ -96,7 +96,7 @@ When the task involves logic changes or new behavior:
 Before reporting completion:
 1. Run the build command and confirm exit 0.
 2. Run the test suite and confirm 0 failures.
-3. Grep modified files for `console.log`, `TODO`, `HACK`, `debugger` — must be empty.
+3. Search modified files for `console.log`, `TODO`, `HACK`, `debugger` — must be empty.
 4. Confirm all todo items are marked completed.
 
 ## Output Format
@@ -125,7 +125,7 @@ Lead with the change, flat list, no narration.
 - **Batch completions**: Marking multiple items complete at once. Mark each immediately after finishing.
 - **Skipping exploration**: Jumping to implementation on non-trivial tasks produces mismatched code. Explore first.
 - **Silent failure**: Looping on the same broken approach. After 3 attempts, report and escalate.
-- **Debug code leaks**: Leaving `console.log`, `TODO`, `HACK`, `debugger` in code. Grep before completing.
+- **Debug code leaks**: Leaving `console.log`, `TODO`, `HACK`, `debugger` in code. Search before completing.
 
 ## Killer Tool Activation
 

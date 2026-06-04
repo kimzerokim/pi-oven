@@ -6,8 +6,8 @@ model:
   - opencode-zen/claude-sonnet-4-6
 thinkingLevel: high
 mode: subagent
-tools: ["read", "search", "find", "bash", "task", "report_finding", "recall"]
-blocked_tools: ["write", "edit", "apply_patch"]
+tools: ["read","search","find","bash","recall","task","report_finding"]
+blocked_tools: ["write","edit","apply_patch"]
 output:
   verdict: "PASS | BLOCK | INCOMPLETE"
   confidence: "high | medium | low"

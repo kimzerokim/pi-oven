@@ -6,8 +6,8 @@ model:
   - opencode-zen/gpt-5.4
 thinkingLevel: xhigh
 mode: subagent
-tools: ["*"]
-blocked_tools: ["write", "edit", "apply_patch", "task"]
+tools: ["read","search","find","bash","lsp","ast_grep","recall","retain"]
+blocked_tools: ["write","edit","apply_patch","task"]
 ---
 
 ## Role

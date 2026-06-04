@@ -8,7 +8,7 @@ description: "Read this skill before writing or modifying code, and on any bug f
 
 ## When to use
 
-Fires on every code-write tool call — `Edit`, `Write`, `MultiEdit`, `ast_grep_replace` — regardless of change size. No N-file threshold. A 2-line fix carries the same obligation as a 200-line feature. The three self-questions take seconds; skipping them costs hours.
+Fires on every code-write tool call — `edit`, `write`, `ast_grep_replace` — regardless of change size. No N-file threshold. A 2-line fix carries the same obligation as a 200-line feature. The three self-questions take seconds; skipping them costs hours.
 
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
@@ -30,7 +30,7 @@ Before writing code, answer the following 3 questions explicitly:
 2. **YAGNI**: Is this truly needed right now? Derive the minimum from the user's request.
 3. **KISS**: Is this the simplest expression? Is a shorter equivalent possible?
 
-Answer all three out loud in the working notes before the first Edit or Write call. A silent answer does not count.
+Answer all three out loud in the working notes before the first `edit` or `write` call. A silent answer does not count.
 
 ## Deletion test (new module gate)
 

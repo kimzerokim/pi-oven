@@ -6,8 +6,8 @@ model:
   - openai-codex/gpt-5.4
 thinkingLevel: high
 mode: subagent
-tools: [read, search, find, bash, task, recall, retain]
-blocked_tools: [write, edit, apply_patch]
+tools: ["read","search","find","bash","recall","task"]
+blocked_tools: ["write","edit","apply_patch"]
 ---
 
 ## Memory-First Start

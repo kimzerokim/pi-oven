@@ -76,29 +76,29 @@ describe("project-config — set / read symmetry", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("set 'ko' then read returns 'ko'", async () => {
+  it("set 'ko' is NO-OP when config file is absent", async () => {
+    await setProjectLanguage("ko", { cwd });
+    expect(await readProjectLanguage({ cwd })).toBeNull();
+    expect(existsSync(configFile(cwd))).toBe(false);
+  });
+
+
+  it("set does NOT create the .pi-oven/config.json file if missing", async () => {
+    await setProjectLanguage("ko", { cwd });
+    expect(existsSync(configFile(cwd))).toBe(false);
+  });
+
+  it("overwriting the language updates the stored value ONLY if file exists", async () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), JSON.stringify({ keep: true }), "utf-8");
     await setProjectLanguage("ko", { cwd });
     expect(await readProjectLanguage({ cwd })).toBe("ko");
-  });
-
-  it("set 'en' then read returns 'en'", async () => {
     await setProjectLanguage("en", { cwd });
     expect(await readProjectLanguage({ cwd })).toBe("en");
   });
-
-  it("set creates the .pi-oven/config.json file with the language key", async () => {
-    await setProjectLanguage("ko", { cwd });
-    const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
-    expect(parsed.language).toBe("ko");
-  });
-
-  it("overwriting the language updates the stored value", async () => {
-    await setProjectLanguage("ko", { cwd });
-    await setProjectLanguage("en", { cwd });
-    expect(await readProjectLanguage({ cwd })).toBe("en");
-  });
-
-  it("round-trips a custom free-form language ('Español')", async () => {
+  it("round-trips a custom free-form language ('Español') ONLY if file exists", async () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), JSON.stringify({}), "utf-8");
     await setProjectLanguage("Español", { cwd });
     expect(await readProjectLanguage({ cwd })).toBe("Español");
     const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
@@ -169,7 +169,7 @@ describe("project-config — preserve other keys (read-merge)", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("setProjectLanguage preserves pre-existing unrelated keys", async () => {
+  it("setProjectLanguage preserves pre-existing unrelated keys ONLY if file exists", async () => {
     mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
     writeFileSync(
       configFile(cwd),
@@ -185,7 +185,7 @@ describe("project-config — preserve other keys (read-merge)", () => {
     expect(parsed.nested).toEqual({ a: 1 });
   });
 
-  it("setProjectLanguage twice keeps other keys and updates language", async () => {
+  it("setProjectLanguage twice keeps other keys and updates language (with setup file)", async () => {
     mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
     writeFileSync(configFile(cwd), JSON.stringify({ keep: true }), "utf-8");
 
@@ -197,7 +197,9 @@ describe("project-config — preserve other keys (read-merge)", () => {
     expect(parsed.language).toBe("ko");
   });
 
-  it("type guard sanity: ProjectLanguage values round-trip", async () => {
+  it("type guard sanity: ProjectLanguage values round-trip (with setup file)", async () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), "{}", "utf-8");
     const langs: ProjectLanguage[] = ["ko", "en"];
     for (const lang of langs) {
       await setProjectLanguage(lang, { cwd });
@@ -221,22 +223,26 @@ describe("project-config — setup-completion marker", () => {
     expect(isSetupComplete({ cwd })).toBe(false);
   });
 
-  it("markSetupComplete writes a non-empty string setupCompletedAt", async () => {
+  it("markSetupComplete writes a non-empty string setupCompletedAt ONLY if file exists", async () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), "{}", "utf-8");
     await markSetupComplete({ cwd });
     const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
     expect(typeof parsed.setupCompletedAt).toBe("string");
     expect(parsed.setupCompletedAt.length).toBeGreaterThan(0);
-    // ISO-8601 round-trips through Date without becoming Invalid Date
     expect(Number.isNaN(Date.parse(parsed.setupCompletedAt))).toBe(false);
   });
 
-  it("isSetupComplete is true after markSetupComplete", async () => {
+  it("isSetupComplete is true after markSetupComplete (with setup file)", async () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), "{}", "utf-8");
     await markSetupComplete({ cwd });
     expect(isSetupComplete({ cwd })).toBe(true);
   });
 
   it("markSetupComplete preserves an existing language key", async () => {
-    await setProjectLanguage("ko", { cwd });
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), JSON.stringify({ language: "ko" }), "utf-8");
     await markSetupComplete({ cwd });
     const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
     expect(parsed.language).toBe("ko");
@@ -268,8 +274,8 @@ describe("project-config — setup-completion marker", () => {
   });
 
   it("clearSetupComplete removes the marker but KEEPS language", async () => {
-    await setProjectLanguage("en", { cwd });
-    await markSetupComplete({ cwd });
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), JSON.stringify({ language: "en", setupCompletedAt: "2024-01-01" }), "utf-8");
     expect(isSetupComplete({ cwd })).toBe(true);
 
     await clearSetupComplete({ cwd });

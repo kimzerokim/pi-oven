@@ -144,7 +144,6 @@ for (const file of files) {
   // Colon-name invariant: frontmatter `name` must equal "pi-oven:" + role.
   // This ensures the omp registry key (colon form) matches the override key
   // used by task.agentModelOverrides — preventing silent hyphen/colon mismatch.
-  // Scope: PROFILE_A baseline only. Does NOT read user-global ~/.omp/agent/config.yml.
   const name = extractName(frontmatter);
   const expectedName = `pi-oven:${role}`;
   if (name !== expectedName) {
@@ -155,6 +154,20 @@ for (const file of files) {
   }
 
   const expected = PROFILE_A[role as Role];
+  const toolViolations = (key: "tools" | "blocked_tools") => {
+    const actual = extractStringList(frontmatter, key);
+    const exp = expected[key];
+    if (JSON.stringify(actual) !== JSON.stringify(exp)) {
+      console.error(
+        `lint-agents: ERROR: ${file} ${key} drift from profiles.ts PROFILE_A. ` +
+          `file=${JSON.stringify(actual)} expected=${JSON.stringify(exp)}`
+      );
+      violations++;
+    }
+  };
+  toolViolations("tools");
+  toolViolations("blocked_tools");
+
   const expectedModels = [expected.primary, expected.registry_alternate];
   if (models[0] !== expectedModels[0] || models[1] !== expectedModels[1]) {
     console.error(

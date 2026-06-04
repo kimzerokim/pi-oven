@@ -79,6 +79,9 @@ export class RulesInjector {
    * main+sub agents come to honor the Claude-Code project-memory convention.
    */
   private projectInstructions: string | null = null;
+  /** Optional per-turn autonomous reminder appended to the discipline block. */
+  private reminder: string | null = null;
+
 
   setPhase(phase: string): void {
     this.phase = phase;
@@ -104,6 +107,11 @@ export class RulesInjector {
   setProjectInstructions(content: string | null): void {
     this.projectInstructions = content && content.trim().length > 0 ? content : null;
   }
+
+  setReminder(reminder: string | null): void {
+    this.reminder = reminder && reminder.trim().length > 0 ? reminder : null;
+  }
+
 
   /**
    * Build the language-directive block (tagged with the language dedup marker),
@@ -176,7 +184,7 @@ export class RulesInjector {
 
   /** Build the discipline-rule block string (tagged with the dedup key). */
   buildSystemPromptBlock(): string {
-    return [
+    const lines = [
       `<!-- ${DISCIPLINE_DEDUP_KEY} -->`,
       `## pi-oven runtime discipline (phase: ${this.phase})`,
       "",
@@ -186,7 +194,11 @@ export class RulesInjector {
       "- `git push` is blocked unless explicit push consent is present.",
       "- Destructive `rm -rf` of repo/HOME roots and production-access commands",
       "  are always blocked (this floor is never lifted).",
-    ].join("\n");
+    ];
+    if (this.reminder !== null) {
+      lines.push("", "Current autonomous reminder:", `- ${this.reminder}`);
+    }
+    return lines.join("\n");
   }
 
   /**

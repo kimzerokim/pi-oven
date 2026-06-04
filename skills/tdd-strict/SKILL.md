@@ -16,7 +16,7 @@ Do NOT do this skill's substantive work in the main context. Main's direct-actio
 
 1. Autonomous mode is active (ralph, autopilot, ultrawork, or any pi-oven autonomous loop).
 2. The staged diff contains at least one touched code file (path matches `src/**`, `lib/**`, `*.ts`, `*.js`, `*.py`, or equivalent source extensions for the project language).
-3. The tool call is `Edit`, `Write`, or `MultiEdit`.
+3. The tool call is `edit` or `write`.
 
 Doc-only fast-path: if every file in the staged diff is `*.md`, `*.yaml`, `*.json` (config/schema), or `*.d.ts`, this skill does not fire.
 

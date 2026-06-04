@@ -1,4 +1,7 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import piOvenPi from "../../../.omp/extensions/pi-oven";
 
 // ---------------------------------------------------------------------------
@@ -53,7 +56,38 @@ function makeFakePi(): FakePi {
   };
 }
 
+function makeTempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "pi-oven-wiring-"));
+  mkdirSync(join(dir, ".claude-plugin"), { recursive: true });
+  writeFileSync(
+    join(dir, ".claude-plugin", "plugin.json"),
+    JSON.stringify({
+      skills: [
+        "skills/autonomous-loop/SKILL.md",
+        "skills/large-task-delegation/SKILL.md",
+        "skills/spec-and-review/SKILL.md",
+      ],
+    })
+  );
+  return dir;
+}
+
+
+const ORIGINAL_CWD = process.cwd();
+
 describe("piOvenPi entrypoint wiring (AC4)", () => {
+  let tempDir: string | null = null;
+
+  beforeEach(() => {
+    tempDir = null;
+    process.chdir(ORIGINAL_CWD);
+  });
+
+  afterEach(() => {
+    process.chdir(ORIGINAL_CWD);
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  });
+
   it("registers all Plan-3 runtime handlers plus the preserved session_start", () => {
     const pi = makeFakePi();
     piOvenPi(pi as never);
@@ -179,5 +213,105 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain("skill://autonomous-loop");
     expect(joined).toContain("skill://large-task-delegation");
     expect(joined).toContain("skill://spec-and-review");
+  });
+
+
+  it("before_agent_start can inject first-turn autonomous reminders before turn_start persists state", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+    mkdirSync(join(tempDir, "skills", "autonomous-loop"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "skills", "autonomous-loop", "SKILL.md"),
+      "---\nname: autonomous-loop\ndescription: test\n---\n"
+    );
+    mkdirSync(join(tempDir, "skills", "large-task-delegation"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "skills", "large-task-delegation", "SKILL.md"),
+      "---\nname: large-task-delegation\ndescription: test\n---\n"
+    );
+    mkdirSync(join(tempDir, "skills", "spec-and-review"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "skills", "spec-and-review", "SKILL.md"),
+      "---\nname: spec-and-review\ndescription: test\n---\n"
+    );
+
+    const pi = makeFakePi();
+    piOvenPi(pi as never);
+
+    const onBeforeAgentStart = pi.handlers["before_agent_start"];
+    const res = (await onBeforeAgentStart({
+      type: "before_agent_start",
+      prompt: "자율 실행으로 큰 작업 진행해줘. spec 잡자 first.",
+      systemPrompt: ["base"],
+    })) as { systemPrompt: string[] };
+    const joined = res.systemPrompt.join("\n");
+    expect(joined).toContain("Current autonomous reminder:");
+    expect(joined).toContain(".pi-oven/state/branch-contract.json");
+    expect(joined).toContain("skill://autonomous-loop");
+  });
+
+  it("turn_start syncs autonomous active state and matched skills into the gate store", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+    mkdirSync(join(tempDir, "skills", "autonomous-loop"), { recursive: true });
+    mkdirSync(join(tempDir, "skills", "large-task-delegation"), { recursive: true });
+    mkdirSync(join(tempDir, "skills", "spec-and-review"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "skills", "autonomous-loop", "SKILL.md"),
+      "---\nname: autonomous-loop\ndescription: test\n---\n"
+    );
+    writeFileSync(
+      join(tempDir, "skills", "large-task-delegation", "SKILL.md"),
+      "---\nname: large-task-delegation\ndescription: test\n---\n"
+    );
+    writeFileSync(
+      join(tempDir, "skills", "spec-and-review", "SKILL.md"),
+      "---\nname: spec-and-review\ndescription: test\n---\n"
+    );
+
+    const pi = makeFakePi();
+    piOvenPi(pi as never);
+
+    const onTurnStart = pi.handlers["turn_start"];
+    const ctx = {
+      sessionManager: {
+        getBranch: () => [
+          {
+            id: "u1",
+            type: "message",
+            message: {
+              role: "user",
+              content: [{ type: "text", text: "자율 실행으로 큰 작업 진행해줘. spec 잡자 first." }],
+            },
+          },
+        ],
+      },
+    };
+
+    await onTurnStart({ type: "turn_start", turnIndex: 1, timestamp: Date.now() }, ctx);
+    const persisted = JSON.parse(
+      readFileSync(join(tempDir, ".pi-oven", "state", "autonomous.json"), "utf-8")
+    ) as {
+      active: boolean;
+      requiredSkills?: string[];
+      skillReads?: string[];
+    };
+    expect(persisted.active).toBe(true);
+    expect(persisted.requiredSkills).toEqual([
+      "autonomous-loop",
+      "large-task-delegation",
+      "spec-and-review",
+    ]);
+    expect(persisted.skillReads).toEqual([]);
+    const onBeforeAgentStart = pi.handlers["before_agent_start"];
+    const res = (await onBeforeAgentStart({
+      type: "before_agent_start",
+      prompt: "",
+      systemPrompt: ["base"],
+    })) as { systemPrompt: string[] };
+    const joined = res.systemPrompt.join("\n");
+    expect(joined).toContain("Current autonomous reminder:");
+    expect(joined).toContain(".pi-oven/state/branch-contract.json");
+    expect(joined).toContain("skill://autonomous-loop");
   });
 });

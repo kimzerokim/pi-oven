@@ -19,8 +19,17 @@
 //   - The forbidden floor is enforced regardless of FSM/bypass.
 // ---------------------------------------------------------------------------
 
-import { normalizeCommand, type NormalizeRoots } from "./git-normalize";
-import { decideGate, type GateEnv, type FsmStateView as GateFsmView } from "./gate";
+import {
+  normalizeCommand,
+  type NormalizeRoots,
+  type NormalizedCommand,
+} from "./git-normalize";
+import {
+  CODE_WRITE_TOOLS,
+  decideGate,
+  type GateEnv,
+  type FsmStateView as GateFsmView,
+} from "./gate";
 import type { GateStateStore } from "./gate-state";
 
 export interface GateLogger {
@@ -61,6 +70,92 @@ interface ToolCallResultLike {
   reason?: string;
 }
 
+const EMPTY_NORMALIZED_COMMAND: NormalizedCommand = { gitVerbs: [], forbiddenMatches: [] };
+
+function isCodeWriteTool(toolName: string): boolean {
+  return CODE_WRITE_TOOLS.has(toolName);
+}
+
+function getTargetPath(input: ToolCallEventLike["input"]): string | null {
+  return typeof input?.path === "string" ? input.path : null;
+}
+
+function getSkillReadName(event: ToolCallEventLike): string | null {
+  if (event.toolName !== "read") return null;
+  const path = event.input?.path;
+  if (typeof path !== "string") return null;
+  const match = /^skill:\/\/([^/:]+)/.exec(path);
+  return match?.[1] ?? null;
+}
+
+function toGateFsmView(view: Awaited<ReturnType<GateStateStore["readState"]>>): GateFsmView {
+  return view.kind === "OK"
+    ? { kind: "OK", state: { active: view.state.active, gateCache: view.state.gateCache } }
+    : view.kind === "CORRUPT"
+      ? { kind: "CORRUPT" }
+      : { kind: "ABSENT" };
+}
+
+async function observeSkillRead(deps: GateHandlerDeps, skillName: string): Promise<void> {
+  if (!deps.isParentSession) return;
+  const currentView = await deps.store.readState();
+  if (currentView.kind !== "OK" || !currentView.state.active) return;
+  if (!(currentView.state.requiredSkills ?? []).includes(skillName)) return;
+  await deps.store.mutate((current) => {
+    const nextReads = new Set(current.skillReads ?? []);
+    nextReads.add(skillName);
+    return {
+      ...current,
+      version: current.version + 1,
+      skillReads: [...nextReads],
+    };
+  });
+}
+
+async function decideForCodeWrite(
+  deps: GateHandlerDeps,
+  event: ToolCallEventLike
+): Promise<ToolCallResultLike | void> {
+  const env: GateEnv = {
+    PI_OVEN_PUSH_CONSENT: deps.getEnv().PI_OVEN_PUSH_CONSENT,
+    PI_OVEN_GATE_BYPASS: deps.getEnv().PI_OVEN_GATE_BYPASS,
+  };
+  const fsmRaw = await deps.store.readState();
+  const decision = decideGate({
+    normalized: EMPTY_NORMALIZED_COMMAND,
+    fsm: toGateFsmView(fsmRaw),
+    env,
+    fileConsentValid: false,
+    toolName: event.toolName,
+    targetPath: getTargetPath(event.input),
+    branchContract: await deps.store.readBranchContract(),
+    requiredSkills: fsmRaw.kind === "OK" ? fsmRaw.state.requiredSkills : [],
+    skillReads: fsmRaw.kind === "OK" ? fsmRaw.state.skillReads : [],
+  });
+  return { block: decision.block, reason: decision.reason };
+}
+
+async function decideForToolCall(
+  deps: GateHandlerDeps,
+  event: ToolCallEventLike
+): Promise<ToolCallResultLike | void> {
+  const skillName = getSkillReadName(event);
+  if (skillName !== null) {
+    await observeSkillRead(deps, skillName);
+    return { block: false };
+  }
+
+  if (isCodeWriteTool(event.toolName)) {
+    return decideForCodeWrite(deps, event);
+  }
+
+  if (event.toolName !== "bash") return undefined;
+  const command = event.input?.command;
+  if (typeof command !== "string" || command.length === 0) return undefined;
+  return decideForCommand(deps, command);
+}
+
+
 const DEFAULT_DEADLINE_MS = 1500;
 
 class DeadlineError extends Error {
@@ -96,11 +191,6 @@ export function createGateHandler(
           'pi-oven: task dispatch blocked — unsupported namespaced agent. Use bare built-in names (e.g. "executor") or `pi-oven:*` aliases when registered.',
       };
     }
-    // Only Bash carries command-gated checks beyond this point.
-    if (event.toolName !== "bash") return undefined;
-    const command = event.input?.command;
-    if (typeof command !== "string" || command.length === 0) return undefined;
-
     // Wrap ALL work in a self-deadline. On overrun → THROW → omp fail-closes.
     const deadline = new Promise<never>((_resolve, reject) => {
       const t = setTimeout(() => reject(new DeadlineError(deadlineMs)), deadlineMs);
@@ -108,7 +198,7 @@ export function createGateHandler(
       (t as unknown as { unref?: () => void }).unref?.();
     });
 
-    return Promise.race([decideForCommand(deps, command), deadline]);
+    return Promise.race([decideForToolCall(deps, event), deadline]);
   };
 }
 
@@ -129,15 +219,8 @@ async function decideForCommand(
     PI_OVEN_GATE_BYPASS: deps.getEnv().PI_OVEN_GATE_BYPASS,
   };
 
-  // The forbidden floor needs no FS read; but commit/push gating + consent do.
-  // Read the FSM view (ABSENT / CORRUPT / OK) and the file-consent validity.
   const fsmRaw = await deps.store.readState();
-  const fsm: GateFsmView =
-    fsmRaw.kind === "OK"
-      ? { kind: "OK", state: { active: fsmRaw.state.active, gateCache: fsmRaw.state.gateCache } }
-      : fsmRaw.kind === "CORRUPT"
-        ? { kind: "CORRUPT" }
-        : { kind: "ABSENT" };
+  const fsm = toGateFsmView(fsmRaw);
 
   const wantsPush = normalized.gitVerbs.includes("push");
   const fileConsent = wantsPush ? await deps.store.readFileConsent() : { valid: false };

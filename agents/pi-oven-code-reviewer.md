@@ -6,8 +6,8 @@ model:
   - opencode-zen/claude-sonnet-4-6
 thinkingLevel: high
 mode: subagent
-tools: [read, search, find, bash, report_finding, web_search, recall, lsp, ast_grep]
-blocked_tools: [write, edit, apply_patch, task]
+tools: ["read","search","find","bash","lsp","ast_grep","recall","report_finding"]
+blocked_tools: ["write","edit","apply_patch","task"]
 output:
   overall_correctness: correct | incorrect
   explanation: string

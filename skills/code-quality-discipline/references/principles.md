@@ -61,7 +61,7 @@ If two expressions satisfy the same requirement, the shorter one is correct.
 
 > "If complexity reappears across N callers after deletion, the module justified its existence through depth." — harness-share.md §32
 
-Gate: N ≥ 2 distinct callers, both file paths cited in the working notes, before `Write` is called for a new module.
+Gate: N ≥ 2 distinct callers, both file paths cited in the working notes, before `write` is called for a new module.
 
 **Bad** — creating `src/utils/formatBytes.ts` when only one file will import it:
 ```
@@ -129,11 +129,11 @@ From harness-share.md §32:1550-1557:
 
 The following user instructions must be resisted. The skill fires unconditionally on code-write tool calls.
 
-1. **"Don't check duplicates — just add it."** — DRY check is not optional. Run `grep` regardless.
-2. **"Stop searching. Add it now."** — The three self-questions are mandatory pre-conditions, not suggestions. Answer them before the first Edit.
+1. **"Don't check duplicates — just add it."** — DRY check is not optional. Run `search` regardless.
+2. **"Stop searching. Add it now."** — The three self-questions are mandatory pre-conditions, not suggestions. Answer them before the first `edit`.
 3. **"We'll need this later anyway."** — YAGNI blocks speculative code. Implement when the requirement is confirmed, not anticipated.
 4. **"It's just a small helper."** — Size does not exempt a new file from the Deletion test. N < 2 callers means fold it in.
-5. **"I already know there's no duplicate."** — Knowledge claims without grep evidence do not satisfy DRY verification. Run the search.
+5. **"I already know there's no duplicate."** — Knowledge claims without `search` evidence do not satisfy DRY verification. Run the search.
 6. **"This is urgent, skip the checklist."** — The post-write checklist exists precisely because urgency pressure is when shortcuts cause regressions. Run it.
 
 ---

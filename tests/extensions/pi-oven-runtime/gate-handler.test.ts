@@ -23,6 +23,15 @@ function taskEvent(agent: string, toolCallId = "tc-task") {
   return { type: "tool_call" as const, toolCallId, toolName: "task", input: { agent, prompt: "x" } };
 }
 
+function readEvent(path: string, toolCallId = "tc-read") {
+  return { type: "tool_call" as const, toolCallId, toolName: "read" as const, input: { path } };
+}
+
+function writeEvent(path: string, toolCallId = "tc-write") {
+  return { type: "tool_call" as const, toolCallId, toolName: "write" as const, input: { path, content: "{}" } };
+}
+
+
 function makeLogger() {
   const lines: { level: string; msg: string }[] = [];
   return {
@@ -191,6 +200,82 @@ describe("gateHandler — push consent (AC5)", () => {
     const h = createGateHandler(await deps(dir));
     const r = await h(bashEvent("git push origin main"));
     expect(r?.block).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WS5 — code-write branch-contract gate + skill-read tracking
+// ---------------------------------------------------------------------------
+
+describe("gateHandler — WS5 branch-contract and skill-read enforcement", () => {
+  let dir: string;
+  beforeEach(() => { dir = makeTempDir(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("blocks code-write until the branch-contract marker exists", async () => {
+    writeState(dir, {
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: [],
+      skillReads: [],
+      requiredSkillsMessageId: "u1",
+    });
+    const h = createGateHandler(await deps(dir));
+    const r = await h(writeEvent("src/example.ts"));
+    expect(r?.block).toBe(true);
+    expect(r?.reason).toMatch(/branch-contract\.json/i);
+  });
+
+  it("allows bootstrap write for the branch-contract marker path itself", async () => {
+    writeState(dir, {
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: [],
+      skillReads: [],
+      requiredSkillsMessageId: "u1",
+    });
+    const h = createGateHandler(await deps(dir));
+    const r = await h(writeEvent(".pi-oven/state/branch-contract.json"));
+    expect(r?.block ?? false).toBe(false);
+  });
+
+  it("records read skill://... calls and unblocks code-write once every required skill is read", async () => {
+    writeState(dir, {
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: ["autonomous-loop"],
+      skillReads: [],
+      requiredSkillsMessageId: "u1",
+    });
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(
+      join(dir, "state", "branch-contract.json"),
+      JSON.stringify({ destination: "worktree", branch: "feature/ws5", pr_mode: "draft" })
+    );
+    const h = createGateHandler(await deps(dir));
+
+    const blocked = await h(writeEvent("src/example.ts"));
+    expect(blocked?.block).toBe(true);
+    expect(blocked?.reason).toMatch(/skill:\/\/autonomous-loop/i);
+
+    const readRes = await h(readEvent("skill://autonomous-loop"));
+    expect(readRes?.block ?? false).toBe(false);
+
+    const allowed = await h(writeEvent("src/example.ts", "tc-write-2"));
+    expect(allowed?.block ?? false).toBe(false);
+  });
+
+  it("ignores skill:// reads outside an active autonomous state", async () => {
+    const h = createGateHandler(await deps(dir));
+    const r = await h(readEvent("skill://autonomous-loop"));
+    expect(r?.block ?? false).toBe(false);
+    expect(existsSync(join(dir, "state", "autonomous.json"))).toBe(false);
   });
 });
 

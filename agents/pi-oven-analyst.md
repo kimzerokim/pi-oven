@@ -6,8 +6,8 @@ model:
   - opencode-zen/claude-sonnet-4-6
 thinkingLevel: xhigh
 mode: subagent
-tools: ["read", "search", "find", "bash", "eval", "recall"]
-blocked_tools: ["write", "edit", "apply_patch", "task"]
+tools: ["read","search","find","bash","eval","recall"]
+blocked_tools: ["write","edit","apply_patch","task"]
 ---
 
 ## Role

@@ -217,6 +217,23 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+export function matchSkillsForText(
+  text: string,
+  index: SkillKeywordIndexEntry[]
+): MatchedSkill[] {
+  const normalizedText = normalizeText(text);
+  return index
+    .map((entry) => {
+      const matchedPhrases = entry.phrases.filter((phrase) =>
+        normalizedText.includes(normalizeText(phrase))
+      );
+      return matchedPhrases.length > 0 ? { name: entry.name, matchedPhrases } : null;
+    })
+    .filter((entry): entry is MatchedSkill => entry !== null)
+    .slice(0, MAX_MATCHED_SKILLS);
+}
+
+
 export function loadSkillKeywordIndex(repoRoot: string): SkillKeywordIndexEntry[] {
   const pluginPath = path.resolve(repoRoot, ".claude-plugin", "plugin.json");
   const plugin = JSON.parse(readFileSync(pluginPath, "utf-8")) as { skills?: unknown };
@@ -292,16 +309,7 @@ export function updateSkillKeywordLoaderOnTurnStart(
   if (latestUserId === null) return state;
   if (state.lastUserMessageId === latestUserId) return state;
 
-  const normalizedText = normalizeText(latestUserText);
-  const matchedSkills = index
-    .map((entry) => {
-      const matchedPhrases = entry.phrases.filter((phrase) =>
-        normalizedText.includes(normalizeText(phrase))
-      );
-      return matchedPhrases.length > 0 ? { name: entry.name, matchedPhrases } : null;
-    })
-    .filter((entry): entry is MatchedSkill => entry !== null)
-    .slice(0, MAX_MATCHED_SKILLS);
+  const matchedSkills = matchSkillsForText(latestUserText, index);
 
   return { lastUserMessageId: latestUserId, matchedSkills };
 }

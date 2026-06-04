@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import type { NormalizedCommand } from "./git-normalize";
+import type { BranchContractView } from "./gate-state";
 
 export interface FsmStateData {
   active: boolean;
@@ -39,6 +40,11 @@ export interface GateInput {
   env: GateEnv;
   /** Whether a valid (non-expired, present) file consent exists. */
   fileConsentValid: boolean;
+  toolName?: string;
+  targetPath?: string | null;
+  branchContract?: BranchContractView;
+  requiredSkills?: string[];
+  skillReads?: string[];
 }
 
 export type ConsentSource = "env" | "file" | "none";
@@ -58,9 +64,45 @@ function isBypass(env: GateEnv): boolean {
   return env.PI_OVEN_GATE_BYPASS === "1";
 }
 
+export const CODE_WRITE_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "ast_edit"]);
+const BRANCH_CONTRACT_MARKER = ".pi-oven/state/branch-contract.json";
+
+function isCodeWriteTool(toolName: string | undefined): boolean {
+  return typeof toolName === "string" && CODE_WRITE_TOOLS.has(toolName);
+}
+
+function isBranchContractBootstrapWrite(
+  toolName: string | undefined,
+  targetPath: string | null | undefined
+): boolean {
+  if (toolName !== "write" || typeof targetPath !== "string") return false;
+  const normalized = targetPath.replace(/\\/g, "/");
+  return (
+    normalized === BRANCH_CONTRACT_MARKER ||
+    normalized.endsWith(`/${BRANCH_CONTRACT_MARKER}`) ||
+    normalized.endsWith("/branch-contract.json")
+  );
+}
+
+function getRemainingSkills(requiredSkills: string[] | undefined, skillReads: string[] | undefined): string[] {
+  if (!requiredSkills || requiredSkills.length === 0) return [];
+  const readSet = new Set(skillReads ?? []);
+  return requiredSkills.filter((name) => !readSet.has(name));
+}
+
 /** Pure decision. No I/O, no mutation. */
 export function decideGate(input: GateInput): GateDecision {
-  const { normalized, fsm, env, fileConsentValid } = input;
+  const {
+    normalized,
+    fsm,
+    env,
+    fileConsentValid,
+    toolName,
+    targetPath,
+    branchContract = { kind: "ABSENT" },
+    requiredSkills,
+    skillReads,
+  } = input;
 
   // 1. Forbidden floor — ALWAYS-ON, independent of FSM and of PI_OVEN_GATE_BYPASS.
   if (normalized.forbiddenMatches.length > 0) {
@@ -73,18 +115,19 @@ export function decideGate(input: GateInput): GateDecision {
 
   const wantsCommit = normalized.gitVerbs.includes("commit");
   const wantsPush = normalized.gitVerbs.includes("push");
+  const wantsCodeWrite = isCodeWriteTool(toolName);
 
   // No gated verb → allow.
-  if (!wantsCommit && !wantsPush) {
+  if (!wantsCommit && !wantsPush && !wantsCodeWrite) {
     return { block: false };
   }
 
-  // 2. Anti-brick bypass for the gateCache-dependent gates only.
+  // 2. Anti-brick bypass for the gated checks only.
   if (isBypass(env)) {
     return {
       block: false,
       bypassed: true,
-      reason: "pi-oven: PI_OVEN_GATE_BYPASS=1 — gateCache-dependent gate bypassed (recovery mode).",
+      reason: "pi-oven: PI_OVEN_GATE_BYPASS=1 — gated tool restriction bypassed (recovery mode).",
     };
   }
 
@@ -101,6 +144,36 @@ export function decideGate(input: GateInput): GateDecision {
   // kind === "OK"
   if (!fsm.state.active) {
     // no autonomous run in progress → gate inactive
+    return { block: false };
+  }
+
+  if (wantsCodeWrite) {
+    if (!isBranchContractBootstrapWrite(toolName, targetPath)) {
+      if (branchContract.kind === "CORRUPT") {
+        return {
+          block: true,
+          reason:
+            "pi-oven: code-write blocked — .pi-oven/state/branch-contract.json is unreadable. Set PI_OVEN_GATE_BYPASS=1 to recover.",
+        };
+      }
+      if (branchContract.kind === "ABSENT") {
+        return {
+          block: true,
+          reason:
+            "pi-oven: code-write blocked — write .pi-oven/state/branch-contract.json with destination/branch/pr_mode first.",
+        };
+      }
+    }
+
+    const remainingSkills = getRemainingSkills(requiredSkills, skillReads);
+    if (remainingSkills.length > 0) {
+      const required = remainingSkills.map((name) => `skill://${name}`).join(", ");
+      return {
+        block: true,
+        reason: `pi-oven: code-write blocked — required skills not yet read: ${required}. Read them first.`,
+      };
+    }
+
     return { block: false };
   }
 

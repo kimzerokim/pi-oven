@@ -24,6 +24,9 @@ export interface FsmState {
   schemaVersion: number;
   phase?: string;
   dispatchLog?: unknown[];
+  requiredSkills?: string[];
+  skillReads?: string[];
+  requiredSkillsMessageId?: string | null;
 }
 
 export type FsmStateView =
@@ -42,14 +45,58 @@ interface PushConsentFile {
   branch?: string;
 }
 
+export interface BranchContract {
+  destination: string;
+  branch: string;
+  pr_mode: string;
+}
+
+export type BranchContractView =
+  | { kind: "ABSENT" }
+  | { kind: "CORRUPT" }
+  | { kind: "OK"; contract: BranchContract };
+
+function isValidBranchContract(v: unknown): v is BranchContract {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.destination === "string" &&
+    o.destination.length > 0 &&
+    typeof o.branch === "string" &&
+    o.branch.length > 0 &&
+    typeof o.pr_mode === "string" &&
+    o.pr_mode.length > 0
+  );
+}
+
 const STATE_FILE = "autonomous.json";
 const CONSENT_FILE = "push-consent.json";
+const BRANCH_CONTRACT_FILE = "branch-contract.json";
 
 function isValidState(v: unknown): v is FsmState {
   if (typeof v !== "object" || v === null) return false;
   const o = v as Record<string, unknown>;
   if (typeof o.active !== "boolean") return false;
   if (typeof o.gateCache !== "object" || o.gateCache === null) return false;
+  if (
+    o.requiredSkills !== undefined &&
+    (!Array.isArray(o.requiredSkills) || o.requiredSkills.some((item) => typeof item !== "string"))
+  ) {
+    return false;
+  }
+  if (
+    o.skillReads !== undefined &&
+    (!Array.isArray(o.skillReads) || o.skillReads.some((item) => typeof item !== "string"))
+  ) {
+    return false;
+  }
+  if (
+    o.requiredSkillsMessageId !== undefined &&
+    o.requiredSkillsMessageId !== null &&
+    typeof o.requiredSkillsMessageId !== "string"
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -58,9 +105,11 @@ export class GateStateStore {
   private readonly root: string;
   private readonly statePath: string;
   private readonly consentPath: string;
+  private readonly branchContractPath: string;
 
   // mtime-keyed cache
   private cache: { mtimeMs: number; view: FsmStateView } | null = null;
+  private branchContractCache: { mtimeMs: number; view: BranchContractView } | null = null;
 
   // single-writer async mutex (promise chain)
   private writeChain: Promise<unknown> = Promise.resolve();
@@ -69,6 +118,7 @@ export class GateStateStore {
     this.root = root;
     this.statePath = join(root, "state", STATE_FILE);
     this.consentPath = join(root, "state", CONSENT_FILE);
+    this.branchContractPath = join(root, "state", BRANCH_CONTRACT_FILE);
   }
 
   /** Read the FSM state, discriminating ABSENT / CORRUPT / OK, with mtime cache. */
@@ -126,7 +176,15 @@ export class GateStateStore {
       const current: FsmState =
         view.kind === "OK"
           ? view.state
-          : { active: false, gateCache: {}, version: 0, schemaVersion: 1 };
+          : {
+              active: false,
+              gateCache: {},
+              version: 0,
+              schemaVersion: 1,
+              requiredSkills: [],
+              skillReads: [],
+              requiredSkillsMessageId: null,
+            };
       const next = updater(current);
       await this.writeState(next);
     });
@@ -143,6 +201,40 @@ export class GateStateStore {
       () => undefined
     );
     return run;
+  }
+
+  async readBranchContract(): Promise<BranchContractView> {
+    let stat: { mtimeMs: number };
+    try {
+      stat = await fs.stat(this.branchContractPath);
+    } catch {
+      this.branchContractCache = null;
+      return { kind: "ABSENT" };
+    }
+
+    if (this.branchContractCache && this.branchContractCache.mtimeMs === stat.mtimeMs) {
+      return this.branchContractCache.view;
+    }
+
+    let raw: string;
+    try {
+      raw = await fs.readFile(this.branchContractPath, "utf-8");
+    } catch {
+      return { kind: "CORRUPT" };
+    }
+
+    let view: BranchContractView;
+    try {
+      const parsed = JSON.parse(raw);
+      view = isValidBranchContract(parsed)
+        ? { kind: "OK", contract: parsed }
+        : { kind: "CORRUPT" };
+    } catch {
+      view = { kind: "CORRUPT" };
+    }
+
+    this.branchContractCache = { mtimeMs: stat.mtimeMs, view };
+    return view;
   }
 
   /** Read + validate the file push-consent (TTL). Does not consume. */

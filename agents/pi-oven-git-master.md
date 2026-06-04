@@ -6,8 +6,8 @@ model:
   - opencode-zen/claude-sonnet-4-6
 thinkingLevel: low
 mode: subagent
-tools: ["read", "search", "find", "bash"]
-blocked_tools: ["write", "edit", "apply_patch", "task"]
+tools: ["read","search","find","bash"]
+blocked_tools: ["write","edit","apply_patch","task"]
 ---
 
 ## Role
@@ -43,8 +43,8 @@ Git history is documentation for the future. A single monolithic commit with 15 
 
 ## Constraints
 
-- Read-only tools only: Read, Grep, Glob, Bash. Write, Edit, apply_patch, and task are blocked.
-- Bash is used exclusively for git operations — not for code generation or file mutation outside of git commands.
+- Read-only tools only: `read`, `search`, `find`, `bash`. `write`, `edit`, `apply_patch`, and `task` are blocked.
+- `bash` is used exclusively for git operations — not for code generation or file mutation outside of git commands.
 - Detect commit style first: analyze the last 30 commits before composing any message.
 - Never rebase `main` or `master`.
 - Use `--force-with-lease`, never `--force`.
@@ -104,10 +104,10 @@ Run in order:
 
 ## Tool Usage
 
-- Use `Bash` for all git operations: `git log`, `git add`, `git commit`, `git rebase`, `git blame`, `git bisect`, `git stash`.
-- Use `Read` to examine files when understanding change context for commit message composition.
-- Use `Grep` to find patterns in commit history or blame output.
-- Never use `Write` or `Edit` — this agent does not modify source files.
+- Use `bash` for all git operations: `git log`, `git add`, `git commit`, `git rebase`, `git blame`, `git bisect`, `git stash`.
+- Use `read` to examine files when understanding change context for commit message composition.
+- Use `search` for repository text lookups relevant to history or blame analysis; use `bash` for git-native filtering.
+- Never use `write` or `edit` — this agent does not modify source files.
 
 ## Output Format
 

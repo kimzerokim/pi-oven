@@ -20,6 +20,13 @@ const roleSet = new Set<string>(ROLES as readonly string[]);
 // separate namespace and are not agent references.
 const PI_OVEN_TOKEN = /(?<!\/)pi-oven:([a-z][a-z0-9-]*)/g;
 
+// Known phantom skill names removed from the tree — must never reappear as a
+// bare backtick skill reference. Skill→skill references should use skill://<name>.
+const PHANTOM_SKILL_DENYLIST = new Set<string>(["freshness-guard", "executing-plans"]);
+// skill://<name> or skill://pi-oven/<name>/… — capture the skill name segment.
+const SKILL_URI = /skill:\/\/(?:pi-oven\/)?([a-z][a-z0-9-]*)/g;
+const BACKTICK_TOKEN = /`([a-z][a-z0-9-]*)`/g;
+
 function readSkillDirs(root: string): string[] {
   try {
     return readdirSync(root, { withFileTypes: true })
@@ -59,6 +66,41 @@ function lintRoleTokens(skillName: string, content: string): string[] {
   return errors;
 }
 
+/** Validate skill→skill references: skill://<name> URIs must resolve to a
+ *  shipped skill, and removed phantom skill names must not reappear. */
+function lintSkillRefs(skillName: string, content: string, validSkills: Set<string>): string[] {
+  const errors: string[] = [];
+  let match: RegExpExecArray | null;
+
+  SKILL_URI.lastIndex = 0;
+  const seenUri = new Set<string>();
+  while ((match = SKILL_URI.exec(content)) !== null) {
+    const ref = match[1];
+    if (seenUri.has(ref)) continue;
+    seenUri.add(ref);
+    if (!validSkills.has(ref)) {
+      errors.push(
+        `skills/${skillName}/SKILL.md references skill://${ref} which is not a shipped skill.`
+      );
+    }
+  }
+
+  BACKTICK_TOKEN.lastIndex = 0;
+  const seenTok = new Set<string>();
+  while ((match = BACKTICK_TOKEN.exec(content)) !== null) {
+    const tok = match[1];
+    if (seenTok.has(tok)) continue;
+    seenTok.add(tok);
+    if (PHANTOM_SKILL_DENYLIST.has(tok)) {
+      errors.push(
+        `skills/${skillName}/SKILL.md references removed phantom skill \`${tok}\` — not a shipped skill. Use inline prose or a real skill://<name>.`
+      );
+    }
+  }
+
+  return errors;
+}
+
 function shouldRequireRoleCoverage(skillsRoot: string): boolean {
   const env = process.env.PI_OVEN_LINT_REQUIRE_ROLE_COVERAGE;
   if (env === "1") return true;
@@ -68,6 +110,7 @@ function shouldRequireRoleCoverage(skillsRoot: string): boolean {
 
 async function main(): Promise<void> {
   const dirs = readSkillDirs(skillsDir);
+  const validSkills = new Set(dirs);
   const errors: string[] = [];
   const roleCoverage = new Set<string>();
 
@@ -77,6 +120,7 @@ async function main(): Promise<void> {
     if (content == null) continue;
 
     errors.push(...lintRoleTokens(dir, content));
+    errors.push(...lintSkillRefs(dir, content, validSkills));
     let match: RegExpExecArray | null;
     PI_OVEN_TOKEN.lastIndex = 0;
     while ((match = PI_OVEN_TOKEN.exec(content)) !== null) {

@@ -29,7 +29,9 @@ Each cycle produces exactly three commits (or three logical checkpoints inside o
 | Phase | What happens | Allowed tool calls |
 |---|---|---|
 | **Red** | Write the failing test. No production code yet. Run the test suite; confirm the new test fails for the right reason. | `write` / `edit` test files only |
+   Use `lsp diagnostics` to confirm the test failure is due to missing implementation, not a syntax or type error.
 | **Green** | Write the minimum production code that makes the failing test pass. Do not refactor yet. | `write` / `edit` source files |
+   Use `lsp diagnostics` to confirm the code is type-safe and compile-ready.
 | **Refactor** | Clean up duplication, naming, structure. All tests stay green throughout. | `edit` source and test files |
 
 Commit message convention: prefix with `test:` (Red), `feat:`/`fix:` (Green), `refactor:` (Refactor).

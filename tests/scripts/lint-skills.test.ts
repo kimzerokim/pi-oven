@@ -1,92 +1,63 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { spawnSync } from "bun";
-import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 
-const LINT_SCRIPT = join(import.meta.dir, "../../scripts/lint-skills.ts");
+const LINT = join(import.meta.dir, "../../scripts/lint-skills.ts");
 
-function makeTempDir(): string {
-  const dir = join(tmpdir(), `lint-skills-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
+function runLint(dir: string): { code: number; stderr: string } {
+  // Pass an explicit skillsDir so role-coverage (default-dir only) is not required.
+  const r = spawnSync({ cmd: [process.execPath, LINT, dir] });
+  return { code: r.exitCode, stderr: r.stderr.toString() };
 }
 
-function runLint(
-  skillsDir: string,
-  env: Record<string, string> = {}
-): { exitCode: number; stderr: string; stdout: string } {
-  const result = spawnSync({
-    cmd: [process.execPath, LINT_SCRIPT, skillsDir],
-    cwd: join(import.meta.dir, "../.."),
-    stdout: "pipe",
-    stderr: "pipe",
-    env: { ...process.env, ...env },
-  });
-
-  return {
-    exitCode: result.exitCode ?? 1,
-    stdout: Buffer.from(result.stdout).toString("utf8"),
-    stderr: Buffer.from(result.stderr).toString("utf8"),
-  };
+function writeSkill(root: string, name: string, body: string): void {
+  mkdirSync(join(root, name), { recursive: true });
+  writeFileSync(join(root, name, "SKILL.md"), `---\nname: ${name}\n---\n\n${body}\n`);
 }
 
-function writeSkill(skillsRoot: string, skillName: string, body: string = ""): void {
-  const skillDir = join(skillsRoot, skillName);
-  mkdirSync(skillDir, { recursive: true });
-  writeFileSync(
-    join(skillDir, "SKILL.md"),
-    `---
-name: ${skillName}
-version: 0.1.0
-description: test skill
-alwaysApply: false
----
-
-# ${skillName}
-${body}
-`
-  );
-}
-
-describe("lint-skills", () => {
-  let tempDir: string;
-
+describe("lint-skills skill→skill references", () => {
+  let dir: string;
   beforeEach(() => {
-    tempDir = makeTempDir();
+    dir = mkdtempSync(join(tmpdir(), "lint-skills-"));
   });
-
   afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
   });
 
-  it("passes for a plain skill with no pi-oven role refs", () => {
-    writeSkill(tempDir, "demo");
-
-    const out = runLint(tempDir);
-    expect(out.exitCode).toBe(0);
+  it("flags a skill:// URI that does not resolve to a shipped skill", () => {
+    writeSkill(dir, "alpha", "See skill://nonexistent for details.");
+    const { code, stderr } = runLint(dir);
+    expect(code).toBe(1);
+    expect(stderr).toContain("skill://nonexistent");
   });
 
-  it("passes when skill references a valid pi-oven role", () => {
-    writeSkill(tempDir, "demo", "Delegate to pi-oven:executor for implementation.");
-
-    const out = runLint(tempDir);
-    expect(out.exitCode).toBe(0);
+  it("passes when a skill:// URI resolves to a present skill", () => {
+    writeSkill(dir, "alpha", "See skill://alpha for details.");
+    writeSkill(dir, "beta", "Hand off to skill://alpha when done.");
+    expect(runLint(dir).code).toBe(0);
   });
 
-  it("fails when skill references an unknown pi-oven role", () => {
-    writeSkill(tempDir, "demo", "Use pi-oven:nonexistent-role here.");
-
-    const out = runLint(tempDir);
-    expect(out.exitCode).toBe(1);
-    expect(out.stderr).toContain("pi-oven:nonexistent-role which is not in ROLES");
+  it("accepts the skill://pi-oven/<name>/references form", () => {
+    writeSkill(dir, "alpha", "Detail: skill://pi-oven/alpha/references/x.md");
+    expect(runLint(dir).code).toBe(0);
   });
 
-  it("fails role coverage when explicitly required and roles are missing", () => {
-    writeSkill(tempDir, "demo");
+  it("flags a removed phantom skill referenced as a bare backtick token", () => {
+    writeSkill(dir, "alpha", "Run the `freshness-guard` step first.");
+    const { code, stderr } = runLint(dir);
+    expect(code).toBe(1);
+    expect(stderr).toContain("freshness-guard");
+  });
 
-    const out = runLint(tempDir, { PI_OVEN_LINT_REQUIRE_ROLE_COVERAGE: "1" });
-    expect(out.exitCode).toBe(1);
-    expect(out.stderr).toContain("skills role coverage missing for");
+  it("flags the executing-plans phantom too", () => {
+    writeSkill(dir, "alpha", "Fall back to `executing-plans` inline.");
+    expect(runLint(dir).code).toBe(1);
+  });
+
+  it("passes a clean skill with no dangling refs", () => {
+    writeSkill(dir, "alpha", "Use inline sequential execution. Dispatch pi-oven:explorer for survey.");
+    expect(runLint(dir).code).toBe(0);
   });
 });

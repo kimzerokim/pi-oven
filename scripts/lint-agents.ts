@@ -36,6 +36,61 @@ function extractName(frontmatter: Record<string, unknown>): string | undefined {
   return typeof raw === "string" ? raw : undefined;
 }
 
+/** First-class omp tool names. MCP tools (e.g. context7) are intentionally
+ *  excluded — they are not governed by the agent `tools:` allowlist the same
+ *  way, so we never flag them as instructed-but-not-granted. */
+const KNOWN_TOOLS = new Set<string>([
+  "read", "write", "edit", "apply_patch", "search", "find", "ast_grep", "ast_edit",
+  "lsp", "browser", "debug", "eval", "web_search", "task", "irc", "recall",
+  "retain", "reflect", "bash", "generate_image", "report_finding", "inspect_image",
+  "todo_write",
+]);
+
+function extractStringList(frontmatter: Record<string, unknown>, key: string): string[] {
+  const raw = frontmatter[key];
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === "string");
+  if (typeof raw === "string") return raw.length > 0 ? [raw] : [];
+  return [];
+}
+
+function bodyOf(content: string): string {
+  const m = content.match(/^---\n[\s\S]*?\n---\n?([\s\S]*)$/);
+  return m ? m[1] : content;
+}
+
+/** The set of tools an agent can actually call, accounting for `["*"]`,
+ *  auto-injected `irc`, `spawns`→`task`, `exec`→`eval`/`bash`, minus blocked. */
+function effectiveGranted(
+  frontmatter: Record<string, unknown>
+): { all: boolean; set: Set<string>; blocked: Set<string> } {
+  const tools = extractStringList(frontmatter, "tools");
+  const blocked = new Set(extractStringList(frontmatter, "blocked_tools"));
+  const set = new Set<string>(tools);
+  set.add("irc"); // always auto-injected by omp (task/executor.ts)
+  if (frontmatter["spawns"] !== undefined) set.add("task");
+  if (set.has("exec")) { set.add("eval"); set.add("bash"); }
+  for (const b of blocked) set.delete(b);
+  return { all: set.has("*"), set, blocked };
+}
+
+const NEGATION_NEARBY = /\b(no|not|never|without|cannot|don't|avoid|forbidden|disallow|disallowed)\b/i;
+
+/** Tools the body instructs the agent to use: leading identifier of the first
+ *  token inside each backtick span, restricted to KNOWN_TOOLS. A span preceded
+ *  by a negation word ("no `eval`") is a prohibition, not an instruction. */
+function instructedTools(body: string): Set<string> {
+  const found = new Set<string>();
+  const re = /`[^`]+`/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const before = body.slice(Math.max(0, m.index - 48), m.index);
+    if (NEGATION_NEARBY.test(before)) continue;
+    const lead = m[0].slice(1, -1).trim().match(/^[a-z_]+/)?.[0];
+    if (lead && KNOWN_TOOLS.has(lead)) found.add(lead);
+  }
+  return found;
+}
+
 let files: string[];
 try {
   files = readdirSync(agentsDir).filter(
@@ -60,6 +115,25 @@ for (const file of files) {
         `All pi-oven-*.md files must declare model: <provider>/<name>.`
     );
     violations++;
+  }
+
+  // Instructed-but-not-granted: every first-class tool named in the body must
+  // be callable — i.e. in frontmatter tools: (or ["*"]), accounting for the
+  // auto-injected irc, spawns→task, exec→eval/bash, minus blocked_tools.
+  // Otherwise the agent is told to use a tool it cannot call (e.g. a body that
+  // says `web_search` while tools: omits it).
+  const granted = effectiveGranted(frontmatter);
+  if (!granted.all) {
+    for (const tool of instructedTools(bodyOf(content))) {
+      // A blocked tool named in the body is a prohibition, not an instruction.
+      if (granted.blocked.has(tool)) continue;
+      if (!granted.set.has(tool)) {
+        console.error(
+          `lint-agents: ERROR: ${file} body instructs \`${tool}\` but it is not granted by frontmatter tools: (add it, or use ["*"]).`
+        );
+        violations++;
+      }
+    }
   }
 
   // SoT alignment: agent file model + thinkingLevel must match PROFILE_A.

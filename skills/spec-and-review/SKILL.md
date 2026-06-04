@@ -29,7 +29,7 @@ Before writing any draft, confirm a valid survey exists via 3-tier lookup (in or
 2. **On-disk match**: a file at `docs/harness/surveys/<topic>-survey.md` is dated ≤7 days ago.
 3. **Web-loop cycle-N**: the current run is cycle N of an active web-loop and a survey ran in cycle 1.
 
-If none of the three tiers match, dispatch `codebase-survey` first and wait for its report before proceeding. Survey and draft are **never parallelized**.
+If none of the three tiers match, dispatch `codebase-survey` first and wait for its report before proceeding. Survey and draft are **never parallelized**. Step 0 MUST use `ast_grep` to analyze existing patterns before drafting.
 
 ## Step -1 — brainstorming default ON
 
@@ -55,7 +55,7 @@ Repeat until Gate decides PASS or HALT:
 Draft → Critic (multi-provider fan-out) → Synthesize → Gate
 ```
 
-- **Draft** (Cycle 1): dispatch executor `sonnet` via omp `task`. Exception: ≤5 LoC changes may be drafted inline by main.
+- **Draft** (Cycle 1): dispatch `pi-oven:planner` or `pi-oven:executor` via omp `task`. ENFORCEMENT: Main dispatches a subagent for the draft research and authoring. Main MUST NOT research or draft the spec inline. Exception: ≤5 LoC changes may be drafted inline by main.
 - **Critic**: fan out to Codex + Zen GLM/Qwen simultaneously (see Cross-vendor critic).
 - **Synthesize**: merge critic outputs; categorize findings as 🔴 / 🟡 / ⚪.
 - **Gate**: evaluate cycle outcome (see Gate decision).

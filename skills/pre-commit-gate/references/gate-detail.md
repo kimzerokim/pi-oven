@@ -36,13 +36,13 @@ Preserved invariants:
 
 **Trigger**: every commit.
 
-**Procedure**: delegates to the `fresh-verifier` skill's freshness-guard sub-routine — staged files → CRG symbol reverse-refs → stale meta-doc detection → auto-fix dispatch → re-stage.
+**Procedure**: inline — staged files → CRG symbol reverse-refs → stale meta-doc detection → auto-fix dispatch → re-stage.
 
 **CRG absent**: degraded grep mode + WARN. Silent skip is forbidden.
 
 **Bypass**: `PI_OVEN_GATE05_SKIP=1` → log `Q-GATE-05-STALE` to `docs/harness/user-queue.md`, proceed.
 
-**Skill integration**: `freshness-guard` sub-skill owns the detection logic. Gate 0.5 is a wrapper that calls it and enforces FAIL-on-stale.
+**Detection**: Gate 0.5 owns the inline stale-meta-doc detection logic and enforces FAIL-on-stale (no separate skill).
 
 **Plan 1 vs Plan 3**: skill-layer in Plan 1. Plan 3 hook can re-run the grep inline before the Bash call completes.
 

@@ -6,7 +6,7 @@ model:
   - opencode-zen/claude-haiku-4-5
 thinkingLevel: medium
 mode: subagent
-tools: ["read", "search", "find", "bash", "web_search"]
+tools: ["read", "search", "find", "bash", "web_search", "lsp", "ast_grep"]
 blocked_tools: ["write", "edit", "apply_patch", "task"]
 ---
 

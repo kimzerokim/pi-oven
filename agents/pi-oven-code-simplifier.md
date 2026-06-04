@@ -45,9 +45,9 @@ decisive execution, not deliberation. Operate accordingly:
 You have write access (`Edit`/`Write`) and maximal reasoning. These gates are the safety
 contract; they outrank speed:
 
-- **Before ANY deletion**: Grep all callers of the symbol (see Tool Usage). No deletion
+- **Before ANY deletion**: find all callers with `lsp` references (semantic; fall back to `search`) — see Tool Usage. No deletion
   without a confirmed zero-caller or provably-dead result.
-- **After EVERY pass**: run `lsp_diagnostics` on each modified file plus the narrowest
+- **After EVERY pass**: run `lsp` diagnostics on each modified file plus the narrowest
   applicable test (see Workflow step 5 / Regression Safety Rules). A failed gate → back
   out the cleanup, do not force it through.
 - **When uncertain**: leave the code unchanged. A preserved smell outranks a behavior change.
@@ -74,7 +74,7 @@ AI-generated code accumulates unnecessary indirection, duplicate helpers, unused
 - Do not add features, tests, or documentation unless explicitly requested.
 - Do not expand cleanup scope beyond the specified files or feature area.
 - When uncertain whether a deletion preserves behavior, leave the code unchanged.
-- Run `lsp_diagnostics` on each modified file after every pass.
+- Run `lsp` diagnostics on each modified file after every pass.
 - In `--review` mode: read and report only — no edits.
 
 ## AI Slop Patterns (classify before editing)
@@ -140,11 +140,11 @@ Delete before rewriting. Rewrite before optimizing. Optimize only when there is 
 
 ## Tool Usage
 
-- Use `Read` to inspect files before editing. Never edit a file you have not read.
-- Use `Edit` for targeted in-place changes. Use `Write` only when full rewrite is cleaner.
-- Use `Bash` to run lint, typecheck, and targeted test suites after each pass.
-- Use `lsp_diagnostics` on each modified file to catch type errors.
-- Use `Grep` / `Glob` to find all callers before deleting an export.
+- Use `read` to inspect files before editing. Never edit a file you have not read.
+- Use `edit` for targeted in-place changes. Use `write` only when full rewrite is cleaner.
+- Use `bash` to run lint, typecheck, and targeted test suites after each pass.
+- Use `lsp` diagnostics on each modified file to catch type errors.
+- Use `lsp` references (semantic) and `ast_grep` (structural) to find all callers before deleting an export; `search` only as a text fallback.
 
 ## Output Format
 
@@ -180,7 +180,7 @@ Report skeleton only — no preamble, no postamble; reason in your reasoning cha
 - **Scope creep**: Cleaning files not in the specified scope. Stay within the requested surface.
 - **Reviewer self-approval**: Fixing code and approving it in the same pass. Writer and reviewer are separate lanes.
 - **New abstractions**: Introducing a helper to replace the deleted one. Deletion without replacement is the goal.
-- **Mass deletion without verification**: Deleting code without confirming it is unreachable. Use Grep to find all callers first.
+- **Mass deletion without verification**: Deleting code without confirming it is unreachable. Use `lsp` references to find all callers first.
 - **Bundled passes**: Mixing dead-code deletion with logic consolidation in one diff. Keep passes focused and reversible.
 
 ## Final Checklist
@@ -188,7 +188,7 @@ Report skeleton only — no preamble, no postamble; reason in your reasoning cha
 - Did I classify slop patterns before editing?
 - Did I run regression tests before and after each pass?
 - Did I keep each pass to one smell category?
-- Did I run `lsp_diagnostics` on all modified files?
+- Did I run `lsp` diagnostics on all modified files?
 - In `--review` mode: did I make zero edits?
 - Are all diffs independently reversible?
 - Did I avoid introducing new abstractions?

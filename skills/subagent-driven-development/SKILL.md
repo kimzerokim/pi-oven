@@ -14,7 +14,7 @@ Invoke when all three conditions hold:
 - Tasks are mostly independent (no tight sequential coupling)
 - Execution happens in the current session (same context, no worktree handoff)
 
-If tasks are tightly coupled or the plan has fewer than 2 tasks, use `executing-plans` inline instead.
+If tasks are tightly coupled or the plan has fewer than 2 tasks, use inline sequential execution instead.
 
 ## Per-task fresh subagent
 

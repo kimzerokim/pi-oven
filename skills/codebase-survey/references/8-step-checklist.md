@@ -10,7 +10,7 @@ All steps run inside the `explore` subagent dispatched by main. Main reads the f
 
 Before choosing any search strategy, verify what is live in the current session:
 
-- Run `lsp_servers` to confirm LSP is attached and which language servers are active.
+- Run `lsp` status to confirm LSP is attached and which language servers are active.
 - Attempt one `ast_grep_search` probe on a known symbol to confirm the tool responds.
 - Check whether Context7 MCP is reachable by calling `resolve-library-id` on a known package.
 - Record results in a one-line status table at the top of the report:
@@ -18,7 +18,7 @@ Before choosing any search strategy, verify what is live in the current session:
 | Tool | Status |
 |---|---|
 | ast_grep | ok / absent |
-| lsp_workspace_symbols | ok / absent |
+| lsp symbols | ok / absent |
 | Context7 | ok / absent |
 | CRG | ok / absent |
 
@@ -31,7 +31,7 @@ Do not proceed to Step 1 until this table is complete. The table drives every do
 Goal: find every file that is part of the blast radius before reading any of them.
 
 - **CRG configured**: call `query_graph` on the target symbol. Then call `get_impact_radius` to enumerate downstream dependents. An empty result is valid data — record it and continue.
-- **CRG absent**: run `ast_grep_search` for the target symbol name. Supplement with `lsp_workspace_symbols` to catch renamed or re-exported variants. Use grep as a last resort for string literals that are not symbols.
+- **CRG absent**: run `ast_grep_search` for the target symbol name. Supplement with `lsp symbols` to catch renamed or re-exported variants. Use grep as a last resort for string literals that are not symbols.
 - Produce a flat file list. Deduplicate. This list drives Step 2.
 
 ---
@@ -82,8 +82,8 @@ Patterns to look for:
 
 ## Step 6 — Type contracts
 
-- List all TypeScript exported types and interfaces in scope (use `lsp_document_symbols` per file).
-- For each exported type, run `lsp_find_references` to map every consumer.
+- List all TypeScript exported types and interfaces in scope (use `lsp symbols` per file).
+- For each exported type, run `lsp references` to map every consumer.
 - Flag types with zero references — candidates for removal.
 - Flag types with 5+ references — high-impact; changes require extra review.
 

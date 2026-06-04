@@ -124,7 +124,7 @@ After writing the plan file, present both options to the user:
 **Option 1 — subagent-driven-development (recommended)**
 Dispatch a `task` omp primitive for each independent task group. Each subagent receives the plan file path, its assigned task range, and the repo root. Subagents run in parallel where task dependencies allow.
 
-**Option 2 — executing-plans (inline)**
+**Option 2 — inline sequential execution**
 The current agent works through the plan sequentially, checking off each step. Use when subagent dispatch overhead exceeds the task size (single-task plans, < 50 LoC total).
 
 Default to Option 1 unless the plan contains only one task.

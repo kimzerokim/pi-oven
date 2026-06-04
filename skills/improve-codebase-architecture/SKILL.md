@@ -47,7 +47,9 @@ Classify the refactor intent before doing anything else:
 
 When in doubt, treat it as deepening and run the full process.
 
-### 1. Survey (dispatch — do not read inline)
+### 1. Survey (dispatch — Main MUST NOT investigate inline)
+
+ENFORCEMENT: Main dispatches `pi-oven:explorer` or `codebase-survey` for the architectural survey. Main MUST NOT read 5+ files inline to analyze structure.
 
 **Memory first.** Before dispatching any subagent, call `recall(query="architecture decisions and ADRs for this codebase")` to retrieve prior architecture decisions, ADRs, and previous refactor outcomes. This prevents re-litigating settled decisions and seeds the survey with known friction.
 
@@ -55,12 +57,12 @@ When in doubt, treat it as deepening and run the full process.
 
 Before exploring, read any domain glossary and the ADRs in the area being touched. If the survey will require 5+ file reads, route through `codebase-survey` rather than reading in the main session.
 
-Dispatch `pi-oven:explorer` AND `pi-oven:analyst` in parallel: the explorer walks the codebase organically and notes friction — not rigid heuristics; the analyst assesses coupling and testability. Have both report, with file + line evidence:
+Dispatch `pi-oven:explorer` AND `pi-oven:analyst` in parallel: the explorer walks the codebase organically and notes friction using `lsp references` to map coupling and `ast_grep` to detect shallow module patterns — not rigid heuristics; the analyst assesses coupling and testability. Have both report, with file + line evidence:
 
-- Where understanding one concept means bouncing between many small modules.
-- Where modules are **shallow** — interface nearly as complex as implementation.
-- Where pure functions were extracted only for testability, but real bugs hide in how they're called (no **locality**).
-- Where tightly-coupled modules leak across their seams.
+- Where understanding one concept means bouncing between many small modules (analyze call-hierarchy depth via `lsp`).
+- Where modules are **shallow** — interface nearly as complex as implementation (identify via `ast_grep` pattern matching).
+- Where pure functions were extracted only for testability, but real bugs hide in how they're called (no **locality**; trace via `lsp references`).
+- Where tightly-coupled modules leak across their seams (analyze seam usage via `lsp`).
 - Which parts are untested or hard to test through their current interface.
 
 Apply the **deletion test** to each suspect. A "yes, concentrates complexity" is the signal worth surfacing.

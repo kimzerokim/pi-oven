@@ -20,7 +20,7 @@ Do NOT do this skill's substantive work in the main context. Main's direct-actio
 
 1. **READ** — absorb the complete feedback set before reacting to any single item.
 2. **UNDERSTAND** — restate each requirement in your own words, or flag it unclear.
-3. **VERIFY** — check the claim against codebase reality (`grep`, read the callsite, run the test).
+3. **VERIFY** — check the claim against codebase reality (`search`, read the callsite via `lsp references`, run the test).
 4. **EVALUATE** — is it technically sound for THIS stack, this version, these constraints?
 5. **RESPOND** — technical acknowledgment or reasoned pushback. Never performative.
 6. **IMPLEMENT** — one item at a time, verify each before the next.
@@ -51,7 +51,7 @@ Cross-vendor codex from `spec-and-review` arrives triaged as 🔴 BLOCKER / 🟡
 
 ## YAGNI check for "do it properly"
 
-When a reviewer suggests "implement this properly" (DB layer, filters, export, full config), `grep` the codebase for actual usage first.
+When a reviewer suggests "implement this properly" (DB layer, filters, export, full config), `search` the codebase for actual usage via `lsp references` first.
 - Unused: "Nothing calls this. Remove it (YAGNI)? Or is there usage I'm missing?"
 - Used: implement properly.
 

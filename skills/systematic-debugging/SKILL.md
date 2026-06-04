@@ -58,23 +58,28 @@ When you cannot trace by hand, instrument: capture `new Error().stack` plus cont
 
 When hand-instrumentation yields low-confidence findings, or evidence conflicts across multiple plausible origins, escalate to `deep-dive` (3 parallel autonomous tracer lanes ranked by hypothesis confidence) rather than thrashing single-lane. Pass the current Phase 1 + Phase 1.5 findings as seed context so the lanes start from evidence, not from scratch.
 
-### Phase 2 — Pattern analysis
+### Phase 2 — Pattern analysis (dispatch — Main MUST NOT investigate inline)
 
-1. Find a working example of the same pattern in the codebase.
-2. Read any reference implementation **completely** — no skimming; partial understanding guarantees bugs.
-3. List every difference between working and broken, however small. "That can't matter" is a trap.
-4. Map dependencies, config, env, and assumptions.
+ENFORCEMENT: Main dispatches `pi-oven:explorer` or `pi-oven:tracer` for pattern research. Main MUST NOT read 3+ files inline to analyze patterns.
+
+1. Find a working example of the same pattern in the codebase using `search` or `ast_grep`.
+2. Use `lsp references` and `lsp definition` to map the pattern's impact radius and contract.
+3. Read any reference implementation **completely** — no skimming; partial understanding guarantees bugs.
+4. List every difference between working and broken, however small. "That can't matter" is a trap.
+5. Map dependencies, config, env, and assumptions.
 
 ### Phase 3 — Hypothesis
 
-1. State ONE hypothesis: "I think X is root cause because Y." Write it down, be specific.
+1. State ONE hypothesis: "I think X is root cause because Y." Write it down, be specific. Use `debug` (DAP debugger) to inspect live program state (variables, call stack, step-through) and verify the hypothesis against reality. Use `lsp definition` and `lsp references` to trace the hypothesis across boundaries.
 2. Test it with the **smallest possible** change. One variable at a time.
 3. Verify: worked → Phase 4. Didn't → form a NEW hypothesis, do not stack fixes.
 4. If you don't understand X, say so and research — do not pretend.
 
-### Phase 4 — Fix the root cause
+### Phase 4 — Fix the root cause (dispatch — Main MUST NOT investigate inline)
 
-1. **Failing test first** — simplest reproduction, automated. Must exist before the fix (route via `tdd-strict`).
+ENFORCEMENT: Main dispatches `pi-oven:executor` for the fix implementation and `pi-oven:tracer` for regression analysis. Main MUST NOT implement the fix or research its side effects inline.
+
+1. **Failing test first** — simplest reproduction, automated. Must exist before the fix (route via `tdd-strict`). Use `lsp diagnostics` to confirm the test fails as expected.
 2. **One fix** addressing the root cause. No "while I'm here" extras, no bundled refactor.
 3. **Verify** — test passes, nothing else broke, issue actually resolved.
 4. **If it fails, count attempts.** < 3 → return to Phase 1 with new data. **≥ 3 → STOP and question the architecture.**

@@ -26,7 +26,7 @@ Main does NOT do this skill's substantive work inline. Main's direct-action budg
 
 Before writing code, answer the following 3 questions explicitly:
 
-1. **DRY**: Does the same code already exist in the codebase? Verify with `grep -rn` + CRG `semantic_search_nodes`.
+1. **DRY**: Does the same code already exist in the codebase? Verify with `search` + `lsp references` + CRG `semantic_search_nodes`.
 2. **YAGNI**: Is this truly needed right now? Derive the minimum from the user's request.
 3. **KISS**: Is this the simplest expression? Is a shorter equivalent possible?
 
@@ -36,7 +36,7 @@ Answer all three out loud in the working notes before the first Edit or Write ca
 
 Before creating a new file / module / helper:
 
-- Confirm the existing sister-module interface (`grep` + body read) cannot absorb the logic.
+- Confirm the existing sister-module interface (`search` + `lsp references` + body read) cannot absorb the logic.
 - If it can be added to an existing module, add it there (default path).
 - A new module is approved **only** when:
   > "If complexity reappears across N callers after deletion, the module justified its existence through depth." (harness-share.md §32)

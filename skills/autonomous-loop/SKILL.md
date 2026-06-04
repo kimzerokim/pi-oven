@@ -109,7 +109,7 @@ Phase sequence — each phase must complete before the next begins:
 
 Regardless of mode, invoke skills in this order each cycle:
 
-1. `freshness-guard` — stale meta-doc check before any reads (all modes)
+1. Freshness check — stale meta-doc check before any reads (all modes); inline, same detection as pre-commit Gate 0.5 (no separate skill)
 2. `codebase-survey` — mandatory pre-planning deep read via `pi-oven:explorer` (all modes, unless survey result exists)
 3. Self-improvement sweep — if the cycle scope is self-improvement / plugin-surface (improving this harness itself), BEFORE spec/plan dispatch `pi-oven:explorer` (parallelizable across surfaces) to exhaustively sweep `skills/<skill>/SKILL.md` (cross-references + name consistency), `agents/pi-oven-<role>.md` (dispatch refs), `commands/`, and `evals/<skill>/scenarios/` (coverage gaps). Synthesize a "sweep findings" summary that MUST be passed into the planner/spec input — no partial-read plans.
 4. Broad exploration gate — if this is the first improvement scope in the run, dispatch `pi-oven:explorer` + `pi-oven:tracer` + `pi-oven:analyst` in parallel and record cross-subsystem evidence before scoping spec/plan

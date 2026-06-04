@@ -27,13 +27,13 @@ Do not skip the survey and jump directly to planning. A plan written without evi
 
 Run all steps in order inside the `explore` subagent. Do not skip steps.
 
-1. **Step 0.5 — Tool & index availability**: Confirm which MCP tools are live (`ast_grep`, `lsp_workspace_symbols`, Context7). Record what is available before choosing a search strategy.
-2. **Step 1 — Scope expansion**: Use CRG (`query_graph`, `semantic_search_nodes`, `get_impact_radius`) when configured; otherwise `ast_grep` + `lsp_workspace_symbols` + grep. Map all files touched by the target symbol or module.
+1. **Step 0.5 — Tool & index availability**: Confirm which MCP tools are live (`ast_grep`, `lsp symbols`, Context7). Record what is available before choosing a search strategy.
+2. **Step 1 — Scope expansion**: Use CRG (`query_graph`, `semantic_search_nodes`, `get_impact_radius`) when configured; otherwise `ast_grep` + `lsp symbols` + grep. Use `lsp references` (recursive) to map all call sites and reverse dependencies. Use `lsp hover` for type-signature grounding and `lsp definition` for jumping across boundaries. Map all files touched by the target symbol or module.
 3. **Step 2 — Deep read + history**: Read each in-scope file in parallel. Run `git log --oneline -20 -- <file>` on files with recent churn.
 4. **Step 3 — Library detection**: Scan imports and `package.json` / `pyproject.toml`. List every external dependency in the scope.
 5. **Step 4 — Library knowledge**: For each external dependency, query Context7 first → matching pi-oven-* skill → WebSearch fallback. Record the source used.
 6. **Step 5 — Pattern extraction**: Identify naming, error-handling, async, and state-management patterns in the scope. Cite file + line for each.
-7. **Step 6 — Type contracts**: List all exported TypeScript types and interfaces. Run `lsp_find_references` on each to map reverse dependencies.
+7. **Step 6 — Type contracts**: List all exported TypeScript types and interfaces. Use `lsp hover` to extract full signatures. Run `lsp references` on each to map reverse dependencies and call-hierarchy depth.
 8. **Step 7 — Env vars**: search for `process.env` and `import.meta.env`. Cross-reference against `.env.example`. Flag any used-but-undocumented vars.
 9. **Step 8 — Report**: Write a structured markdown report to `docs/harness/surveys/<YYYY-MM-DD>-<topic>-survey.md`. Include a verbatim `code-review-graph status` block if CRG is configured.
 
@@ -55,8 +55,8 @@ The subagent returns a 200-word evidence summary in its final message. Main agen
 ## CRG / grep
 
 - **CRG configured**: use `query_graph` + `semantic_search_nodes` + `get_impact_radius`. Never silently fall back to grep when CRG is configured but returns empty — an empty CRG result is data, not an error.
-- **CRG absent**: use `ast_grep_search` → `lsp_workspace_symbols` → grep in that order.
-- pi-oven maps CRG roles as follows: `query_graph` → `ast_grep_search`, `semantic_search_nodes` → `lsp_workspace_symbols`, `get_impact_radius` → recursive grep.
+ - **CRG absent**: use `ast_grep_search` → `lsp symbols` → `lsp references` → `lsp hover` → grep in that order. Use `lsp references` to trace call chains and `lsp hover` for type inspection.
+ - pi-oven maps CRG roles as follows: `query_graph` → `ast_grep_search`, `semantic_search_nodes` → `lsp symbols`, `get_impact_radius` → recursive `lsp references`.
 
 ## Report path
 

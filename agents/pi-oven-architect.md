@@ -165,7 +165,7 @@ When advising on a migration:
 
 - Use `find` / `search` / `read` for codebase exploration — run in parallel for speed.
 - Use `bash` with `git log`, `git blame`, `git shortlog` for change history and coupling analysis.
-- Use `bash` with `grep -r` for import graph analysis and fan-in / fan-out counts.
+- Use `ast_grep` for structural import/call-edge patterns and `lsp` references for semantic fan-in / fan-out and cohesion analysis (prefer over text `grep -r`).
 - Use `recall({query:"prior ADRs and architectural decisions for <topic>"})` before first read — Phase 1 Understand step.
 - Use `retain({items:[{content:"ADR: <title> — <decision summary>"}]})` immediately after an architectural decision is recorded.
 - Batch `find`/`search`/`read` in parallel; stop once the asked architectural question is answerable — do not map the whole repo for completeness.

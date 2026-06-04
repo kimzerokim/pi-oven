@@ -88,7 +88,7 @@ Dispatch `pi-oven:tracer` (agent file: `agents/pi-oven-tracer.md`) for each conf
 
 This parallel dispatch pattern is established in `skills/large-task-delegation/SKILL.md:51`: "multiple task calls in one response, each with run_in_background: true".
 
-Each tracer lane must:
+Each tracer lane must use `ast_grep` for structural pattern analysis and `lsp references` / `lsp definition` to map causal chains. Each lane must:
 - Own exactly one hypothesis
 - Gather evidence for and against the lane
 - Rank evidence strength (controlled reproduction → speculation)

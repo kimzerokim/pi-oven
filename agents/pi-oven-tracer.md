@@ -6,7 +6,7 @@ model:
   - opencode-zen/claude-sonnet-4-6
 thinkingLevel: high
 mode: subagent
-tools: ["read", "search", "find", "bash"]
+tools: ["read", "search", "find", "bash", "lsp", "ast_grep"]
 blocked_tools: ["write", "edit", "apply_patch", "task"]
 ---
 

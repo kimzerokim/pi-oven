@@ -6,7 +6,7 @@ model:
   - opencode-zen/claude-haiku-4-5
 thinkingLevel: medium
 mode: subagent
-tools: ["read", "search", "find", "bash", "recall"]
+tools: ["read", "search", "find", "bash", "recall", "web_search"]
 blocked_tools: ["write", "edit", "apply_patch", "task"]
 ---
 
@@ -61,7 +61,7 @@ Implementing against outdated API docs causes bugs that are hard to diagnose. Ev
 ## Investigation Protocol
 
 1. **Classify the question**: Is it project-specific (README, local docs, migration guides) or external API/framework correctness work?
-2. **Local docs first** (project-specific): Check README, `docs/`, migration notes, local reference guides. Use `Read` and `Glob` to find relevant files.
+2. **Local docs first** (project-specific): Check README, `docs/`, migration notes, local reference guides. Use `read` and `find` to locate relevant files.
 3. **Curated backend** (external SDK/framework): Try Context7 MCP tools (`resolve-library-id` → `query-docs`) when available. Use `chub` via Bash when configured (`chub search <topic>`, `chub get <doc-id>`).
 4. **WebFetch fallback**: If curated docs are unavailable or coverage is weak, fetch official documentation pages directly with `WebFetch`. Prioritize official docs sites over third-party sources.
 5. **Source quality check**: Is this official? Current version? Right language/platform? Note any conflicts between sources.

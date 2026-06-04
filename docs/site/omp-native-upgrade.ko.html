@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>pi-oven — OMP-native 업그레이드 스냅샷</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --bg-alt: #171a21;
+    --card: #1d2230;
+    --line: #2b3244;
+    --text: #edf2f7;
+    --muted: #a8b3c7;
+    --faint: #7b879b;
+    --accent: #66b3ff;
+    --accent-2: #7af0c8;
+    --warn: #ffcf70;
+    --ok: #8fe388;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    --shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, #0f1115 0%, #111521 100%);
+    color: var(--text);
+    font: 15px/1.65 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font: 0.9em var(--mono); }
+  .shell { font-family: var(--mono); }
+  .page { max-width: 1120px; margin: 0 auto; padding: 0 24px 88px; }
+  .hero {
+    padding: 64px 0 28px;
+    background:
+      radial-gradient(circle at top left, rgba(102,179,255,0.16), transparent 35%),
+      radial-gradient(circle at top right, rgba(122,240,200,0.12), transparent 34%);
+  }
+  .eyebrow {
+    margin: 0 0 12px;
+    color: var(--faint);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  h1 {
+    margin: 0;
+    font-size: 38px;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+  .hero p {
+    max-width: 840px;
+    color: var(--muted);
+    margin: 14px 0 0;
+    font-size: 16px;
+  }
+  .meta, .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 20px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    padding: 5px 12px;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+  .chip b { color: var(--text); }
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    backdrop-filter: blur(14px);
+    background: rgba(15,17,21,0.78);
+    border-top: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--line);
+  }
+  nav .inner {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 10px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  nav a {
+    color: var(--muted);
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+  }
+  nav a:hover {
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    text-decoration: none;
+  }
+  section { padding-top: 44px; }
+  h2 {
+    margin: 0 0 10px;
+    font-size: 26px;
+    letter-spacing: -0.02em;
+  }
+  h3 {
+    margin: 0 0 8px;
+    font-size: 17px;
+  }
+  .lead {
+    max-width: 840px;
+    color: var(--muted);
+    margin: 0 0 18px;
+  }
+  .grid {
+    display: grid;
+    gap: 16px;
+  }
+  .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: var(--shadow);
+  }
+  .card p, .card li { color: var(--muted); }
+  .kpi {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+  .kpi small {
+    display: block;
+    margin-top: 6px;
+    color: var(--faint);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .note {
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--accent);
+    border-radius: 12px;
+    background: rgba(102,179,255,0.08);
+    color: var(--text);
+    margin: 18px 0;
+  }
+  .note.warn {
+    border-left-color: var(--warn);
+    background: rgba(255,207,112,0.08);
+  }
+  .note.ok {
+    border-left-color: var(--ok);
+    background: rgba(143,227,136,0.08);
+  }
+  ul, ol { margin: 10px 0 0; padding-left: 20px; }
+  li { margin: 6px 0; }
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(255,255,255,0.03);
+    box-shadow: var(--shadow);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 760px;
+  }
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 13px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  th {
+    background: rgba(255,255,255,0.03);
+    color: var(--text);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  .path {
+    display: inline-block;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    color: var(--accent-2);
+    padding: 2px 8px;
+    font: 12.5px var(--mono);
+  }
+  pre {
+    margin: 0;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: #0b0d12;
+    padding: 16px 18px;
+    color: #d7e2f0;
+    font: 13px/1.6 var(--mono);
+    box-shadow: var(--shadow);
+  }
+  footer {
+    margin-top: 44px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    color: var(--faint);
+    font-size: 12.5px;
+  }
+  @media (max-width: 980px) {
+    .grid.cols-4, .grid.cols-3 { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 720px) {
+    .page { padding: 0 18px 72px; }
+    nav .inner { padding: 10px 18px; }
+    h1 { font-size: 31px; }
+    .grid.cols-4, .grid.cols-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="page">
+    <p class="eyebrow">docs/site · repo-local snapshot · no citations</p>
+    <h1>pi-oven OMP-native 업그레이드 스냅샷</h1>
+    <p>현재 저장소 기준으로 pi-oven은 omp 위에서 동작하는 에이전트/스킬 플러그인으로 정리되어 있다. 핵심은 <b>역할 전문화</b>를 유지한 채 omp의 네이티브 툴면(<code>debug</code>, <code>eval</code>, <code>browser</code>, <code>read</code>, <code>recall</code>, <code>retain</code>, <code>lsp</code>, <code>ast_grep</code>)을 직접 쓰도록 바꾼 점이다.</p>
+    <div class="meta">
+      <span class="chip"><b>24</b> agents</span>
+      <span class="chip"><b>22</b> skills</span>
+      <span class="chip"><b>2</b> profiles</span>
+      <span class="chip"><b>5</b> memory-injected entry points</span>
+      <span class="chip">작성 기준 <b>2026-06-03</b></span>
+    </div>
+  </div>
+</header>
+
+<nav>
+  <div class="inner">
+    <a href="#summary">요약</a>
+    <a href="#upgrade">무엇이 바뀌었나</a>
+    <a href="#runtime">런타임 흐름</a>
+    <a href="#tools">킬러 툴</a>
+    <a href="#sot">소스 오브 트루스</a>
+    <a href="#verify">검증</a>
+  </div>
+</nav>
+
+<main class="page">
+  <section id="summary">
+    <h2>한눈 요약</h2>
+    <p class="lead">README, setup 흐름, 업그레이드 설계 문서를 합쳐 보면 현재 pi-oven은 “다수의 전문 역할” 위에 “omp 네이티브 실행 능력”을 얹는 구조다. 예전 비교 조사 문서의 결론이 실제 제품 구조로 승격된 상태다.</p>
+    <div class="grid cols-4">
+      <article class="card">
+        <div class="kpi">24<small>AGENTS</small></div>
+        <p>모든 역할이 <code>pi-oven:</code> 네임스페이스 아래 개별 markdown 파일로 존재한다. 각 파일이 모델과 툴 allowlist의 단일 진실원이다.</p>
+      </article>
+      <article class="card">
+        <div class="kpi">22<small>SKILLS</small></div>
+        <p>브레인스토밍, TDD, 코드베이스 서베이, 사양 작성, 프리커밋 게이트, 메모리 디서플린까지 워크플로우를 스킬로 묶는다.</p>
+      </article>
+      <article class="card">
+        <div class="kpi">A / B<small>PROFILES</small></div>
+        <p>Profile A는 release 기본값, Profile B는 Anthropic Pro/Max opt-in이다. setup wizard가 감지된 provider에 맞게 고른다.</p>
+      </article>
+      <article class="card">
+        <div class="kpi">Native<small>OMP TOOLS</small></div>
+        <p>Claude Code 이름 대신 omp 네이티브 이름을 직접 사용한다. 그래서 DAP 디버거, REPL, 브라우저, LSP, 메모리를 실제로 호출할 수 있다.</p>
+      </article>
+    </div>
+    <div class="note ok"><b>핵심 변화:</b> “omp 위에서 돌지만 omp 툴을 못 쓰는 플러그인”이 아니라, “역할 전문화와 omp 툴 능력을 함께 가진 플러그인”으로 정리됐다.</div>
+  </section>
+
+  <section id="upgrade">
+    <h2>무엇이 바뀌었나</h2>
+    <p class="lead">업그레이드 설계의 성공 기준을 제품 관점으로 압축하면 아래 여섯 줄이다.</p>
+    <div class="grid cols-3">
+      <article class="card">
+        <h3>1. 툴 이름 정렬</h3>
+        <p><code>Read/Grep/Glob/WebFetch/Bash</code> 계열 지시를 omp 네이티브 툴명으로 치환했다. 에이전트 frontmatter와 스킬/커맨드 설명이 같은 언어를 쓴다.</p>
+      </article>
+      <article class="card">
+        <h3>2. 킬러 툴 직접 지시</h3>
+        <p>디버거는 <code>debug</code>, 데이터 역할은 <code>eval</code>, QA/디자인은 <code>browser</code>, 문서/리서치는 <code>read</code> + <code>web_search</code> 조합을 실제 호출 대상으로 명시한다.</p>
+      </article>
+      <article class="card">
+        <h3>3. 하이브리드 역할</h3>
+        <p>기존 pi-oven의 역할 전문화는 유지하고, omp 쪽의 battle-tested prompt 패턴을 흡수해 대응 역할을 강화했다.</p>
+      </article>
+      <article class="card">
+        <h3>4. 신규 역할 2개</h3>
+        <p><b>deep-researcher</b>와 <b>data-runner</b>를 추가했다. 전자는 메모리 중심 리서치, 후자는 REPL 중심 실행 역할이다.</p>
+      </article>
+      <article class="card">
+        <h3>5. 메모리 디서플린 상시 주입</h3>
+        <p><b>memory-discipline</b> 스킬이 5개 진입점에 항상 적용된다. 회상/보존이 워크플로우의 예외가 아니라 기본 동작이다.</p>
+      </article>
+      <article class="card">
+        <h3>6. 병렬 협업 보강</h3>
+        <p>병렬 fan-out 지점에는 <code>irc</code> 협업 문맥이 들어간다. 역할을 나누되 완전히 고립시키지는 않는다.</p>
+      </article>
+    </div>
+    <div class="note warn"><b>의미:</b> 단순 복사/브랜딩 변경이 아니라, “어떤 역할이 어떤 omp 도구를 언제 호출해야 하는가”를 재정의한 업그레이드다.</div>
+  </section>
+
+  <section id="runtime">
+    <h2>런타임 흐름</h2>
+    <p class="lead">처음 설치부터 실제 사용까지의 주 경로는 setup wizard → direct dispatch → skill discovery 순서다.</p>
+    <div class="grid cols-3">
+      <article class="card">
+        <h3>Setup wizard</h3>
+        <ol>
+          <li>기본 언어를 묻는다.</li>
+          <li>인증된 provider를 감지한다.</li>
+          <li>Profile A/B를 제안한다.</li>
+          <li>선택을 플러그인 설정과 24개 agent 파일에 반영한다.</li>
+          <li>7개 MUST-tier 역할 smoke validation을 돌린다.</li>
+        </ol>
+      </article>
+      <article class="card">
+        <h3>Direct dispatch</h3>
+        <p>세션 안에서 <code>pi-oven:explorer</code>, <code>pi-oven:debugger</code> 같은 역할을 직접 호출한다. 실제 로딩 파일은 <span class="path">agents/pi-oven-*.md</span> 이다.</p>
+      </article>
+      <article class="card">
+        <h3>Skill activation</h3>
+        <p>대화에 <code>tdd</code>, <code>spec 잡자</code>, <code>deep dive</code>, <code>commit</code> 같은 트리거가 나오면 대응 스킬이 자동으로 문맥을 주입한다.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="tools">
+    <h2>대표 킬러 툴 매핑</h2>
+    <p class="lead">README에 명시된 현재 상태와 업그레이드 설계의 역할 배치를 합치면, 아래 툴들이 이번 구조의 핵심이다.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>툴</th>
+            <th>무엇을 하게 되나</th>
+            <th>대표 역할</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>debug</code></td>
+            <td>DAP 세션을 열고 중단점, 스택, 변수까지 실제 런타임 상태를 본다.</td>
+            <td>debugger, executor, test-engineer</td>
+          </tr>
+          <tr>
+            <td><code>eval</code></td>
+            <td>Python / JS REPL에서 데이터를 직접 계산하고 상태를 유지한다.</td>
+            <td>analyst, data-runner, test-engineer</td>
+          </tr>
+          <tr>
+            <td><code>browser</code></td>
+            <td>실브라우저 상호작용과 접근성 스냅샷 기반 검증을 한다.</td>
+            <td>qa-tester, designer, test-engineer</td>
+          </tr>
+          <tr>
+            <td><code>read</code> + <code>web_search</code></td>
+            <td>URL, PDF, GitHub, 외부 문서를 같은 읽기 표면으로 다룬다.</td>
+            <td>document-specialist, librarian, explorer</td>
+          </tr>
+          <tr>
+            <td><code>recall</code> / <code>retain</code> / <code>reflect</code></td>
+            <td>이전 조사, 결정, 합성 결과를 기억하고 재사용한다.</td>
+            <td>deep-researcher, oracle, planner, document-specialist</td>
+          </tr>
+          <tr>
+            <td><code>lsp</code> / <code>ast_grep</code></td>
+            <td>심볼 단위 탐색과 구조 기반 검색으로 텍스트 치환보다 안전하게 작업한다.</td>
+            <td>code-reviewer, security-reviewer, librarian</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="sot">
+    <h2>소스 오브 트루스</h2>
+    <p class="lead">빠르게 길을 잃지 않으려면 파일 책임을 먼저 고정해서 보는 편이 낫다.</p>
+    <div class="grid cols-3">
+      <article class="card">
+        <h3>에이전트 정의</h3>
+        <p><span class="path">agents/pi-oven-*.md</span></p>
+        <ul>
+          <li>role prompt</li>
+          <li>model / effort</li>
+          <li>tool whitelist</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h3>스킬 정의</h3>
+        <p><span class="path">skills/*/SKILL.md</span></p>
+        <ul>
+          <li>auto-activation trigger</li>
+          <li>workflow discipline</li>
+          <li>reference subfiles</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h3>설정/검증 스크립트</h3>
+        <p><span class="path">scripts/pi-oven-setup.ts</span><br /><span class="path">scripts/lint-agents.ts</span><br /><span class="path">scripts/lint-skills.ts</span></p>
+        <ul>
+          <li>profile rewrite</li>
+          <li>agent drift detection</li>
+          <li>hard validation</li>
+        </ul>
+      </article>
+    </div>
+    <div class="chips">
+      <span class="chip">overview: <b>README.md</b></span>
+      <span class="chip">project contract: <b>CLAUDE.md</b></span>
+      <span class="chip">design: <b>docs/plans/2026-06-04-agents-omp-native-upgrade-design.md</b></span>
+      <span class="chip">plan: <b>docs/plans/2026-06-04-agents-omp-native-upgrade-plan.md</b></span>
+    </div>
+  </section>
+
+  <section id="verify">
+    <h2>검증 커맨드</h2>
+    <p class="lead">업그레이드 설계의 성공 기준에 맞춘 기본 검증 세트다.</p>
+    <pre class="shell">bun run check
+bun run lint:agents
+bun run lint:skills
+bun run build
+bun test</pre>
+    <div class="note"><b>설명:</b> 타입체크, agent/skill 규칙, 플러그인 번들 빌드, 테스트까지 한 번에 확인한다. 빠른 스팟체크 대신 이 세트를 기준선으로 두는 문서다.</div>
+  </section>
+
+  <footer>
+    Repo-local snapshot only. 외부 인용 없이 현재 저장소 문서와 스크립트 기준으로 정리했다.
+  </footer>
+</main>
+</body>
+</html>

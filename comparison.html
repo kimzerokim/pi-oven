@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>oh-my-pi(OMP) ⟷ pi-oven 에이전트 능력 비교</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1c2230;
+    --border: #2d333b;
+    --text: #e6edf3;
+    --muted: #9aa4b2;
+    --faint: #6e7681;
+    --omp: #e3b341;       /* OMP = 따뜻한 골드 */
+    --omp-dim: #4a3f23;
+    --pi: #2ea88a;        /* pi-oven = 틸 */
+    --pi-dim: #1f3b36;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --no: #f85149;
+    --na: #6e7681;
+    --link: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    line-height: 1.65;
+    font-size: 15.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 120px; }
+  code, .mono { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace; font-size: 0.88em; }
+
+  /* ---- header ---- */
+  header.hero {
+    padding: 64px 24px 40px;
+    border-bottom: 1px solid var(--border);
+    background:
+      radial-gradient(900px 300px at 15% -10%, rgba(227,179,65,0.10), transparent 60%),
+      radial-gradient(900px 300px at 85% -10%, rgba(46,168,138,0.10), transparent 60%);
+  }
+  header.hero .inner { max-width: 1180px; margin: 0 auto; }
+  .eyebrow { color: var(--faint); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 10px; }
+  h1 { font-size: 34px; line-height: 1.2; margin: 0 0 14px; font-weight: 750; letter-spacing: -0.01em; }
+  h1 .omp { color: var(--omp); }
+  h1 .pi { color: var(--pi); }
+  .sub { color: var(--muted); max-width: 780px; font-size: 16px; }
+  .meta-row { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { font-size: 12.5px; padding: 4px 11px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: var(--surface); }
+  .pill b { color: var(--text); font-weight: 650; }
+
+  /* ---- nav ---- */
+  nav.toc {
+    position: sticky; top: 0; z-index: 30;
+    background: rgba(13,17,23,0.86); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    padding: 11px 24px;
+  }
+  nav.toc .inner { max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 6px 4px; }
+  nav.toc a { color: var(--muted); text-decoration: none; font-size: 13px; padding: 4px 10px; border-radius: 7px; white-space: nowrap; }
+  nav.toc a:hover { color: var(--text); background: var(--surface-2); }
+
+  /* ---- section ---- */
+  section { padding-top: 56px; }
+  h2 { font-size: 25px; margin: 0 0 6px; font-weight: 720; letter-spacing: -0.01em; }
+  h2 .num { color: var(--faint); font-weight: 600; margin-right: 10px; font-size: 18px; }
+  .lead { color: var(--muted); margin: 0 0 22px; max-width: 860px; }
+  h3 { font-size: 18px; margin: 30px 0 10px; font-weight: 680; }
+
+  a.ext { color: var(--link); text-decoration: none; }
+  a.ext:hover { text-decoration: underline; }
+
+  /* ---- callouts ---- */
+  .callout { border: 1px solid var(--border); border-left-width: 3px; border-radius: 10px; padding: 16px 18px; margin: 18px 0; background: var(--surface); }
+  .callout.key { border-left-color: var(--omp); background: linear-gradient(180deg, rgba(227,179,65,0.06), transparent); }
+  .callout.fix { border-left-color: var(--pi); background: linear-gradient(180deg, rgba(46,168,138,0.06), transparent); }
+  .callout.warn { border-left-color: var(--no); background: linear-gradient(180deg, rgba(248,81,73,0.06), transparent); }
+  .callout h4 { margin: 0 0 8px; font-size: 15px; }
+  .callout p { margin: 6px 0; }
+  .callout p:last-child { margin-bottom: 0; }
+
+  /* ---- tables ---- */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; margin: 18px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 11px 13px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--surface-2); color: var(--text); font-weight: 650; font-size: 12.5px; letter-spacing: .02em; position: sticky; top: 0; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.018); }
+  td.role, td.feat { font-weight: 600; white-space: nowrap; }
+  .yes { color: var(--ok); font-weight: 700; }
+  .partial { color: var(--warn); font-weight: 700; }
+  .nope { color: var(--no); font-weight: 700; }
+  .nai { color: var(--na); }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 5px; border: 1px solid var(--border); color: var(--muted); margin-right: 4px; }
+  .tag.omp { color: var(--omp); border-color: var(--omp-dim); background: rgba(227,179,65,0.08); }
+  .tag.pi { color: var(--pi); border-color: var(--pi-dim); background: rgba(46,168,138,0.08); }
+  .m { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  /* ---- code ---- */
+  pre {
+    background: #0b0e14; border: 1px solid var(--border); border-radius: 10px;
+    padding: 15px 16px; overflow-x: auto; font-size: 13px; line-height: 1.6; margin: 14px 0;
+  }
+  pre .c { color: var(--faint); }      /* comment */
+  pre .t { color: var(--omp); }        /* tool name */
+  pre .s { color: #7ee787; }           /* string */
+  pre .k { color: #ff7b72; }           /* keyword */
+
+  /* ---- feature cards ---- */
+  .grid { display: grid; gap: 14px; margin: 18px 0; }
+  .grid.two { grid-template-columns: 1fr 1fr; }
+  .card { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: var(--surface); }
+  .card h4 { margin: 0 0 6px; font-size: 15.5px; }
+  .card.omp-c { border-top: 2px solid var(--omp); }
+  .card.pi-c { border-top: 2px solid var(--pi); }
+  .card ul { margin: 8px 0 0; padding-left: 18px; }
+  .card li { margin: 3px 0; color: var(--muted); }
+  .card li b { color: var(--text); font-weight: 600; }
+
+  ul.clean { padding-left: 20px; }
+  ul.clean li { margin: 5px 0; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+  hr.soft { border: none; border-top: 1px solid var(--border); margin: 48px 0 0; }
+  .foot { color: var(--faint); font-size: 12.5px; margin-top: 40px; text-align: center; }
+
+  @media (max-width: 760px) {
+    .grid.two { grid-template-columns: 1fr; }
+    h1 { font-size: 27px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="inner">
+    <p class="eyebrow">에이전트 능력 비교 · agent-upgrade 사전조사</p>
+    <h1><span class="omp">oh-my-pi</span> 의 킬러 피쳐 ⟷ <span class="pi">pi-oven</span> 22 에이전트</h1>
+    <p class="sub">pi-oven은 omp <em>위에서</em> 도는 플러그인이다. 그런데 omp가 박스에 내장한 18개 킬러 피쳐 —
+    real debugger, arxiv PDF read, 14-프로바이더 web_search, Python/JS REPL, real browser, 큐레이션 메모리 —
+    를 pi-oven 에이전트 프롬프트는 거의 호출하지 못한다. <b>무엇이 가능/불가능하고, omp는 그걸 어떻게 트리거하며,
+    우리는 어디를 고쳐야 하는지</b>를 한눈에 정리했다.</p>
+    <div class="meta-row">
+      <span class="pill">소스: <b>oh-my-pi 15.8.3</b> · README 18 features</span>
+      <span class="pill">빌트인 툴 <b>30개</b> registry 확인</span>
+      <span class="pill">pi-oven <b>22</b> 에이전트 전수</span>
+      <span class="pill">작성 <b>2026-06-03</b></span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="inner">
+    <a href="#tldr">TL;DR</a>
+    <a href="#root">근본 원인</a>
+    <a href="#killer">18 킬러피쳐</a>
+    <a href="#howto">omp 호출 문법</a>
+    <a href="#tools">툴 무기고 30</a>
+    <a href="#omp-agents">OMP 에이전트 7</a>
+    <a href="#pi-agents">pi-oven 22</a>
+    <a href="#matrix">능력 매트릭스</a>
+    <a href="#gap">미활용 매핑</a>
+    <a href="#roadmap">강화 후보</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<!-- ============ TL;DR ============ -->
+<section id="tldr">
+  <h2><span class="num">00</span>TL;DR — 한 줄 결론</h2>
+  <div class="callout key">
+    <h4>📌 두 시스템은 직교(orthogonal)한다</h4>
+    <p><b class="m" style="color:var(--pi)">pi-oven의 강점</b> = <b>역할 전문화 + 모델 다양성</b>. security-reviewer(OWASP·STRIDE),
+    test-engineer(TDD), verifier, tracer, code-simplifier, metis, git-master 등 omp에 <em>없는</em> 전용 역할 다수.
+    22개 역할을 6모델·3프로바이더(anthropic·openai-codex·opencode-zen)에 정교하게 매핑.</p>
+    <p><b style="color:var(--omp)">omp의 강점</b> = <b>툴 능력(capability)</b>. 에이전트 수는 7개로 적지만, 그 에이전트들이
+    쥐는 30개 네이티브 툴 — <code>debug</code>(DAP), <code>read</code>(arxiv/PDF), <code>web_search</code>(14 backend),
+    <code>eval</code>(REPL), <code>browser</code>(Chromium), <code>retain/recall/reflect</code>(메모리), <code>irc</code> — 이
+    압도적이다.</p>
+  </div>
+  <div class="callout fix">
+    <h4>🎯 그래서 강화의 최대 레버는 "새 모델"이 아니라 "이미 깔린 omp 툴을 에이전트가 호출하게 만들기"</h4>
+    <p>pi-oven 22 에이전트 중 omp의 킬러 툴(<code>debug</code>·<code>eval</code>·<code>browser</code>·<code>read</code>-URL·
+    <code>retain</code>·<code>irc</code>·<code>checkpoint</code>)을 프롬프트에서 명시 활용하는 에이전트는 <b>사실상 0개</b>.
+    대부분은 코드 변경 없이 <b>frontmatter 툴 allowlist + 프롬프트 한 문단</b>만 고치면 즉시 켜진다.</p>
+  </div>
+</section>
+
+<!-- ============ 근본 원인 ============ -->
+<section id="root">
+  <h2><span class="num">01</span>근본 원인 — 툴 이름이 어긋나 있다</h2>
+  <p class="lead">omp의 빌트인 툴 registry는 전부 <b>소문자 네이티브 이름</b>이다. pi-oven 에이전트 frontmatter는
+  <b>대문자 Claude Code 이름</b>(Read/Grep/Glob/WebFetch)을 쓴다. omp 소스에서 둘을 잇는 자동 alias는 확인되지 않았다.
+  즉 <code>web_search</code>·<code>debug</code>·<code>eval</code>·<code>browser</code>·<code>retain</code> 같은 킬러 툴은
+  pi-oven 에이전트의 allowlist에 <b>이름조차 올라가 있지 않다</b>.</p>
+
+  <div class="grid two">
+    <div class="card omp-c">
+      <h4 style="color:var(--omp)">omp 네이티브 registry (30, 소문자)</h4>
+      <p class="small m"><code>read · bash · edit · ast_grep · ast_edit · debug · eval · ssh · github · find · search · lsp · inspect_image · browser · checkpoint · rewind · task · job · irc · todo_write · web_search · search_tool_bm25 · write · memory_edit · retain · recall · reflect · render_mermaid · ask</code></p>
+    </div>
+    <div class="card pi-c">
+      <h4 style="color:var(--pi)">pi-oven 에이전트가 실제로 선언한 툴</h4>
+      <p class="small m">거의 모든 read-only 역할: <code>["Read","Grep","Glob","Bash"]</code> (+일부 <code>WebFetch</code>)<br/>
+      쓰기 역할: <code>["*"]</code> (전부 허용이지만 프롬프트가 네이티브 킬러 툴을 <em>언급하지 않음</em> → 안 씀)<br/>
+      <code>blocked_tools</code>: <code>["Write","Edit","apply_patch","task"]</code></p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <h4>⚠️ 두 가지 실패 모드</h4>
+    <p><b>(A) 이름이 allowlist에 없다</b> — <code>web_search</code>/<code>debug</code>/<code>eval</code>/<code>browser</code>/<code>retain</code>은
+    Claude Code에 대응 이름이 없어, <code>["Read","Grep","Glob","Bash"]</code>만 선언한 librarian·analyst·explorer 등은
+    이 툴을 <b>받지도 못한다</b>.</p>
+    <p><b>(B) 받아도 모른다</b> — debugger·qa-tester·executor는 <code>["*"]</code>라 <code>debug</code>/<code>browser</code>/<code>eval</code>을
+    <em>받기는</em> 한다. 그런데 프롬프트가 "정적으로 코드 읽고 추론하라"고만 가르쳐서, 실제 디버거를 launch하거나
+    브라우저를 띄우는 동작을 <b>한 번도 하지 않는다</b>. ← 사용자가 지적한 "real debugger 못 쓴다"의 정체.</p>
+  </div>
+
+  <div class="callout fix">
+    <h4>🧭 방향은 명확하다 — pi-oven은 omp 전용이다</h4>
+    <p>CLAUDE.md가 못박듯 pi-oven은 <b>omp 네이티브 워크플로우</b>다 (Claude Code interop은 by-product, 유지 안 함).
+    따라서 Claude Code 툴명을 보존할 이유가 전혀 없다. <b>에이전트(22) · 스킬(21) · 커맨드 · 워크플로우</b>의 모든 툴 참조를
+    <code>Read/Grep/Glob/WebFetch/Bash</code> → <code>read/search/find/web_search/bash</code>로 치환하고, 킬러 툴
+    (<code>debug/eval/browser/retain/recall</code>)을 역할별 allowlist에 올리는 <b>전면 전환</b>이 정공법이다.
+    <span class="m small">(전환 시 lint-agents/lint-skills 검증 규칙도 omp 네이티브 툴명 기준으로 함께 갱신 필요 — 스펙 단계 조사 항목.)</span></p>
+  </div>
+</section>
+
+<!-- ============ 18 킬러피쳐 ============ -->
+<section id="killer">
+  <h2><span class="num">02</span>omp 18 킬러 피쳐 (README) — 무엇 · 트리거 · pi-oven 활용</h2>
+  <p class="lead">omp README의 "batteries included" 18개 항목 전부. <b>트리거</b> 칸은 omp에서 그 기능이 실제로 어떻게
+  호출되는지, <b>활용</b> 칸은 pi-oven 에이전트가 그걸 쓰는지다.</p>
+  <div class="legend">
+    <span><span class="yes">●</span> 활용</span>
+    <span><span class="partial">◐</span> 부분/우회</span>
+    <span><span class="nope">○</span> 미활용</span>
+    <span><span class="nai">—</span> 해당없음(omp 자체 레이어)</span>
+  </div>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th style="width:38px">#</th><th>킬러 피쳐</th><th>무엇</th><th>omp 트리거</th><th style="width:64px">pi-oven</th></tr></thead>
+    <tbody>
+      <tr><td>01</td><td class="feat">Code execution</td><td>Python(IPython)·JS(Bun) REPL. 셀 상태 영속, subagent와 변수 공유</td><td><code>eval(cells=[{language,code}])</code></td><td class="nope">○</td></tr>
+      <tr><td>02</td><td class="feat">LSP on every write</td><td>모든 edit/write 직후 LSP 진단 자동 표출 — 깨진 타입 즉시 인지</td><td><code>edit/write</code> → <code>lsp</code> 자동</td><td class="partial">◐</td></tr>
+      <tr><td>03</td><td class="feat">Real debugger</td><td>DAP 디버거. 중단점·스텝·스택·변수·표현식 평가. gdb/lldb/debugpy/dlv</td><td><code>debug(action:"launch"…)</code></td><td class="nope">○</td></tr>
+      <tr><td>04</td><td class="feat">Stream rules</td><td>정규식 트리거로 시점 기반 컨텍스트를 스트림에 주입(time-traveling)</td><td>설정 <code>rules</code> + <code>rule://</code></td><td class="nope">○</td></tr>
+      <tr><td>05</td><td class="feat">First-class subagents</td><td>병렬 dispatch + 격리(worktree/FUSE/ProjFS) + async job + irc 통신</td><td><code>task(agent, tasks[], isolated?)</code></td><td class="partial">◐</td></tr>
+      <tr><td>06</td><td class="feat">Read a pdf on arxiv</td><td>arxiv/PDF/GitHub/SO/Reddit/NPM URL → 앵커 유지 클린 마크다운. 로컬 파일과 동일 surface</td><td><code>read(path="https://…")</code></td><td class="nope">○</td></tr>
+      <tr><td>07</td><td class="feat">Native (even Windows)</td><td>~27k LOC Rust 네이티브. FUSE/ProjFS, markit 변환기</td><td>—</td><td class="nai">—</td></tr>
+      <tr><td>08</td><td class="feat">Review w/ verdict</td><td>P0–P3 우선순위 + correct/incorrect 판정 + cross-boundary 추적</td><td><code>reviewer</code> + <code>report_finding</code></td><td class="partial">◐</td></tr>
+      <tr><td>09</td><td class="feat">Hashline edit</td><td>라인번호 대신 콘텐츠 해시 앵커(<code>¶PATH#TAG</code>)로 편집 — 드리프트 방지</td><td><code>edit</code> hashline 모드</td><td class="nope">○</td></tr>
+      <tr><td>10</td><td class="feat">GitHub as filesystem</td><td>PR/이슈/diff를 파일처럼 read. CI 스트리밍, PR 체크아웃</td><td><code>read(path="pr://123")</code></td><td class="partial">◐</td></tr>
+      <tr><td>11</td><td class="feat">Hindsight memory</td><td>에이전트가 큐레이션하는 장기 메모리. subagent가 parent bank를 alias로 공유</td><td><code>retain</code>/<code>recall</code>/<code>reflect</code></td><td class="nope">○</td></tr>
+      <tr><td>12</td><td class="feat">ACP editor-drivable</td><td>Agent Client Protocol — 에디터가 omp 에이전트를 구동</td><td>ACP 엔드포인트</td><td class="nai">—</td></tr>
+      <tr><td>13</td><td class="feat">Inherits other tools' config</td><td>AGENTS.md/.cursor 등 기존 설정·컨텍스트 상속</td><td>디스커버리 자동</td><td class="nai">—</td></tr>
+      <tr><td>14</td><td class="feat">omp commit</td><td>concern별 atomic split + 메시지 검증 커밋</td><td><code>/commit</code> · commit 툴</td><td class="partial">◐</td></tr>
+      <tr><td>15</td><td class="feat">Pull JSON from subagents</td><td><code>agent://id?q=</code>로 subagent 구조화 출력에서 필드 추출. skill 워킹</td><td><code>read("agent://&lt;id&gt;?q=…")</code></td><td class="partial">◐</td></tr>
+      <tr><td>16</td><td class="feat">Conflict resolution</td><td>머지 충돌을 인덱스로 read, <code>conflict://</code> URI로 해소</td><td><code>read("file:conflicts")</code></td><td class="nope">○</td></tr>
+      <tr><td>17</td><td class="feat">Preview then accept</td><td>편집을 스테이징 후 <code>resolve</code>로 수락 — 2-phase 안전 편집</td><td><code>apply_patch</code> + <code>resolve</code></td><td class="nope">○</td></tr>
+      <tr><td>18</td><td class="feat">Real browser / Slack</td><td>headless Chromium. JS 실행·스크린샷·접근성 스냅샷. MCP로 Slack 등</td><td><code>browser(action:"open"/"run")</code></td><td class="nope">○</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small m">시스템 레이어 추가: <b>40+ 프로바이더 · 수백 모델</b>을 <code>/model</code> 하나로 라우팅 ·
+  <b>web_search 14 backend</b> + arxiv 등 specialised handler + 보안 DB · entry point 4종(interactive/one-shot/RPC/ACP).</p>
+</section>
+
+<!-- ============ omp 호출 문법 ============ -->
+<section id="howto">
+  <h2><span class="num">03</span>omp는 킬러 피쳐를 "어떻게" 호출하나 (실제 문법)</h2>
+  <p class="lead">사용자 질문 — "omp에서는 어떻게 킬러 피쳐 호출해서 쓰는지". 핵심은 두 가지다:
+  <b>(1) frontmatter <code>tools:</code>에 네이티브 툴명을 적어 활성화</b>하고,
+  <b>(2) 툴 프롬프트(<code>prompts/tools/*.md</code>)가 호출 문법을 에이전트에게 주입</b>한다.
+  예: omp <code>librarian</code>의 frontmatter는 <code>tools: read, search, find, bash, lsp, web_search, ast_grep</code> —
+  pi-oven librarian의 <code>["Read","Grep","Glob","WebFetch","Bash"]</code>와 대조적이다.</p>
+
+  <h3>06 · arxiv PDF — web_search → read 파이프라인</h3>
+  <pre><span class="c"># 14개 프로바이더가 체이닝되어 URL을 찾고, 그 URL을 곧장 read에 넘긴다.</span>
+<span class="c"># arxiv PDF·GitHub·StackOverflow가 앵커 유지된 마크다운으로 돌아온다 — 로컬 파일과 같은 surface.</span>
+<span class="t">web_search</span>(query=<span class="s">"QLoRA 4-bit finetuning paper"</span>)   <span class="c">→ 상위 출처 URL 반환</span>
+<span class="t">read</span>(path=<span class="s">"https://arxiv.org/pdf/2305.14314"</span>)        <span class="c"># PDF 풀텍스트 → markit 변환 마크다운</span>
+<span class="t">read</span>(path=<span class="s">"https://arxiv.org/abs/2305.14314"</span>)        <span class="c"># abs 페이지도 동일 툴</span>
+<span class="c"># ⛔ cat / curl / wget / 별도 browser 금지 — read 하나로 통일 ("never lose where you came from")</span></pre>
+
+  <h3>03 · real debugger — DAP 세션</h3>
+  <pre><span class="t">debug</span>(action=<span class="s">"launch"</span>, program=<span class="s">"./app"</span>)                  <span class="c"># 세션 시작 (adapter 자동 선택)</span>
+<span class="t">debug</span>(action=<span class="s">"set_breakpoint"</span>, file=<span class="s">"src/main.c"</span>, line=<span class="k">42</span>)
+<span class="t">debug</span>(action=<span class="s">"continue"</span>)                                  <span class="c"># 실행 → 중단점에서 정지</span>
+<span class="t">debug</span>(action=<span class="s">"pause"</span>)                                     <span class="c"># 멈춘(hung) 프로그램 인터럽트</span>
+<span class="t">debug</span>(action=<span class="s">"stack_trace"</span>)  ·  <span class="t">debug</span>(action=<span class="s">"variables"</span>, scope_id=…)
+<span class="t">debug</span>(action=<span class="s">"evaluate"</span>, expression=<span class="s">"user.role"</span>, context=<span class="s">"repl"</span>)
+<span class="c"># Python: debug(action="launch", adapter="debugpy", program="scripts/job.py", args=["--flag"])</span></pre>
+
+  <h3>01 · eval — 영속 REPL + subagent 변수 공유</h3>
+  <pre><span class="t">eval</span>(cells=[{language:<span class="s">"py"</span>, code:<span class="s">"import pandas as pd; df = pd.read_csv('metrics.csv')"</span>}])
+<span class="t">eval</span>(cells=[{language:<span class="s">"py"</span>, code:<span class="s">"df.groupby('day').latency.describe()"</span>}])  <span class="c"># df 상태 유지</span>
+<span class="c"># df는 task로 spawn한 subagent에서도 직접 보임 — 재import·재fetch·직렬화 불필요</span>
+<span class="c"># 내장 헬퍼: read() write() append() tree() diff() display() / agent() parallel() pipeline() llm()</span></pre>
+
+  <h3>18 · browser · 11 · memory · 10 · github-as-fs · 15 · subagent JSON</h3>
+  <pre><span class="t">browser</span>(action=<span class="s">"open"</span>, name=<span class="s">"main"</span>, url=<span class="s">"http://localhost:3000"</span>)
+<span class="t">browser</span>(action=<span class="s">"run"</span>, code=<span class="s">"document.querySelector('h1').innerText"</span>)  <span class="c"># JS 실행·스크린샷</span>
+
+<span class="t">retain</span>(<span class="s">"이 레포는 release:pi-oven 가 3개 매니페스트를 lockstep 동기화한다"</span>)  <span class="c"># 장기 저장</span>
+<span class="t">recall</span>(query=<span class="s">"release 버전 동기화"</span>)  ·  <span class="t">reflect</span>(<span class="s">"…"</span>)              <span class="c"># 검색·종합</span>
+
+<span class="t">read</span>(path=<span class="s">"pr://123"</span>)  ·  <span class="t">read</span>(path=<span class="s">"pr://123/diff"</span>)  ·  <span class="t">read</span>(path=<span class="s">"issue://456"</span>)
+<span class="t">read</span>(path=<span class="s">"agent://&lt;id&gt;?q=findings[0].title"</span>)              <span class="c"># subagent 출력에서 JSON 추출</span></pre>
+
+  <div class="callout key">
+    <h4>핵심 패턴</h4>
+    <p>omp의 모든 입력(로컬 파일·URL·PDF·SQLite·PR·이슈·메모리·subagent 출력·skill)이 <b>단일 <code>read</code> + 내부 URI 스킴</b>
+    (<code>skill://</code> <code>agent://</code> <code>memory://</code> <code>pr://</code> <code>conflict://</code> <code>artifact://</code>)으로
+    통일된다. 에이전트는 "파일 읽는 법" 하나만 알면 웹·논문·PR·기억을 전부 같은 방식으로 다룬다.</p>
+  </div>
+</section>
+
+<!-- ============ 툴 무기고 ============ -->
+<section id="tools">
+  <h2><span class="num">04</span>omp 빌트인 툴 무기고 30 — 카테고리별</h2>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>카테고리</th><th>툴</th><th>능력 요약</th><th style="width:90px">pi-oven 등가</th></tr></thead>
+    <tbody>
+      <tr><td class="role">파일/읽기</td><td><code>read</code> <code>write</code> <code>find</code> <code>search</code> <code>search_tool_bm25</code></td><td>read는 파일·디렉토리·아카이브·SQLite·이미지·문서(PDF/DOCX/XLSX/EPUB/ipynb)·URL·내부 URI 단일 진입</td><td class="partial">Read/Glob/Grep ◐</td></tr>
+      <tr><td class="role">편집</td><td><code>edit</code> <code>ast_edit</code> <code>ast_grep</code></td><td>hashline 콘텐츠-해시 편집 + AST 구조 코드모드 + 구조 검색</td><td class="partial">Edit/apply_patch ◐</td></tr>
+      <tr><td class="role">실행</td><td><code>bash</code> <code>eval</code> <code>debug</code> <code>ssh</code></td><td>persistent bash + Py/JS REPL + DAP 디버거 + 원격 실행</td><td class="nope">Bash만 ○</td></tr>
+      <tr><td class="role">코드지능</td><td><code>lsp</code></td><td>진단·정의·참조·hover·심볼·rename(파일 이동+import 갱신)·code action</td><td class="partial">omc lsp_* MCP ◐</td></tr>
+      <tr><td class="role">웹/브라우저</td><td><code>web_search</code> <code>browser</code></td><td>14-backend 검색 폴백 + headless Chromium(JS·스크린샷·a11y)</td><td class="nope">WebFetch/WebSearch ○</td></tr>
+      <tr><td class="role">오케스트레이션</td><td><code>task</code> <code>job</code> <code>irc</code></td><td>격리 subagent + async job 폴링 + 에이전트 간 라이브 IRC</td><td class="partial">task ◐ / irc ○</td></tr>
+      <tr><td class="role">메모리</td><td><code>retain</code> <code>recall</code> <code>reflect</code> <code>memory_edit</code></td><td>Hindsight/Mnemopi 장기 메모리, subagent alias 공유</td><td class="nope">○ (.omc 파일 우회)</td></tr>
+      <tr><td class="role">상태/계획</td><td><code>todo_write</code> <code>checkpoint</code> <code>rewind</code></td><td>단계별 할일 + 컨텍스트 체크포인트/되감기(탐색 압축)</td><td class="nope">TodoWrite ◐ / rewind ○</td></tr>
+      <tr><td class="role">GitHub/미디어</td><td><code>github</code> <code>inspect_image</code> <code>image_gen</code> <code>render_mermaid</code></td><td>gh 래퍼·CI 스트리밍 + 비전 분석 + 이미지 생성 + mermaid 렌더</td><td class="partial">gh CLI ◐ / 비전 ◐</td></tr>
+      <tr><td class="role">상호작용(hidden)</td><td><code>ask</code> <code>yield</code> <code>report_finding</code> <code>resolve</code> <code>goal</code></td><td>중간 질의 + 구조화 종료 + 개별 finding 등록 + 편집 수락 + 목표 추적</td><td class="partial">◐</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ OMP 에이전트 ============ -->
+<section id="omp-agents">
+  <h2><span class="num">05</span>OMP 빌트인 에이전트 7 — 적지만 강하다</h2>
+  <p class="lead">omp는 에이전트를 <b>얇게</b> 가져간다. 능력의 대부분은 위 30개 툴에서 나오고, 에이전트는 그 툴을
+  어떤 순서로 쓰는지를 정의하는 얇은 셸이다. 내부 모델 별칭 <code>pi/smol · pi/slow · pi/plan · pi/designer</code> 사용.</p>
+  <div class="grid two">
+    <div class="card omp-c"><h4>explore <span class="tag omp">pi/smol · med</span></h4>
+      <ul><li><b>읽기전용 정찰</b>. 타입 구조화 출력(summary/files/architecture)으로 핸드오프</li>
+      <li>툴: <code>read search find <b>web_search</b></code> — 정찰 에이전트조차 웹검색 보유</li>
+      <li>한계: 쓰기·bash·lsp·subagent 불가</li></ul></div>
+    <div class="card omp-c"><h4>plan <span class="tag omp">pi/plan+slow · high</span></h4>
+      <ul><li><b>아키텍트</b>. <code>explore</code>를 병렬 spawn해 종합 → 실행가능 계획</li>
+      <li>툴: read/search/find/bash/lsp/web_search/ast_grep + <code>task</code></li>
+      <li>한계: 읽기전용(계획 문서만 산출)</li></ul></div>
+    <div class="card omp-c"><h4>librarian <span class="tag omp">pi/smol · minimal</span></h4>
+      <ul><li><b>외부 라이브러리 소스 직독</b>. node_modules 우선, 없으면 <code>git clone --depth 1</code></li>
+      <li>"소스가 진실, 문서는 희망, 학습데이터는 역사" — verbatim 인용 강제</li>
+      <li>툴에 <code>web_search</code>·<code>lsp</code>·<code>ast_grep</code> 포함</li></ul></div>
+    <div class="card omp-c"><h4>oracle <span class="tag omp">pi/slow · xhigh · blocking</span></h4>
+      <ul><li><b>최강 단일 에이전트</b>. consult(조언) + delegate(직접 구현) 듀얼 모드</li>
+      <li>전체 툴 + <code>explore</code> spawn. 효과 추정 태그(Quick/Short/Medium/Large)</li>
+      <li>scope 규율: 시킨 것만, 관찰 최대 2개</li></ul></div>
+    <div class="card omp-c"><h4>reviewer <span class="tag omp">pi/slow · high · blocking</span></h4>
+      <ul><li><b>cross-boundary 프로토콜</b>: diff 밖이라도 새 타입의 소비측 dispatch 지점 추적</li>
+      <li><code>report_finding</code> 전용 툴 → findings[] 기계추출. correct/incorrect 판정</li>
+      <li>bash 읽기전용(diff/log/show만)</li></ul></div>
+    <div class="card omp-c"><h4>designer <span class="tag omp">pi/designer</span></h4>
+      <ul><li><b>anti-slop 미학 규율</b>: glassmorphism·시안/보라 그라데이션·카드그리드 등 14개 금지 패턴 내장</li>
+      <li>전체 툴(브라우저 라이브 검증 포함)</li>
+      <li>"어느 AI가 만들었나가 아니라 어떻게 만들었나를 묻게" </li></ul></div>
+  </div>
+  <p class="small m">그 외 <code>task</code>/<code>quick_task</code>(범용 워커, 전체 툴), <code>init</code>(AGENTS.md 생성, explore 병렬 fan-out).</p>
+</section>
+
+<!-- ============ pi-oven 에이전트 ============ -->
+<section id="pi-agents">
+  <h2><span class="num">06</span>pi-oven 22 에이전트 — 전문화가 무기, 모델이 다채롭다</h2>
+  <p class="lead">pi-oven은 반대 전략이다. <b>역할을 두껍게</b> 쪼개고 각 역할을 그 일에 가장 맞는 모델에 꽂는다.
+  omp가 안 가진 전용 역할(보안·테스트·검증·추적·단순화·요구사항·git)이 강점.</p>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>역할</th><th>모델</th><th style="width:54px">think</th><th>버킷</th><th>한 줄 능력</th></tr></thead>
+    <tbody>
+      <tr><td class="role">executor</td><td><code>openai-codex/gpt-5.4</code></td><td>high</td><td><span class="tag">code</span></td><td>최소 diff 구현, TDD, 빌드/테스트 검증</td></tr>
+      <tr><td class="role">debugger</td><td><code>openai-codex/gpt-5.4</code></td><td>high</td><td><span class="tag">code</span></td><td>8단계 인과추적·근본원인·빌드 green <b class="nope">(debug 툴 미사용)</b></td></tr>
+      <tr><td class="role">test-engineer</td><td><code>openai-codex/gpt-5.4</code></td><td>high</td><td><span class="tag">code</span></td><td>TDD Red→Green→Refactor, flaky 진단 <b class="pi">★omp엔 없음</b></td></tr>
+      <tr><td class="role">architect</td><td><code>openai-codex/gpt-5.4</code></td><td>xhigh</td><td><span class="tag">plan</span></td><td>커플링/응집·ADR·마이그레이션 전략</td></tr>
+      <tr><td class="role">metis</td><td><code>openai-codex/gpt-5.4</code></td><td>xhigh</td><td><span class="tag">plan</span></td><td>요구사항 사전분석·pre-analysis 후 질문 <b class="pi">★omp엔 없음</b></td></tr>
+      <tr><td class="role">critic</td><td><code>anthropic/claude-opus-4-8</code></td><td>xhigh</td><td><span class="tag">review</span></td><td>적대적 다관점 검토, BLOCKER/NIT/PUSH-BACK</td></tr>
+      <tr><td class="role">planner</td><td><code>anthropic/claude-opus-4-8</code></td><td>high</td><td><span class="tag">plan</span></td><td>바이트사이즈 분해, 1질문/턴 인터뷰</td></tr>
+      <tr><td class="role">security-reviewer</td><td><code>anthropic/claude-opus-4-8</code></td><td>xhigh</td><td><span class="tag">review</span></td><td>OWASP·STRIDE·시크릿·공급망 <b class="pi">★omp엔 없음</b></td></tr>
+      <tr><td class="role">oracle</td><td><code>anthropic/claude-opus-4-8</code></td><td>xhigh</td><td><span class="tag">plan</span></td><td>최후수단 자문(2+ 실패 후), 효과 태그</td></tr>
+      <tr><td class="role">verifier</td><td><code>opencode-zen/glm-5.1</code></td><td>high</td><td><span class="tag">verify</span></td><td>4 sub-check 완료게이트 PASS/BLOCK <b class="pi">★omp엔 없음</b></td></tr>
+      <tr><td class="role">code-reviewer</td><td><code>opencode-zen/glm-5.1</code></td><td>high</td><td><span class="tag">review</span></td><td>스펙우선 2단계 리뷰, severity×confidence</td></tr>
+      <tr><td class="role">code-simplifier</td><td><code>opencode-zen/glm-5.1</code></td><td>xhigh</td><td><span class="tag">code</span></td><td>삭제우선 AI-slop 청소 <b class="pi">★omp엔 없음</b></td></tr>
+      <tr><td class="role">tracer</td><td><code>opencode-zen/glm-5.1</code></td><td>high</td><td><span class="tag">research</span></td><td>인과추적 전용(수정X), 경쟁가설·증거랭킹 <b class="pi">★</b></td></tr>
+      <tr><td class="role">analyst</td><td><code>opencode-zen/glm-5.1</code></td><td>xhigh</td><td><span class="tag">research</span></td><td>로그/CSV 통계분석 <b class="nope">(읽기전용 — eval REPL 미사용)</b></td></tr>
+      <tr><td class="role">librarian</td><td><code>opencode-zen/glm-5.1</code></td><td>medium</td><td><span class="tag">research</span></td><td>웹리서치·gh clone <b class="nope">(WebFetch만 — read-URL/web_search 미사용)</b></td></tr>
+      <tr><td class="role">designer</td><td><code>opencode-zen/glm-5.1</code></td><td>high</td><td><span class="tag">design</span></td><td>도메인 미학·WCAG, vision 게이트로 looker 위임</td></tr>
+      <tr><td class="role">explorer</td><td><code>opencode-zen/gemini-3-flash</code></td><td>medium</td><td><span class="tag">research</span></td><td>다각 병렬 Grep, 1M 컨텍스트 코드 정찰</td></tr>
+      <tr><td class="role">writer</td><td><code>opencode-zen/gemini-3-flash</code></td><td>medium</td><td><span class="tag">docs</span></td><td>README/API/changelog, bash 차단</td></tr>
+      <tr><td class="role">document-specialist</td><td><code>opencode-zen/gemini-3-flash</code></td><td>medium</td><td><span class="tag">research</span></td><td>로컬docs→Context7→WebFetch 우선순위</td></tr>
+      <tr><td class="role">multimodal-looker</td><td><code>opencode-zen/gemini-3-flash</code></td><td>medium</td><td><span class="tag">design</span></td><td>스크린샷·목업·다이어그램·PDF 비전 추출</td></tr>
+      <tr><td class="role">qa-tester</td><td><code>opencode-zen/gemini-3.5-flash</code></td><td>high</td><td><span class="tag">verify</span></td><td>Playwright 시각검증·OAuth <b class="nope">(네이티브 browser 미사용)</b></td></tr>
+      <tr><td class="role">git-master</td><td><code>opencode-zen/claude-haiku-4-5</code></td><td>low</td><td><span class="tag">infra</span></td><td>atomic 커밋·스타일 감지·rebase 안전 <b class="pi">★omp엔 없음</b></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 능력 매트릭스 ============ -->
+<section id="matrix">
+  <h2><span class="num">07</span>정면 능력 매트릭스 — 누가 무엇을 할 수 있나</h2>
+  <div class="legend">
+    <span><span class="yes">●</span> 강함/전용</span>
+    <span><span class="partial">◐</span> 가능하나 약함/우회</span>
+    <span><span class="nope">○</span> 없음</span>
+  </div>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>능력</th><th style="width:130px">OMP</th><th style="width:130px">pi-oven</th><th>한 줄 평</th></tr></thead>
+    <tbody>
+      <tr><td class="feat">코드 정찰(읽기전용)</td><td class="yes">● explore</td><td class="yes">● explorer</td><td>둘 다 강함. pi-oven은 1M Gemini로 병렬폭 넓음</td></tr>
+      <tr><td class="feat">아키텍처 플랜</td><td class="yes">● plan</td><td class="yes">● planner+architect</td><td>pi-oven이 plan/architect/metis로 더 세분</td></tr>
+      <tr><td class="feat">코드 구현</td><td class="partial">◐ oracle/task</td><td class="yes">● executor</td><td>pi-oven은 codex 전용 executor로 더 전문</td></tr>
+      <tr><td class="feat">디버깅(추론)</td><td class="yes">● oracle</td><td class="yes">● debugger</td><td>둘 다 강함. debugger는 8단계 프로토콜</td></tr>
+      <tr><td class="feat">디버깅(실제 디버거)</td><td class="yes">● debug 툴</td><td class="nope">○</td><td><b>OMP 압도</b> — 중단점·스텝·변수 inspect</td></tr>
+      <tr><td class="feat">코드 리뷰</td><td class="yes">● reviewer</td><td class="yes">● code-reviewer+critic</td><td>pi-oven 2단계 분리. OMP는 report_finding 구조화</td></tr>
+      <tr><td class="feat">보안 리뷰</td><td class="nope">○</td><td class="yes">● security-reviewer</td><td><b>pi-oven 압도</b> — OWASP/STRIDE 전용 역할</td></tr>
+      <tr><td class="feat">테스트/TDD</td><td class="partial">◐ task</td><td class="yes">● test-engineer</td><td><b>pi-oven 우위</b> — TDD 강제 전용</td></tr>
+      <tr><td class="feat">완료 검증 게이트</td><td class="nope">○</td><td class="yes">● verifier</td><td><b>pi-oven 우위</b> — fresh-agent 4 sub-check</td></tr>
+      <tr><td class="feat">인과 추적(수정X)</td><td class="partial">◐ oracle</td><td class="yes">● tracer</td><td><b>pi-oven 우위</b> — 추적/수정 분리</td></tr>
+      <tr><td class="feat">코드 단순화</td><td class="nope">○</td><td class="yes">● code-simplifier</td><td><b>pi-oven 우위</b> — 삭제우선 전용</td></tr>
+      <tr><td class="feat">요구사항 분석</td><td class="nope">○</td><td class="yes">● metis</td><td><b>pi-oven 우위</b> — pre-analysis 인터뷰</td></tr>
+      <tr><td class="feat">Git 워크플로우</td><td class="partial">◐ task</td><td class="yes">● git-master</td><td><b>pi-oven 우위</b> — atomic split 전용 (OMP는 commit 툴로 보완)</td></tr>
+      <tr><td class="feat">UI 디자인</td><td class="yes">● designer</td><td class="yes">● designer+looker</td><td>OMP는 anti-slop 미학 내장 / pi-oven은 vision 분리</td></tr>
+      <tr><td class="feat">외부 라이브러리 리서치</td><td class="yes">● librarian</td><td class="partial">◐ librarian+doc-spec</td><td>OMP는 read-URL/web_search 활용, pi-oven은 WebFetch 한정</td></tr>
+      <tr><td class="feat">웹 deep research</td><td class="yes">● Exa researcher</td><td class="nope">○</td><td><b>OMP 압도</b> — 비동기 deep research start/poll</td></tr>
+      <tr><td class="feat">arxiv/PDF 풀텍스트</td><td class="yes">● read 툴</td><td class="partial">◐ looker(추출만)</td><td><b>OMP 압도</b> — handleArxiv+markit 풀텍스트</td></tr>
+      <tr><td class="feat">멀티 프로바이더 웹검색</td><td class="yes">● 14 backend</td><td class="partial">◐ WebSearch 단일</td><td><b>OMP 압도</b> — 자동 폴백 체인</td></tr>
+      <tr><td class="feat">데이터 실행(REPL)</td><td class="yes">● eval</td><td class="nope">○ analyst 읽기전용</td><td><b>OMP 압도</b> — Python/JS 실제 실행</td></tr>
+      <tr><td class="feat">브라우저 자동화</td><td class="yes">● browser</td><td class="partial">◐ qa Playwright-MCP</td><td>OMP 네이티브 / pi-oven은 외부 MCP 의존</td></tr>
+      <tr><td class="feat">데이터 분석(읽기)</td><td class="nope">○</td><td class="yes">● analyst</td><td>pi-oven 전용 역할 (단 실행은 불가)</td></tr>
+      <tr><td class="feat">장기 메모리</td><td class="yes">● retain/recall</td><td class="nope">○ (.omc 파일)</td><td><b>OMP 압도</b> — 에이전트 큐레이션 메모리</td></tr>
+      <tr><td class="feat">에이전트 간 라이브 통신</td><td class="yes">● irc</td><td class="nope">○</td><td><b>OMP 압도</b> — 병렬 subagent 실시간 협응</td></tr>
+      <tr><td class="feat">격리 실행(worktree/FUSE)</td><td class="yes">● task isolated</td><td class="partial">◐ 하네스 스킬</td><td>OMP는 툴 레벨, pi-oven은 스킬 레벨</td></tr>
+      <tr><td class="feat">모델 다양성</td><td class="partial">◐ pi/* 별칭</td><td class="yes">● 6모델 3프로바이더</td><td><b>pi-oven 우위</b> — 역할별 모델-fit 매핑</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 미활용 매핑 ============ -->
+<section id="gap">
+  <h2><span class="num">08</span>🔥 pi-oven이 놓치는 omp 킬러 피쳐 — 에이전트별 매핑</h2>
+  <p class="lead">"우리 에이전트가 omp 킬러 피쳐를 제대로 못 쓴다"의 구체적 증거. 각 행은 <b>지금 무엇을 하는지</b> →
+  <b>omp 툴을 쓰면 무엇이 가능한지</b> → <b>고치는 난이도</b>다.</p>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>에이전트</th><th>지금(미활용)</th><th>omp 킬러 툴로 가능해지는 것</th><th style="width:96px">난이도</th></tr></thead>
+    <tbody>
+      <tr><td class="role">debugger</td><td>스택트레이스 <em>읽고 추론</em>만. 정적 분석</td><td><code>debug</code>로 실제 중단점·스텝·변수 inspect·표현식 평가 → 가설을 런타임으로 증명</td><td class="partial">중 (프롬프트)</td></tr>
+      <tr><td class="role">analyst</td><td>"실행 샌드박스 없음" <em>자기선언</em>. Bash 집계만</td><td><code>eval</code> Python REPL로 pandas/numpy 실제 통계·차트·모델 — read-only 해제</td><td class="partial">중 (tools+프롬프트)</td></tr>
+      <tr><td class="role">librarian</td><td><code>WebFetch</code> + gh clone만</td><td><code>web_search</code>(14) → <code>read(url)</code>로 arxiv/PDF/SO 풀텍스트, <code>pr://</code> 직독</td><td class="yes">낮음 (tools+한문단)</td></tr>
+      <tr><td class="role">document-specialist</td><td>로컬docs→Context7→<code>WebFetch</code></td><td><code>read</code>-URL 단일 파이프라인 + 14-backend 검색으로 1차 출처 직독</td><td class="yes">낮음</td></tr>
+      <tr><td class="role">qa-tester</td><td>Playwright <b>MCP</b> 의존(외부)</td><td>네이티브 <code>browser</code>(open/run, JS·스크린샷·a11y 스냅샷) — MCP 드롭 위험 제거</td><td class="partial">중</td></tr>
+      <tr><td class="role">multimodal-looker</td><td>첨부 이미지 비전만</td><td><code>read(path=pdf)</code> markit 변환으로 50–200p 논문 풀텍스트 + <code>inspect_image</code></td><td class="yes">낮음</td></tr>
+      <tr><td class="role">전체(특히 oracle/planner)</td><td>매 세션 컨텍스트 휘발</td><td><code>retain</code>/<code>recall</code>/<code>reflect</code> 큐레이션 메모리로 세션 간 학습 누적</td><td class="partial">중 (정책 설계)</td></tr>
+      <tr><td class="role">병렬 dispatch 역할</td><td>subagent 결과를 턴 종료까지 대기</td><td><code>irc</code>로 실행 중 협응 + <code>task(isolated)</code> 충돌 없는 병렬 쓰기</td><td class="partial">중~상</td></tr>
+      <tr><td class="role">code-reviewer/critic</td><td>프롬프트로 severity 산문 출력</td><td><code>report_finding</code> 전용 툴로 findings[] 기계추출 + cross-boundary 추적</td><td class="partial">중</td></tr>
+      <tr><td class="role">explorer/tracer 등</td><td>긴 탐색이 컨텍스트 오염</td><td><code>checkpoint</code>/<code>rewind</code>로 탐색 후 핵심만 남기고 압축</td><td class="partial">중</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="callout warn">
+    <h4>없는 역할도 있다 (툴 주입으로 안 되고 새로 만들어야)</h4>
+    <p><b>deep-researcher</b> — omp Exa researcher(비동기 multi-source deep research)에 대응하는 전용 역할이 pi-oven에 없다.
+    librarian이 부분 커버하나 "모든 주장에 출처 달리면 종료"라 깊이가 얕다.<br/>
+    <b>data-runner</b> — eval REPL로 데이터 변환·차트·모델을 반복 실행하는 역할. analyst 강화로 흡수 가능.</p>
+  </div>
+</section>
+
+<!-- ============ 강화 로드맵 ============ -->
+<section id="roadmap">
+  <h2><span class="num">09</span>강화 후보 — 다음 단계 브레인스토밍용</h2>
+  <p class="lead">사용자 로드맵: <b>이 HTML 확인 → 브레인스토밍으로 흡수 대상 선정 → 스펙·플랜 작성</b>.
+  아래는 브레인스토밍에 올릴 후보 묶음이다. 결정은 다음 단계에서.</p>
+
+  <div class="grid two">
+    <div class="card pi-c"><h4>A. omp 네이티브 툴 전환 — 클로드코드 툴명 폐기 (최우선)</h4>
+      <ul>
+        <li><b>전면 치환</b>: 22 에이전트 + 21 스킬 + 커맨드/워크플로우의 <code>Read/Grep/Glob/WebFetch/Bash</code> → <code>read/search/find/web_search/bash</code> (frontmatter <code>tools:</code>/<code>blocked_tools:</code> + 본문 참조 모두)</li>
+        <li><b>킬러 툴 allowlist 등재</b>: 역할별 <code>tools:</code>에 <code>debug</code>/<code>eval</code>/<code>browser</code>/<code>retain</code>/<code>recall</code> 추가</li>
+        <li><b>프롬프트 한 문단</b>: 그 툴을 "언제·어떻게" 호출하는지 모델별 컨텍스트로 주입 (omp 툴 프롬프트 패턴 차용)</li>
+        <li>대상: debugger→<code>debug</code>, analyst→<code>eval</code>, librarian/doc-spec→<code>read</code>-URL+<code>web_search</code>, qa→<code>browser</code>, looker→<code>read</code>-PDF</li>
+        <li><b>lint 갱신</b>: lint-agents/lint-skills를 omp 네이티브 툴명 기준으로</li>
+      </ul></div>
+    <div class="card pi-c"><h4>B. 패턴 흡수 — omp 에이전트 설계 이식</h4>
+      <ul>
+        <li><b>report_finding 구조화</b>: code-reviewer/critic 출력을 기계추출 가능한 findings[]로</li>
+        <li><b>cross-boundary 프로토콜</b>: reviewer의 "diff 밖 소비측 dispatch 추적" 규칙</li>
+        <li><b>oracle dual-mode</b>: consult/delegate 통합 검토</li>
+        <li><b>anti-slop 미학</b>: omp designer의 14 금지패턴 → pi-oven designer 보강</li>
+      </ul></div>
+    <div class="card pi-c"><h4>C. 신규 역할 — 툴 주입으로 안 되는 갭</h4>
+      <ul>
+        <li><b>deep-researcher</b>: web_search 14-backend + read-arxiv/PDF + (선택)Exa researcher 비동기 — 다중출처 적대검증 종합</li>
+        <li><b>data-runner</b>: eval REPL 데이터 실행 역할 (또는 analyst 확장)</li>
+      </ul></div>
+    <div class="card pi-c"><h4>D. 인프라 — 설계 결정 필요</h4>
+      <ul>
+        <li><b>메모리 정책</b>: retain/recall을 .omc 파일 대신/병행으로 쓸지</li>
+        <li><b>irc 협응</b>: 병렬 dispatch 역할에 라이브 통신 도입 범위</li>
+        <li><b>checkpoint/rewind</b>: 탐색계 역할(explorer/tracer)의 컨텍스트 압축</li>
+        <li><b>모델 라우팅 유지</b>: pi-oven 6모델 매핑은 omp 대비 우위 — 보존</li>
+      </ul></div>
+  </div>
+
+  <div class="callout key">
+    <h4>다음 액션</h4>
+    <p>이 문서를 확인한 뒤 <b>브레인스토밍</b>에서 위 A–D 중 무엇을 흡수할지 고른다. 그 결정으로
+    <code>spec-and-review</code>(codex 교차검토) 루프를 거쳐 <b>스펙 + 플랜</b>을 작성한다. 스펙은 이 문서가 아니라
+    브레인스토밍 합의 이후에 작성한다.</p>
+  </div>
+</section>
+
+<hr class="soft" />
+<p class="foot">oh-my-pi 15.8.3 (README 18 features · 30-tool registry) ⟷ pi-oven 22 agents · PROFILE_A ·
+작성 2026-06-03 · agent-upgrade 사전조사. 결론·강화 결정은 브레인스토밍 단계에서.</p>
+
+</div>
+</body>
+</html>

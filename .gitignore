@@ -1,8 +1,7 @@
 # pi-oven runtime state (machine-readable, regeneratable)
 .pi-oven/
 
-# omp agent mirror — regenerated from SoT agents/ by the pi-oven extension
-# (syncPiOvenAgentMirrors) on every session_start; never a load source. Keep
+# omp agent mirror — a derived copy of SoT agents/, never a load source. Keep
 # .omp/extensions/ tracked (it is source); only the derived mirror is ignored.
 .omp/agents/
 

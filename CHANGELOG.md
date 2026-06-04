@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.6 - 2026-06-04
+
+- feat(skills): omp-native skill activation contract — description discovery + keyword whitelist
+- docs(setup): correct stale "22 roles" to 24 in prompt, comments, tests
 ## v0.1.5
 
 - `/pi-oven:setup` adds a "Skill usage" guard: the orchestrator must drive setup from `setup.md` alone and must not invoke other skills mid-flow, keeping the language-pick → provider-detect → profile → persist sequence deterministic.

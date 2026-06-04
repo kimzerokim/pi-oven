@@ -1,6 +1,6 @@
 {
   "name": "pi-oven",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Curated omp workflow + discipline layer (5-source successor)",
   "type": "module",

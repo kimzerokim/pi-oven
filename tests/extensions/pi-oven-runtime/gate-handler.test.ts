@@ -4,6 +4,10 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
   createGateHandler,
+  isCodeWriteTool,
+  getTargetPath,
+  getSkillReadName,
+  toGateFsmView,
   type GateHandlerDeps,
 } from "../../../.omp/extensions/pi-oven-runtime/gate-handler";
 import { GateStateStore, type FsmState } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
@@ -435,3 +439,57 @@ describe("gateHandler — simulated wrapper round-trip (AC9, unit-simulated)", (
     expect(out.block).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// WS5 — Pure helper unit tests
+// ---------------------------------------------------------------------------
+
+describe("gateHandler — pure helpers", () => {
+  it("isCodeWriteTool: 'write','edit','ast_edit' => true; 'read','bash' => false", () => {
+    expect(isCodeWriteTool("write")).toBe(true);
+    expect(isCodeWriteTool("edit")).toBe(true);
+    expect(isCodeWriteTool("ast_edit")).toBe(true);
+    expect(isCodeWriteTool("read")).toBe(false);
+    expect(isCodeWriteTool("bash")).toBe(false);
+    expect(isCodeWriteTool("task")).toBe(false);
+  });
+
+  it("getTargetPath: returns input.path when string; null otherwise", () => {
+    expect(getTargetPath({ path: "/foo/bar" })).toBe("/foo/bar");
+    expect(getTargetPath({ path: 123 } as any)).toBe(null);
+    expect(getTargetPath({ notPath: "/foo" } as any)).toBe(null);
+    expect(getTargetPath(undefined as any)).toBe(null);
+  });
+
+  it("getSkillReadName: identifies skill name from skill:// URI only on 'read'", () => {
+    // valid skill read
+    expect(getSkillReadName({ toolName: "read", input: { path: "skill://autonomous-loop" } } as any)).toBe("autonomous-loop");
+    // valid skill read with sub-path
+    expect(getSkillReadName({ toolName: "read", input: { path: "skill://autonomous-loop/SKILL.md" } } as any)).toBe("autonomous-loop");
+    // non-skill path
+    expect(getSkillReadName({ toolName: "read", input: { path: "/etc/passwd" } } as any)).toBe(null);
+    // non-read tool
+    expect(getSkillReadName({ toolName: "write", input: { path: "skill://autonomous-loop" } } as any)).toBe(null);
+    // malformed URI
+    expect(getSkillReadName({ toolName: "read", input: { path: "skill://" } } as any)).toBe(null);
+  });
+
+  it("toGateFsmView: maps state views correctly", () => {
+    // OK view
+    const okRes = toGateFsmView({
+      kind: "OK",
+      state: { active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 } as any,
+    });
+    expect(okRes).toEqual({
+      kind: "OK",
+      state: { active: true, gateCache: { commit: "PASS" } },
+    });
+
+    // CORRUPT view
+    expect(toGateFsmView({ kind: "CORRUPT" } as any)).toEqual({ kind: "CORRUPT" });
+
+    // ABSENT view
+    expect(toGateFsmView({ kind: "ABSENT" } as any)).toEqual({ kind: "ABSENT" });
+  });
+});
+

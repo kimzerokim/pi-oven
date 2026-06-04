@@ -72,15 +72,15 @@ interface ToolCallResultLike {
 
 const EMPTY_NORMALIZED_COMMAND: NormalizedCommand = { gitVerbs: [], forbiddenMatches: [] };
 
-function isCodeWriteTool(toolName: string): boolean {
+export function isCodeWriteTool(toolName: string): boolean {
   return CODE_WRITE_TOOLS.has(toolName);
 }
 
-function getTargetPath(input: ToolCallEventLike["input"]): string | null {
+export function getTargetPath(input: ToolCallEventLike["input"]): string | null {
   return typeof input?.path === "string" ? input.path : null;
 }
 
-function getSkillReadName(event: ToolCallEventLike): string | null {
+export function getSkillReadName(event: ToolCallEventLike): string | null {
   if (event.toolName !== "read") return null;
   const path = event.input?.path;
   if (typeof path !== "string") return null;
@@ -88,7 +88,7 @@ function getSkillReadName(event: ToolCallEventLike): string | null {
   return match?.[1] ?? null;
 }
 
-function toGateFsmView(view: Awaited<ReturnType<GateStateStore["readState"]>>): GateFsmView {
+export function toGateFsmView(view: Awaited<ReturnType<GateStateStore["readState"]>>): GateFsmView {
   return view.kind === "OK"
     ? { kind: "OK", state: { active: view.state.active, gateCache: view.state.gateCache } }
     : view.kind === "CORRUPT"

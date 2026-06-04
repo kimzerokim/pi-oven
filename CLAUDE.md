@@ -27,7 +27,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 598 pass currently
+bun test             # 643 pass currently
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -71,7 +71,7 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 
 ## Status
 
-**Current: v0.1.6** — skill activation contract: skills surface to the model via their `description:` WHEN-conditions (model-initiated `skill://` reads), supplemented by a curated `SKILL_KEYWORD_WHITELIST` in the runtime extension (`.omp/extensions/pi-oven-runtime/skill-keyword-loader.ts`); trigger lists stripped from all 22 frontmatter descriptions, replacing the false "keyword auto-trigger" promise. Builds on v0.1.5 (setup Skill-usage guard) + v0.1.4 (`pi-oven_ask` single-select) + v0.1.3 (doctor 11-check). Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
+**Current: v0.1.7** — runtime chain enforcement + global-only install + model-failover config: WS5 wires the autonomous FSM into the gate (branch-contract marker + required-skill gating for code-write tools), install detection is now global-only (project-local `.pi-oven/config.json` is no longer an install signal; the optional per-project language preference is preserved), authoring-role tools are centralized in `profiles.ts` with a lint invariant making `tools:` the only enforced capability boundary (`blocked_tools` is advisory), and `/pi-oven:setup --apply` now writes `retry.fallbackChains` so a usage-limited codex orchestrator role fails over to its opencode-zen equivalent instead of fail-fast at `retry.maxDelayMs`. Builds on v0.1.6 (skill activation contract) + v0.1.5 (setup Skill-usage guard) + v0.1.4 (`pi-oven_ask` single-select). Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
 
 **Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@kzk (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 

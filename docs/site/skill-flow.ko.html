@@ -298,7 +298,7 @@
     </div>
     <div class="card">
       <div class="head"><span class="name">Skill</span><span class="badge">22 markdown</span></div>
-      <div class="blurb">프롬프트에 트리거 키워드가 나타나면 스킬 본문이 메인 컨텍스트에 자동 로드됩니다. 코드가 없습니다 — markdown 텍스트 자체가 규칙서입니다. 본문은 <strong>English-only</strong> (한국어는 trigger keyword 매칭 한정).</div>
+      <div class="blurb">스킬은 <code>description:</code> 필드를 통해 시스템 프롬프트에 노출됩니다. 모델이 해당 설명의 활성화 조건과 맥락이 맞을 때 <code>skill://&lt;name&gt;</code>을 직접 읽어 전체 절차를 로드합니다. 키워드 자동 실행은 없습니다 — 모델이 문맥을 보고 스킬 로드 여부를 결정합니다. 코드가 없습니다 — markdown 텍스트 자체가 규칙서입니다. 본문은 <strong>English-only</strong>.</div>
       <h4>위치 / 분류</h4>
       <ul>
         <li>위치: <span class="path">skills/&lt;name&gt;/SKILL.md</span> (+ <code>references/</code>)</li>

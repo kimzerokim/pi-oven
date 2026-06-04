@@ -96,21 +96,15 @@ At `session_start`, pi-oven also mirrors `pi-oven-*.md` into discovery-stable pa
 
 So `pi-oven:*` dispatch remains available even when plugin-root agent discovery is disabled in a harness runtime.
 
-### 3. Trigger skills by keyword
+### 3. How skills activate
 
-Skills auto-activate when their trigger keywords appear in conversation. For example:
+Skills are surfaced to the model via their `description:` field in the system prompt. When a task matches the description's activation condition, the model reads `skill://<name>` to load the full procedure. Skills do NOT auto-fire on keywords — the model chooses when to read them based on context.
 
-| Skill | Sample trigger |
-|---|---|
-| `autonomous-loop` | `자율 실행`, `자율실행`, `ralph로 돌려`, `autopilot`, `ultrawork`, `must complete` |
-| `tdd-strict` | `tdd`, `test first`, `red-green-refactor` |
-| `spec-and-review` | `spec 잡자`, `plan draft`, `codex review` |
-| `codebase-survey` | `버그 수정`, `callsite 전수`, `상세하게 봐줘` |
-| `pre-commit-gate` | `commit`, `pre-commit`, `Gate 0-5` |
-| `deep-init` | `deepinit`, `init project context`, `scan codebase` |
-| `deep-dive` | `deep dive`, `trace and clarify` |
+The one keyword-driven runtime behavior is the **autonomous stop-guard** (not skill-loading): when the user sends an autonomous-mode keyword (e.g. `ralph로 돌려`, `autopilot`), the extension keeps the agent looping with a fixed continuation message until completion or an explicit stop. This is handled by `autonomous-stop-guard.ts` and injects a hardcoded string — it does not load any skill body.
 
-See `skills/*/SKILL.md` for the complete trigger list per skill.
+The `trigger:` field in `SKILL.md` files has **no runtime effect** — it is discarded by the omp skill loader and exists only as human-readable discoverability metadata and a CI lint target.
+
+See `skills/*/SKILL.md` for each skill's `description:` activation condition.
 
 ### 3.1 Verify UC5 ops connectors after install
 

@@ -17,6 +17,9 @@ export interface ValidateResult {
   unverified: Role[];
 }
 
+/** Per-ping subprocess timeout (ms). Prevents a slow model from hanging the wizard. */
+export const PING_TIMEOUT_MS = 60_000;
+
 /** Spec B §8.1: 7 MUST-tier roles for smoke validation. */
 export const SMOKE_ROLES: Role[] = [
   "executor",
@@ -114,6 +117,7 @@ function defaultSpawn(
 ): { exitCode: number | null; stdout: Buffer; stderr: Buffer } {
   const result = Bun.spawnSync([cmd, ...args], {
     stdio: ["ignore", "pipe", "pipe"],
+    timeout: PING_TIMEOUT_MS,
   });
   return {
     exitCode: result.exitCode ?? 1,

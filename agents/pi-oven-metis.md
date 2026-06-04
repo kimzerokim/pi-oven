@@ -1,5 +1,5 @@
 ---
-name: "pi-oven:metis"
+name: pi-oven:metis
 description: "Requirements clarification and lightweight pre-planning consultant — Socratic interview to crystallize ambiguous requests, dispatches explorer/librarian/document-specialist for context before advising. Spawn whitelist: [pi-oven:explorer, pi-oven:librarian, pi-oven:document-specialist]."
 model:
   - openai-codex/gpt-5.4

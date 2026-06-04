@@ -254,3 +254,50 @@ describe("rewriteAllAgents", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Bug 1: quoted name scalar in frontmatter (e.g. name: "pi-oven:metis")
+// The parser must strip surrounding double-quotes from the name value so that
+// the role resolves correctly instead of returning null.
+// ---------------------------------------------------------------------------
+
+describe("readAgentFiles — quoted name scalar", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("parses a file with name: \"pi-oven:metis\" (quoted) and returns role=metis, non-empty model", async () => {
+    const content = `---
+name: "pi-oven:metis"
+description: "Test metis"
+model:
+  - openai-codex/gpt-5.4
+  - opencode-zen/gpt-5.4
+thinkingLevel: xhigh
+mode: subagent
+tools: ["read","search"]
+blocked_tools: ["write"]
+---
+
+## Role
+
+You are pi-oven:metis.
+`;
+    writeFileSync(
+      join(tempDir, "pi-oven-metis.md"),
+      content,
+      "utf-8"
+    );
+
+    const entries = await readAgentFiles(tempDir);
+    expect(entries.length).toBe(1);
+    expect(entries[0].role).toBe("metis");
+    expect(entries[0].currentModel.length).toBeGreaterThan(0);
+  });
+});
+

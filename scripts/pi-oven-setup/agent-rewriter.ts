@@ -136,7 +136,13 @@ function parseAgentFile(filePath: string, content: string): AgentFileEntry | nul
   // Extract role from name: field (e.g. "name: pi-oven:executor" → "executor")
   const nameLine = frontmatterLines.find((l) => l.match(/^name:\s*/));
   if (!nameLine) return null;
-  const nameVal = nameLine.replace(/^name:\s*/, "").trim();
+  const rawNameVal = nameLine.replace(/^name:\s*/, "").trim();
+  // Strip a single pair of surrounding double- or single-quotes (quoted YAML scalar).
+  const nameVal =
+    (rawNameVal.startsWith('"') && rawNameVal.endsWith('"')) ||
+    (rawNameVal.startsWith("'") && rawNameVal.endsWith("'"))
+      ? rawNameVal.slice(1, -1)
+      : rawNameVal;
   // nameVal is like "pi-oven:executor" or "pi-oven:code-reviewer"
   const rolePart = nameVal.startsWith("pi-oven:") ? nameVal.slice("pi-oven:".length) : nameVal;
   const role = rolePart as Role;

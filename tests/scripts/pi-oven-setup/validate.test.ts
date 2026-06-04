@@ -184,3 +184,35 @@ describe("runValidate", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Bug 2: spawnFn simulating timeout/failure → role classified as unverified
+// ---------------------------------------------------------------------------
+
+describe("runValidate — timeout/failure via spawnFn", () => {
+  it("a spawnFn that returns non-zero exitCode causes the role to land in unverified, ok=false", async () => {
+    // Simulate a hanging/slow model: spawnFn always returns non-zero (timeout-like failure)
+    const timeoutSpawn = (_cmd: string, _args: string[]) => ({
+      exitCode: 1,
+      stdout: Buffer.from(""),
+      stderr: Buffer.from("timed out"),
+    });
+
+    const result = await runValidate(PROFILE_A, {
+      mode: "smoke",
+      spawnFn: timeoutSpawn as any,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.unverified.length).toBe(SMOKE_ROLES.length);
+    expect(result.verified.length).toBe(0);
+    expect(result.alternates.length).toBe(0);
+  });
+
+  it("PING_TIMEOUT_MS constant is exported and is a positive number (≤ 120_000)", async () => {
+    const { PING_TIMEOUT_MS } = await import("../../../scripts/pi-oven-setup/validate");
+    expect(typeof PING_TIMEOUT_MS).toBe("number");
+    expect(PING_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(PING_TIMEOUT_MS).toBeLessThanOrEqual(120_000);
+  });
+});

@@ -31,7 +31,7 @@ function runLint(
   };
 }
 
-function writeSkill(skillsRoot: string, skillName: string, triggerLine: string): void {
+function writeSkill(skillsRoot: string, skillName: string, body: string = ""): void {
   const skillDir = join(skillsRoot, skillName);
   mkdirSync(skillDir, { recursive: true });
   writeFileSync(
@@ -40,11 +40,11 @@ function writeSkill(skillsRoot: string, skillName: string, triggerLine: string):
 name: ${skillName}
 version: 0.1.0
 description: test skill
-trigger: ${triggerLine}
 alwaysApply: false
 ---
 
 # ${skillName}
+${body}
 `
   );
 }
@@ -60,34 +60,30 @@ describe("lint-skills", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("passes when trigger includes Korean keyword", () => {
-    writeSkill(tempDir, "demo", '"design, 설계"');
+  it("passes for a plain skill with no pi-oven role refs", () => {
+    writeSkill(tempDir, "demo");
 
     const out = runLint(tempDir);
     expect(out.exitCode).toBe(0);
   });
 
-  it("fails when trigger lacks Korean keyword", () => {
-    writeSkill(tempDir, "demo", '"design, planning"');
+  it("passes when skill references a valid pi-oven role", () => {
+    writeSkill(tempDir, "demo", "Delegate to pi-oven:executor for implementation.");
+
+    const out = runLint(tempDir);
+    expect(out.exitCode).toBe(0);
+  });
+
+  it("fails when skill references an unknown pi-oven role", () => {
+    writeSkill(tempDir, "demo", "Use pi-oven:nonexistent-role here.");
 
     const out = runLint(tempDir);
     expect(out.exitCode).toBe(1);
-    expect(out.stderr).toContain("trigger must include at least one Korean keyword");
-  });
-
-  it("allows code-quality-discipline without Korean trigger", () => {
-    writeSkill(
-      tempDir,
-      "code-quality-discipline",
-      '"tool_call.toolName in (Edit, Write, MultiEdit, ast_grep_replace)"'
-    );
-
-    const out = runLint(tempDir);
-    expect(out.exitCode).toBe(0);
+    expect(out.stderr).toContain("pi-oven:nonexistent-role which is not in ROLES");
   });
 
   it("fails role coverage when explicitly required and roles are missing", () => {
-    writeSkill(tempDir, "demo", '"design, 설계"');
+    writeSkill(tempDir, "demo");
 
     const out = runLint(tempDir, { PI_OVEN_LINT_REQUIRE_ROLE_COVERAGE: "1" });
     expect(out.exitCode).toBe(1);

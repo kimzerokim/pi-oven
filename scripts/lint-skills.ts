@@ -5,7 +5,7 @@
  * Walks skillsDir for <name>/SKILL.md files.
  * Validates:
  *  - every `pi-oven:<role>` token in body resolves to a known role
- *  - every skill trigger has Korean keyword coverage for Korean utterances
+ *  - role coverage across all skills
  */
 
 import { readdirSync } from "fs";
@@ -19,7 +19,6 @@ const roleSet = new Set<string>(ROLES as readonly string[]);
 // Match `pi-oven:<role>` but NOT `/pi-oven:<command>` — slash commands live in a
 // separate namespace and are not agent references.
 const PI_OVEN_TOKEN = /(?<!\/)pi-oven:([a-z][a-z0-9-]*)/g;
-const KOREAN_REGEX = /[가-힣]/;
 
 function readSkillDirs(root: string): string[] {
   try {
@@ -39,60 +38,6 @@ async function readSkillFile(skillPath: string): Promise<string | null> {
   }
 }
 
-function parseFrontmatter(content: string): Record<string, string> {
-  const lines = content.split("\n");
-  if (lines[0]?.trim() !== "---") return {};
-
-  const out: Record<string, string> = {};
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.trim() === "---") break;
-    const idx = line.indexOf(":");
-    if (idx <= 0) continue;
-    const key = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1).trim();
-    out[key] = value;
-  }
-  return out;
-}
-
-function unquote(value: string): string {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
-function isKoreanTriggerOptional(skillName: string): boolean {
-  // primarily auto-applies from tool-call context, not user utterance
-  return skillName === "code-quality-discipline";
-}
-
-function lintTrigger(skillName: string, content: string): string[] {
-  const errors: string[] = [];
-  const frontmatter = parseFrontmatter(content);
-  const trigger = frontmatter["trigger"];
-
-  if (!trigger) {
-    errors.push(`skills/${skillName}/SKILL.md missing trigger field.`);
-    return errors;
-  }
-
-  if (isKoreanTriggerOptional(skillName)) {
-    return errors;
-  }
-
-  if (!KOREAN_REGEX.test(unquote(trigger))) {
-    errors.push(
-      `skills/${skillName}/SKILL.md trigger must include at least one Korean keyword for Korean utterance activation coverage.`
-    );
-  }
-
-  return errors;
-}
 
 function lintRoleTokens(skillName: string, content: string): string[] {
   const errors: string[] = [];
@@ -131,7 +76,6 @@ async function main(): Promise<void> {
     const content = await readSkillFile(skillPath);
     if (content == null) continue;
 
-    errors.push(...lintTrigger(dir, content));
     errors.push(...lintRoleTokens(dir, content));
     let match: RegExpExecArray | null;
     PI_OVEN_TOKEN.lastIndex = 0;

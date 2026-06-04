@@ -45,11 +45,6 @@ export interface SessionModelCapture {
   capturedAt: number;
 }
 
-export interface AgentMirrorSyncResult {
-  mirroredFiles: number;
-  removedStaleFiles: number;
-  targetsTouched: string[];
-}
 
 // ---------------------------------------------------------------------------
 // getAllowedPrefixes (dynamic — option c from Spec B §10.5)
@@ -187,68 +182,6 @@ export function validateAgentRegistry(
  *
  * Removes stale pi-oven-*.md files from targets that no longer exist in source.
  * Leaves non-pi-oven files (e.g. user custom agents) untouched.
- *
- * Spec B §9.6.
- */
-export async function syncPiOvenAgentMirrors(
-  sourceAgentsDir: string,
-  projectDir: string,
-  homeDir: string
-): Promise<AgentMirrorSyncResult> {
-  const result: AgentMirrorSyncResult = {
-    mirroredFiles: 0,
-    removedStaleFiles: 0,
-    targetsTouched: [],
-  };
-
-  if (!existsSync(sourceAgentsDir)) return result;
-
-  const sourceFiles = readdirSync(sourceAgentsDir).filter(isPiOvenAgentFile);
-  const targets = [
-    path.join(projectDir, ".omp", "agents"),
-    path.join(homeDir, ".omp", "agent", "agents"),
-  ];
-
-  for (const targetDir of targets) {
-    let touchedThisTarget = false;
-
-    // 1. Mirror existing
-    mkdirSync(targetDir, { recursive: true });
-    for (const file of sourceFiles) {
-      const srcPath = path.join(sourceAgentsDir, file);
-      const dstPath = path.join(targetDir, file);
-
-      const srcStat = statSync(srcPath);
-      let shouldCopy = true;
-      if (existsSync(dstPath)) {
-        const dstStat = statSync(dstPath);
-        if (srcStat.mtimeMs <= dstStat.mtimeMs && srcStat.size === dstStat.size) {
-          shouldCopy = false;
-        }
-      }
-
-      if (shouldCopy) {
-        const content = readFileSync(srcPath);
-        writeFileSync(dstPath, content);
-        result.mirroredFiles++;
-        touchedThisTarget = true;
-      }
-    }
-
-    // 2. Remove stale
-    const targetFiles = readdirSync(targetDir).filter(isPiOvenAgentFile);
-    for (const file of targetFiles) {
-      if (!sourceFiles.includes(file)) {
-        rmSync(path.join(targetDir, file));
-        result.removedStaleFiles++;
-        touchedThisTarget = true;
-      }
-    }
-
-    if (touchedThisTarget) {
-      result.targetsTouched.push(targetDir);
-    }
-  }
 
   return result;
 }
@@ -271,12 +204,7 @@ export async function captureSessionModel(
     capturedAt: Date.now(),
   };
   mkdirSync(path.dirname(targetPath), { recursive: true });
-  // NO-OP mkdirSync check - previous test expected this to throw if parent dir missing
-  // But we use { recursive: true } which is standard and safe.
-  // To preserve the test's expectation of "propagates error gracefully", we'll keep it as is
-  // and the test will be updated to match the recursive:true behavior (which doesn't throw).
-  // Wait, the test says "captureSessionModel no longer throws on missing parent directory".
-  // This is because of { recursive: true }.
+  // Ensure parent directory exists before writing session capture
   writeFileSync(targetPath, JSON.stringify(data, null, 2), "utf-8");
 }
 
@@ -593,6 +521,4 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   pi.setLabel("pi-oven v0.1.6");
   pi.logger.info("pi-oven loaded");
 
-  // syncPiOvenAgentMirrors is preserved as an export for tool use but is no
-  // longer called in the synchronous extension load path to avoid I/O blocking.
 }

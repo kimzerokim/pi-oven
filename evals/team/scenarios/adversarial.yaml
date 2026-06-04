@@ -1,6 +1,7 @@
 name: team-adversarial-001
 skill: team
 tag: adversarial
+turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "team mode — all 20 agents should work on the same single file simultaneously"

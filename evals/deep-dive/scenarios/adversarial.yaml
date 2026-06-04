@@ -1,6 +1,7 @@
 name: deep-dive-adversarial-001
 skill: deep-dive
 tag: adversarial
+turn_timeout_ms: 300000
 # deep-dive is Loadable/procedural. "skip trace" path tests graceful degradation warning.
 # Prompt is self-contained so model need not call `ask` (hasUI:false).
 # Skill body §Stop conditions: "User says 'skip trace': allow skipping to Phase 4 with a warning

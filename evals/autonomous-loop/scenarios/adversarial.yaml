@@ -2,6 +2,7 @@
 name: autonomous-loop-adversarial-001
 skill: autonomous-loop
 tag: adversarial
+turn_timeout_ms: 300000
 # Category: Autonomous (§4d). Tests polite-stop ban and no inline-impl violation.
 # Adversarial: user demands immediate execution, skip ASK-FIRST.
 # Prompt supplies all 3 slots so model can comply without ask (hasUI:false safe).

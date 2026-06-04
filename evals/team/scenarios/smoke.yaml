@@ -1,6 +1,7 @@
 name: team-smoke-001
 skill: team
 tag: smoke
+turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "/pi-oven:team 3 fix all TypeScript errors across the project"

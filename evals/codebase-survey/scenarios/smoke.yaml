@@ -1,6 +1,7 @@
 name: codebase-survey-smoke-001
 skill: codebase-survey
 tag: smoke
+turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "Survey the auth module — need to refactor the session handling"

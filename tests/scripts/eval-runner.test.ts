@@ -580,11 +580,14 @@ expected:
       expect(verdict.passed).toBe(true);
     });
 
-    it("FAILS when no read of skill://<name> is in toolCalls", async () => {
+    it("soft default: PASSES (non-blocking observation) when no read of skill://<name> in toolCalls", async () => {
+      // D1 contract update: skill_read_required is soft by default — a missing
+      // read is a non-blocking observation, NOT a failure. Behavioral assertions
+      // (agent_response_must_contain / tool_calls_required) are the gate.
       const fakeSession: SessionLike = {
         subscribe(listener) {
           setTimeout(() => {
-            // Only content mention — name-search would pass this but skill_read_required should not
+            // Only content mention — no skill:// read in tool calls
             listener({ type: "message_update", delta: "I will run codebase-survey now" });
             listener({ type: "message_end" });
           }, 0);
@@ -593,7 +596,7 @@ expected:
         async prompt(_msg: string): Promise<void> {},
       };
       const scenario = parseScenario(`
-name: skill-read-fail
+name: skill-read-soft-no-read
 skill: codebase-survey
 tag: smoke
 input:
@@ -603,13 +606,45 @@ expected:
   - skill_read_required: "codebase-survey"
       `.trim());
       const verdict = await runScenario(scenario, fakeSession);
+      // Soft mode: missing read is not a failure
+      expect(verdict.passed).toBe(true);
+      // An observation records the missing read
+      expect(verdict.observations.join("\n")).toMatch(/skill_read.*codebase-survey.*NOT read/i);
+    });
+
+    it("hard mode: FAILS when no read of skill://<name> is in toolCalls", async () => {
+      // skill_read_required_mode:"hard" restores the blocking-gate behavior for
+      // cases where loading the body is genuinely load-bearing.
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_update", delta: "I will run codebase-survey now" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: skill-read-hard-fail
+skill: codebase-survey
+tag: smoke
+input:
+  - turn: 1
+    user: "survey the codebase"
+expected:
+  - skill_read_required: "codebase-survey"
+    skill_read_required_mode: "hard"
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
       expect(verdict.passed).toBe(false);
       expect(verdict.failures).toContain(
-        'skill_read_required: skill://codebase-survey not read (no matching tool call found)'
+        'skill_read_required(hard): skill://codebase-survey not read (no matching tool call found)'
       );
     });
 
-    it("FAILS when a different skill was read (not the required one)", async () => {
+    it("soft default: PASSES (non-blocking) when a different skill was read", async () => {
+      // Soft mode: reading a different skill is still just an observation.
       const fakeSession: SessionLike = {
         subscribe(listener) {
           setTimeout(() => {
@@ -621,7 +656,7 @@ expected:
         async prompt(_msg: string): Promise<void> {},
       };
       const scenario = parseScenario(`
-name: skill-read-wrong
+name: skill-read-soft-wrong
 skill: codebase-survey
 tag: smoke
 input:
@@ -631,10 +666,8 @@ expected:
   - skill_read_required: "codebase-survey"
       `.trim());
       const verdict = await runScenario(scenario, fakeSession);
-      expect(verdict.passed).toBe(false);
-      expect(verdict.failures).toContain(
-        'skill_read_required: skill://codebase-survey not read (no matching tool call found)'
-      );
+      expect(verdict.passed).toBe(true);
+      expect(verdict.observations.join("\n")).toMatch(/skill_read.*codebase-survey.*NOT read/i);
     });
 
     it("skill_triggered string form no longer searches tool names or content", async () => {
@@ -670,6 +703,187 @@ expected:
       const verdict = await runScenario(scenario, fakeSession);
       // Passes via liveness (activity exists) not via name-search
       expect(verdict.passed).toBe(true);
+    });
+  });
+
+  describe("runScenario — per-scenario turn_timeout_ms field (T1)", () => {
+    it("T1: scenario with turn_timeout_ms:250 times out at ~250ms without hanging to 90s", async () => {
+      // Session never emits a terminal event — simulates hung stream
+      const fakeSession: SessionLike = {
+        subscribe(_listener) {
+          return () => {};
+        },
+        async prompt(_msg: string, options?: { signal?: AbortSignal }): Promise<void> {
+          await new Promise<void>((resolve, reject) => {
+            if (options?.signal?.aborted) {
+              reject(new DOMException("aborted", "AbortError"));
+              return;
+            }
+            options?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("aborted", "AbortError"));
+            });
+            if (!options?.signal) resolve();
+          });
+        },
+      };
+
+      const yaml = `
+name: timeout-override-test
+skill: x
+tag: smoke
+turn_timeout_ms: 250
+input:
+  - turn: 1
+    user: "go"
+expected:
+  - skill_triggered: false
+      `.trim();
+      const scenario = parseScenario(yaml);
+
+      const t0 = Date.now();
+      const result = await Promise.race([
+        runScenario(scenario, fakeSession),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("HANG: did not complete within 3s")), 3000)
+        ),
+      ]);
+      const elapsed = Date.now() - t0;
+
+      // Must time out near 250ms, not at 90_000ms
+      expect(elapsed).toBeLessThan(2000);
+      // Scenario name preserved in result
+      expect((result as { scenario: string }).scenario).toBe("timeout-override-test");
+    });
+  });
+
+  describe("runScenario — skill_read_required soft/hard mode (T2–T5)", () => {
+    it("T2: soft default — missing read is non-blocking when behavior assertion passes", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            // Content contains "hypothesis" but toolCalls do NOT include skill://deep-dive
+            listener({ type: "message_update", delta: "hypothesis: the system is correct" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+
+      const scenario = parseScenario(`
+name: soft-mode-pass
+skill: deep-dive
+tag: smoke
+input:
+  - turn: 1
+    user: "investigate"
+expected:
+  - skill_read_required: "deep-dive"
+    agent_response_must_contain: ["hypothesis"]
+    agent_response_must_contain_match: "any"
+      `.trim());
+
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(true);
+      // An observation must mention the skill_read NOT read (soft signal)
+      const obs = verdict.observations.join("\n");
+      expect(obs).toMatch(/skill_read.*deep-dive.*NOT read/i);
+    });
+
+    it("T3: soft default — read present records positive observation, passes", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "tool_execution_start", toolName: "read skill://deep-dive", toolCallId: "c1" });
+            listener({ type: "message_update", delta: "hypothesis: confirmed" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+
+      const scenario = parseScenario(`
+name: soft-mode-read-present
+skill: deep-dive
+tag: smoke
+input:
+  - turn: 1
+    user: "investigate"
+expected:
+  - skill_read_required: "deep-dive"
+    agent_response_must_contain: ["hypothesis"]
+    agent_response_must_contain_match: "any"
+      `.trim());
+
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(true);
+      const obs = verdict.observations.join("\n");
+      // Observation must say read confirmed (not "NOT read")
+      expect(obs).toMatch(/skill_read.*deep-dive.*✓/i);
+    });
+
+    it("T4: hard mode — missing read is a failure", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_update", delta: "some output without reading skill" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+
+      const scenario = parseScenario(`
+name: hard-mode-fail
+skill: deep-dive
+tag: smoke
+input:
+  - turn: 1
+    user: "investigate"
+expected:
+  - skill_read_required: "deep-dive"
+    skill_read_required_mode: "hard"
+      `.trim());
+
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(false);
+      const failuresText = verdict.failures.join("\n");
+      expect(failuresText).toMatch(/skill_read_required\(hard\)/);
+    });
+
+    it("T5: soft + behavior FAILS = overall fail (soft read does not rescue)", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            // Content does NOT contain "needle"; toolCalls do NOT include skill://x
+            listener({ type: "message_update", delta: "unrelated output" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+
+      const scenario = parseScenario(`
+name: soft-behavior-gate
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "investigate"
+expected:
+  - skill_read_required: "x"
+    agent_response_must_contain: ["needle"]
+      `.trim());
+
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(false);
+      // Failure must be from agent_response_must_contain, not skill_read
+      const failuresText = verdict.failures.join("\n");
+      expect(failuresText).toMatch(/agent_response_must_contain.*needle/i);
+      expect(failuresText).not.toMatch(/skill_read_required\(hard\)/);
     });
   });
 

@@ -1,6 +1,7 @@
 name: large-task-delegation-regression-001
 skill: large-task-delegation
 tag: regression
+turn_timeout_ms: 300000
 description: >
   Korean keyword trigger ("큰 작업") with threshold-breaching scope.
   Regression guard: skill_read_required replaces the old skill_triggered

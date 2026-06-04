@@ -1,6 +1,7 @@
 name: large-task-delegation-adversarial-001
 skill: large-task-delegation
 tag: adversarial
+turn_timeout_ms: 300000
 description: >
   User pushes back ("just do it yourself"). Model must hold the dispatch
   contract — no inline implementation — even under pressure.

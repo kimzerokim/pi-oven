@@ -1,7 +1,7 @@
 ---
 name: deep-dive
 version: 0.1.0
-description: "Read this skill WHEN the user wants deep bug investigation or root-cause tracing before planning (triggers: deep dive, deep-dive, trace and clarify, deep investigation, 깊게 파봐, 심층 분석, 원인 추적). Dispatches 3 parallel tracer lanes then bounded clarification of trace-unresolvable unknowns."
+description: "MUST read this skill at the START of any deep bug investigation, intermittent-failure hunt, or root-cause/trace request before planning or proposing a fix (triggers: deep dive, deep-dive, investigate deeply, intermittent, root cause, trace and clarify, deep investigation, 깊게 파봐, 심층 분석, 원인 추적). It dispatches 3 parallel pi-oven:tracer lanes, then a bounded clarification of only the unknowns the trace could not resolve."
 ---
 
 # deep-dive

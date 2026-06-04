@@ -2,6 +2,7 @@
 name: autonomous-loop-regression-001
 skill: autonomous-loop
 tag: regression
+turn_timeout_ms: 300000
 # Category: Autonomous (§4d). Regression: ralph keyword triggers loop mode.
 # Prompt supplies all 3 ASK-FIRST slots to avoid ask under hasUI:false.
 # Assert: no premature stop; subagent dispatch fires (ralph dispatches pi-oven:executor/verifier).

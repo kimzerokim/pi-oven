@@ -1,6 +1,7 @@
 name: deep-dive-regression-001
 skill: deep-dive
 tag: regression
+turn_timeout_ms: 300000
 # deep-dive is Loadable/procedural. Phase 3 must dispatch pi-oven:tracer via task tool
 # (parallel run_in_background). Skill body §Phase 3: "Dispatch pi-oven:tracer ... All agents
 # run concurrently ... each with run_in_background: true".

@@ -1,6 +1,7 @@
 name: team-regression-001
 skill: team
 tag: regression
+turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "multi-agent: build the auth module"

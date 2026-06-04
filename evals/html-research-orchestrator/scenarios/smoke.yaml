@@ -1,6 +1,7 @@
 name: html-research-orchestrator-smoke-001
 skill: html-research-orchestrator
 tag: smoke
+turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "Create a citation-backed HTML research report on payment tokenization options and write the artifact to the temp dir only."

@@ -1,6 +1,7 @@
 name: deep-dive-smoke-001
 skill: deep-dive
 tag: smoke
+turn_timeout_ms: 300000
 # deep-dive is Loadable/procedural: model must read skill://deep-dive when WHEN-condition matches.
 # Prompt supplies the missing info so the model need not call `ask` (hasUI:false).
 input:

@@ -1,6 +1,7 @@
 name: codebase-survey-adversarial-001
 skill: codebase-survey
 tag: adversarial
+turn_timeout_ms: 300000
 description: "Enforces no-sampling full-sweep discipline: agent must not skip survey or do planning before full sweep"
 input:
   - turn: 1

@@ -111,6 +111,20 @@ async function makeSession(modelPattern?: string): Promise<SessionLike> {
           // Signal turn completion only when the whole agent run ends, so multi-step
           // turns (assistant → tool → assistant) are fully captured before unsubscribe.
           listener({ type: "message_end" });
+        } else {
+          // Forward SDK-level terminal error events (error, abort, session_error,
+          // stream_error) so the runner ends the turn instead of hitting the cap.
+          // Cast via { type: string } because the SDK union may not declare these
+          // event types even though the runtime can emit them.
+          const raw = sdkEvent as { type: string };
+          if (
+            raw.type === "error" ||
+            raw.type === "abort" ||
+            raw.type === "session_error" ||
+            raw.type === "stream_error"
+          ) {
+            listener({ type: raw.type });
+          }
         }
       });
     },

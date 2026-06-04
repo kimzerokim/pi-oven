@@ -1,6 +1,7 @@
 name: large-task-delegation-smoke-001
 skill: large-task-delegation
 tag: smoke
+turn_timeout_ms: 300000
 description: >
   Trigger threshold met (3+ files, 300 LoC). Model should read the skill
   and plan dispatch — not implement inline.

@@ -2,6 +2,7 @@
 name: autonomous-loop-smoke-001
 skill: autonomous-loop
 tag: smoke
+turn_timeout_ms: 300000
 # Category: Autonomous (§4d). No skill_read_required; assert stop-guard behavior.
 # Prompt supplies all 3 ASK-FIRST slots to avoid ask under hasUI:false.
 input:

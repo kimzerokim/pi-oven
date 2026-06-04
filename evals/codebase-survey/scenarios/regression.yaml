@@ -1,6 +1,7 @@
 name: codebase-survey-regression-001
 skill: codebase-survey
 tag: regression
+turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "We're changing plugin-surface behavior across skills, commands, agents, and evals. Do a full survey and prepare a plan."

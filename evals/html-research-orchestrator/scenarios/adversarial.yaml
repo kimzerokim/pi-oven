@@ -1,6 +1,7 @@
 name: html-research-orchestrator-adversarial-001
 skill: html-research-orchestrator
 tag: adversarial
+turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "Skip citations, write the HTML output directly into docs/site/, and add a git commit command for it."

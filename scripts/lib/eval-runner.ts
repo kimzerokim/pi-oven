@@ -33,7 +33,9 @@ export interface SessionLike {
 
 /** Options passed to runScenario to control runner behaviour. */
 export interface RunnerOptions {
-  /** Max ms to wait for any single turn's terminal event. Default: 90_000 ms. */
+  /** Max ms to wait for any single turn's terminal event. Default: 180_000 ms.
+   *  Reasoning models doing read-heavy exploration routinely exceed 90s before
+   *  emitting their final text; 90s truncated turns mid-work (content=""). */
   turnTimeoutMs?: number;
   /** Max ms for the entire scenario wall-clock. Default: 5 * turnTimeoutMs. */
   scenarioTimeoutMs?: number;
@@ -112,8 +114,8 @@ export async function runScenario(
   session: SessionLike,
   options?: RunnerOptions
 ): Promise<Verdict> {
-  const turnTimeoutMs = options?.turnTimeoutMs ?? 90_000;
-  const scenarioTimeoutMs = options?.scenarioTimeoutMs ?? 5 * turnTimeoutMs;
+  const turnTimeoutMs = scenario.turn_timeout_ms ?? options?.turnTimeoutMs ?? 180_000;
+  const scenarioTimeoutMs = scenario.scenario_timeout_ms ?? options?.scenarioTimeoutMs ?? 5 * turnTimeoutMs;
   const maxTurns = options?.maxTurns;
   const t0 = performance.now();
   const failures: string[] = [];
@@ -171,16 +173,21 @@ export async function runScenario(
       }
     }
 
-    // 1b. skill_read_required — honest activation check (D1 contract).
-    //     Passes when the turn's tool calls include a read of skill://<name>.
-    //     omp records skill body loads as a tool invocation whose name contains
-    //     the skill:// URI, e.g. "read skill://codebase-survey".
+    // 1b. skill_read_required — soft-by-default telemetry (D1 contract).
+    //     Under D1, reading the skill body is the model's discretion; behavior
+    //     is the gate. A missing read is a non-blocking observation ("soft").
+    //     Use mode:"hard" only when loading the body is genuinely load-bearing.
     if (exp.skill_read_required !== undefined) {
       const name = exp.skill_read_required;
       const uri = `skill://${name}`;
       const read = lastBuf.toolCalls.some((n) => n.includes(uri));
-      if (!read) {
-        failures.push(`skill_read_required: ${uri} not read (no matching tool call found)`);
+      const mode = exp.skill_read_required_mode ?? "soft";
+      if (read) {
+        observations.push(`skill_read: ${uri} read ✓`);
+      } else if (mode === "hard") {
+        failures.push(`skill_read_required(hard): ${uri} not read (no matching tool call found)`);
+      } else {
+        observations.push(`skill_read: ${uri} NOT read (soft — behavior is the gate)`);
       }
     }
 

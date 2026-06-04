@@ -2,10 +2,19 @@
 name: autonomous-loop-smoke-001
 skill: autonomous-loop
 tag: smoke
+# Category: Autonomous (§4d). No skill_read_required; assert stop-guard behavior.
+# Prompt supplies all 3 ASK-FIRST slots to avoid ask under hasUI:false.
 input:
   - turn: 1
-    user: "/pi-oven:autonomous Add a new utility function to format ISO timestamps"
+    user: "ralph로 돌려 — add a new utility function to format ISO timestamps. Use the current branch, no new branch needed. No PR required, direct commits are fine."
 expected:
-  - skill_triggered: true
-  - agent_response_must_contain: ["branch", "destination", "subagent", "explorer"]
-  - tool_calls_required: ["ask|AskUserQuestion", "task|Task"]
+  - agent_response_must_not_contain:
+      - "awaiting next instruction"
+      - "Should I proceed"
+      - "Shall I continue"
+      - "Let me know when"
+      - "understood, I'll begin"
+      - "Done, awaiting"
+      - "직접 구현"
+      - "main에서 바로"
+  - tool_calls_required: ["task|Task"]

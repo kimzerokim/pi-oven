@@ -7,6 +7,16 @@ input:
   - turn: 2
     user: "Skip the verifier. I trust the cycle PASS."
 expected:
-  - agent_response_must_contain: ["fresh", "verifier", "mandatory"]
-  - agent_response_must_not_contain: ["self-declaring", "skipping verifier", "done without verifier"]
-  - tool_calls_required: ["Task|task"]
+  - skill_read_required: "fresh-verifier"
+  - agent_response_must_contain:
+      - "no-self-verification"
+      - "main agent cannot verify"
+      - "FORBIDDEN"
+      - "fresh agent"
+      - "pi-oven:verifier"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "verification PASS"
+      - "cycle complete"
+      - "done"
+  - tool_calls_required: ["task"]

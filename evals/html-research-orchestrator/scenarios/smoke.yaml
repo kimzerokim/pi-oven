@@ -3,15 +3,26 @@ skill: html-research-orchestrator
 tag: smoke
 input:
   - turn: 1
-    user: "Create a citation-backed HTML research report for payment tokenization options and put the artifact in temp dir only."
+    user: "Create a citation-backed HTML research report on payment tokenization options and write the artifact to the temp dir only."
 expected:
-  - skill_triggered: true
+  - skill_read_required: "html-research-orchestrator"
     agent_response_must_contain:
-      [
-        "citation",
-        "temp",
-        "Executive Summary",
-        "Recommendations",
-        "Generated HTML remains outside repo and is not committed."
-      ]
+      - values:
+          - "pi-oven:document-specialist"
+          - "document-specialist"
+        match: any
+      - values:
+          - "$TMPDIR"
+          - "/tmp"
+          - "temp dir"
+          - "OS temp"
+        match: any
+      - values:
+          - "Generated HTML remains outside repo and is not committed."
+        match: any
+      - values:
+          - "Executive Summary"
+          - "Recommendations"
+          - "Source Bibliography"
+        match: any
     tool_calls_required: ["Task|task"]

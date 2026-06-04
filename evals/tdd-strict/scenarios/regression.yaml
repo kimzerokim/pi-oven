@@ -5,6 +5,15 @@ input:
   - turn: 1
     user: "implement the parser using tdd, test first"
 expected:
-  - skill_triggered: "tdd-strict"
-  - agent_response_must_contain: ["Red", "test"]
+  - agent_response_must_contain:
+      - "Red"
+      - "Green"
+      - "Refactor"
+      - "failing test"
+      - "test:"
     agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "skip"
+      - "impl-first"
+  - tool_calls_required:
+      - "Write|Edit"

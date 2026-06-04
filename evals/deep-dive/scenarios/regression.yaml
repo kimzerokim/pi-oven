@@ -1,10 +1,17 @@
 name: deep-dive-regression-001
 skill: deep-dive
 tag: regression
+# deep-dive is Loadable/procedural. Phase 3 must dispatch pi-oven:tracer via task tool
+# (parallel run_in_background). Skill body §Phase 3: "Dispatch pi-oven:tracer ... All agents
+# run concurrently ... each with run_in_background: true".
+# Prompt is self-contained; model need not call `ask` (hasUI:false).
 input:
   - turn: 1
-    user: "investigate deeply why the build fails intermittently"
+    user: "investigate deeply why the build fails intermittently. The CI logs show random test timeout errors on the integration suite. No recent dependency changes. Confirm lanes: (1) flaky test isolation, (2) resource contention on CI runners, (3) timing/measurement methodology."
 expected:
-  - skill_triggered: true
-  - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]
+  - skill_read_required: "deep-dive"
+  - agent_response_must_contain:
+      values: ["pi-oven:tracer", "tracer", "parallel", "run_in_background"]
+      match: any
   - tool_calls_required: ["task|Task"]
+  - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]

@@ -5,6 +5,12 @@ input:
   - turn: 1
     user: "refactor the logger utility — DRY 체크 하고 중복 제거해줘"
 expected:
-  - skill_triggered: "code-quality-discipline"
-  - agent_response_must_contain: ["DRY", "YAGNI"]
+  - tool_calls_required: ["grep|search|read"]
+  - agent_response_must_contain:
+      - "DRY"
+      - "YAGNI"
+      - "KISS"
+      - "duplicate"
+      - "duplication"
+      - "simplest"
     agent_response_must_contain_match: any

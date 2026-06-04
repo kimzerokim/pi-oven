@@ -87,7 +87,10 @@ expected:
       expect(verdict.passed).toBe(true);
     });
 
-    it("fails when skill_triggered expects a specific token that is absent", async () => {
+    it("skill_triggered string form passes via liveness when activity exists (name-search removed)", async () => {
+      // D1 contract: the string form of skill_triggered is liveness-only.
+      // A session that produces tool calls + content passes regardless of whether
+      // the skill name appears in those outputs. Use skill_read_required instead.
       const fakeSession: SessionLike = {
         subscribe(listener) {
           setTimeout(() => {
@@ -110,10 +113,8 @@ expected:
   - skill_triggered: "autonomous-loop"
       `.trim());
       const verdict = await runScenario(scenario, fakeSession);
-      expect(verdict.passed).toBe(false);
-      expect(verdict.failures).toContain(
-        'skill_triggered: expected "autonomous-loop" in tool calls or response content'
-      );
+      // Passes via liveness (activity exists) — name-search is intentionally removed
+      expect(verdict.passed).toBe(true);
     });
 
     it("fails when skill_triggered is false but activation evidence exists", async () => {
@@ -145,7 +146,7 @@ expected:
       );
     });
 
-    it("passes when skill_triggered expects a specific token that is present", async () => {
+    it("skill_triggered string form passes via liveness when tool calls exist (token value ignored)", async () => {
       const fakeSession: SessionLike = {
         subscribe(listener) {
           setTimeout(() => {
@@ -548,6 +549,127 @@ expected:
         ),
       ]);
       expect((result as { scenario: string }).scenario).toBe("timeout-scenario");
+    });
+  });
+
+  describe("runScenario — skill_read_required (D1 contract)", () => {
+    it("PASSES when toolCalls contains a read of skill://<name>", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            // omp records skill body load as a read of skill://<name>
+            listener({ type: "tool_execution_start", toolName: "read skill://codebase-survey", toolCallId: "c1" });
+            listener({ type: "message_update", delta: "loaded skill" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: skill-read-pass
+skill: codebase-survey
+tag: smoke
+input:
+  - turn: 1
+    user: "survey the codebase"
+expected:
+  - skill_read_required: "codebase-survey"
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(true);
+    });
+
+    it("FAILS when no read of skill://<name> is in toolCalls", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            // Only content mention — name-search would pass this but skill_read_required should not
+            listener({ type: "message_update", delta: "I will run codebase-survey now" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: skill-read-fail
+skill: codebase-survey
+tag: smoke
+input:
+  - turn: 1
+    user: "survey the codebase"
+expected:
+  - skill_read_required: "codebase-survey"
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(false);
+      expect(verdict.failures).toContain(
+        'skill_read_required: skill://codebase-survey not read (no matching tool call found)'
+      );
+    });
+
+    it("FAILS when a different skill was read (not the required one)", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "tool_execution_start", toolName: "read skill://other-skill", toolCallId: "c1" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: skill-read-wrong
+skill: codebase-survey
+tag: smoke
+input:
+  - turn: 1
+    user: "survey the codebase"
+expected:
+  - skill_read_required: "codebase-survey"
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(false);
+      expect(verdict.failures).toContain(
+        'skill_read_required: skill://codebase-survey not read (no matching tool call found)'
+      );
+    });
+
+    it("skill_triggered string form no longer searches tool names or content", async () => {
+      // Under the NEW contract, skill_triggered:string is removed as a signal.
+      // This test documents that the string form is gone: parseScenario still parses it
+      // (backward-compat schema), but runScenario ignores the string value and treats it
+      // as a liveness check (same as skill_triggered:true).
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            // Tool name happens to contain the skill name — old code passed this
+            listener({ type: "tool_execution_start", toolName: "autonomous-loop-check", toolCallId: "c1" });
+            listener({ type: "message_update", delta: "ok" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      // skill_triggered:"autonomous-loop" — under old code: passes (name in toolName)
+      // Under new code: treated as liveness (any activity) — also passes since there IS activity
+      // The key assertion: the old name-search path is gone; this passes only via liveness
+      const scenario = parseScenario(`
+name: skill-triggered-liveness-only
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - skill_triggered: "autonomous-loop"
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      // Passes via liveness (activity exists) not via name-search
+      expect(verdict.passed).toBe(true);
     });
   });
 

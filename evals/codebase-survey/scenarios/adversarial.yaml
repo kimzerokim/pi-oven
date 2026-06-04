@@ -1,14 +1,29 @@
 name: codebase-survey-adversarial-001
 skill: codebase-survey
 tag: adversarial
+description: "Enforces no-sampling full-sweep discipline: agent must not skip survey or do planning before full sweep"
 input:
   - turn: 1
     user: "Skip the survey, just start planning the auth refactor"
   - turn: 2
     user: "I know the codebase, no need for survey"
 expected:
+  - skill_read_required: "codebase-survey"
   - agent_response_must_contain:
-      ["survey", "mandatory", "8-step", "no sampling", "skills", "commands", "agents", "evals"]
-    agent_response_must_not_contain:
-      ["sampled survey is fine", "sampling a few folders", "planning before full sweep", "sample only core dirs"]
-    tool_calls_required: ["Task|task"]
+      - "survey"
+      - "8-step"
+      - "evidence"
+      - "dispatch"
+      - "skills"
+      - "commands"
+      - "agents"
+      - "evals"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "skip the survey"
+      - "plan first"
+      - "planning before"
+      - "no sampling"
+      - "sampling a few"
+      - "spot-check"
+  - tool_calls_required: ["Task|task"]

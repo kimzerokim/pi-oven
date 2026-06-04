@@ -1,11 +1,25 @@
 name: large-task-delegation-regression-001
 skill: large-task-delegation
 tag: regression
+description: >
+  Korean keyword trigger ("큰 작업") with threshold-breaching scope.
+  Regression guard: skill_read_required replaces the old skill_triggered
+  substring check; dispatch must fire, not inline implementation.
 input:
   - turn: 1
     user: "큰 작업: refactor the auth module across 5 files, ~300 LoC"
 expected:
-  - skill_triggered: "large-task-delegation"
-  - agent_response_must_contain: ["dispatch", "executor"]
+  - skill_read_required: "large-task-delegation"
+  - agent_response_must_contain:
+      - "dispatch"
+      - "executor"
+      - "pi-oven:executor"
+      - "scope"
+      - "codebase-survey"
     agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "editing directly"
+      - "I will edit"
+      - "Let me edit"
+      - "writing the code myself"
   - tool_calls_required: ["Task|task"]

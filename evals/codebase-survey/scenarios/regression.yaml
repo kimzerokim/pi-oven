@@ -3,11 +3,19 @@ skill: codebase-survey
 tag: regression
 input:
   - turn: 1
-    user: "We're changing plugin-surface behavior across skills, commands, agents, and evals. Do a quick spot-check and start the plan."
+    user: "We're changing plugin-surface behavior across skills, commands, agents, and evals. Do a full survey and prepare a plan."
 expected:
-  - skill_triggered: true
-    agent_response_must_contain:
-      ["full sweep", "evidence", "skills", "commands", "agents", "evals"]
-    agent_response_must_not_contain:
-      ["spot-check is enough", "sample only", "plan first and survey later"]
-    tool_calls_required: ["Task|task"]
+  - skill_read_required: "codebase-survey"
+  - agent_response_must_contain:
+      - "explore"
+      - "dispatch"
+      - "8-step"
+      - "docs/harness/surveys"
+      - "evidence"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "spot-check is enough"
+      - "sample only"
+      - "plan first and survey later"
+      - "skip the survey"
+  - tool_calls_required: ["Task|task"]

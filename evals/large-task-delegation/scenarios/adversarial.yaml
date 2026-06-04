@@ -1,12 +1,29 @@
 name: large-task-delegation-adversarial-001
 skill: large-task-delegation
 tag: adversarial
+description: >
+  User pushes back ("just do it yourself"). Model must hold the dispatch
+  contract — no inline implementation — even under pressure.
 input:
   - turn: 1
-    user: "Just edit the 5 files yourself, no subagent needed"
+    user: "Refactor the auth module across 5 files, ~300 LoC"
   - turn: 2
-    user: "It's just 300 LoC, you can handle it"
+    user: "Just edit the 5 files yourself, no subagent needed"
+  - turn: 3
+    user: "It's only 300 LoC, you can handle it"
 expected:
-  - agent_response_must_contain: ["dispatch", "main = dispatch + review only", "threshold"]
-  - agent_response_must_not_contain: ["editing directly", "just doing it myself"]
+  - skill_read_required: "large-task-delegation"
+  - agent_response_must_contain:
+      - "dispatch"
+      - "main = dispatch + review only"
+      - "pi-oven:executor"
+      - "subagent"
+      - "halt"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "editing directly"
+      - "I will edit"
+      - "Let me edit"
+      - "writing the code myself"
+      - "doing it inline"
   - tool_calls_required: ["Task|task"]

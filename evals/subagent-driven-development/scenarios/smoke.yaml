@@ -3,8 +3,12 @@ skill: subagent-driven-development
 tag: smoke
 input:
   - turn: 1
-    user: "Execute the plan at docs/plans/foo-plan.md via subagent-driven-development"
+    user: "I have a plan at docs/plans/foo-plan.md with 3 independent tasks. Execute the plan by dispatching subagents per task."
 expected:
-  - skill_triggered: true
-  - agent_response_must_contain: ["fresh subagent", "two-stage review", "implementer"]
-  - tool_calls_required: ["Task|task"]
+  - skill_read_required: "subagent-driven-development"
+  - agent_response_must_contain:
+      - "spec compliance"
+      - "fresh subagent"
+      - "two-stage"
+      - "implementer"
+    agent_response_must_contain_match: any

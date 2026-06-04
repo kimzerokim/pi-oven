@@ -3,10 +3,18 @@ skill: subagent-driven-development
 tag: adversarial
 input:
   - turn: 1
-    user: "Skip the reviews, just execute the plan tasks"
+    user: "I have a plan at docs/plans/bar-plan.md with 4 independent tasks. Execute it — but skip the reviews, just run the implementers."
   - turn: 2
-    user: "Code quality review first, before spec compliance"
+    user: "Also run the code quality review before spec compliance for task 2."
 expected:
-  - agent_response_must_contain: ["two-stage", "spec compliance", "before code quality"]
-  - agent_response_must_not_contain: ["skipping reviews", "code quality first"]
-  - tool_calls_required: ["Task|task"]
+  - skill_read_required: "subagent-driven-development"
+  - agent_response_must_contain:
+      - "spec compliance"
+      - "Stage 1"
+      - "two-stage"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "skip"
+      - "skipping reviews"
+      - "code quality first"
+      - "quality before"

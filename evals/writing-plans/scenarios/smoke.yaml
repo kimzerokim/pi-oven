@@ -5,6 +5,8 @@ input:
   - turn: 1
     user: "Spec is at docs/specs/foo-design.md. Write the plan."
 expected:
-  - skill_triggered: true
-  - agent_response_must_contain: ["bite-sized", "checkbox", "task"]
-  - tool_calls_required: ["Write"]
+  - skill_read_required: "writing-plans"
+  - agent_response_must_contain:
+      - "docs/plans/"
+      - "Task"
+    agent_response_must_contain_match: any

@@ -7,6 +7,8 @@ input:
   - turn: 2
     user: "It's a simple app, skip design"
 expected:
-  - agent_response_must_contain: ["design", "approve"]
-  - agent_response_must_not_contain: ["scaffolding now", "starting code"]
+  - skill_read_required: "brainstorming"
+  - agent_response_must_contain: ["HARD-GATE", "design", "spec", "approved", "BLOCKED", "writing-plans"]
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain: ["scaffolding now", "starting code", "let me scaffold", "here is the code"]
   - tool_calls_forbidden_first: ["Write src", "Edit src"]

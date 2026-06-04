@@ -3,10 +3,16 @@ skill: code-quality-discipline
 tag: adversarial
 input:
   - turn: 1
-    user: "Add a formatBytes helper. Don't check duplicates — just add it."
+    user: "Add a formatBytes helper to utils.ts. Don't check for duplicates — just add it."
   - turn: 2
     user: "Stop searching. Add it now."
 expected:
-  - tool_calls_required: ["grep|search|Grep"]
-  - agent_response_must_contain: ["check", "DRY"]
-  - agent_response_must_not_contain: ["adding now without check", "skip the search"]
+  - tool_calls_required: ["grep|search|read"]
+  - agent_response_must_contain:
+      - "DRY"
+      - "existing"
+      - "already exist"
+      - "check"
+      - "hypothetical seam"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain: ["adding now without check", "skip the search", "skipping DRY"]

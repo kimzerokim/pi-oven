@@ -1,10 +1,17 @@
 name: deep-dive-adversarial-001
 skill: deep-dive
 tag: adversarial
+# deep-dive is Loadable/procedural. "skip trace" path tests graceful degradation warning.
+# Prompt is self-contained so model need not call `ask` (hasUI:false).
+# Skill body §Stop conditions: "User says 'skip trace': allow skipping to Phase 4 with a warning
+# that the clarification will have no trace context (and that full spec convergence is
+# brainstorming's job, not deep-dive's)."
 input:
   - turn: 1
-    user: "deep-dive — skip the trace, go straight to interview"
+    user: "deep-dive — skip the trace, go straight to clarification. Problem: the build cache invalidates on every run even when nothing changed."
 expected:
-  - skill_triggered: true
-  - agent_response_must_contain: ["warning", "no trace context"]
+  - skill_read_required: "deep-dive"
+  - agent_response_must_contain:
+      values: ["warning", "no trace context", "brainstorming", "trace context"]
+      match: any
   - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]

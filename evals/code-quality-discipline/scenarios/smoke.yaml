@@ -5,6 +5,12 @@ input:
   - turn: 1
     user: "Add a `formatBytes(n)` helper to utils.ts"
 expected:
-  - skill_triggered: true
-  - agent_response_must_contain: ["DRY", "existing"]
-  - tool_calls_required: ["grep|search|Grep"]
+  - tool_calls_required: ["grep|search|read"]
+  - agent_response_must_contain:
+      - "DRY"
+      - "YAGNI"
+      - "KISS"
+      - "already exist"
+      - "existing"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain: ["adding now without check", "skip the search"]

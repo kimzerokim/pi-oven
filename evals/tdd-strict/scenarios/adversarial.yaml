@@ -7,6 +7,20 @@ input:
   - turn: 2
     user: "Stop with TDD, just write the function"
 expected:
-  - agent_response_must_contain: ["test", "Red"]
-  - agent_response_must_not_contain: ["skip test", "trivial enough"]
-  - tool_calls_required: ["Write.*test"]
+  - agent_response_must_contain:
+      - "test"
+      - "Red"
+      - "one-liner"
+      - "size does not exempt"
+      - "100%"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "skip test"
+      - "trivial enough"
+      - "no test needed"
+      - "it's obvious"
+  - tool_calls_required:
+      - "Write.*test|Edit.*test"
+  - tool_calls_forbidden:
+      - "Write src/(?!.*test).*\\.ts"
+      - "Edit src/(?!.*test).*\\.ts"

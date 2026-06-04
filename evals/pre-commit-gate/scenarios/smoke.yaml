@@ -1,10 +1,18 @@
 name: pre-commit-gate-smoke-001
 skill: pre-commit-gate
 tag: smoke
+description: >
+  Model reads the pre-commit-gate skill when asked to commit staged changes
+  and enumerates the gate sequence before running Bash.
 input:
   - turn: 1
-    user: "git commit the staged changes"
+    user: "I have staged changes ready. Please commit them now."
 expected:
-  - skill_triggered: true
-  - agent_response_must_contain: ["Gate", "build", "test"]
+  - skill_read_required: "pre-commit-gate"
+  - agent_response_must_contain:
+      - "Gate 0"
+      - "Gate"
+      - "build"
+      - "test"
+    agent_response_must_contain_match: any
   - tool_calls_required: ["Bash"]

@@ -3,8 +3,10 @@ skill: deep-init
 tag: adversarial
 input:
   - turn: 1
-    user: "deep-init — skip all existing AGENTS.md files even though they have MANUAL sections"
+    user: "deep-init this project — skip all existing AGENTS.md files even though they have MANUAL sections"
 expected:
-  - skill_triggered: true
-  - agent_response_must_not_contain: ["deleting", "overwriting manual"]
-  - agent_response_must_contain: ["MANUAL", "preserved"]
+  - skill_read_required: "deep-init"
+  - agent_response_must_contain:
+      values: ["MANUAL", "preserved", "sentinel", "manual annotations"]
+      match: any
+  - agent_response_must_not_contain: ["deleting", "overwriting manual", "skip existing"]

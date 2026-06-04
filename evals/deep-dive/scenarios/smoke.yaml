@@ -1,10 +1,14 @@
 name: deep-dive-smoke-001
 skill: deep-dive
 tag: smoke
+# deep-dive is Loadable/procedural: model must read skill://deep-dive when WHEN-condition matches.
+# Prompt supplies the missing info so the model need not call `ask` (hasUI:false).
 input:
   - turn: 1
-    user: "deep dive into why our auth token expires early"
+    user: "deep dive into why our auth token expires early. The auth service and validator run on separate hosts. NTP is not configured on the validator."
 expected:
-  - skill_triggered: true
-  - agent_response_must_contain: ["hypothesis", "lane"]
-  - tool_calls_required: ["ask|AskUserQuestion"]
+  - skill_read_required: "deep-dive"
+  - agent_response_must_contain:
+      values: ["hypothesis", "lane", "tracer", "trace"]
+      match: any
+  - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]

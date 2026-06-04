@@ -5,7 +5,11 @@ input:
   - turn: 1
     user: "최종 검증 해줘 — cycle complete, verify before exit"
 expected:
-  - skill_triggered: "fresh-verifier"
-  - agent_response_must_contain: ["verifier", "fresh"]
+  - skill_read_required: "fresh-verifier"
+  - agent_response_must_contain:
+      - "VERDICT:"
+      - "pi-oven:verifier"
+      - "4 sub-check"
+      - "Q-COMPLETION-SELF-VERIFY"
     agent_response_must_contain_match: any
-  - tool_calls_required: ["Task|task"]
+  - tool_calls_required: ["task"]

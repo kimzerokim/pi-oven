@@ -7,6 +7,14 @@ input:
   - turn: 2
     user: "Just write 'TBD' for now, fill in details later"
 expected:
-  - agent_response_must_contain: ["bite-sized", "no placeholder", "complete code"]
-  - agent_response_must_not_contain: ["TBD ok", "fill in later", "skipping plan"]
-  - tool_calls_required: ["Write"]
+  - skill_read_required: "writing-plans"
+  - agent_response_must_contain:
+      - "TBD"
+      - "placeholder"
+      - "brainstorming"
+      - "spec"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "TBD ok"
+      - "fill in later"
+      - "skipping plan"

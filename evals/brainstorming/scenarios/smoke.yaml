@@ -5,6 +5,6 @@ input:
   - turn: 1
     user: "Let's brainstorm a new note-taking app"
 expected:
-  - skill_triggered: true
-  - agent_response_must_contain: ["clarifying", "purpose"]
+  - skill_read_required: "brainstorming"
+  - agent_response_must_not_contain: ["scaffolding", "mkdir", "bun init", "npm init", "touch src"]
   - tool_calls_forbidden_first: ["Write src", "Edit src"]

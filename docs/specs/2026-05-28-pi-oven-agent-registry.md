@@ -978,7 +978,7 @@ export default function piOvenPi(pi: ExtensionAPI): void {
 
 **Layer 2 — `before_agent_start` (logging only)**:
 
-`BeforeAgentStartEvent` payload에 `agentName`이나 `model` 필드가 없다 (types.ts:450–455). 따라서 이 레이어에서 특정 agent의 tool을 동적으로 제한하는 것은 현재 API로 불가능하다. tool 제한의 실질적 enforcement는 **agent 파일의 `tools:` frontmatter 필드**에 의존한다 (omp가 직접 강제). `before_agent_start` 핸들러는 진단/로깅 목적으로만 사용한다.
+`BeforeAgentStartEvent` payload에 `agentName`이나 `model` 필드가 없다 (types.ts:450–455). 따라서 이 레이어에서 특정 agent의 tool을 동적으로 제한하는 것은 현재 API로 불가능하다. tool 제한의 실질적 enforcement는 **agent 파일의 `tools:` frontmatter 필드**에 의존한다 (omp가 직접 강제). `blocked_tools` 필드는 주로 코드 가독성(prohibition context)과 lint 검증을 위한 보조 수단이며, omp 레이어에서는 `tools:` 필드만이 유일한 강제 경계다. `blocked_tools`는 lint을 통해 `tools: ["*"]`와의 모순 여부 및 `tools` 목록과의 중복 여부를 검증한다. `before_agent_start` 핸들러는 진단/로깅 목적으로만 사용한다.
 
 **결론**: 가장 강력한 enforcement는 **agent 파일의 `tools:` 필드에 허용 목록을 명시하는 것**이다. omp가 직접 강제한다. plugin runtime은 model 화이트리스트 위반 경고 로그와 진단 목적으로만 사용.
 

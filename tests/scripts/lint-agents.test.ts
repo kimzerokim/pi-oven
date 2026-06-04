@@ -60,3 +60,33 @@ describe("lint-agents instructed-but-not-granted", () => {
     expect(runLint(dir).code).toBe(0);
   });
 });
+
+describe("lint-agents tool contradiction checks", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lint-agents-safety-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("fails when tools contains \"*\" and blocked_tools is non-empty", () => {
+    writeFileSync(join(dir, "pi-oven-zzfixture.md"), agent(`["*"]`, "Hello.", `["edit"]`));
+    const { code, stderr } = runLint(dir);
+    expect(code).toBe(1);
+    expect(stderr).toContain("ignores blocks");
+  });
+
+  it("fails when tools and blocked_tools overlap", () => {
+    writeFileSync(join(dir, "pi-oven-zzfixture.md"), agent(`["read", "edit"]`, "Hello.", `["edit"]`));
+    const { code, stderr } = runLint(dir);
+    expect(code).toBe(1);
+    expect(stderr).toContain("overlapping tools");
+  });
+
+  it("passes with constrained allowlist and no overlap", () => {
+    writeFileSync(join(dir, "pi-oven-zzfixture.md"), agent(`["read", "web_search"]`, "Hello.", `["edit", "write"]`));
+    const { code, stderr } = runLint(dir);
+    expect(code).toBe(0);
+  });
+});

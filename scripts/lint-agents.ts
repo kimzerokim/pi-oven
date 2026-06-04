@@ -136,6 +136,28 @@ for (const file of files) {
     }
   }
 
+  // Contradiction checks:
+  // 1. tools: ["*"] and non-empty blocked_tools is a contradiction (block is ignored).
+  const rawTools = extractStringList(frontmatter, "tools");
+  const rawBlocked = extractStringList(frontmatter, "blocked_tools");
+  if (rawTools.includes("*") && rawBlocked.length > 0) {
+    console.error(
+      `lint-agents: ERROR: ${file} contains \`tools: ["*"]\` AND non-empty \`blocked_tools: ${JSON.stringify(rawBlocked)}\`. ` +
+        `The \`*\` grant ignores blocks, making the block list misleading. Remove the blocks or use an explicit allowlist.`
+    );
+    violations++;
+  }
+
+  // 2. Intersection of tools and blocked_tools must be empty.
+  const toolSet = new Set(rawTools);
+  const overlap = rawBlocked.filter((b) => toolSet.has(b));
+  if (overlap.length > 0) {
+    console.error(
+      `lint-agents: ERROR: ${file} has overlapping tools in both \`tools\` and \`blocked_tools\`: ${JSON.stringify(overlap)}.`
+    );
+    violations++;
+  }
+
   // SoT alignment: agent file model + thinkingLevel must match PROFILE_A.
   // profiles.ts is the source of truth; agent files are derived artifacts.
   const role = file.replace(/^pi-oven-/, "").replace(/\.md$/, "");

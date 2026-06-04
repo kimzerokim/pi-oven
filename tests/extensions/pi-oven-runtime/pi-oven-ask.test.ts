@@ -4,7 +4,6 @@ import {
   buildSelectItems,
   clampRecommended,
   formatAskResult,
-  formatBatchResult,
   foldLabel,
 } from "../../../.omp/extensions/pi-oven-runtime/pi-oven-ask";
 
@@ -81,61 +80,6 @@ describe("formatAskResult", () => {
     const res = formatAskResult("Q?", undefined, undefined);
     expect(res.content[0]).toEqual({ type: "text", text: "User cancelled the selection" });
     expect(res.details).toEqual({ mode: "single", question: "Q?" });
-  });
-});
-
-describe("formatBatchResult", () => {
-  it("surfaces a single selected answer in the visible text", () => {
-    const res = formatBatchResult({
-      language: { selected: "English" },
-    });
-    expect(res.content[0]).toEqual({ type: "text", text: "User selected: English" });
-    expect(res.details).toEqual({
-      mode: "batch",
-      answers: {
-        language: { selected: "English" },
-      },
-    });
-  });
-
-  it("surfaces a single custom answer in the visible text", () => {
-    const res = formatBatchResult({
-      language: { customInput: "Español" },
-    });
-    expect(res.content[0]).toEqual({
-      type: "text",
-      text: "User provided custom input: Español",
-    });
-    expect(res.details).toEqual({
-      mode: "batch",
-      answers: {
-        language: { customInput: "Español" },
-      },
-    });
-  });
-
-  it("returns batch mode details keyed by id", () => {
-    const res = formatBatchResult({
-      q1: { selected: "A" },
-      q2: { selectedMany: ["X", "Y"], customInput: "note" },
-    });
-    expect(res.content[0]).toEqual({
-      type: "text",
-      text: "User answered 2 questions: q1: User selected: A; q2: selectedMany=X, Y | customInput=note",
-    });
-    expect(res.details).toEqual({
-      mode: "batch",
-      answers: {
-        q1: { selected: "A" },
-        q2: { selectedMany: ["X", "Y"], customInput: "note" },
-      },
-    });
-  });
-
-  it("returns cancelled text when answers are empty", () => {
-    const res = formatBatchResult({});
-    expect(res.content[0]).toEqual({ type: "text", text: "User cancelled the selection" });
-    expect(res.details).toEqual({ mode: "batch", answers: {} });
   });
 });
 

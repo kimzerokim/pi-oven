@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.4
+
+- **Fix: `/pi-oven:setup` language picker showed a bogus `unused: unused` question and aborted.** Root cause: `pi-oven_ask` exposed a batch/`questions[]` mode that no caller ever used, and orchestrator models mis-called it — emitting a degenerate batch call with `unused` placeholder id/question, then cancelling. Removed batch mode entirely: `pi-oven_ask` is now single-select only (one `question` + `options`; ask multiple questions by calling it multiple times). Dropped `questions[]`/`multi`/`formatBatchResult`/`summarizeBatchAnswer`/`askBatch` and the v0.1.3 batch-result formatting (it served only the now-removed mode). `commands/setup.md` Step 0 simplified to a plain two-argument call with no mode language.
+
 ## v0.1.3
 
 - `pi-oven_ask` batch results now surface the actual selection in the visible tool text instead of a generic "User answered N questions": a single-question batch renders `User selected: <label>` or `User provided custom input: <value>` (newlines normalized), and multi-question batches list each `id: <summary>`. This makes the `/pi-oven:setup` Step 0 single-question contract readable — the wizard reads the choice back from the visible text. Adds `summarizeBatchAnswer` + tests; `commands/setup.md` Step 0 documents reading `details.selected` / `details.customInput` with the visible-text fallback.

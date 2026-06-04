@@ -35,7 +35,7 @@ Parse the user's intent from their initial request:
 
 ### Step 0 — Primary language
 
-Before anything else, ask the user which language setup and the agents should use. For this Step 0, call the `pi-oven_ask` tool in SINGLE-question mode only — pass `question`, `options`, and optional `recommended`, and do NOT pass `questions[]`. The `pi-oven_ask` UI automatically adds an "Other (type your own)" option. Immediately read the returned selection from `details.selected` or `details.customInput` (fallback: parse the visible `User selected:` / `User provided custom input:` text). If neither is present, treat it as user cancel and stop — do NOT silently re-ask.
+Before anything else, ask the user which language setup and the agents should use. Call the `pi-oven_ask` tool with exactly two arguments — `question` (a string) and `options` (an array of `{ label, description }`). It takes no other arguments, and its UI automatically appends an "Other (type your own)" entry. Then read the user's choice from `details.selected` (the picked option's label) or `details.customInput` (free text), falling back to the visible `User selected:` / `User provided custom input:` line. If neither is present, treat it as a cancel and stop — do NOT silently re-ask.
 
 Exact option set:
 

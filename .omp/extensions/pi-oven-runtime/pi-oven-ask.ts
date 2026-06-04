@@ -22,20 +22,10 @@ import type {
 
 export const OTHER_VALUE = "__pi-oven_other__";
 const OTHER_LABEL = "Other (type your own)";
-const DONE_VALUE = "__pi-oven_done__";
-const DONE_LABEL = "Done";
 
 export interface PiOvenAskOption {
   label: string;
   description?: string;
-}
-
-export interface PiOvenAskQuestion {
-  id: string;
-  question: string;
-  options: PiOvenAskOption[];
-  recommended?: number;
-  multi?: boolean;
 }
 
 export interface PiOvenAskSingleDetails {
@@ -45,18 +35,7 @@ export interface PiOvenAskSingleDetails {
   customInput?: string;
 }
 
-export interface PiOvenAskBatchAnswer {
-  selected?: string;
-  selectedMany?: string[];
-  customInput?: string;
-}
-
-export interface PiOvenAskBatchDetails {
-  mode: "batch";
-  answers: Record<string, PiOvenAskBatchAnswer>;
-}
-
-export type PiOvenAskDetails = PiOvenAskSingleDetails | PiOvenAskBatchDetails;
+export type PiOvenAskDetails = PiOvenAskSingleDetails;
 
 export function buildSelectItems(options: PiOvenAskOption[]): SelectItem[] {
   const seen = new Set<string>();
@@ -115,60 +94,6 @@ export function formatAskResult(
   };
 }
 
-function summarizeBatchAnswer(answer: PiOvenAskBatchAnswer): string {
-  if (
-    answer.selected !== undefined &&
-    answer.customInput === undefined &&
-    (answer.selectedMany === undefined || answer.selectedMany.length === 0)
-  ) {
-    return `User selected: ${answer.selected}`;
-  }
-  if (
-    answer.customInput !== undefined &&
-    answer.selected === undefined &&
-    (answer.selectedMany === undefined || answer.selectedMany.length === 0)
-  ) {
-    const custom = answer.customInput.includes("\n")
-      ? answer.customInput.replaceAll("\n", " / ")
-      : answer.customInput;
-    return `User provided custom input: ${custom}`;
-  }
-
-  const parts: string[] = [];
-  if (answer.selected !== undefined) parts.push(`selected=${answer.selected}`);
-  if (answer.selectedMany !== undefined && answer.selectedMany.length > 0) {
-    parts.push(`selectedMany=${answer.selectedMany.join(", ")}`);
-  }
-  if (answer.customInput !== undefined) {
-    const custom = answer.customInput.includes("\n")
-      ? answer.customInput.replaceAll("\n", " / ")
-      : answer.customInput;
-    parts.push(`customInput=${custom}`);
-  }
-  return parts.join(" | ");
-}
-
-export function formatBatchResult(
-  answers: Record<string, PiOvenAskBatchAnswer>
-): AgentToolResult<PiOvenAskDetails> {
-  const keys = Object.keys(answers);
-  let text: string;
-  if (keys.length === 0) {
-    text = "User cancelled the selection";
-  } else if (keys.length === 1) {
-    text = summarizeBatchAnswer(answers[keys[0]!]!) || "User answered 1 question";
-  } else {
-    const summary = keys
-      .map((key) => `${key}: ${summarizeBatchAnswer(answers[key]!) || "no response"}`)
-      .join("; ");
-    text = `User answered ${keys.length} questions: ${summary}`;
-  }
-  return {
-    content: [{ type: "text" as const, text }],
-    details: { mode: "batch", answers },
-  };
-}
-
 export function foldLabel(opt: PiOvenAskOption): string {
   return opt.description ? `${opt.label} — ${opt.description}` : opt.label;
 }
@@ -210,21 +135,12 @@ function renderCall(
     question?: string;
     options?: PiOvenAskOption[];
     recommended?: number;
-    questions?: PiOvenAskQuestion[];
   },
   _options: ToolRenderResultOptions,
   theme: Theme
 ): Component {
   const container = new Container();
   container.addChild(new Text(theme.fg("toolTitle", "Ask (pi-oven)"), 0, 0));
-
-  if (args.questions && args.questions.length > 0) {
-    container.addChild(new Text(theme.fg("dim", `Batch: ${args.questions.length} question(s)`), 0, 0));
-    for (const q of args.questions) {
-      container.addChild(new Text(` ${theme.fg("dim", theme.tree.branch)} ${q.id}: ${q.question}`, 0, 0));
-    }
-    return container;
-  }
 
   container.addChild(new Markdown(args.question ?? "", 1, 0, getMarkdownTheme()));
   const opts = args.options ?? [];
@@ -263,20 +179,6 @@ function renderResult(
     return container;
   }
 
-  if (details.mode === "batch") {
-    const ids = Object.keys(details.answers);
-    container.addChild(new Text(theme.fg("dim", `Batch answers: ${ids.length}`), 0, 0));
-    for (const id of ids) {
-      const answer = details.answers[id]!;
-      let value = "Cancelled";
-      if (answer.selectedMany && answer.selectedMany.length > 0) value = answer.selectedMany.join(", ");
-      else if (answer.selected !== undefined) value = answer.selected;
-      else if (answer.customInput !== undefined) value = answer.customInput;
-      container.addChild(new Text(` ${theme.fg("dim", theme.tree.branch)} ${id}: ${theme.fg("toolOutput", value)}`, 0, 0));
-    }
-    return container;
-  }
-
   container.addChild(new Markdown(details.question, 1, 0, getMarkdownTheme()));
 
   if (details.selected !== undefined) {
@@ -312,17 +214,15 @@ function renderResult(
 }
 
 const DESCRIPTION = [
-  "Ask the user questions with one-line rationales.",
-  "Supports single-question mode (backward compatible) and optional batched mode via questions[].",
+  "Ask the user ONE single-select question with a one-line rationale per option.",
   "Each option carries { label, description? }; an 'Other (type your own)' free-text entry is appended automatically.",
-  "Use recommended (option index) to preselect a default; set multi=true per batch question for multi-select.",
+  "Use recommended (option index) to preselect a default.",
 ].join(" ");
 
 type PiOvenAskParams = {
-  question?: string;
-  options?: PiOvenAskOption[];
+  question: string;
+  options: PiOvenAskOption[];
   recommended?: number;
-  questions?: PiOvenAskQuestion[];
 };
 
 async function askSingle(
@@ -369,95 +269,6 @@ async function askSingle(
   return formatAskResult(question, choice, undefined);
 }
 
-async function askOneLabel(
-  ctx: ExtensionContext,
-  question: string,
-  options: PiOvenAskOption[],
-  recommended?: number,
-  extraDone?: boolean
-): Promise<string | undefined> {
-  const folded = options.map(foldLabel);
-  if (extraDone) folded.push(DONE_LABEL);
-  const rec = clampRecommended(recommended, options.length);
-
-  if (!ctx.hasUI || typeof ctx.ui?.custom !== "function") {
-    if (typeof ctx.ui?.select !== "function") return undefined;
-    return ctx.ui.select(question, folded);
-  }
-
-  const items = buildSelectItems(options);
-  if (extraDone) items.push({ value: DONE_VALUE, label: DONE_LABEL });
-  return ctx.ui.custom<string | undefined>((_tui, theme, _keybindings, done) => {
-    const list = new SelectList(items, items.length, getSelectListTheme(), {
-      minPrimaryColumnWidth: 24,
-      maxPrimaryColumnWidth: 48,
-    });
-    if (rec !== undefined) list.setSelectedIndex(rec);
-    list.onSelect = (item) => done(item.value);
-    list.onCancel = () => done(undefined);
-    return new PiOvenAskContainer(question, list, (s) => theme.fg("dim", s));
-  });
-}
-
-async function askBatch(
-  ctx: ExtensionContext,
-  questions: PiOvenAskQuestion[]
-): Promise<AgentToolResult<PiOvenAskDetails>> {
-  const answers: Record<string, PiOvenAskBatchAnswer> = {};
-
-  for (const q of questions) {
-    if (!q.multi) {
-      const one = await askSingle(ctx, {
-        question: q.question,
-        options: q.options,
-        recommended: q.recommended,
-      });
-      const det = one.details;
-      if (det && det.mode === "single") {
-        answers[q.id] = {};
-        if (det.selected !== undefined) answers[q.id]!.selected = det.selected;
-        if (det.customInput !== undefined) answers[q.id]!.customInput = det.customInput;
-      }
-      continue;
-    }
-
-    const selectedMany: string[] = [];
-    let customInput: string | undefined;
-
-    while (true) {
-      const choice = await askOneLabel(
-        ctx,
-        `${q.question}\n(Select one at a time, choose Done when finished)`,
-        q.options,
-        q.recommended,
-        true
-      );
-
-      if (choice === undefined || choice === DONE_VALUE || choice === DONE_LABEL) {
-        break;
-      }
-      if (choice === OTHER_VALUE) {
-        const custom = await ctx.ui.editor("Enter your response:", undefined, undefined, {
-          promptStyle: true,
-        });
-        if (custom !== undefined) customInput = custom;
-        continue;
-      }
-
-      const idx = q.options.findIndex((o) => o.label === choice);
-      const resolved = idx >= 0 ? q.options[idx]!.label : choice;
-      if (!selectedMany.includes(resolved)) selectedMany.push(resolved);
-    }
-
-    const answer: PiOvenAskBatchAnswer = {};
-    if (selectedMany.length > 0) answer.selectedMany = selectedMany;
-    if (customInput !== undefined) answer.customInput = customInput;
-    answers[q.id] = answer;
-  }
-
-  return formatBatchResult(answers);
-}
-
 export function registerPiOvenAsk(pi: ExtensionAPI): void {
   if (typeof pi.registerTool !== "function") {
     pi.logger?.debug?.("pi-oven_ask: registerTool unavailable; skipping registration");
@@ -471,29 +282,11 @@ export function registerPiOvenAsk(pi: ExtensionAPI): void {
     description: z.string().optional(),
   });
 
-  const questionSchema = z.object({
-    id: z.string(),
-    question: z.string(),
+  const parameters = z.object({
+    question: z.string().min(1),
     options: z.array(optionSchema).min(1),
     recommended: z.number().optional(),
-    multi: z.boolean().optional(),
   });
-
-  const parameters = z
-    .object({
-      question: z.string().optional(),
-      options: z.array(optionSchema).min(1).optional(),
-      recommended: z.number().optional(),
-      questions: z.array(questionSchema).min(1).optional(),
-    })
-    .superRefine((value, refinement) => {
-      if (value.questions && value.questions.length > 0) return;
-      if (value.question && value.options && value.options.length > 0) return;
-      refinement.addIssue({
-        code: "custom",
-        message: "Provide either (question + options) for single mode, or questions[] for batch mode.",
-      });
-    });
 
   pi.registerTool({
     name: "pi-oven_ask",
@@ -509,12 +302,9 @@ export function registerPiOvenAsk(pi: ExtensionAPI): void {
       _onUpdate: unknown,
       ctx: ExtensionContext
     ): Promise<AgentToolResult<PiOvenAskDetails>> {
-      if (params.questions && params.questions.length > 0) {
-        return askBatch(ctx, params.questions);
-      }
       return askSingle(ctx, {
-        question: params.question ?? "",
-        options: params.options ?? [],
+        question: params.question,
+        options: params.options,
         recommended: params.recommended,
       });
     },

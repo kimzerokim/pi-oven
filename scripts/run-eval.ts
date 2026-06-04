@@ -49,6 +49,45 @@ async function listScenarios(rootDir: string, args: Args): Promise<string[]> {
   return out;
 }
 
+// Current fast/cheap model id fragments, highest preference first. Legacy or
+// dead aliases (e.g. claude-3-haiku, which returns empty over the OAuth path)
+// are deliberately excluded — a bare "haiku" needle would match the broken
+// claude-3-haiku before claude-haiku-4-5, so we pin current family fragments.
+const FAST_EVAL_MODEL_PRIORITY = [
+  "haiku-4-5",
+  "gemini-3-flash",
+  "gemini-3.5-flash",
+  "gpt-5.4-mini",
+  "haiku-4",
+  "flash",
+  "mini",
+  "nano",
+  "small",
+  "lite",
+] as const;
+
+/** Resolve the model pattern for an eval session.
+ *  Precedence: explicit --model > PI_OVEN_EVAL_MODEL env > fastest available
+ *  model (by id substring priority) > first available > undefined. Returns a
+ *  `provider/id` pattern so resolution is unambiguous. The session settings
+ *  default can be a slow reasoning model that times out scenarios, so evals
+ *  auto-pick a fast tier when the caller does not pin one. */
+export function pickEvalModelPattern(
+  explicit: string | undefined,
+  envValue: string | undefined,
+  available: ReadonlyArray<{ provider: string; id: string }> | undefined,
+): string | undefined {
+  if (explicit) return explicit;
+  if (envValue && envValue.length > 0) return envValue;
+  if (!available || available.length === 0) return undefined;
+  for (const needle of FAST_EVAL_MODEL_PRIORITY) {
+    const hit = available.find((m) => m.id.toLowerCase().includes(needle));
+    if (hit) return `${hit.provider}/${hit.id}`;
+  }
+  const [first] = available;
+  return `${first.provider}/${first.id}`;
+}
+
 /** Wrap a real AgentSession into the SessionLike interface.
  *  subscribe() forwards to session.subscribe() with event shape adaptation.
  *  prompt() returns Promise<void> — matching the real SDK signature exactly.
@@ -72,6 +111,30 @@ async function makeSession(modelPattern?: string): Promise<SessionLike> {
   // and local skill directories starting from cwd.
   const { skills } = await discoverSkills(cwd);
 
+  // Default to a fast available model when --model is not given. The session
+  // settings default can be a slow reasoning model that times out scenarios;
+  // PI_OVEN_EVAL_MODEL and --model override the auto-pick.
+  const available =
+    typeof models.getAvailable === "function" ? models.getAvailable() : undefined;
+  const resolvedPattern = pickEvalModelPattern(
+    modelPattern,
+    process.env.PI_OVEN_EVAL_MODEL,
+    available,
+  );
+  if (!modelPattern && resolvedPattern) {
+    console.error(`eval: auto-selected model pattern ${resolvedPattern}`);
+  }
+
+  // Load this repo's pi-oven extension so the keyword->skill-read injection and
+  // discipline layer are actually exercised by evals. A bare createAgentSession
+  // discovery does NOT load the workspace extension, so without this the
+  // keyword-trigger path is never tested. Skip gracefully if absent.
+  const extensionPath = path.resolve(cwd, ".omp/extensions/pi-oven.ts");
+  const extensionExists = await fs
+    .access(extensionPath)
+    .then(() => true)
+    .catch(() => false);
+
   const { session } = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
     authStorage: auth,
@@ -85,9 +148,10 @@ async function makeSession(modelPattern?: string): Promise<SessionLike> {
     // Load this worktree's skills so eval exercises the current code, not the
     // installed plugin snapshot.
     skills,
-    // Wire --model so evals can pin a fast model (e.g. a flash/haiku tier);
-    // the session default can be a slow reasoning model that times out scenarios.
-    ...(modelPattern ? { modelPattern } : {}),
+    // Activate the pi-oven extension (keyword-skill injection + discipline).
+    ...(extensionExists ? { additionalExtensionPaths: [extensionPath] } : {}),
+    // Auto-picked fast model unless --model / PI_OVEN_EVAL_MODEL pinned one.
+    ...(resolvedPattern ? { modelPattern: resolvedPattern } : {}),
   });
   return {
     subscribe(listener: (event: RunnerEvent) => void): () => void {

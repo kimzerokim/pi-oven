@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from "bun:test";
 import { spawnSync } from "bun";
 import { join } from "path";
-import { makeSessionForTest } from "../../scripts/run-eval";
+import { makeSessionForTest, pickEvalModelPattern } from "../../scripts/run-eval";
 
 describe("run-eval CLI", () => {
   it("exits 0 when no scenarios match filter", () => {
@@ -67,5 +67,57 @@ describe("makeSession config (Issue 2 — headless fixes + worktree skills)", ()
     // skills must be provided (worktree skills loaded)
     expect(Array.isArray(opts.skills)).toBe(true);
     expect((opts.skills as unknown[]).length).toBeGreaterThan(0);
+    // The pi-oven extension is loaded so the keyword->skill-read injection path
+    // is exercised; the path points at this repo's workspace extension.
+    expect(Array.isArray(opts.additionalExtensionPaths)).toBe(true);
+    expect(
+      (opts.additionalExtensionPaths as string[]).some((p) => p.endsWith("pi-oven.ts"))
+    ).toBe(true);
+  });
+});
+
+describe("pickEvalModelPattern", () => {
+  const list = [
+    { provider: "anthropic", id: "claude-opus-4-6" },
+    { provider: "openai-codex", id: "gpt-5.4" },
+    { provider: "anthropic", id: "claude-haiku-4-5" },
+  ];
+
+  it("explicit --model wins over env and available list", () => {
+    expect(pickEvalModelPattern("openai-codex/gpt-5.4", "anthropic/x", list)).toBe(
+      "openai-codex/gpt-5.4"
+    );
+  });
+
+  it("env PI_OVEN_EVAL_MODEL wins when no explicit, over available list", () => {
+    expect(pickEvalModelPattern(undefined, "anthropic/claude-opus-4-6", list)).toBe(
+      "anthropic/claude-opus-4-6"
+    );
+  });
+
+  it("auto-picks the first fast-substring match as provider/id", () => {
+    expect(pickEvalModelPattern(undefined, undefined, list)).toBe("anthropic/claude-haiku-4-5");
+  });
+
+  it("honors fast-priority order (flash before mini)", () => {
+    const l = [
+      { provider: "p", id: "model-mini" },
+      { provider: "q", id: "model-flash" },
+    ];
+    expect(pickEvalModelPattern(undefined, undefined, l)).toBe("q/model-flash");
+  });
+
+  it("falls back to first available when no fast match", () => {
+    const l = [
+      { provider: "anthropic", id: "claude-opus-4-6" },
+      { provider: "openai-codex", id: "gpt-5.4" },
+    ];
+    expect(pickEvalModelPattern(undefined, undefined, l)).toBe("anthropic/claude-opus-4-6");
+  });
+
+  it("returns undefined when no explicit/env and no available models", () => {
+    expect(pickEvalModelPattern(undefined, undefined, undefined)).toBeUndefined();
+    expect(pickEvalModelPattern(undefined, undefined, [])).toBeUndefined();
+    expect(pickEvalModelPattern(undefined, "", undefined)).toBeUndefined();
   });
 });

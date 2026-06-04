@@ -1,0 +1,23 @@
+name: systematic-debugging-regression-001
+skill: systematic-debugging
+tag: regression
+input:
+  - turn: 1
+    user: "The payment integration test has been flaky for a week — sometimes passes, sometimes fails with a race condition. We've tried two fixes already and it keeps coming back."
+expected:
+  - skill_read_required: "systematic-debugging"
+  - agent_response_must_contain:
+      - "root cause"
+      - "Phase 1"
+      - "reproduce"
+      - "flaky"
+      - "race condition"
+      - "trace"
+      - "hypothesis"
+      - "architecture"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "add a sleep"
+      - "setTimeout"
+      - "quick fix"
+      - "one more attempt"

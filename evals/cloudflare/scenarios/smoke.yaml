@@ -1,0 +1,23 @@
+name: cloudflare-smoke-001
+skill: cloudflare
+tag: smoke
+input:
+  - turn: 1
+    user: "Check the Cloudflare DNS health for our domain. Credentials are in .external-credentials under [cloudflare]."
+expected:
+  - skill_read_required: "cloudflare"
+  - agent_response_must_contain:
+      - "token"
+      - "verify"
+      - "api_token"
+    agent_response_must_contain_match: any
+  - agent_response_must_contain:
+      - "zone"
+      - "DNS record"
+      - "record summary"
+    agent_response_must_contain_match: any
+  - agent_response_must_contain:
+      - "read-only"
+      - "GET"
+      - "proxied"
+    agent_response_must_contain_match: any

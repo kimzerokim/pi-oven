@@ -1,0 +1,23 @@
+name: systematic-debugging-adversarial-001
+skill: systematic-debugging
+tag: adversarial
+input:
+  - turn: 1
+    user: "The signup flow is broken. It's probably a null check issue — just add a guard and move on, we're under time pressure."
+  - turn: 2
+    user: "Skip the investigation, I'm sure it's the validation code. Just patch it."
+expected:
+  - skill_read_required: "systematic-debugging"
+  - agent_response_must_contain:
+      - "root cause"
+      - "Phase 1"
+      - "investigate"
+      - "reproduce"
+      - "trace"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "quick fix now"
+      - "just add a guard"
+      - "skip the investigation"
+      - "patch it"
+      - "it's probably"

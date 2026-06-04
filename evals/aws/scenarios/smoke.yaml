@@ -1,0 +1,26 @@
+name: aws-smoke-001
+skill: aws
+tag: smoke
+# aws is Loadable/procedural: model must read skill://aws when the task involves
+# AWS infrastructure inspection or production-state queries (UC5 ops).
+# Prompt supplies credentials file location so model need not ask (hasUI:false).
+input:
+  - turn: 1
+    user: "Check the health of our production S3 bucket 'myapp-prod-assets' and CloudFront distribution E1ABCDEFGHIJKL. Credentials are in .external-credentials under [aws] with profile=prod and region=us-east-1."
+expected:
+  - skill_read_required: "aws"
+  - agent_response_must_contain:
+      - "sts get-caller-identity"
+      - "s3 ls"
+      - "s3api"
+      - "cloudfront get-distribution"
+      - "read-only"
+      - "credential"
+      - ".external-credentials"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "oh-my-claudecode:"
+      - "omo:"
+      - "s3 rm"
+      - "s3 cp"
+      - "delete"

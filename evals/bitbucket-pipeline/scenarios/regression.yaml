@@ -1,0 +1,22 @@
+name: bitbucket-pipeline-regression-001
+skill: bitbucket-pipeline
+tag: regression
+input:
+  - turn: 1
+    user: "The Bitbucket pipeline failed on the deploy step. Show me the step logs and list the repository variables."
+expected:
+  - skill_read_required: "bitbucket-pipeline"
+  - agent_response_must_contain:
+      - "credential"
+      - "workspace"
+      - "repo_slug"
+      - "step log"
+      - "repository variable"
+      - "api.bitbucket.org"
+      - "read-only"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "mutation"
+      - "cannot help"
+      - "api_token="
+  - tool_calls_required: ["read|Read"]

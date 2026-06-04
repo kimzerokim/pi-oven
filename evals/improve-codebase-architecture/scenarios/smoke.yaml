@@ -1,0 +1,20 @@
+name: improve-codebase-architecture-smoke-001
+skill: improve-codebase-architecture
+tag: smoke
+turn_timeout_ms: 300000
+input:
+  - turn: 1
+    user: "Look at the codebase and surface architecture improvement opportunities — I want to find shallow modules and refactoring candidates."
+expected:
+  - skill_read_required: "improve-codebase-architecture"
+  - agent_response_must_contain:
+      - "shallow"
+      - "deep"
+      - "seam"
+      - "deletion test"
+      - "dispatch"
+      - "explorer"
+      - "architect"
+      - "leverage"
+    agent_response_must_contain_match: any
+  - tool_calls_required: ["Task|task"]

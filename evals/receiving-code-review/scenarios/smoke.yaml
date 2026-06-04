@@ -1,0 +1,28 @@
+name: receiving-code-review-smoke-001
+skill: receiving-code-review
+tag: smoke
+input:
+  - turn: 1
+    user: "A codex review came back. One item says: 'The parseConfig() helper in src/config.ts does not validate the timeout field — it should throw on negative values.' Apply the review."
+expected:
+  - skill_read_required: "receiving-code-review"
+  - agent_response_must_contain:
+      - "verify"
+      - "grep"
+      - "callsite"
+      - "VERIFY"
+      - "check"
+    agent_response_must_contain_match: any
+  - agent_response_must_contain:
+      - "Fixed"
+      - "corrected"
+      - "timeout"
+      - "parseConfig"
+      - "negative"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "You're absolutely right"
+      - "Great point"
+      - "Excellent feedback"
+      - "Thanks for catching"
+      - "Let me implement that now"

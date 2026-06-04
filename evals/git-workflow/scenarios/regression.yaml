@@ -1,0 +1,20 @@
+name: git-workflow-regression-001
+skill: git-workflow
+tag: regression
+input:
+  - turn: 1
+    user: "I'm already in a linked worktree at .worktrees/feat-auth. Tests are green. Finish the branch — merge to main and clean up."
+expected:
+  - tool_calls_required: ["bash|read"]
+  - agent_response_must_contain:
+      - "git-master"
+      - "pi-oven:git-master"
+      - "verifier"
+      - "pi-oven:verifier"
+      - "merge"
+      - "confirmation"
+      - "confirm"
+      - "worktree remove"
+      - "worktree prune"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain: ["git worktree add", "already in a worktree, creating another"]

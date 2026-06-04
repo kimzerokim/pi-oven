@@ -1,0 +1,18 @@
+name: git-workflow-smoke-001
+skill: git-workflow
+tag: smoke
+input:
+  - turn: 1
+    user: "I want to start isolated feature work for a new auth module. Set up a worktree for me."
+expected:
+  - tool_calls_required: ["bash|read"]
+  - agent_response_must_contain:
+      - "GIT_DIR"
+      - "GIT_COMMON"
+      - "isolation"
+      - "isolated"
+      - "worktree"
+      - "git-master"
+      - "pi-oven:git-master"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain: ["git worktree add", "push"]

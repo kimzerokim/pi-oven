@@ -1,0 +1,23 @@
+name: improve-codebase-architecture-regression-001
+skill: improve-codebase-architecture
+tag: regression
+turn_timeout_ms: 300000
+input:
+  - turn: 1
+    user: "모듈 깊게 분석해서 아키텍처 개선 후보를 찾아줘. HTML 리포트도 만들어줘."
+expected:
+  - skill_read_required: "improve-codebase-architecture"
+  - agent_response_must_contain:
+      - "explorer"
+      - "architect"
+      - "HTML"
+      - "temp"
+      - "deletion test"
+      - "deepening"
+      - "module"
+      - "seam"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "Which of these would you like"
+    agent_response_must_not_contain_note: "Step 2 ask ('Which of these…') must not appear before the report is written and dispatched — model may not self-approve or short-circuit dispatch"
+  - tool_calls_required: ["Task|task"]

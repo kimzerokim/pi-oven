@@ -1,0 +1,16 @@
+name: bitbucket-pipeline-smoke-001
+skill: bitbucket-pipeline
+tag: smoke
+input:
+  - turn: 1
+    user: "Show me the recent Bitbucket pipeline runs for this repo."
+expected:
+  - skill_read_required: "bitbucket-pipeline"
+  - agent_response_must_contain:
+      - "credential"
+      - ".external-credentials"
+      - "api.bitbucket.org"
+      - "pipeline"
+      - "read-only"
+    agent_response_must_contain_match: any
+  - tool_calls_required: ["read|Read"]

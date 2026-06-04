@@ -30,6 +30,7 @@ import { RulesInjector } from "./pi-oven-runtime/rules-injector";
 import { GateStateStore } from "./pi-oven-runtime/gate-state";
 import { createGateHandler } from "./pi-oven-runtime/gate-handler";
 import { registerPiOvenAsk } from "./pi-oven-runtime/pi-oven-ask";
+import { resolveLanguage } from "./pi-oven-runtime/language";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -330,11 +331,13 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   const injector = new RulesInjector();
 
   // -------------------------------------------------------------------------
+  // Install detection is GLOBAL-ONLY: the "is pi-oven installed" signal comes
+  // from the populated global agents dir, never from a project-local marker.
+  // Project-local `.pi-oven/config.json` is still honored for the OPTIONAL
+  // per-project response language and the CLAUDE.md opt-out, but it is NOT an
+  // install/setup signal. Fail-soft: any FS fault leaves the defaults.
   let effectiveSetupComplete = false;
   try {
-    // Global-only install detection: if agentsDir is populated, we treat
-    // the install as complete for the purpose of suppressing warnings.
-    // Guarded readdirSync for fail-soft global detection.
     if (existsSync(agentsDir)) {
       const files = readdirSync(agentsDir);
       effectiveSetupComplete = files.some(
@@ -345,8 +348,28 @@ export default function piOvenPi(pi: ExtensionAPI): void {
     pi.logger.debug(`pi-oven: global install detection failed: ${err}`);
   }
 
+  // Read the OPTIONAL project-local config (language + CLAUDE.md opt-out only).
+  // resolveLanguage re-validates the persisted string so a hand-edited
+  // config.json can never poison the system prompt. Fail-open on any fault.
+  let projectInstructionsEnabled = true;
+  try {
+    const configPath = path.resolve(repoRoot, ".pi-oven", "config.json");
+    const raw = readFileSync(configPath, "utf-8");
+    const parsed = JSON.parse(raw) as {
+      language?: unknown;
+      projectInstructions?: unknown;
+    };
+    const resolved =
+      typeof parsed.language === "string" ? resolveLanguage(parsed.language) : null;
+    if (resolved) injector.setLanguage(resolved);
+    if (parsed.projectInstructions === false) projectInstructionsEnabled = false;
+  } catch (err) {
+    pi.logger.debug(`pi-oven: project config not read (ambient respected): ${err}`);
+  }
 
-  if (effectiveSetupComplete) {
+  // Inject the repo-root CLAUDE.md (project-local instructions) unless opted out.
+  // omp does not read it natively; the global ~/.claude/CLAUDE.md is untouched.
+  if (projectInstructionsEnabled) {
     try {
       const projectInstructions = readProjectInstructions(repoRoot);
       if (projectInstructions) {

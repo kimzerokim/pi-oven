@@ -55,25 +55,24 @@ export function normalizeLanguage(input: string): ProjectLanguage {
  * Write `{ language }` to `<cwd>/.pi-oven/config.json`.
  * Creates the directory if missing and read-merges to preserve other keys.
  */
-/**
- * Write `{ language }` to `<cwd>/.pi-oven/config.json`.
- *
- * NOTE: This is now a NO-OP if the config file does not already exist, as
- * project-local settings are unsupported.
- */
 export async function setProjectLanguage(
   lang: ProjectLanguage,
   opts?: { cwd?: string }
 ): Promise<void> {
   const cwd = opts?.cwd ?? process.cwd();
   const file = configPath(cwd);
-  let existing: Record<string, unknown>;
+  await fs.mkdir(path.dirname(file), { recursive: true });
+
+  // Read-merge: preserve any other keys an earlier/other writer may have left.
+  let existing: Record<string, unknown> = {};
   try {
     const raw = await fs.readFile(file, "utf-8");
-    existing = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      existing = parsed as Record<string, unknown>;
+    }
   } catch {
-    // Absent or unparsable - do not create/update.
-    return;
+    // absent or unparsable — start from an empty object
   }
 
   const merged = { ...existing, language: lang };
@@ -133,24 +132,16 @@ async function readConfigObject(file: string): Promise<Record<string, unknown>> 
 }
 
 /**
- * Mark this project as set up by writing `setupCompletedAt` into
- * `<cwd>/.pi-oven/config.json`.
- *
- * NOTE: This is now a NO-OP if the config file does not already exist, as
- * project-local settings are unsupported. The marker only lives in existing
- * config files to silence setup warnings.
+ * Mark this project as set up by writing `setupCompletedAt` (current ISO-8601
+ * timestamp) into `<cwd>/.pi-oven/config.json`. Read-merges so `language` and
+ * any other keys survive. Creates the directory if missing.
  */
 export async function markSetupComplete(opts?: { cwd?: string }): Promise<void> {
   const cwd = opts?.cwd ?? process.cwd();
   const file = configPath(cwd);
-  let existing: Record<string, unknown>;
-  try {
-    const raw = await fs.readFile(file, "utf-8");
-    existing = JSON.parse(raw);
-  } catch {
-    // Absent or unparsable - do not create/update.
-    return;
-  }
+  await fs.mkdir(path.dirname(file), { recursive: true });
+
+  const existing = await readConfigObject(file);
   const merged = { ...existing, [SETUP_COMPLETE_KEY]: new Date().toISOString() };
   await fs.writeFile(file, JSON.stringify(merged, null, 2) + "\n", "utf-8");
 }

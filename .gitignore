@@ -38,3 +38,9 @@ evals/.tmp/
 # Build artifacts
 *.tsbuildinfo
 coverage/
+
+# Killer-feature test artifacts (arxiv/PDF reads, transient)
+*.pdf
+
+# omp local oven cache (machine-local)
+.oven/

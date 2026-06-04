@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.5
+
+- `/pi-oven:setup` adds a "Skill usage" guard: the orchestrator must drive setup from `setup.md` alone and must not invoke other skills mid-flow, keeping the language-pick → provider-detect → profile → persist sequence deterministic.
+
 ## v0.1.4
 
 - **Fix: `/pi-oven:setup` language picker showed a bogus `unused: unused` question and aborted.** Root cause: `pi-oven_ask` exposed a batch/`questions[]` mode that no caller ever used, and orchestrator models mis-called it — emitting a degenerate batch call with `unused` placeholder id/question, then cancelling. Removed batch mode entirely: `pi-oven_ask` is now single-select only (one `question` + `options`; ask multiple questions by calling it multiple times). Dropped `questions[]`/`multi`/`formatBatchResult`/`summarizeBatchAnswer`/`askBatch` and the v0.1.3 batch-result formatting (it served only the now-removed mode). `commands/setup.md` Step 0 simplified to a plain two-argument call with no mode language.

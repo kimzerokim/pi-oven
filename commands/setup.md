@@ -8,6 +8,10 @@ argument-hint: [--status | --reset [--full] | --import <file> | --apply --profil
 
 You are guiding the user through pi-oven setup. The actual logic runs in the `pi-oven-setup.ts` script (resolved per the note below). You drive the conversation; the script runs in batch.
 
+## Skill usage
+
+Never use another skill to proceed setup. Use only setup.md command to finish.
+
 ## Resolve the plugin script dir first
 
 pi-oven may be installed globally, so the script does NOT live under the user's project cwd. Before dispatching any `bun` command, resolve the plugin script dir once and reuse `$PI_OVEN_DIR` for every dispatch (dev cwd → `installed_plugins.json` `installPath` → cache glob):

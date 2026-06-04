@@ -2,7 +2,7 @@
 /**
  * pi-oven-doctor.ts — Install-health diagnostic for the pi-oven omp plugin.
  *
- * Runs a 10-check matrix and prints a PASS/WARN/FAIL report. Read-only:
+ * Runs an 11-check matrix and prints a PASS/WARN/FAIL report. Read-only:
  * the only filesystem mutation is a create+write probe of the state dir,
  * which is removed immediately after (check #8).
  *
@@ -81,6 +81,17 @@ export interface OpsConnectorFact {
   credentialFile: string | null;
 }
 
+export interface MemoryFact {
+  /** `memory.backend` value, or null when unset/unreadable. */
+  backend: string | null;
+  /** `mnemopi.noEmbeddings` present (any non-empty value). */
+  noEmbeddingsPresent: boolean;
+  /** `mnemopi.llmMode` present (any non-empty value). */
+  llmModePresent: boolean;
+  /** `async.enabled === true`. */
+  asyncEnabled: boolean;
+}
+
 export interface DoctorFacts {
   omp: BinaryFact;
   bun: BinaryFact;
@@ -92,6 +103,7 @@ export interface DoctorFacts {
   stateDir: StateDirFact;
   evalRunner: EvalRunnerFact;
   opsConnector: OpsConnectorFact;
+  memory: MemoryFact;
 }
 
 export const MIN_OMP_VERSION = "15.0.0";
@@ -219,7 +231,7 @@ export function evalSkills(fact: SkillsFact): CheckResult {
       `plugin.json skills[] diverges from SoT. ` +
       `Missing: ${fact.missingFromManifest.length ? fact.missingFromManifest.join(", ") : "none"}. ` +
       `Extra: ${fact.extraInManifest.length ? fact.extraInManifest.join(", ") : "none"}.`,
-    fix: "Sync .claude-plugin/plugin.json skills[] to the 21 SoT skills in docs/site/skill-flow.ko.html.",
+    fix: `Sync .claude-plugin/plugin.json skills[] to the ${SOT_SKILL_PATHS.length} SoT skill paths.`,
   };
 }
 
@@ -313,6 +325,41 @@ export function evalOpsConnector(fact: OpsConnectorFact): CheckResult {
     name,
     status: "PASS",
     detail: `Connector skills installed; credential source detected at ${fact.credentialFile}.`,
+  };
+}
+
+/**
+ * (11) memory / killer-tools: native mnemopi memory + async readiness.
+ * WARN-only (never FAIL) — memory/async are configuration choices, not
+ * install-integrity defects (doctor.md §"The 11-check reference", check 11).
+ * PASS requires backend=="mnemopi" AND mnemopi.noEmbeddings + mnemopi.llmMode
+ * present AND async.enabled==true; anything short of that WARNs.
+ */
+export function evalMemory(fact: MemoryFact): CheckResult {
+  const name = "memory / killer-tools";
+  const issues: string[] = [];
+  if (fact.backend !== "mnemopi") {
+    issues.push(`memory.backend is ${fact.backend ?? "unset"} (expected mnemopi)`);
+  }
+  if (!fact.noEmbeddingsPresent || !fact.llmModePresent) {
+    issues.push("mnemopi config incomplete (noEmbeddings/llmMode)");
+  }
+  if (!fact.asyncEnabled) {
+    issues.push("async.enabled not true");
+  }
+  if (issues.length === 0) {
+    return {
+      name,
+      status: "PASS",
+      detail:
+        "mnemopi backend active (noEmbeddings + llmMode set) + async.enabled — native retain/recall/reflect + irc ready.",
+    };
+  }
+  return {
+    name,
+    status: "WARN",
+    detail: `Native memory/async not fully configured: ${issues.join("; ")}.`,
+    fix: "Run /pi-oven:setup to enable the mnemopi backend + async (retain/recall/reflect + irc).",
   };
 }
 
@@ -429,6 +476,7 @@ async function readPluginSkills(root: string): Promise<string[]> {
 }
 
 const SOT_SKILL_PATHS = [
+  "./skills/memory-discipline/SKILL.md",
   "./skills/code-quality-discipline/SKILL.md",
   "./skills/tdd-strict/SKILL.md",
   "./skills/brainstorming/SKILL.md",
@@ -550,6 +598,47 @@ async function probeOpsConnector(root: string): Promise<OpsConnectorFact> {
   return { missingSkills, credentialFile };
 }
 
+/**
+ * Read a single omp config value via `omp config get <key> --json`.
+ * Returns { present, value }; present is false on any spawn/parse failure or
+ * empty/null value (so a missing key is reported as "not configured").
+ */
+function probeOmpConfigValue(key: string): { present: boolean; value: unknown } {
+  try {
+    const proc = Bun.spawnSync(["omp", "config", "get", key, "--json"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 4000,
+    });
+    if ((proc.exitCode ?? 1) !== 0) return { present: false, value: undefined };
+    const out = (proc.stdout?.toString() ?? "").trim();
+    if (!out) return { present: false, value: undefined };
+    const parsed = JSON.parse(out) as { value?: unknown };
+    const value = parsed.value;
+    const present = value !== undefined && value !== null && value !== "";
+    return { present, value };
+  } catch {
+    return { present: false, value: undefined };
+  }
+}
+
+async function probeMemory(): Promise<MemoryFact> {
+  const backend = probeOmpConfigValue("memory.backend");
+  const noEmbeddings = probeOmpConfigValue("mnemopi.noEmbeddings");
+  const llmMode = probeOmpConfigValue("mnemopi.llmMode");
+  const asyncEnabled = probeOmpConfigValue("async.enabled");
+  return {
+    backend:
+      typeof backend.value === "string"
+        ? backend.value
+        : backend.present
+          ? String(backend.value)
+          : null,
+    noEmbeddingsPresent: noEmbeddings.present,
+    llmModePresent: llmMode.present,
+    asyncEnabled: asyncEnabled.value === true || asyncEnabled.value === "true",
+  };
+}
+
 /** Gather all real-world facts. Isolated so unit tests inject facts directly. */
 export async function gather(root: string): Promise<DoctorFacts> {
   const [mcp, skillMdCount, pluginSkills, agentCount, stateDir, evalRunner, opsConnector, auth] =
@@ -591,11 +680,12 @@ export async function gather(root: string): Promise<DoctorFacts> {
     stateDir,
     evalRunner,
     opsConnector,
+    memory: await probeMemory(),
   };
 }
 
 // ---------------------------------------------------------------------------
-// Runner: gather facts → run 10 evaluators → render report
+// Runner: gather facts → run 11 evaluators → render report
 // ---------------------------------------------------------------------------
 
 export function runChecks(facts: DoctorFacts): CheckResult[] {
@@ -610,6 +700,7 @@ export function runChecks(facts: DoctorFacts): CheckResult[] {
     evalStateDir(facts.stateDir),
     evalEvalRunner(facts.evalRunner),
     evalOpsConnector(facts.opsConnector),
+    evalMemory(facts.memory),
   ];
 }
 

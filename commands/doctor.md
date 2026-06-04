@@ -41,7 +41,7 @@ pi-oven doctor — install health
 [PASS] omp version: omp 15.5.10 (>= 15.0.0)
 [PASS] bun: bun 1.3.14 present
 ...
-Summary: 10 PASS / 0 WARN / 0 FAIL — overall PASS
+Summary: 11 PASS / 0 WARN / 0 FAIL — overall PASS
 ```
 
 Exit code: `0` when there are no FAILs (WARNs are acceptable), `1` when any check FAILs.
@@ -88,7 +88,7 @@ Check #11 probes `omp config get` for memory and killer-tool readiness. Walk eac
 | 4 | provider auth | ≥1 of opencode-zen / openai-codex / anthropic authed | none authed (live eval + dispatch will fail) | — |
 | 5 | mcp servers | ≥1 server in `.pi/mcp.json` or `omp mcp list` | none configured (informational; pi-oven requires none) | — |
 | 6 | skills | `skills/*/SKILL.md` count == `plugin.json` skills[] length | — | count mismatch |
-| 7 | agents | `agents/pi-oven-*.md` count == 22 AND `lint:agents` clean | — | count mismatch, or count OK but lint drift |
+| 7 | agents | `agents/pi-oven-*.md` count == 24 AND `lint:agents` clean | — | count mismatch, or count OK but lint drift |
 | 8 | state dir | `.pi-oven/` creatable + writable | — | not writable |
 | 9 | eval runner | `scripts/run-eval.ts` present AND ≥1 smoke-tagged scenario enumerable | runner present but 0 smoke scenarios | runner script absent |
 | 10 | UC5 ops connector | `skills/aws`, `skills/bitbucket-pipeline`, `skills/cloudflare` present + credential file (`.external-credentials` or `.external_certificate`; legacy `.external_cerficate` alias also accepted) detected | skill files present but no credential file | any connector skill file missing |

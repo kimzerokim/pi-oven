@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import {
   compareSemver,
   resolveCacheAgentsDir,
+  resolveDefaultAgentsDir,
   checkAgentsCachePopulated,
 } from "../../../scripts/pi-oven-setup/cache-resolver";
 
@@ -84,6 +85,51 @@ describe("resolveCacheAgentsDir", () => {
     const latestAgentsDir = makeFakeCacheEntry(tempDir, "0.10.0", 1);
     const result = await resolveCacheAgentsDir(tempDir);
     expect(result).toBe(latestAgentsDir);
+  });
+});
+
+describe("resolveDefaultAgentsDir (self-locate, cwd-independent)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("returns <scriptDir>/../agents when that sibling holds pi-oven-*.md (dev + install)", async () => {
+    // Mirror the shipped layout: <root>/scripts/pi-oven-setup.ts + <root>/agents/.
+    const scriptDir = join(tempDir, "scripts");
+    const agentsDir = join(tempDir, "agents");
+    mkdirSync(scriptDir, { recursive: true });
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(join(agentsDir, "pi-oven-executor.md"), "# executor\n");
+
+    // cacheRoot points at an EMPTY dir so a fallback would be observable; we
+    // expect the script-relative dir to win regardless.
+    const result = await resolveDefaultAgentsDir(scriptDir, makeTempDir());
+    expect(result).toBe(agentsDir);
+  });
+
+  it("falls back to the install cache when the script-relative agents dir is absent", async () => {
+    const scriptDir = join(tempDir, "scripts"); // no sibling agents/ created
+    const cacheRoot = makeTempDir();
+    const cacheAgents = makeFakeCacheEntry(cacheRoot, "0.1.2", 1);
+
+    const result = await resolveDefaultAgentsDir(scriptDir, cacheRoot);
+    expect(result).toBe(cacheAgents);
+    rmSync(cacheRoot, { recursive: true, force: true });
+  });
+
+  it("returns the script-relative path as a last resort when nothing is found", async () => {
+    const scriptDir = join(tempDir, "scripts"); // no sibling agents/
+    const emptyCacheRoot = makeTempDir(); // no kzk___pi-oven___* entries
+
+    const result = await resolveDefaultAgentsDir(scriptDir, emptyCacheRoot);
+    expect(result).toBe(join(tempDir, "agents"));
+    rmSync(emptyCacheRoot, { recursive: true, force: true });
   });
 });
 

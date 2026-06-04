@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.2
+
+- `/pi-oven:setup` now resolves the agent files from the script's own install location (`import.meta.dir`) instead of the caller's cwd, so `--status` shows the real per-role model defaults for users who installed pi-oven globally (previously every role rendered `(no agent file)` outside the dev checkout). Adds `resolveDefaultAgentsDir` (script-relative → install-cache → graceful fallback); the apply path's maintainer-vs-user mode selector is unchanged.
+- `/pi-oven:doctor` is now a true **11-check** matrix: implemented the documented check #11 (memory / killer-tools — mnemopi backend + async readiness, WARN-only) that `pi-oven-doctor.ts` had never run.
+- Fixed a doctor false-FAIL: the script's `SOT_SKILL_PATHS` list was missing `memory-discipline` (21 vs the real 22), so check #6 reported `plugin.json skills[] diverges from SoT` on a healthy install. `commands/doctor.md` check #7 also corrected from `count == 22` to `24`.
+- Documentation drift sweep: README test badge + counts (563/42 → 600/45), `CLAUDE.md` status, and `docs/site/skill-flow.ko.html` (version stamps v0.1.0/v0.1.1 → v0.1.2, doctor 10-check → 11-check) brought back in line with the SoT.
+
 ## v0.1.1
 
 - Wired the 4 core flows so their skills chain sequentially: `autonomous-loop` now names `subagent-driven-development` as the execution orchestrator, routes bug→`systematic-debugging` / refactor→`improve-codebase-architecture` / deep-investigation→`deep-dive`, and runs the promised self-improvement `skills/+agents/+commands/+evals/` sweep before planner/spec.

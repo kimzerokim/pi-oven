@@ -529,6 +529,6 @@ export default function piOvenPi(pi: ExtensionAPI): void {
     pi.logger.debug(`pi-oven: pi-oven_ask registration skipped: ${err}`);
   }
 
-  pi.setLabel("pi-oven v0.1.0");
+  pi.setLabel("pi-oven v0.1.2");
   pi.logger.info("pi-oven loaded");
 }

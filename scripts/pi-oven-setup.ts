@@ -20,6 +20,7 @@ import { runImport } from "./pi-oven-setup/import";
 import { runApply } from "./pi-oven-setup/apply";
 import { runOverride } from "./pi-oven-setup/override";
 import { runIsolate } from "./pi-oven-setup/isolate";
+import { resolveDefaultAgentsDir } from "./pi-oven-setup/cache-resolver";
 import { normalizeLanguage, setProjectLanguage, markSetupComplete } from "./pi-oven-setup/project-config";
 
 // ---------------------------------------------------------------------------
@@ -49,6 +50,10 @@ const { values } = parseArgs({
 // Resolve shared options from env + flags
 // ---------------------------------------------------------------------------
 
+// RAW agents dir from env (or undefined). This drives apply.ts's maintainer-vs-
+// user mode selector (defined → maintainer generate; undefined → user setup), so
+// it must stay env-or-undefined and must NOT be defaulted globally. Read-only
+// display paths (--status) resolve their own install-relative dir below.
 const agentsDir = process.env.PI_OVEN_AGENTS_DIR ?? undefined;
 
 const mockSpawn = process.env.PI_OVEN_MOCK_SPAWN === "1";
@@ -176,7 +181,11 @@ if (values.status) {
     }
     process.stdout.write(overrideResult.output);
   }
-  result = await runStatus({ spawnFn, agentsDir });
+  // Resolve the agents dir to READ from the script's own install location, not
+  // the user's cwd — so --status shows frontmatter defaults for users who
+  // installed pi-oven globally (PI_OVEN_AGENTS_DIR unset).
+  const statusAgentsDir = agentsDir ?? (await resolveDefaultAgentsDir(import.meta.dir));
+  result = await runStatus({ spawnFn, agentsDir: statusAgentsDir });
 } else if (values.reset) {
   result = await runReset({ spawnFn, full: Boolean(values.full) });
 } else if (values.import !== undefined) {

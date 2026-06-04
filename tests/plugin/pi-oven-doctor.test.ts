@@ -10,6 +10,7 @@ import {
   evalStateDir,
   evalEvalRunner,
   evalOpsConnector,
+  evalMemory,
   rollup,
   exitCodeFor,
   type CheckResult,
@@ -239,6 +240,57 @@ describe("evalOpsConnector", () => {
 });
 
 // ---------------------------------------------------------------------------
+// (11) memory / killer-tools — WARN-only native memory/async readiness
+// ---------------------------------------------------------------------------
+
+describe("evalMemory", () => {
+  it("PASS when mnemopi backend + config keys present + async enabled", () => {
+    const r = evalMemory({
+      backend: "mnemopi",
+      noEmbeddingsPresent: true,
+      llmModePresent: true,
+      asyncEnabled: true,
+    });
+    expect(r.status).toBe("PASS");
+    expect(r.detail).toMatch(/mnemopi/i);
+  });
+
+  it("WARN when backend is not mnemopi (never FAIL)", () => {
+    const r = evalMemory({
+      backend: null,
+      noEmbeddingsPresent: false,
+      llmModePresent: false,
+      asyncEnabled: false,
+    });
+    expect(r.status).toBe("WARN");
+    expect(r.detail).toMatch(/memory\.backend/);
+    expect(r.fix).toBeDefined();
+  });
+
+  it("WARN when async disabled even if mnemopi config complete", () => {
+    const r = evalMemory({
+      backend: "mnemopi",
+      noEmbeddingsPresent: true,
+      llmModePresent: true,
+      asyncEnabled: false,
+    });
+    expect(r.status).toBe("WARN");
+    expect(r.detail).toMatch(/async/i);
+  });
+
+  it("WARN when mnemopi config keys absent", () => {
+    const r = evalMemory({
+      backend: "mnemopi",
+      noEmbeddingsPresent: false,
+      llmModePresent: true,
+      asyncEnabled: true,
+    });
+    expect(r.status).toBe("WARN");
+    expect(r.detail).toMatch(/noEmbeddings|llmMode/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Rollup + exit-code logic
 // ---------------------------------------------------------------------------
 
@@ -289,18 +341,19 @@ describe("exitCodeFor", () => {
 // ---------------------------------------------------------------------------
 
 describe("DoctorFacts → evaluators integration (pure, injected facts)", () => {
-  it("produces exactly 10 checks from a full facts object", () => {
+  it("produces exactly 11 checks from a full facts object", () => {
     const facts: DoctorFacts = {
       omp: { present: true, version: "15.5.10" },
       bun: { present: true, version: "1.2.0" },
       git: { present: true, version: "2.44.0", insideRepo: true },
       auth: { opencode_zen: true, openai_codex: false, anthropic: false },
       mcp: { servers: ["playwright"] },
-      skills: { skillMdCount: 21, pluginSkillsCount: 21, missingFromManifest: [], extraInManifest: [] },
-      agents: { agentCount: 22, expectedCount: 22, lintClean: true },
+      skills: { skillMdCount: 22, pluginSkillsCount: 22, missingFromManifest: [], extraInManifest: [] },
+      agents: { agentCount: 24, expectedCount: 24, lintClean: true },
       stateDir: { writable: true, path: ".pi-oven" },
       evalRunner: { runnerPresent: true, smokeScenarioCount: 15 },
       opsConnector: { missingSkills: [], credentialFile: ".external-credentials" },
+      memory: { backend: "mnemopi", noEmbeddingsPresent: true, llmModePresent: true, asyncEnabled: true },
     };
     const checks = [
       evalOmpVersion(facts.omp, "15.0.0"),
@@ -313,8 +366,9 @@ describe("DoctorFacts → evaluators integration (pure, injected facts)", () => 
       evalStateDir(facts.stateDir),
       evalEvalRunner(facts.evalRunner),
       evalOpsConnector(facts.opsConnector),
+      evalMemory(facts.memory),
     ];
-    expect(checks).toHaveLength(10);
+    expect(checks).toHaveLength(11);
     expect(exitCodeFor(checks)).toBe(0);
   });
 });

@@ -51,6 +51,41 @@ export async function resolveCacheAgentsDir(
 }
 
 /**
+ * Resolve the agents/ directory to READ for display purposes (e.g. --status),
+ * independent of the caller's cwd. The setup script ships at
+ * `<pluginRoot>/scripts/pi-oven-setup.ts`, so its sibling `agents/` is always
+ * `<pluginRoot>/agents` regardless of where the user invokes it from. This is
+ * the fix for "setup looks at the local cwd, not the omp install location":
+ * pass the script's own `import.meta.dir` and we self-locate the install tree.
+ *
+ * Resolution order:
+ *   1. `<scriptDir>/../agents` if it holds pi-oven-*.md files (covers BOTH dev
+ *      checkout and marketplace install cache — the script always sits one level
+ *      under the plugin root).
+ *   2. the latest install-cache agents dir (covers a stray/relocated script).
+ *   3. the script-relative path as a last resort (status then degrades to
+ *      "(no agent file)" rather than throwing).
+ *
+ * NOTE: this is for READ-ONLY display resolution. It must NOT be wired into the
+ * apply path's maintainer-vs-user mode selector, which keys on whether an
+ * agentsDir was explicitly provided.
+ */
+export async function resolveDefaultAgentsDir(
+  scriptDir: string,
+  cacheRoot?: string
+): Promise<string> {
+  const rel = path.resolve(scriptDir, "..", "agents");
+  const relPopulated = await fs
+    .readdir(rel)
+    .then((files) => files.some((f) => f.startsWith("pi-oven-") && f.endsWith(".md")))
+    .catch(() => false);
+  if (relPopulated) return rel;
+
+  const cache = await resolveCacheAgentsDir(cacheRoot);
+  return cache ?? rel;
+}
+
+/**
  * Checks whether the pi-oven plugin agents cache is populated with the expected
  * number of agent files.
  *

@@ -156,19 +156,19 @@ describe("evalSkills", () => {
 // ---------------------------------------------------------------------------
 
 describe("evalAgents", () => {
-  it("PASS when 22 agents and lint clean", () => {
-    const r = evalAgents({ agentCount: 22, expectedCount: 22, lintClean: true });
+  it("PASS when 24 agents and lint clean", () => {
+    const r = evalAgents({ agentCount: 24, expectedCount: 24, lintClean: true });
     expect(r.status).toBe("PASS");
   });
 
   it("FAIL when agent count mismatch", () => {
-    const r = evalAgents({ agentCount: 21, expectedCount: 22, lintClean: true });
+    const r = evalAgents({ agentCount: 23, expectedCount: 24, lintClean: true });
     expect(r.status).toBe("FAIL");
-    expect(r.detail).toMatch(/21.*22|22.*21/);
+    expect(r.detail).toMatch(/23.*24|24.*23/);
   });
 
   it("FAIL when count matches but lint dirty", () => {
-    const r = evalAgents({ agentCount: 22, expectedCount: 22, lintClean: false });
+    const r = evalAgents({ agentCount: 24, expectedCount: 24, lintClean: false });
     expect(r.status).toBe("FAIL");
     expect(r.detail).toMatch(/lint/i);
     expect(r.fix).toBeDefined();

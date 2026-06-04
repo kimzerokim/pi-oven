@@ -217,7 +217,7 @@ describe("rewriteAllAgents", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("rewrites all 22 agent files to PROFILE_B; subsequent read shows anthropic primary on executor", async () => {
+  it("rewrites all 24 agent files to PROFILE_B; subsequent read shows anthropic primary on executor", async () => {
     // Start with Profile A files
     populateAgentsDir(
       tempDir,
@@ -238,7 +238,7 @@ describe("rewriteAllAgents", () => {
   });
 
   it("skips roles whose files do not exist", async () => {
-    // Only create 3 of the 22 files
+    // Only create 3 of the 24 files
     const subset: Role[] = ["executor", "critic", "planner"];
     populateAgentsDir(
       tempDir,

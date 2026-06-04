@@ -116,7 +116,7 @@ describe("validateImport", () => {
     expect(result.errors.some((e) => e.includes("gpt-4o"))).toBe(true);
   });
 
-  it("rejects unknown role name and enumerates all 22 allowed roles in error", () => {
+  it("rejects unknown role name and enumerates all 24 allowed roles in error", () => {
     const input = {
       "pi-oven": {
         profile: "A",
@@ -132,7 +132,7 @@ describe("validateImport", () => {
     const result = validateImport(input);
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes("my-role"))).toBe(true);
-    // Error must enumerate all 22 roles
+    // Error must enumerate all 24 roles
     for (const role of ROLES) {
       const allErrors = result.errors.join("\n");
       expect(allErrors).toContain(role);

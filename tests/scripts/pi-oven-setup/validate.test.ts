@@ -102,7 +102,7 @@ describe("runValidate", () => {
     }
   });
 
-  it("mode=full pings all 22 roles", async () => {
+  it("mode=full pings all 24 roles", async () => {
     const pingedModels: string[] = [];
     const spawnFn = (_cmd: string, args: string[]) => {
       const modelIdx = args.indexOf("--model");

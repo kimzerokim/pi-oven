@@ -8,7 +8,7 @@
  * - WITHOUT agentsDir = user setup: writes the MAIN ORCHESTRATOR model pair
  *   (the `default` + `title` keys of the `modelRoles` record) from
  *   PROFILE_*_ORCHESTRATOR in ONE atomic whole-record merge-write.
- *   It NEVER writes task.agentModelOverrides (the 22 subagent overrides) — that
+ *   It NEVER writes task.agentModelOverrides (the 24 subagent overrides) — that
  *   per-role write is banned by Spec E (frozen). modelRoles.default is the
  *   top-level session/orchestrator model, which is orthogonal and allowed.
  *
@@ -43,7 +43,7 @@ export interface ApplyOptions {
  * 3. runValidate per validateMode (default smoke).
  * 4. Return exit 0 if all ok; exit 1 if validation fails.
  *
- * NEVER writes task.agentModelOverrides (the 22 subagent overrides) — Spec E
+ * NEVER writes task.agentModelOverrides (the 24 subagent overrides) — Spec E
  * (frozen) bans that per-role write. modelRoles.default is the top-level
  * session/orchestrator model and is orthogonal/allowed. Personal per-role
  * override is the --override path (runOverride, Task 2.1).

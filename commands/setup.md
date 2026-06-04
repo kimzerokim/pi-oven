@@ -153,7 +153,7 @@ Proceed with Profile B? [y/N]:
 Ask the user:
 
 ```
-Apply profile defaults to all 22 roles? [Y/n]:
+Apply profile defaults to all 24 roles? [Y/n]:
 ```
 
 `Y` or Enter: use the selected profile defaults for all roles — proceed to Step 5.
@@ -243,7 +243,7 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 | `--profile B` | Apply Profile B (Anthropic opt-in). Requires anthropic auth detected. |
 | `--override <role>=<model>` | Override a specific role's model in config.yml task.agentModelOverrides. Repeatable. |
 | `--validate=smoke` | (Default) Ping 7 MUST-tier roles after persist. |
-| `--validate=full` | Ping all 22 roles. |
+| `--validate=full` | Ping all 24 roles. |
 | `--validate=none` | Skip validation. |
 | `--status` | Show current profile and resolved model per role (reads config.yml overrides + agent frontmatter). |
 | `--reset` | Remove all `pi-oven:*` keys from config.yml task.agentModelOverrides. Does not touch agent files. |

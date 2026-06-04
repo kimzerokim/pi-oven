@@ -28,7 +28,7 @@ describe("profiles", () => {
   });
 
   describe("PROFILE_A", () => {
-    it("contains all 22 roles", () => {
+    it("contains all 24 roles", () => {
       for (const role of ROLES) {
         expect(PROFILE_A[role]).toBeDefined();
       }
@@ -101,7 +101,7 @@ describe("profiles", () => {
   });
 
   describe("PROFILE_B", () => {
-    it("contains all 22 roles", () => {
+    it("contains all 24 roles", () => {
       for (const role of ROLES) {
         expect(PROFILE_B[role]).toBeDefined();
       }

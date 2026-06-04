@@ -1,7 +1,7 @@
 ---
 name: fresh-verifier
 version: 0.1.0
-description: "Read this skill WHEN declaring a cycle complete, committing a MILESTONE:/CYCLE-EXIT:/STUB-CLEAR: marker, or reaching any pre-completion gate (triggers: verify, verification, 최종 검증, 완료 전 검증). Mandatory fresh-agent verifier — no-self-verification rule, 4 sub-checks, 4 Q-halt patterns; main self-declared PASS/done is FORBIDDEN without this skill."
+description: "Read this skill before declaring a cycle complete, committing a MILESTONE:/CYCLE-EXIT:/STUB-CLEAR: marker, or crossing any pre-completion gate. Mandatory fresh-agent verifier — no-self-verification rule, 4 sub-checks, 4 Q-halt patterns; main self-declared PASS/done is FORBIDDEN without this skill."
 ---
 
 # fresh-verifier

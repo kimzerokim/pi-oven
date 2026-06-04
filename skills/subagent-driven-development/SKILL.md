@@ -1,7 +1,7 @@
 ---
 name: subagent-driven-development
 version: 0.1.0
-description: "Read this skill WHEN executing a written plan by dispatching subagents per task (triggers: execute plan, implement plan, 계획 실행해줘, 플랜대로 구현). Orchestrates fresh subagents per task with two-stage review and plan-checkbox tracking."
+description: "Read this skill when executing a written plan by dispatching fresh subagents per task. Orchestrates fresh subagents per task with two-stage review and plan-checkbox tracking."
 ---
 
 # subagent-driven-development

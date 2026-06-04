@@ -299,12 +299,12 @@
     </div>
     <div class="card">
       <div class="head"><span class="name">Skill</span><span class="badge">22 markdown</span></div>
-      <div class="blurb">스킬은 <code>description:</code> 필드를 통해 시스템 프롬프트에 노출됩니다. 모델이 해당 설명의 활성화 조건과 맥락이 맞을 때 <code>skill://&lt;name&gt;</code>을 직접 읽어 전체 절차를 로드합니다. 키워드 자동 실행은 없습니다 — 모델이 문맥을 보고 스킬 로드 여부를 결정합니다. 코드가 없습니다 — markdown 텍스트 자체가 규칙서입니다. 본문은 <strong>English-only</strong>.</div>
+      <div class="blurb">스킬은 <code>description:</code> 기반 발견성과 런타임 키워드 화이트리스트 두 경로로 활성화됩니다. 사용자 메시지가 화이트리스트 문구와 맞으면 확장이 <code>skill://&lt;name&gt;</code> MUST-read 블록을 주입하고, 그 외에는 모델이 description 문맥을 보고 <code>skill://&lt;name&gt;</code>을 직접 읽어 절차를 로드합니다. 본문은 <strong>English-only</strong>.</div>
       <h4>위치 / 분류</h4>
       <ul>
         <li>위치: <span class="path">skills/&lt;name&gt;/SKILL.md</span> (+ <code>references/</code>)</li>
         <li>4개 신규 규율 스킬: systematic-debugging · improve-codebase-architecture · receiving-code-review · git-workflow</li>
-        <li>badge 의미: <code>entry</code> 진입점 · <code>discipline</code> 규율 · <code>gate</code> 게이트 · <code>auto</code> 자동 호출</li>
+        <li>badge 의미: <code>entry</code> 진입점 · <code>discipline</code> 규율 · <code>gate</code> 게이트 · <code>auto</code> 런타임 키워드 화이트리스트/강한 문맥 매칭</li>
       </ul>
     </div>
     <div class="card">
@@ -419,7 +419,7 @@ flowchart LR
     <h4>좋은 prompt</h4>
     <p><code class="chip k">&lt;X&gt; 가 &lt;Y&gt; 로 동작 안 함. 기대: &lt;Z&gt;. 고쳐줘.</code></p>
     <h4>자동 로드 / 디스패치</h4>
-    <p>없음 (메인 직접 처리) + 항상 켜진 <a href="#s-code-quality-discipline"><span class="chip">code-quality-discipline</span></a>. 커밋 시 <code>commit</code> 발화로 <a href="#s-pre-commit-gate"><span class="chip">pre-commit-gate</span></a> 활성. 본격 디버깅이면 <a href="#s-systematic-debugging"><span class="chip">systematic-debugging</span></a> → <span class="chip a">pi-oven:debugger</span></p>
+    <p>기본은 메인 직접 처리. <a href="#s-code-quality-discipline"><span class="chip">code-quality-discipline</span></a> 는 코드 수정/리팩토링/TDD 류 발화에서 키워드 화이트리스트로 매칭될 수 있고, 커밋/푸시/PR 생성 직전에는 <a href="#s-pre-commit-gate"><span class="chip">pre-commit-gate</span></a> 가 매칭됩니다. 본격 디버깅이면 <a href="#s-systematic-debugging"><span class="chip">systematic-debugging</span></a> → <span class="chip a">pi-oven:debugger</span></p>
     <h4>피하기</h4>
     <p>단일 버그에 large-task / 전수조사 trigger 발화 → over-dispatch.</p>
   </div>
@@ -694,7 +694,7 @@ flowchart TD
     <span class="chip"><span class="badge entry">entry</span> 사용자 프롬프트 키워드가 주 진입점</span>
     <span class="chip"><span class="badge disc">discipline</span> 규율 — 다른 스킬/플로우에서 체인</span>
     <span class="chip"><span class="badge gate">gate</span> 커밋 / 사이클-exit 게이트</span>
-    <span class="chip"><span class="badge auto">auto</span> 자동 호출 (툴 콜 / 키워드)</span>
+    <span class="chip"><span class="badge auto">auto</span> 런타임 키워드 화이트리스트 또는 강한 문맥 매칭</span>
   </div>
 
   <div class="card" id="s-spec-and-review">
@@ -838,10 +838,10 @@ flowchart TD
   </div>
 
   <div class="card" id="s-code-quality-discipline">
-    <div class="head"><span class="name">code-quality-discipline</span><span class="badge auto">auto · alwaysApply</span></div>
-    <div class="blurb">모든 code-write 툴 콜에서 DRY/YAGNI/KISS, deletion test, depth-before-width, immutability 강제. 기본으로 항상 켜짐 (<code>alwaysApply: true</code>).</div>
+    <div class="head"><span class="name">code-quality-discipline</span><span class="badge auto">auto</span></div>
+    <div class="blurb">코드 수정, 버그 수정, 리팩토링, TDD 맥락에서 읽히는 코드 품질 규율. DRY/YAGNI/KISS, deletion test, depth-before-width, immutability 를 강제합니다.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">코드 변경</span><span class="chip k">코드 수정</span><span class="chip k">버그 수정</span><span class="chip k">버그 잡기</span><span class="chip k">bug fix</span><span class="chip k">리팩토링</span><span class="chip k">refactor</span><span class="chip k">TDD</span><span class="chip k">테스트 주도 개발</span><span class="chip k">코드 품질 점검</span><span class="chip k">DRY 체크</span><span class="chip k">YAGNI 체크</span><span class="chip x">Edit/Write/MultiEdit/NotebookEdit/ast_grep_replace tool-call</span></div>
+    <div class="triggers"><span class="chip k">코드 변경</span><span class="chip k">코드 수정</span><span class="chip k">버그 수정</span><span class="chip k">리팩토링</span><span class="chip k">refactor</span><span class="chip k">TDD</span></div>
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:code-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:code-simplifier</span></a><a href="#agents"><span class="chip a">pi-oven:security-reviewer</span></a><a href="#agents"><span class="chip a">pi-oven:analyst</span></a>
@@ -895,10 +895,10 @@ flowchart TD
   </div>
 
   <div class="card" id="s-memory-discipline">
-    <div class="head"><span class="name">memory-discipline</span><span class="badge auto">auto · alwaysApply</span><span class="badge entry">신규</span></div>
-    <div class="blurb">omp Hindsight/mnemopi 메모리를 모든 pi-oven 플로우에 연결하는 규율 — 언제 <code>recall</code>(플로우 시작, 계획 전), <code>retain</code>(사이클 종료, 결정, 교훈), <code>reflect</code>(세션 내 3+ 관련 항목 retain 후) 을 호출할지 정의. <code>alwaysApply: true</code>. <code>pi-oven:setup</code> 이 <code>memory.backend=mnemopi</code> + <code>mnemopi.noEmbeddings=true</code> + <code>async.enabled=true</code> 를 기록해야 활성화됨.</div>
+    <div class="head"><span class="name">memory-discipline</span><span class="badge auto">auto</span><span class="badge entry">신규</span></div>
+    <div class="blurb">omp mnemopi 메모리를 pi-oven 플로우에 연결하는 규율 — 언제 <code>recall</code>, <code>retain</code>, <code>reflect</code>를 호출할지 정의합니다. <code>pi-oven:setup</code> 이 <code>memory.backend=mnemopi</code> + <code>mnemopi.noEmbeddings=true</code> + <code>async.enabled=true</code> 를 기록해야 실사용 품질이 확보됩니다.</div>
     <h4>트리거</h4>
-    <div class="triggers"><span class="chip k">메모리 규율</span><span class="chip k">기억 저장</span><span class="chip k">retain 정책</span><span class="chip k">flow start</span><span class="chip k">recall</span><span class="chip k">cycle end</span><span class="chip x">+ alwaysApply</span></div>
+    <div class="triggers"><span class="chip k">메모리 규율</span><span class="chip k">기억 저장</span><span class="chip k">retain 정책</span><span class="chip k">recall</span><span class="chip k">cycle end</span><span class="chip k">회고 저장</span></div>
     <h4>디스패치 에이전트 (recall 우선 역할)</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:planner</span></a><a href="#agents"><span class="chip a">pi-oven:oracle</span></a><a href="#agents"><span class="chip a">pi-oven:architect</span></a><a href="#agents"><span class="chip a">pi-oven:critic</span></a><a href="#agents"><span class="chip a">pi-oven:deep-researcher</span></a>
@@ -952,7 +952,7 @@ flowchart TD
   <div class="note">
     <strong>4개 신규 규율 스킬</strong>: <code>systematic-debugging</code> · <code>improve-codebase-architecture</code> · <code>receiving-code-review</code> · <code>git-workflow</code>.
     Pocock / superpowers 계열에서 흡수해 omp-native 로 재작성했습니다.
-    <strong>1개 신규 always-on 스킬</strong>: <code>memory-discipline</code> (<code>alwaysApply: true</code>) — omp mnemopi 백엔드를 모든 플로우에 연결.
+    <strong>신규 메모리 규율 스킬</strong>: <code>memory-discipline</code> — omp mnemopi 백엔드를 retain/recall/reflect 플로우에 연결.
   </div>
   <div class="note">
     <strong>3개 UC5 ops 커넥터</strong>: <code>aws</code> · <code>bitbucket-pipeline</code> · <code>cloudflare</code>.

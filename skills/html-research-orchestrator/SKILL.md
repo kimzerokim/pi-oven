@@ -1,7 +1,7 @@
 ---
 name: html-research-orchestrator
 version: 0.1.0
-description: "Read this skill WHEN asked to produce a research-backed HTML report, citation-backed HTML deliverable, or synthesized HTML output written to a temp dir (triggers: html report, research html, HTML 리포트, 조사 보고서 HTML, 리서치 HTML). Orchestrates document-specialist research + writer synthesis; forbids repo commits of generated artifacts."
+description: "Read this skill to produce a research-backed HTML report, citation-backed HTML deliverable, or synthesized HTML output written to a temp directory. Orchestrates document-specialist research + writer synthesis and forbids repo commits of generated artifacts."
 ---
 
 # html-research-orchestrator

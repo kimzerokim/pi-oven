@@ -17,6 +17,13 @@ import {
   extractTextFromContent,
   updateStopGuardOnTurnStart,
 } from "./pi-oven-runtime/autonomous-stop-guard";
+import {
+  KEYWORD_SKILL_DEDUP_KEY,
+  buildKeywordMatchedSkillsPrompt,
+  createSkillKeywordLoaderState,
+  loadSkillKeywordIndex,
+  updateSkillKeywordLoaderOnTurnStart,
+} from "./pi-oven-runtime/skill-keyword-loader";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -349,6 +356,14 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   // env, task/index.ts:273). Only the parent session may MUTATE the FSM (B4);
   // subagents are still gated (read-only) but never write.
   const isParentSession = !process.env.PI_BLOCKED_AGENT;
+  let skillKeywordState = createSkillKeywordLoaderState();
+  let skillKeywordIndex = [] as ReturnType<typeof loadSkillKeywordIndex>;
+  try {
+    skillKeywordIndex = loadSkillKeywordIndex(repoRoot);
+    pi.logger.debug(`pi-oven: loaded skill keyword index (${skillKeywordIndex.length} skills)`);
+  } catch (err) {
+    pi.logger.debug(`pi-oven: skill keyword index not loaded: ${err}`);
+  }
   let stopGuardState = createStopGuardState();
 
 
@@ -383,7 +398,16 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   // exactly-once per systemPrompt across re-injection / compaction rehydration).
   pi.on("before_agent_start", async (event) => {
     try {
-      const systemPrompt = injector.applyToSystemPrompt(event.systemPrompt ?? []);
+      let systemPrompt = injector.applyToSystemPrompt(event.systemPrompt ?? []);
+      if (isParentSession) {
+        const keywordPrompt = buildKeywordMatchedSkillsPrompt(skillKeywordState.matchedSkills);
+        if (
+          keywordPrompt !== null &&
+          !systemPrompt.some((entry) => entry.includes(KEYWORD_SKILL_DEDUP_KEY))
+        ) {
+          systemPrompt = [...systemPrompt, keywordPrompt];
+        }
+      }
       return { systemPrompt };
     } catch (err) {
       pi.logger.debug(`pi-oven: before_agent_start inject skipped: ${err}`);
@@ -489,9 +513,12 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   // queue an immediate hidden continuation turn.
   pi.on("turn_start", async (_event, ctx) => {
     if (!isParentSession) return;
-    stopGuardState = updateStopGuardOnTurnStart(
-      stopGuardState,
-      ctx.sessionManager.getBranch() as never
+    const branchEntries = ctx.sessionManager.getBranch() as never;
+    stopGuardState = updateStopGuardOnTurnStart(stopGuardState, branchEntries);
+    skillKeywordState = updateSkillKeywordLoaderOnTurnStart(
+      skillKeywordState,
+      branchEntries,
+      skillKeywordIndex
     );
   });
 

@@ -1,7 +1,7 @@
 ---
 name: spec-and-review
 version: 0.1.0
-description: "Read this skill WHEN creating a new spec, plan, or architectural design document — or when cross-vendor critique is needed before locking in a design decision. Runs a Codex + Zen critic fan-out loop."
+description: "Read this skill when drafting a new spec, plan, or architectural design document, or when a design needs cross-vendor critique before lock-in. Runs a Codex + Zen critic fan-out loop."
 ---
 
 # spec-and-review

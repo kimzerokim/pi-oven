@@ -1,7 +1,7 @@
 ---
 name: writing-plans
 version: 0.1.0
-description: "Read this skill WHEN the user says plan it / write plan / 계획 세워줘 / 구현 계획 / plan만들어, or brainstorming hands off an approved spec. Transforms an approved spec into a bite-sized, placeholder-free implementation plan ready for subagent dispatch."
+description: "Read this skill when an approved spec needs to be turned into a concrete implementation plan ready for subagent dispatch. Transforms an approved spec into a bite-sized, placeholder-free plan."
 ---
 
 # writing-plans

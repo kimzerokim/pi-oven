@@ -1,7 +1,7 @@
 ---
 name: code-quality-discipline
 version: 0.1.0
-description: "Read this skill WHEN about to write or modify code (Edit, Write, MultiEdit, ast_grep_replace) or on any bug fix, refactor, or TDD cycle (triggers: 코드 변경, 코드 수정, 버그 수정, 리팩토링, refactor, TDD). Enforces DRY / YAGNI / KISS / Deletion test / Immutability before every code write."
+description: "Read this skill before writing or modifying code, and on any bug fix, refactor, or TDD cycle. Enforces DRY / YAGNI / KISS / Deletion test / Immutability before every code write."
 ---
 
 # code-quality-discipline

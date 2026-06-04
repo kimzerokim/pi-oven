@@ -1,7 +1,7 @@
 ---
 name: large-task-delegation
 version: 0.1.0
-description: "Read this skill WHEN the task involves 3+ file edits, 200+ LoC, 5+ file reads, or a multi-stage workflow. Governs dispatch-only main role: scope → subagent → review → commit gate."
+description: "Read this skill when the task is large enough to require dispatch-first orchestration: multi-file edits, 200+ LoC, 5+ file reads, or a multi-stage workflow. Governs the dispatch-only main role: scope → subagent → review → commit gate."
 ---
 
 # large-task-delegation

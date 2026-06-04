@@ -3,12 +3,13 @@ name: autonomous-loop-smoke-001
 skill: autonomous-loop
 tag: smoke
 turn_timeout_ms: 300000
-# Category: Autonomous (§4d). No skill_read_required; assert stop-guard behavior.
-# Prompt supplies all 3 ASK-FIRST slots to avoid ask under hasUI:false.
+# Category: Autonomous (§4d). Runtime keyword loader should force a real
+# `skill://autonomous-loop` read, while stop-guard still enforces continuation.
 input:
   - turn: 1
     user: "ralph로 돌려 — add a new utility function to format ISO timestamps. Use the current branch, no new branch needed. No PR required, direct commits are fine."
 expected:
+  - skill_read_required: "autonomous-loop"
   - agent_response_must_not_contain:
       - "awaiting next instruction"
       - "Should I proceed"

@@ -15,8 +15,8 @@
 | Dir | What | SoT? |
 |---|---|---|
 | `agents/pi-oven-*.md` | 24 subagent definitions. Frontmatter `name: pi-oven:<role>` (colon), `model:` array, `thinkingLevel`, body = system prompt. | body hand-authored; `model`/`thinkingLevel` derived from profiles.ts |
-| `skills/<name>/SKILL.md` | 22 authored skills; runtime loads the 22-skill SoT set from `.claude-plugin/plugin.json`. Bodies **English-only**. | hand-authored |
-| `commands/*.md` | 3 command templates (setup, doctor, release). omp registers each as `/pi-oven:<basename>` via the Claude Code Marketplace provider, which namespaces marketplace commands as `<plugin>:<file-basename>` — command files MUST NOT carry a `pi-oven-` prefix. Autonomous mode is entered via the `autonomous-loop` / `autonomous-boundary` skill keyword triggers (no command). | hand-authored |
+| `skills/<name>/SKILL.md` | 22 authored skills; runtime loads the 22-skill SoT set from `.claude-plugin/plugin.json`, exposes them via description discovery, and supplements them with a curated runtime keyword whitelist in the extension. Bodies **English-only**. | hand-authored |
+| `commands/*.md` | 3 command templates (setup, doctor, release). omp registers each as `/pi-oven:<basename>` via the Claude Code Marketplace provider, which namespaces marketplace commands as `<plugin>:<file-basename>` — command files MUST NOT carry a `pi-oven-` prefix. Autonomous mode is entered by matching the `autonomous-loop` runtime keyword whitelist (no command required). | hand-authored |
 | `scripts/pi-oven-setup/` | Setup-wizard CLI modules (TS, bun). | code |
 | `scripts/pi-oven-release/` | Release automation modules (version bump, SoT sync, changelog, publish gate). | code |
 | `scripts/lint-{agents,skills}.ts` | CI hard lints. | code |
@@ -60,7 +60,7 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 
 ## Conventions / guardrails
 
-- **Skill bodies English-only.** Korean only for trigger-keyword matching. Specs/plans may be Korean.
+- **Skill bodies English-only.** Korean belongs in the runtime keyword whitelist and user-facing docs/examples, not in SKILL body prose.
 - **Commit subjects:** what/why only — **no "Plan N" / "Task N"** progress markers. Per-spec semantic commits, not per-task.
 - **`git push` requires explicit user confirmation** every time. Autonomous mode never auto-pushes.
 - Agent name frontmatter MUST be `pi-oven:<role>` (colon) — equals omp registry key = override key.
@@ -69,7 +69,7 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 
 ## Status
 
-**Current: v0.1.5** — `/pi-oven:setup` carries a "Skill usage" guard instructing the orchestrator to drive setup from `setup.md` alone and not pull in other skills mid-flow. Builds on v0.1.4 (`pi-oven_ask` single-select-only) + v0.1.2 (setup self-locate) + v0.1.3 (doctor 11-check). Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
+**Current: v0.1.6** — skill activation contract: skills surface to the model via their `description:` WHEN-conditions (model-initiated `skill://` reads), supplemented by a curated `SKILL_KEYWORD_WHITELIST` in the runtime extension (`.omp/extensions/pi-oven-runtime/skill-keyword-loader.ts`); trigger lists stripped from all 22 frontmatter descriptions, replacing the false "keyword auto-trigger" promise. Builds on v0.1.5 (setup Skill-usage guard) + v0.1.4 (`pi-oven_ask` single-select) + v0.1.3 (doctor 11-check). Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
 
 **Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@kzk (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 

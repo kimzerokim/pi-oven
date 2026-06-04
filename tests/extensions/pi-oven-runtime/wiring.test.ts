@@ -144,4 +144,40 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect((queued.options as { deliverAs?: string; triggerTurn?: boolean }).deliverAs).toBe("nextTurn");
     expect((queued.options as { deliverAs?: string; triggerTurn?: boolean }).triggerTurn).toBe(true);
   });
+
+  it("before_agent_start injects a must-read skill block when user keywords match shipped skills", async () => {
+    const pi = makeFakePi();
+    piOvenPi(pi as never);
+
+    const onTurnStart = pi.handlers["turn_start"];
+    const onBeforeAgentStart = pi.handlers["before_agent_start"];
+
+    const ctx = {
+      sessionManager: {
+        getBranch: () => [
+          {
+            id: "u1",
+            type: "message",
+            message: {
+              role: "user",
+              content: [{ type: "text", text: "자율 실행으로 큰 작업 진행해줘. spec 잡자 first." }],
+            },
+          },
+        ],
+      },
+    };
+
+    await onTurnStart({ type: "turn_start", turnIndex: 1, timestamp: Date.now() }, ctx);
+    const res = (await onBeforeAgentStart({
+      type: "before_agent_start",
+      prompt: "",
+      systemPrompt: ["base"],
+    })) as { systemPrompt: string[] };
+
+    expect(res.systemPrompt.some((s) => s.includes("pi-oven:keyword-skills@v1"))).toBe(true);
+    const joined = res.systemPrompt.join("\n");
+    expect(joined).toContain("skill://autonomous-loop");
+    expect(joined).toContain("skill://large-task-delegation");
+    expect(joined).toContain("skill://spec-and-review");
+  });
 });

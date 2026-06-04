@@ -1,7 +1,7 @@
 ---
 name: tdd-strict
 version: 0.1.0
-description: "Read this skill WHEN writing or editing source code (Edit/Write/MultiEdit on *.ts/*.js/*.py/src/**) in autonomous mode, or when the user says tdd, test first, red-green, 테스트 먼저, 테스트부터. Enforces Red→Green→Refactor cycle with 100% coverage on touched files."
+description: "Read this skill when writing or editing source code in autonomous mode under a strict Red→Green→Refactor workflow with full touched-file coverage."
 ---
 
 # tdd-strict

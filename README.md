@@ -2,14 +2,14 @@
 
 > A curated omp marketplace plugin distilled from four frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.5-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-598%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.6-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-604%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
 ## What you get
 
 - **24 self-contained agents** under the `pi-oven:` namespace — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis, deep-researcher, data-runner. All 24 are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier use `report_finding` for structured findings. Each is a markdown file in `agents/` with locked model + tool whitelist.
-- **22 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, git-workflow, aws, bitbucket-pipeline, cloudflare, memory-discipline (always-on mnemopi backend: recall/retain injected at 5 entry points).
+- **22 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, git-workflow, aws, bitbucket-pipeline, cloudflare, memory-discipline (mnemopi-backed retain/recall/reflect discipline with curated runtime keyword matching).
 - **`/pi-oven:setup` wizard** — Profile A (release default, opencode-zen + openai-codex) or Profile B (Anthropic Pro/Max opt-in), agent-file source of truth, drift detection on every session.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
 - **Project `CLAUDE.md` injection + omp isolation** — the runtime extension reads your repo-root `CLAUDE.md` and injects it into the main + sub agent system prompt (omp does not read repo-root `CLAUDE.md` natively). `/pi-oven:setup --isolate` then makes omp ignore the global `~/.claude` context layer (`~/.claude/CLAUDE.md` + pi-oven skills/hooks), so omp runs as a pi-oven-first environment. It keeps the `claude-plugins` provider enabled (that is how pi-oven's own `/pi-oven:*` commands load), so omc/agentmemory marketplace plugin commands remain visible — the trade-off for not killing pi-oven's own commands. See [omp isolation & project CLAUDE.md](#omp-isolation--project-claudemd).
@@ -37,7 +37,7 @@ omp plugin install pi-oven@kzk --force
 
 # 3. Verify
 omp plugin list | grep pi-oven
-# Expected: pi-oven@kzk (0.1.5)
+# Expected: pi-oven@kzk (0.1.6)
 ```
 
 ### One-shot (install automatic, setup interactive)
@@ -98,11 +98,12 @@ So `pi-oven:*` dispatch remains available even when plugin-root agent discovery 
 
 ### 3. How skills activate
 
-Skills are surfaced to the model via their `description:` field in the system prompt. When a task matches the description's activation condition, the model reads `skill://<name>` to load the full procedure. Skills do NOT auto-fire on keywords — the model chooses when to read them based on context.
+Skills can now activate in two ways:
 
-The one keyword-driven runtime behavior is the **autonomous stop-guard** (not skill-loading): when the user sends an autonomous-mode keyword (e.g. `ralph로 돌려`, `autopilot`), the extension keeps the agent looping with a fixed continuation message until completion or an explicit stop. This is handled by `autonomous-stop-guard.ts` and injects a hardcoded string — it does not load any skill body.
+1. **Runtime keyword whitelist** — on each `turn_start`, the pi-oven extension matches the latest user message against a curated, code-owned keyword list for each shipped skill. On a match, `before_agent_start` injects a system prompt block that tells the model it **MUST** read the matched `skill://<name>` entries before proceeding.
+2. **Description-driven discovery** — even without a keyword hit, shipped skills are still surfaced through their `description:` field in the system prompt, and the model can decide a skill applies and read `skill://<name>` on its own.
 
-The `trigger:` field in `SKILL.md` files has **no runtime effect** — it is discarded by the omp skill loader and exists only as human-readable discoverability metadata and a CI lint target.
+The autonomous stop-guard still exists as a separate runtime behavior: autonomous-mode keywords keep the agent looping until completion or explicit stop. That guard now complements skill loading instead of being the only keyword-driven behavior.
 
 See `skills/*/SKILL.md` for each skill's `description:` activation condition.
 
@@ -212,7 +213,7 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 | `aws` | ops (UC5) | AWS production read inspection and infra diagnostics |
 | `bitbucket-pipeline` | ops (UC5) | Bitbucket pipeline status/log/variables connector |
 | `cloudflare` | ops (UC5) | Cloudflare DNS/zone read connector |
-| `memory-discipline` | core (alwaysApply) | mnemopi backend: memory recall/retain at 5 entry points; sets `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true` |
+| `memory-discipline` | core | mnemopi-backed recall / retain / reflect discipline; setup writes `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true` |
 
 See `skills/<name>/SKILL.md` for the complete body and `evals/<skill>/scenarios/*.yaml` for behavioral test fixtures.
 

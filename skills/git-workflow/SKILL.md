@@ -1,7 +1,7 @@
 ---
 name: git-workflow
 version: 0.1.0
-description: "Read this skill WHEN starting isolated feature work, before executing an implementation plan, or when finishing a branch (merge, PR, discard). Manages the two boundaries of a development branch: set up a worktree at the start, integrate at the finish. (triggers: worktree, isolated workspace, finish branch, merge branch, create PR, discard branch, branch cleanup, 워크트리, 브랜치 정리, 작업 마무리, PR 만들어, 머지)"
+description: "Read this skill when starting isolated feature work, executing inside a worktree, or finishing and integrating a branch. Manages the two boundaries of a development branch: set up a worktree at the start, integrate at the finish."
 ---
 
 # git-workflow

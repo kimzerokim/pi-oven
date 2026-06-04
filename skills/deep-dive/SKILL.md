@@ -1,7 +1,7 @@
 ---
 name: deep-dive
 version: 0.1.0
-description: "MUST read this skill at the START of any deep bug investigation, intermittent-failure hunt, or root-cause/trace request before planning or proposing a fix. It dispatches 3 parallel pi-oven:tracer lanes, then a bounded clarification of only the unknowns the trace could not resolve."
+description: "Read this skill for trace-first deep bug investigation before planning. It dispatches 3 parallel pi-oven:tracer lanes, then a bounded clarification of only the unknowns the trace could not resolve."
 ---
 
 # deep-dive

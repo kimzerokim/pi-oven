@@ -1,7 +1,7 @@
 ---
 name: deep-init
 version: 0.1.0
-description: "Read this skill WHEN the user says deepinit, deep-init, init project context, or scan codebase + write AGENTS.md, or when AGENTS.md files are absent/stale and hierarchical codebase context is needed. Generates per-directory AGENTS.md documentation via explorer + document-specialist + librarian agents. (triggers: deepinit, deep-init, 딥이닛, 프로젝트 컨텍스트 초기화)"
+description: "Read this skill to initialize project context with hierarchical AGENTS.md generation, especially when AGENTS.md files are absent or stale and a full codebase map is needed. Generates per-directory AGENTS.md documentation via explorer, document-specialist, and librarian agents."
 ---
 
 # deep-init

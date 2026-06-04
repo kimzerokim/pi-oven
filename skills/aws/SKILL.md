@@ -1,7 +1,7 @@
 ---
 name: aws
 version: 0.1.0
-description: "Read this skill WHEN the task involves AWS infrastructure inspection, production-state queries, or cloud ops debugging (S3, CloudFront, EC2, ECR, Route53, CloudWatch). Safe read-only connector for UC5 ops. (triggers: AWS 상태 확인, 프로덕션 조회, 운영 인프라 조회)"
+description: "Read this skill for read-only AWS infrastructure inspection, production-state queries, and cloud ops debugging across S3, CloudFront, EC2, ECR, Route53, and CloudWatch. Safe read-only connector for UC5 ops."
 ---
 
 # aws

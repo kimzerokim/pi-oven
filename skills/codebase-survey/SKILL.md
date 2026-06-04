@@ -1,7 +1,7 @@
 ---
 name: codebase-survey
 version: 0.1.0
-description: "Read this skill WHEN the task requires 5+ file reads, a new spec/plan/fix-start is requested, or user says 코드서베이/전수조사/코드베이스 조사/호출부 전수 확인. Runs mandatory 8-step deep codebase survey via explore subagent before any planning or fix flow."
+description: "Read this skill before planning or fixing when the task needs a broad repo survey, caller inventory, module inventory, or 5+ file reads. Runs a mandatory 8-step deep codebase survey via an explore subagent before any planning or fix flow."
 ---
 
 # codebase-survey

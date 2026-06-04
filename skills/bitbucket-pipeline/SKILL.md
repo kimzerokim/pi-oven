@@ -1,7 +1,7 @@
 ---
 name: bitbucket-pipeline
 version: 0.1.0
-description: "Read this skill WHEN working with Bitbucket Pipelines — CI/CD runs, build failures, step diagnostics, logs, or repository variable inspection (triggers: Bitbucket, pipeline, 비트버킷 파이프라인, 파이프라인 실패, 빌드 실패). Provides deterministic connector for Bitbucket Cloud UC5 operations."
+description: "Read this skill for Bitbucket Pipelines CI/CD runs, build failures, step diagnostics, logs, and repository variable inspection. Provides deterministic connector for Bitbucket Cloud UC5 operations."
 ---
 
 # bitbucket-pipeline

@@ -1,7 +1,7 @@
 ---
 name: systematic-debugging
 version: 0.1.0
-description: "Read this skill WHEN encountering any bug, test failure, flaky test, performance regression, or unexpected behavior before proposing a fix. Root-cause-first debugging discipline: investigate, trace to source, defend in depth. (triggers: 버그 수정, 디버깅, 왜 깨지지, 원인 찾아줘, race condition, regression)"
+description: "Read this skill before proposing a fix for bugs, test failures, flaky tests, performance regressions, or unexpected behavior. Root-cause-first debugging discipline: investigate, trace to source, defend in depth."
 ---
 
 # systematic-debugging

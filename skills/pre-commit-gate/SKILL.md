@@ -1,7 +1,7 @@
 ---
 name: pre-commit-gate
 version: 0.1.0
-description: "Read this skill WHEN about to run git commit, git push, or gh pr create — or on 커밋 전 점검 / 프리커밋 게이트. Runs 11 sequential gates (AGENTS.md sync, freshness, ai-slop, secrets, prod code-first, build, test, docker smoke, Playwright UI, fix-scope, fresh-verifier); one FAIL blocks immediately; new commit, never --amend."
+description: "Read this skill before running git commit, git push, or gh pr create. Runs 11 sequential gates (AGENTS.md sync, freshness, ai-slop, secrets, prod code-first, build, test, docker smoke, Playwright UI, fix-scope, fresh-verifier); one FAIL blocks immediately; new commit, never --amend."
 ---
 
 # pre-commit-gate

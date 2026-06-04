@@ -1,8 +1,8 @@
 # Skill Activation Contract — Decision Doc
 
-**Status:** DRAFT — awaiting user approval before any code changes.
+**Status:** HISTORICAL DRAFT — superseded by the implemented runtime keyword loader in `.omp/extensions/pi-oven-runtime/skill-keyword-loader.ts`.
 **Date:** 2026-06-04
-**Scope:** How pi-oven skills activate at runtime; what the eval harness should measure; what docs to fix.
+**Scope:** Historical decision context for skill activation. The current shipped behavior is documented in `README.md`.
 
 ---
 

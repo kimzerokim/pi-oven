@@ -1,7 +1,7 @@
 ---
 name: improve-codebase-architecture
 version: 0.1.0
-description: "Read this skill WHEN asked to improve architecture, deepen modules, find refactoring opportunities, consolidate tightly-coupled modules, or discuss shallow modules / seams / deletion tests (triggers: 아키텍처 개선, 구조 개선, 리팩토링 기회, 모듈 깊게). Surfaces deepening opportunities — refactors that turn shallow modules into deep ones for testability and AI-navigability."
+description: "Read this skill for architecture improvement, deepening modules, consolidating seams, and surfacing refactoring opportunities around shallow modules or deletion tests. It identifies deepening opportunities that turn shallow modules into deep ones for testability and AI-navigability."
 ---
 
 # improve-codebase-architecture

@@ -1,7 +1,7 @@
 ---
 name: brainstorming
 version: 0.1.0
-description: "Read this skill WHEN the user wants to brainstorm, design, or spec out a feature/project before coding — or when no approved spec exists for an implementation request. Socratic Q&A → approved spec with a HARD-GATE blocking all code until design is confirmed. (triggers: brainstorm, brainstorming, 브레인스토밍, 아이디어 정리, 같이 설계, 설계부터 하자)"
+description: "Read this skill before brainstorming, design, or feature/project specification when no approved spec exists for an implementation request. Socratic Q&A → approved spec with a HARD-GATE blocking all code until design is confirmed."
 ---
 
 # brainstorming

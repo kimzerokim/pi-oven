@@ -17,19 +17,23 @@
 
 import { rewriteAllAgents } from "./agent-rewriter";
 import { runValidate } from "./validate";
-import { setModelRoles, setMemoryAndAsyncConfig, setRetryFallbackChains } from "./config-yml";
+import { setModelRoles, setMemoryAndAsyncConfig, setRetryFallbackChains, setAgentModelOverrides } from "./config-yml";
 import {
   PROFILE_A,
   PROFILE_B,
+  PROFILE_C,
   PROFILE_A_ORCHESTRATOR,
   PROFILE_B_ORCHESTRATOR,
+  PROFILE_C_ORCHESTRATOR,
   PROFILE_A_FALLBACK_CHAINS,
   PROFILE_B_FALLBACK_CHAINS,
+  PROFILE_C_FALLBACK_CHAINS,
+  ROLES,
   type ProfileMap,
 } from "./profiles";
 
 export interface ApplyOptions {
-  profile: "A" | "B";
+  profile: "A" | "B" | "C";
   validateMode?: "smoke" | "full" | "none";
   spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
   agentsDir?: string; // maintainer generate target (repo agents/)
@@ -53,7 +57,8 @@ export interface ApplyOptions {
 export async function runApply(
   opts: ApplyOptions
 ): Promise<{ exitCode: number; output: string }> {
-  const profileMap: ProfileMap = opts.profile === "B" ? PROFILE_B : PROFILE_A;
+  const profileMap: ProfileMap =
+    opts.profile === "C" ? PROFILE_C : opts.profile === "B" ? PROFILE_B : PROFILE_A;
 
   let memoryConfigLine = "";
 
@@ -65,18 +70,37 @@ export async function runApply(
     // title) in ONE atomic whole-record merge-write. omp's schema declares
     // `modelRoles` as a record, so dotted `modelRoles.default` writes are
     // rejected — setModelRoles read-merge-writes the whole record, preserving
-    // sibling roles. Never task.agentModelOverrides (anti-Spec-E).
+    // sibling roles. Never task.agentModelOverrides for A/B (anti-Spec-E).
     const orchestrator =
-      opts.profile === "B" ? PROFILE_B_ORCHESTRATOR : PROFILE_A_ORCHESTRATOR;
+      opts.profile === "C"
+        ? PROFILE_C_ORCHESTRATOR
+        : opts.profile === "B"
+        ? PROFILE_B_ORCHESTRATOR
+        : PROFILE_A_ORCHESTRATOR;
     await setModelRoles(
       { default: orchestrator.default, title: orchestrator.title },
       { spawnFn: opts.spawnFn }
     );
     const fallbackChains =
-      opts.profile === "B" ? PROFILE_B_FALLBACK_CHAINS : PROFILE_A_FALLBACK_CHAINS;
+      opts.profile === "C"
+        ? PROFILE_C_FALLBACK_CHAINS
+        : opts.profile === "B"
+        ? PROFILE_B_FALLBACK_CHAINS
+        : PROFILE_A_FALLBACK_CHAINS;
     await setRetryFallbackChains(fallbackChains, { spawnFn: opts.spawnFn });
+
+    // Profile C only: bulk-write all 24 per-role task.agentModelOverrides.
+    // Deliberate Spec E relaxation — A/B write ZERO per-role overrides.
+    if (opts.profile === "C") {
+      const overrideRecord: Record<string, string> = {};
+      for (const role of ROLES) {
+        overrideRecord[`pi-oven:${role}`] = profileMap[role].primary;
+      }
+      await setAgentModelOverrides(overrideRecord, { spawnFn: opts.spawnFn });
+    }
+
     // Write mnemopi memory backend + async.enabled for native memory/irc.
-    // Does NOT touch task.agentModelOverrides (Spec E boundary preserved).
+    // Does NOT touch task.agentModelOverrides for A/B (Spec E boundary preserved).
     await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });
     memoryConfigLine =
       "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled\n";

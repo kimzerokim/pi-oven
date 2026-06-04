@@ -257,7 +257,7 @@ export const PROFILE_A_ORCHESTRATOR: OrchestratorModels = {
 };
 
 export const PROFILE_B_ORCHESTRATOR: OrchestratorModels = {
-  default: "anthropic/claude-opus-4-7:high",
+  default: "anthropic/claude-opus-4-8:high",
   title: "anthropic/claude-haiku-4-5:low",
 };
 
@@ -280,7 +280,17 @@ export const PROFILE_A_FALLBACK_CHAINS: Record<string, string[]> = {
 };
 
 export const PROFILE_B_FALLBACK_CHAINS: Record<string, string[]> = {
-  default: ["opencode-zen/claude-opus-4-7"],
+  default: ["opencode-zen/claude-opus-4-8"],
+  title: ["opencode-zen/claude-haiku-4-5"],
+};
+
+export const PROFILE_C_ORCHESTRATOR: OrchestratorModels = {
+  default: "anthropic/claude-opus-4-8:high",
+  title: "anthropic/claude-haiku-4-5:low",
+};
+
+export const PROFILE_C_FALLBACK_CHAINS: Record<string, string[]> = {
+  default: ["opencode-zen/claude-opus-4-8"],
   title: ["opencode-zen/claude-haiku-4-5"],
 };
 
@@ -313,14 +323,14 @@ export const PROFILE_B: ProfileMap = {
     blocked_tools: ["write", "edit", "apply_patch"],
   },
   critic: {
-    primary: "anthropic/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "report_finding", "recall"],
     blocked_tools: ["write", "edit", "apply_patch", "bash", "task"],
   },
   planner: {
-    primary: "anthropic/claude-opus-4-7",
+    primary: "anthropic/claude-opus-4-8",
     registry_alternate: "openai-codex/gpt-5.4",
     thinkingLevel: "high",
     tools: ["read", "search", "find", "bash", "recall", "task"],
@@ -348,8 +358,8 @@ export const PROFILE_B: ProfileMap = {
     blocked_tools: [],
   },
   "security-reviewer": {
-    primary: "anthropic/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "recall", "web_search"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
@@ -432,8 +442,8 @@ export const PROFILE_B: ProfileMap = {
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   oracle: {
-    primary: "anthropic/claude-opus-4-7",
-    registry_alternate: "opencode-zen/claude-opus-4-7",
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "recall", "retain"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
@@ -455,6 +465,190 @@ export const PROFILE_B: ProfileMap = {
   "data-runner": {
     primary: "anthropic/claude-sonnet-4-6",
     registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    thinkingLevel: "high",
+    tools: ["bash", "eval", "read", "write", "retain"],
+    blocked_tools: ["edit", "apply_patch", "task"],
+  },
+};
+
+/**
+ * Profile C — Tier-appropriate all-Anthropic.
+ * Deliberate Spec E relaxation: `--profile C` (user mode) bulk-writes all 24
+ * per-role `task.agentModelOverrides` so every subagent uses an Anthropic model.
+ * Tier rule (by thinkingLevel from PROFILE_A):
+ *   xhigh | high  → anthropic/claude-opus-4-8  (18 roles including qa-tester)
+ *   medium         → anthropic/claude-sonnet-4-6 (5 roles)
+ *   low            → anthropic/claude-haiku-4-5  (1 role: git-master)
+ * registry_alternate is always the opencode-zen/ mirror of the same model.
+ * tools and blocked_tools are copied verbatim from PROFILE_A.
+ * A/B never write task.agentModelOverrides — that invariant is preserved.
+ * Use --reset to clear the 24 written overrides.
+ */
+export const PROFILE_C: ProfileMap = {
+  executor: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "high",
+    tools: ["*"],
+    blocked_tools: [],
+  },
+  explorer: {
+    primary: "anthropic/claude-sonnet-4-6",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    thinkingLevel: "medium",
+    tools: ["read", "search", "find", "bash", "web_search", "lsp", "ast_grep"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  verifier: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "high",
+    tools: ["read", "search", "find", "bash", "recall", "task", "report_finding"],
+    blocked_tools: ["write", "edit", "apply_patch"],
+  },
+  critic: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "xhigh",
+    tools: ["read", "search", "find", "report_finding", "recall"],
+    blocked_tools: ["write", "edit", "apply_patch", "bash", "task"],
+  },
+  planner: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "high",
+    tools: ["read", "search", "find", "bash", "recall", "task"],
+    blocked_tools: ["write", "edit", "apply_patch"],
+  },
+  "code-reviewer": {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "high",
+    tools: ["read", "search", "find", "bash", "lsp", "ast_grep", "recall", "report_finding"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  debugger: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "high",
+    tools: ["*"],
+    blocked_tools: [],
+  },
+  "test-engineer": {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "high",
+    tools: ["*"],
+    blocked_tools: [],
+  },
+  "security-reviewer": {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "xhigh",
+    tools: ["read", "search", "find", "bash", "recall", "web_search"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  writer: {
+    primary: "anthropic/claude-sonnet-4-6",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    thinkingLevel: "medium",
+    tools: ["read", "search", "find", "write", "edit", "web_search"],
+    blocked_tools: ["apply_patch", "bash", "task"],
+  },
+  designer: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "high",
+    tools: ["*"],
+    blocked_tools: [],
+  },
+  "code-simplifier": {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "xhigh",
+    tools: ["*"],
+    blocked_tools: [],
+  },
+  "qa-tester": {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "high",
+    tools: ["*"],
+    blocked_tools: [],
+  },
+  "git-master": {
+    primary: "anthropic/claude-haiku-4-5",
+    registry_alternate: "opencode-zen/claude-haiku-4-5",
+    thinkingLevel: "low",
+    tools: ["read", "search", "find", "bash"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  "document-specialist": {
+    primary: "anthropic/claude-sonnet-4-6",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    thinkingLevel: "medium",
+    tools: ["read", "search", "find", "bash", "recall", "web_search"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  tracer: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "high",
+    tools: ["read", "search", "find", "bash"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  analyst: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "xhigh",
+    tools: ["read", "search", "find", "bash", "eval", "recall"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  architect: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "xhigh",
+    tools: ["read", "search", "find", "bash", "lsp", "ast_grep", "recall", "retain"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  librarian: {
+    primary: "anthropic/claude-sonnet-4-6",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    thinkingLevel: "medium",
+    tools: ["read", "search", "find", "bash", "lsp", "web_search", "ast_grep", "recall"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  "multimodal-looker": {
+    primary: "anthropic/claude-sonnet-4-6",
+    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    thinkingLevel: "medium",
+    tools: ["read", "search", "find", "bash", "inspect_image"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  oracle: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "xhigh",
+    tools: ["read", "search", "find", "bash", "recall", "retain"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  metis: {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "xhigh",
+    tools: ["read", "search", "find", "bash", "recall", "task"],
+    blocked_tools: ["write", "edit", "apply_patch"],
+  },
+  "deep-researcher": {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
+    thinkingLevel: "high",
+    tools: ["read", "search", "find", "web_search", "retain", "recall", "reflect"],
+    blocked_tools: ["write", "edit", "apply_patch", "task"],
+  },
+  "data-runner": {
+    primary: "anthropic/claude-opus-4-8",
+    registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "high",
     tools: ["bash", "eval", "read", "write", "retain"],
     blocked_tools: ["edit", "apply_patch", "task"],

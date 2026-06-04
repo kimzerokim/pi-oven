@@ -6,6 +6,9 @@ import {
   PROFILE_B,
   PROFILE_A_ORCHESTRATOR,
   PROFILE_B_ORCHESTRATOR,
+  PROFILE_C,
+  PROFILE_C_ORCHESTRATOR,
+  PROFILE_C_FALLBACK_CHAINS,
 } from "../../../scripts/pi-oven-setup/profiles";
 
 /**
@@ -138,13 +141,116 @@ describe("profiles", () => {
       expect(PROFILE_A_ORCHESTRATOR.title).toBe("gpt-5.4-mini:low");
     });
 
-    it("PROFILE_B_ORCHESTRATOR reuses deferred-B anthropic ids", () => {
+    it("PROFILE_B_ORCHESTRATOR uses updated anthropic opus-4-8 id", () => {
       expect(PROFILE_B_ORCHESTRATOR.default).toBe(
-        "anthropic/claude-opus-4-7:high"
+        "anthropic/claude-opus-4-8:high"
       );
       expect(PROFILE_B_ORCHESTRATOR.title).toBe(
         "anthropic/claude-haiku-4-5:low"
       );
+    });
+  });
+});
+
+describe("PROFILE_C", () => {
+  it("has all 24 roles", () => {
+    for (const role of ROLES) {
+      expect(PROFILE_C[role]).toBeDefined();
+    }
+  });
+
+  it("every entry's primary is an anthropic/ model", () => {
+    for (const role of ROLES) {
+      expect(PROFILE_C[role].primary).toMatch(/^anthropic\//);
+    }
+  });
+
+  it("every entry's registry_alternate is the matching opencode-zen/ mirror", () => {
+    for (const role of ROLES) {
+      const primary = PROFILE_C[role].primary;
+      const alternate = PROFILE_C[role].registry_alternate;
+      // primary: anthropic/claude-X → alternate: opencode-zen/claude-X
+      const modelId = primary.replace(/^anthropic\//, "");
+      expect(alternate).toBe(`opencode-zen/${modelId}`);
+    }
+  });
+
+  it("tier mapping: critic (xhigh) = opus-4-8", () => {
+    expect(PROFILE_C["critic"].primary).toBe("anthropic/claude-opus-4-8");
+  });
+
+  it("tier mapping: explorer (medium) = sonnet-4-6", () => {
+    expect(PROFILE_C["explorer"].primary).toBe("anthropic/claude-sonnet-4-6");
+  });
+
+  it("tier mapping: git-master (low) = haiku-4-5", () => {
+    expect(PROFILE_C["git-master"].primary).toBe("anthropic/claude-haiku-4-5");
+  });
+
+  it("tier mapping: qa-tester (high thinkingLevel) = opus-4-8 (strict tier rule)", () => {
+    expect(PROFILE_C["qa-tester"].primary).toBe("anthropic/claude-opus-4-8");
+  });
+
+  it("all xhigh/high roles use opus-4-8", () => {
+    for (const role of ROLES) {
+      const level = PROFILE_C[role].thinkingLevel;
+      if (level === "xhigh" || level === "high") {
+        expect(PROFILE_C[role].primary).toBe("anthropic/claude-opus-4-8");
+      }
+    }
+  });
+
+  it("all medium roles use sonnet-4-6", () => {
+    for (const role of ROLES) {
+      if (PROFILE_C[role].thinkingLevel === "medium") {
+        expect(PROFILE_C[role].primary).toBe("anthropic/claude-sonnet-4-6");
+      }
+    }
+  });
+
+  it("all low roles use haiku-4-5", () => {
+    for (const role of ROLES) {
+      if (PROFILE_C[role].thinkingLevel === "low") {
+        expect(PROFILE_C[role].primary).toBe("anthropic/claude-haiku-4-5");
+      }
+    }
+  });
+
+  it("thinkingLevel per role matches PROFILE_A verbatim", () => {
+    for (const role of ROLES) {
+      expect(PROFILE_C[role].thinkingLevel).toBe(PROFILE_A[role].thinkingLevel);
+    }
+  });
+
+  it("tools per role matches PROFILE_A verbatim", () => {
+    for (const role of ROLES) {
+      expect(PROFILE_C[role].tools).toEqual(PROFILE_A[role].tools);
+    }
+  });
+
+  it("blocked_tools per role matches PROFILE_A verbatim", () => {
+    for (const role of ROLES) {
+      expect(PROFILE_C[role].blocked_tools).toEqual(PROFILE_A[role].blocked_tools);
+    }
+  });
+
+  describe("PROFILE_C_ORCHESTRATOR", () => {
+    it("default is anthropic/claude-opus-4-8:high", () => {
+      expect(PROFILE_C_ORCHESTRATOR.default).toBe("anthropic/claude-opus-4-8:high");
+    });
+
+    it("title is anthropic/claude-haiku-4-5:low", () => {
+      expect(PROFILE_C_ORCHESTRATOR.title).toBe("anthropic/claude-haiku-4-5:low");
+    });
+  });
+
+  describe("PROFILE_C_FALLBACK_CHAINS", () => {
+    it("default chain is opencode-zen/claude-opus-4-8", () => {
+      expect(PROFILE_C_FALLBACK_CHAINS.default).toEqual(["opencode-zen/claude-opus-4-8"]);
+    });
+
+    it("title chain is opencode-zen/claude-haiku-4-5", () => {
+      expect(PROFILE_C_FALLBACK_CHAINS.title).toEqual(["opencode-zen/claude-haiku-4-5"]);
     });
   });
 });

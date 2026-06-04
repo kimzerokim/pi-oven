@@ -190,6 +190,50 @@ export async function setAgentModelOverride(
 }
 
 // ---------------------------------------------------------------------------
+// setAgentModelOverrides — bulk WRITE path (Profile C only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bulk-set multiple task.agentModelOverrides entries atomically: ONE read →
+ * merge all provided pi-oven:* entries into the existing record (overwriting
+ * those roles, preserving all non-pi-oven:* keys and any pi-oven:* keys NOT
+ * in `record`) → ONE `omp config set task.agentModelOverrides '<merged-json>'`.
+ * Every key in `record` MUST start with "pi-oven:". Throws on any non-pi-oven
+ * key, strict-read failure, or non-zero set exit.
+ */
+export async function setAgentModelOverrides(
+  record: Record<string, string>,
+  opts?: ConfigYmlOpts
+): Promise<void> {
+  for (const key of Object.keys(record)) {
+    if (!key.startsWith("pi-oven:")) {
+      throw new Error(`setAgentModelOverrides: every key must start with "pi-oven:", got: ${key}`);
+    }
+  }
+
+  const readResult = await readOverridesStrict(opts);
+  if (!readResult.ok) {
+    throw new Error(`setAgentModelOverrides: readOverridesStrict failed — ${readResult.error}`);
+  }
+
+  const merged = { ...readResult.record, ...record };
+
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const setResult = spawn("omp", [
+    "config",
+    "set",
+    "task.agentModelOverrides",
+    JSON.stringify(merged),
+  ]);
+
+  if (setResult.exitCode !== 0) {
+    throw new Error(
+      `setAgentModelOverrides: omp config set failed (exit ${String(setResult.exitCode)}): ${setResult.stderr?.toString() ?? ""}`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // deletePiOvenAgentModelOverrides — WRITE path
 // ---------------------------------------------------------------------------
 

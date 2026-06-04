@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { runApply } from "../../../scripts/pi-oven-setup/apply";
-import { ROLES, PROFILE_A, PROFILE_B } from "../../../scripts/pi-oven-setup/profiles";
+import { ROLES, PROFILE_A, PROFILE_B, PROFILE_C, PROFILE_C_ORCHESTRATOR, PROFILE_C_FALLBACK_CHAINS } from "../../../scripts/pi-oven-setup/profiles";
 import { readAgentFiles } from "../../../scripts/pi-oven-setup/agent-rewriter";
 
 // ---------------------------------------------------------------------------
@@ -173,7 +173,8 @@ describe("runApply", () => {
   // -------------------------------------------------------------------------
 
   // Mock that serves `omp config get modelRoles --json` as a record (with a
-  // sibling key to assert preservation), and exit-0 for every other call.
+  // sibling key to assert preservation), `omp config get task.agentModelOverrides --json`
+  // as an empty record, and exit-0 for every other call.
   function makeUserPathSpawn(siblings: Record<string, string> = { someSibling: "keep" }) {
     const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
     const mockSpawnFn = (cmd: string, args: string[]) => {
@@ -183,6 +184,15 @@ describe("runApply", () => {
           exitCode: 0,
           stdout: Buffer.from(
             JSON.stringify({ key: "modelRoles", value: siblings, type: "record", description: "" })
+          ),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(
+            JSON.stringify({ key: "task.agentModelOverrides", value: {}, type: "record", description: "" })
           ),
           stderr: Buffer.from(""),
         } as any;
@@ -270,7 +280,7 @@ describe("runApply", () => {
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
     );
     const merged = JSON.parse(setCall!.args[3]);
-    expect(merged.default).toBe("anthropic/claude-opus-4-7:high");
+    expect(merged.default).toBe("anthropic/claude-opus-4-8:high");
     expect(merged.title).toBe("anthropic/claude-haiku-4-5:low");
   });
 
@@ -425,5 +435,132 @@ describe("runApply", () => {
     });
     expect(result.output).toContain("A");
     expect(result.exitCode).toBe(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Profile C — user setup path: writes modelRoles + fallbackChains + 24 overrides
+  // -------------------------------------------------------------------------
+
+  it("runApply profile C WITHOUT agentsDir writes PROFILE_C_ORCHESTRATOR values for modelRoles", async () => {
+    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
+
+    await runApply({ profile: "C", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const setCall = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
+    );
+    expect(setCall).toBeDefined();
+    const merged = JSON.parse(setCall!.args[3]);
+    expect(merged.default).toBe(PROFILE_C_ORCHESTRATOR.default);
+    expect(merged.title).toBe(PROFILE_C_ORCHESTRATOR.title);
+  });
+
+  it("runApply profile C WITHOUT agentsDir writes PROFILE_C_FALLBACK_CHAINS", async () => {
+    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
+
+    await runApply({ profile: "C", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const setCall = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "retry.fallbackChains"
+    );
+    expect(setCall).toBeDefined();
+    const merged = JSON.parse(setCall!.args[3]);
+    expect(merged.default).toEqual(PROFILE_C_FALLBACK_CHAINS.default);
+    expect(merged.title).toEqual(PROFILE_C_FALLBACK_CHAINS.title);
+  });
+
+  it("runApply profile C WITHOUT agentsDir writes all 24 task.agentModelOverrides entries", async () => {
+    // Serve valid record for task.agentModelOverrides get calls too
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      if (args[0] === "config" && args[1] === "get" && args[2] === "modelRoles") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "task.agentModelOverrides", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    await runApply({ profile: "C", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const overrideWrites = spawnCalls.filter(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
+    );
+    // One set call for the bulk write (all 24 roles in one call)
+    expect(overrideWrites.length).toBe(1);
+    const written = JSON.parse(overrideWrites[0].args[3]);
+    // All 24 pi-oven:* keys must be present with correct anthropic models
+    for (const role of ROLES) {
+      expect(written[`pi-oven:${role}`]).toBe(PROFILE_C[role].primary);
+    }
+  });
+
+  it("runApply profile C WITHOUT agentsDir: specific roles have correct anthropic models", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      if (args[0] === "config" && args[1] === "get" && args[2] === "modelRoles") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "task.agentModelOverrides", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    await runApply({ profile: "C", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const overrideWrite = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
+    );
+    const written = JSON.parse(overrideWrite!.args[3]);
+    // critic (xhigh) → opus-4-8
+    expect(written["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    // explorer (medium) → sonnet-4-6
+    expect(written["pi-oven:explorer"]).toBe("anthropic/claude-sonnet-4-6");
+    // git-master (low) → haiku-4-5
+    expect(written["pi-oven:git-master"]).toBe("anthropic/claude-haiku-4-5");
+    // qa-tester (high thinkingLevel, strict tier → opus-4-8)
+    expect(written["pi-oven:qa-tester"]).toBe("anthropic/claude-opus-4-8");
+  });
+
+  it("runApply profile A still writes ZERO task.agentModelOverrides (A/B non-regression)", async () => {
+    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
+
+    await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const overrideWrites = spawnCalls.filter(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
+    );
+    expect(overrideWrites.length).toBe(0);
+  });
+
+  it("runApply profile B still writes ZERO task.agentModelOverrides (A/B non-regression)", async () => {
+    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
+
+    await runApply({ profile: "B", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const overrideWrites = spawnCalls.filter(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
+    );
+    expect(overrideWrites.length).toBe(0);
   });
 });

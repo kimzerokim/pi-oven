@@ -193,15 +193,15 @@ if (values.status) {
   markRouting = true;
 } else if (values.profile || values.apply) {
   const profile = (values.profile as string | undefined) ?? "A";
-  if (profile !== "A" && profile !== "B") {
+  if (profile !== "A" && profile !== "B" && profile !== "C") {
     process.stderr.write(
-      `Invalid profile "${profile}". Allowed: A, B.\n`
+      `Invalid profile "${profile}". Allowed: A, B, C.\n`
     );
     process.exit(1);
   }
 
   result = await runApply({
-    profile: profile as "A" | "B",
+    profile: profile as "A" | "B" | "C",
     validateMode,
     spawnFn,
     agentsDir,
@@ -222,7 +222,7 @@ if (values.status) {
   result = { exitCode: 0, output: "" };
 } else {
   process.stderr.write(
-    "No action specified. Use --profile <A|B>, --status, --reset, --import <file>, --override <role>=<model>, or --isolate/--no-isolate.\n"
+    "No action specified. Use --profile <A|B|C>, --status, --reset, --import <file>, --override <role>=<model>, or --isolate/--no-isolate.\n"
   );
   process.exit(1);
 }

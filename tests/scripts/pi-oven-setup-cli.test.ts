@@ -166,6 +166,21 @@ describe("pi-oven-setup CLI dispatcher", () => {
     expect(exitCode).toBe(0);
   });
 
+  it("--profile C: exits 0 with validateMode=none", async () => {
+    const { exitCode } = await runCLI(["--profile", "C", "--validate", "none"], {
+      PI_OVEN_MOCK_SPAWN: "1",
+    });
+    expect(exitCode).toBe(0);
+  });
+
+  it("--profile D: exits 1 with Allowed: A, B, C. error message", async () => {
+    const { exitCode, stderr } = await runCLI(["--profile", "D", "--validate", "none"], {
+      PI_OVEN_MOCK_SPAWN: "1",
+    });
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/Allowed: A, B, C\./);
+  });
+
   it("dispatch precedence: --status takes priority over --reset", async () => {
     const { exitCode, stdout } = await runCLI(["--status", "--reset"], {
       PI_OVEN_AGENTS_DIR: agentsDir,

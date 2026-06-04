@@ -1,7 +1,7 @@
 ---
 name: pi-oven-setup
-description: Configure pi-oven agent model routing — Profile A (release default) or Profile B (Anthropic opt-in)
-argument-hint: [--status | --reset [--full] | --import <file> | --apply --profile A|B] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate]
+description: Configure pi-oven agent model routing — Profile A (release default), Profile B (Anthropic opt-in), or Profile C (tier-appropriate all-Anthropic)
+argument-hint: [--status | --reset [--full] | --import <file> | --apply --profile A|B|C] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate]
 ---
 
 # /pi-oven:setup
@@ -84,7 +84,7 @@ Detecting provider authentication...
   openai-codex  authed  (N models available)
   anthropic     authed  (N models available)   ← only if detected
 
-Available profiles: A (default), B (Anthropic opt-in)
+Available profiles: A (default), B (Anthropic opt-in), C (tier-appropriate all-Anthropic)
 ```
 
 If anthropic is not detected, say:
@@ -93,7 +93,7 @@ If anthropic is not detected, say:
   anthropic     not detected
 
 Available profiles: A only.
-Profile B requires direct Anthropic API authentication.
+Profiles B and C require direct Anthropic API authentication.
 To enable: authenticate with the Anthropic provider in omp, then re-run /pi-oven:setup.
 ```
 
@@ -124,18 +124,20 @@ Present the options based on Step 1 findings:
 
 - Profile A (release default, opencode-zen + openai-codex) — always available.
 - Profile B (Anthropic opt-in) — only show this option if native `anthropic` auth was detected in Step 1.
+- Profile C (tier-appropriate all-Anthropic) — only show this option if native `anthropic` auth was detected in Step 1.
 
-If only Profile A is possible, default to it without asking. If both are available, ask:
+If only Profile A is possible, default to it without asking. If anthropic is also available, ask:
 
 ```
 Select profile:
   [A] Profile A — Release default (opencode-zen + openai-codex)   (default)
   [B] Profile B — Anthropic opt-in (anthropic primary, opencode-zen fallback)
+  [C] Profile C — All-Anthropic tier-appropriate (opus-4-8 / sonnet-4-6 / haiku-4-5, writes 24 per-role overrides)
 
 Enter choice [A]:
 ```
 
-If the user selects Profile B, display this notice and ask for confirmation before proceeding:
+If the user selects Profile B or Profile C, display this notice and ask for confirmation before proceeding:
 
 ```
 NOTICE: Auth-fallback limitation (Spec A §6.3)
@@ -144,9 +146,11 @@ omp falls back to the PARENT SESSION's active model — not the next item in
 the model array. If your parent session runs an anthropic model, pi-oven
 subagents may use Anthropic billing even when their primary model fails auth.
 This is an omp internal behavior that pi-oven cannot override.
-Profile B is safe when anthropic auth is active and stable.
-Proceed with Profile B? [y/N]:
+Profile B/C is safe when anthropic auth is active and stable.
+Proceed with Profile <B|C>? [y/N]:
 ```
+
+Profile C additionally writes all 24 `task.agentModelOverrides` entries (one per role) into `~/.omp/agent/config.yml`. This is the only profile that does so — A and B only set the main orchestrator model (`modelRoles`). Run `--reset` to clear the 24 written overrides and return to profile-defaults-from-frontmatter routing.
 
 ### Step 4 — Optional per-role override
 
@@ -241,6 +245,7 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 |---|---|
 | `--profile A` | Apply Profile A (release default). |
 | `--profile B` | Apply Profile B (Anthropic opt-in). Requires anthropic auth detected. |
+| `--profile C` | Apply Profile C (tier-appropriate all-Anthropic: opus-4-8 for high/xhigh roles, sonnet-4-6 for medium, haiku-4-5 for low). Requires anthropic auth. Writes all 24 per-role `task.agentModelOverrides` — the only profile that does so (A/B write zero per-role overrides). Reversible via `--reset`. |
 | `--override <role>=<model>` | Override a specific role's model in config.yml task.agentModelOverrides. Repeatable. |
 | `--validate=smoke` | (Default) Ping 7 MUST-tier roles after persist. |
 | `--validate=full` | Ping all 24 roles. |

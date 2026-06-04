@@ -253,7 +253,7 @@ Beyond the 24 subagent roles, `/pi-oven:setup --profile` also sets the **main or
 Activates only when your omp environment is authenticated with native Anthropic (Pro/Max). Promotes Anthropic models for reasoning-heavy roles; **preserves `opencode-zen/glm-5` for explorer + librarian** to keep the 1M context window for repo-wide work.
 
 - Executor: `anthropic/claude-sonnet-4-6`
-- Reasoning-heavy: `anthropic/claude-opus-4-7`
+- Reasoning-heavy: `anthropic/claude-opus-4-8`
 - Cheap fan-out: `anthropic/claude-haiku-4-5`
 - Explorer / Librarian: `opencode-zen/glm-5` (unchanged from Profile A)
 

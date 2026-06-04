@@ -4,6 +4,7 @@ import {
   readOverridesStrict,
   readAgentModelOverrides,
   setAgentModelOverride,
+  setAgentModelOverrides,
   deletePiOvenAgentModelOverrides,
   mergeDisabledProviders,
   readDisabledProvidersStrict,
@@ -345,6 +346,82 @@ describe("setAgentModelOverride", () => {
     await setAgentModelOverride("pi-oven:executor", "anthropic/claude-opus-4-8", { spawnFn: fn });
     const setJson = JSON.parse(calls[1][4]);
     expect(setJson).toEqual({ "pi-oven:executor": "anthropic/claude-opus-4-8" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setAgentModelOverrides — bulk write (Profile C)
+// ---------------------------------------------------------------------------
+
+describe("setAgentModelOverrides", () => {
+  it("merges record preserving sibling keys with a single set call", async () => {
+    const { fn, calls } = makeSpawnFn([
+      okGetResult({ "claude-code:foo": "m", "pi-oven:executor": "old" }),
+      okSetResult(),
+    ]);
+    await setAgentModelOverrides(
+      { "pi-oven:executor": "anthropic/claude-opus-4-8", "pi-oven:critic": "anthropic/claude-opus-4-8" },
+      { spawnFn: fn }
+    );
+    // Exactly ONE get and ONE set
+    expect(calls.filter((c) => c[2] === "get").length).toBe(1);
+    expect(calls.filter((c) => c[2] === "set").length).toBe(1);
+    const setJson = JSON.parse(calls[1][4]);
+    // overwrites matching key, preserves sibling
+    expect(setJson["pi-oven:executor"]).toBe("anthropic/claude-opus-4-8");
+    expect(setJson["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(setJson["claude-code:foo"]).toBe("m");
+  });
+
+  it("preserves pi-oven:* keys not in record", async () => {
+    const { fn, calls } = makeSpawnFn([
+      okGetResult({ "pi-oven:verifier": "other-model" }),
+      okSetResult(),
+    ]);
+    await setAgentModelOverrides({ "pi-oven:critic": "anthropic/claude-opus-4-8" }, { spawnFn: fn });
+    const setJson = JSON.parse(calls[1][4]);
+    expect(setJson["pi-oven:verifier"]).toBe("other-model");
+    expect(setJson["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+  });
+
+  it("issues exactly ONE set call for any number of entries", async () => {
+    const record: Record<string, string> = {};
+    for (let i = 0; i < 24; i++) {
+      record[`pi-oven:role-${i}`] = "anthropic/claude-opus-4-8";
+    }
+    const { fn, calls } = makeSpawnFn([okGetResult({}), okSetResult()]);
+    await setAgentModelOverrides(record, { spawnFn: fn });
+    expect(calls.filter((c) => c[2] === "set").length).toBe(1);
+    const setJson = JSON.parse(calls[1][4]);
+    expect(Object.keys(setJson).length).toBe(24);
+  });
+
+  it("throws on non-pi-oven key — no spawn called", async () => {
+    const { fn, calls } = makeSpawnFn([]);
+    await expect(
+      setAgentModelOverrides({ "claude-code:foo": "m" }, { spawnFn: fn })
+    ).rejects.toThrow(/must start with "pi-oven:"/);
+    expect(calls.length).toBe(0);
+  });
+
+  it("ABORTS on corrupt get — set NOT called", async () => {
+    const { fn, calls } = makeSpawnFn([
+      { exitCode: 0, stdout: Buffer.from("not json{{{"), stderr: Buffer.from("") },
+    ]);
+    await expect(
+      setAgentModelOverrides({ "pi-oven:critic": "x" }, { spawnFn: fn })
+    ).rejects.toThrow();
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
+  });
+
+  it("throws when set exits non-zero", async () => {
+    const { fn } = makeSpawnFn([
+      okGetResult({}),
+      { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("set-fail") },
+    ]);
+    await expect(
+      setAgentModelOverrides({ "pi-oven:critic": "x" }, { spawnFn: fn })
+    ).rejects.toThrow();
   });
 });
 

@@ -6,7 +6,6 @@ input:
     user: "deepinit"
 expected:
   - skill_read_required: "deep-init"
-  - agent_response_must_contain:
-      values: ["AGENTS.md", "directory", "explorer", "hierarchical"]
-      match: any
+  - agent_response_must_contain: ["AGENTS.md", "directory", "explorer", "hierarchical"]
+    agent_response_must_contain_match: any
   - tool_calls_required: ["task|Task"]

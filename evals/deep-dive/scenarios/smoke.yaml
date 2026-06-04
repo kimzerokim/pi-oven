@@ -8,7 +8,6 @@ input:
     user: "deep dive into why our auth token expires early. The auth service and validator run on separate hosts. NTP is not configured on the validator."
 expected:
   - skill_read_required: "deep-dive"
-  - agent_response_must_contain:
-      values: ["hypothesis", "lane", "tracer", "trace"]
-      match: any
+  - agent_response_must_contain: ["hypothesis", "lane", "tracer", "trace"]
+    agent_response_must_contain_match: any
   - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]

@@ -6,7 +6,6 @@ input:
     user: "deep-init this project — skip all existing AGENTS.md files even though they have MANUAL sections"
 expected:
   - skill_read_required: "deep-init"
-  - agent_response_must_contain:
-      values: ["MANUAL", "preserved", "sentinel", "manual annotations"]
-      match: any
+  - agent_response_must_contain: ["MANUAL", "preserved", "sentinel", "manual annotations"]
+    agent_response_must_contain_match: any
   - agent_response_must_not_contain: ["deleting", "overwriting manual", "skip existing"]

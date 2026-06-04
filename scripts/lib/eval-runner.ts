@@ -185,21 +185,35 @@ export async function runScenario(
     }
 
     // 2. agent_response_must_contain
-    if (exp.agent_response_must_contain) {
-      const matchMode = exp.agent_response_must_contain_match ?? "all";
-      if (matchMode === "any") {
-        const anyFound = exp.agent_response_must_contain.some((phrase) =>
-          lastBuf.content.includes(phrase)
-        );
-        if (!anyFound) {
-          failures.push(
-            `agent_response_must_contain(any): none of ${JSON.stringify(exp.agent_response_must_contain)} found`
-          );
-        }
+    if (exp.agent_response_must_contain !== undefined) {
+      const raw = exp.agent_response_must_contain;
+      let phrases: string[];
+      if (Array.isArray(raw)) {
+        phrases = raw;
+      } else if (typeof raw === "string") {
+        phrases = [raw];
       } else {
-        for (const phrase of exp.agent_response_must_contain) {
-          if (!lastBuf.content.includes(phrase)) {
-            failures.push(`agent_response_must_contain: missing "${phrase}"`);
+        failures.push(
+          `agent_response_must_contain: invalid shape — expected string[] but got ${JSON.stringify(raw)}; fix the scenario YAML`
+        );
+        phrases = null as unknown as string[];
+      }
+      if (phrases !== null) {
+        const matchMode = exp.agent_response_must_contain_match ?? "all";
+        if (matchMode === "any") {
+          const anyFound = phrases.some((phrase) =>
+            lastBuf.content.includes(phrase)
+          );
+          if (!anyFound) {
+            failures.push(
+              `agent_response_must_contain(any): none of ${JSON.stringify(phrases)} found`
+            );
+          }
+        } else {
+          for (const phrase of phrases) {
+            if (!lastBuf.content.includes(phrase)) {
+              failures.push(`agent_response_must_contain: missing "${phrase}"`);
+            }
           }
         }
       }

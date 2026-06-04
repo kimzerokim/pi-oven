@@ -6,7 +6,6 @@ input:
     user: "run deepinit on this project"
 expected:
   - skill_read_required: "deep-init"
-  - agent_response_must_contain:
-      values: ["pi-oven:explorer", "pi-oven:writer", "document-specialist", "AGENTS.md"]
-      match: any
+  - agent_response_must_contain: ["pi-oven:explorer", "pi-oven:writer", "document-specialist", "AGENTS.md"]
+    agent_response_must_contain_match: any
   - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]

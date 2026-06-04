@@ -319,6 +319,73 @@ export async function setModelRoles(
 }
 
 // ---------------------------------------------------------------------------
+// retryFallbackChains (RECORD of string[]) — rate-limit failover chains for the
+// orchestrator modelRoles, keyed by modelRole name (default, title). Same record
+// transport as modelRoles: omp config get retry.fallbackChains --json → merge →
+// omp config set retry.fallbackChains '<json>'. The READ is fail-SOFT to {}: the
+// key legitimately may not exist on first setup, and real omp returns an
+// existing record as a parseable `{type:"record"}` shape, so a merge never wipes
+// hand-added siblings in practice.
+// ---------------------------------------------------------------------------
+
+/**
+ * Read retry.fallbackChains as a record of selector arrays. Fail-soft: returns
+ * {} when the key is absent or the output is not a parseable `{type:"record"}`
+ * shape, so a first-time write does not error.
+ */
+export async function readRetryFallbackChains(
+  opts?: ConfigYmlOpts
+): Promise<Record<string, string[]>> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "get", "retry.fallbackChains", "--json"]);
+  if (result.exitCode !== 0) return {};
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout?.toString() ?? "");
+  } catch {
+    return {};
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+  const obj = parsed as OmpGetShape;
+  if (
+    obj.type !== "record" ||
+    typeof obj.value !== "object" ||
+    obj.value === null ||
+    Array.isArray(obj.value)
+  ) {
+    return {};
+  }
+  const record: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(obj.value as Record<string, unknown>)) {
+    record[k] = Array.isArray(v) ? v.map(String) : [String(v)];
+  }
+  return record;
+}
+
+/**
+ * SET the retry fallback chains: read existing (fail-soft) → merge the provided
+ * chains (overwriting same-named roles, preserving others) → ONE
+ * `omp config set retry.fallbackChains '<json>'` write. Throws on non-zero set.
+ */
+export async function setRetryFallbackChains(
+  chains: Record<string, string[]>,
+  opts?: ConfigYmlOpts
+): Promise<void> {
+  const existing = await readRetryFallbackChains(opts);
+  const merged = { ...existing, ...chains };
+
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const setResult = spawn("omp", ["config", "set", "retry.fallbackChains", JSON.stringify(merged)]);
+  if (setResult.exitCode !== 0) {
+    throw new Error(
+      `setRetryFallbackChains: omp config set retry.fallbackChains failed (exit ${String(setResult.exitCode)}): ${setResult.stderr?.toString() ?? ""}`
+    );
+  }
+}
+
+
+// ---------------------------------------------------------------------------
 // setMemoryAndAsyncConfig — writes 4 global scalar keys for mnemopi + async.
 // Each key is a simple dotted scalar (not a record), so individual
 // `omp config set <dotted.key> <value>` calls are used — no read-merge-write

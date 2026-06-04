@@ -11,6 +11,8 @@ import {
   clearPiOvenDisabledProviders,
   readModelRolesStrict,
   setModelRoles,
+  readRetryFallbackChains,
+  setRetryFallbackChains,
   PI_OVEN_MANAGED_PROVIDERS,
   PI_OVEN_DEPRECATED_PROVIDERS,
 } from "../../../scripts/pi-oven-setup/config-yml";
@@ -76,6 +78,21 @@ function okGetModelRolesResult(value: Record<string, string>): SpawnResult {
     stdout: Buffer.from(
       JSON.stringify({
         key: "modelRoles",
+        value,
+        type: "record",
+        description: "",
+      })
+    ),
+    stderr: Buffer.from(""),
+  };
+}
+
+function okGetFallbackChainsResult(value: Record<string, string[]>): SpawnResult {
+  return {
+    exitCode: 0,
+    stdout: Buffer.from(
+      JSON.stringify({
+        key: "retry.fallbackChains",
         value,
         type: "record",
         description: "",
@@ -682,6 +699,84 @@ describe("setModelRoles", () => {
     const setCalls = calls.filter((c) => c[2] === "set");
     expect(setCalls[0][3]).toBe("modelRoles");
     expect(JSON.parse(setCalls[0][4])).toEqual({ default: "d", title: "t" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readRetryFallbackChains (fail-soft)
+// ---------------------------------------------------------------------------
+
+describe("readRetryFallbackChains", () => {
+  it("returns the record on success", async () => {
+    const { fn } = makeSpawnFn([
+      okGetFallbackChainsResult({ default: ["fallback-1"] }),
+    ]);
+    const record = await readRetryFallbackChains({ spawnFn: fn });
+    expect(record.default).toEqual(["fallback-1"]);
+  });
+
+  it("fail-soft returns {} on non-zero exit", async () => {
+    const { fn } = makeSpawnFn([{ exitCode: 1, stderr: Buffer.from("fail") }]);
+    const record = await readRetryFallbackChains({ spawnFn: fn });
+    expect(record).toEqual({});
+  });
+
+  it("fail-soft returns {} on a non-record shape", async () => {
+    const { fn } = makeSpawnFn([
+      { exitCode: 0, stdout: Buffer.from("not json"), stderr: Buffer.from("") },
+    ]);
+    const record = await readRetryFallbackChains({ spawnFn: fn });
+    expect(record).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setRetryFallbackChains
+// ---------------------------------------------------------------------------
+
+describe("setRetryFallbackChains", () => {
+  it("merges and writes the record", async () => {
+    const { fn, calls } = makeSpawnFn([
+      okGetFallbackChainsResult({ existing: ["old"] }),
+      okSetResult(),
+    ]);
+    await setRetryFallbackChains({ new: ["val"] }, { spawnFn: fn });
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toEqual(["omp", "config", "get", "retry.fallbackChains", "--json"]);
+    expect(calls[1]).toEqual([
+      "omp",
+      "config",
+      "set",
+      "retry.fallbackChains",
+      JSON.stringify({ existing: ["old"], new: ["val"] }),
+    ]);
+  });
+
+  it("tolerates a read failure (fail-soft) and still writes the provided chains", async () => {
+    const { fn, calls } = makeSpawnFn([
+      { exitCode: 1, stderr: Buffer.from("fail") },
+      okSetResult(),
+    ]);
+    await setRetryFallbackChains({ default: ["x"] }, { spawnFn: fn });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toEqual([
+      "omp",
+      "config",
+      "set",
+      "retry.fallbackChains",
+      JSON.stringify({ default: ["x"] }),
+    ]);
+  });
+
+  it("throws if set fails", async () => {
+    const { fn } = makeSpawnFn([
+      okGetFallbackChainsResult({}),
+      { exitCode: 1, stderr: Buffer.from("set-fail") },
+    ]);
+    await expect(setRetryFallbackChains({}, { spawnFn: fn })).rejects.toThrow(
+      /omp config set retry.fallbackChains failed/
+    );
   });
 });
 

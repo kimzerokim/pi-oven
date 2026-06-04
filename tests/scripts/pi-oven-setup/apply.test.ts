@@ -247,6 +247,20 @@ describe("runApply", () => {
     expect(merged.title).toBe("gpt-5.4-mini:low");
   });
 
+  it("runApply WITHOUT agentsDir writes retry.fallbackChains for profile A", async () => {
+    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
+
+    await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const setCall = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "retry.fallbackChains"
+    );
+    expect(setCall).toBeDefined();
+    const merged = JSON.parse(setCall!.args[3]);
+    expect(merged.default).toEqual(["opencode-zen/gpt-5.4"]);
+    expect(merged.title).toEqual(["opencode-zen/gpt-5.4-mini"]);
+  });
+
   it("runApply WITHOUT agentsDir writes PROFILE_B orchestrator values for profile B", async () => {
     const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
 

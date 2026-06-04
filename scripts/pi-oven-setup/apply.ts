@@ -17,12 +17,14 @@
 
 import { rewriteAllAgents } from "./agent-rewriter";
 import { runValidate } from "./validate";
-import { setModelRoles, setMemoryAndAsyncConfig } from "./config-yml";
+import { setModelRoles, setMemoryAndAsyncConfig, setRetryFallbackChains } from "./config-yml";
 import {
   PROFILE_A,
   PROFILE_B,
   PROFILE_A_ORCHESTRATOR,
   PROFILE_B_ORCHESTRATOR,
+  PROFILE_A_FALLBACK_CHAINS,
+  PROFILE_B_FALLBACK_CHAINS,
   type ProfileMap,
 } from "./profiles";
 
@@ -70,6 +72,9 @@ export async function runApply(
       { default: orchestrator.default, title: orchestrator.title },
       { spawnFn: opts.spawnFn }
     );
+    const fallbackChains =
+      opts.profile === "B" ? PROFILE_B_FALLBACK_CHAINS : PROFILE_A_FALLBACK_CHAINS;
+    await setRetryFallbackChains(fallbackChains, { spawnFn: opts.spawnFn });
     // Write mnemopi memory backend + async.enabled for native memory/irc.
     // Does NOT touch task.agentModelOverrides (Spec E boundary preserved).
     await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });

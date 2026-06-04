@@ -262,6 +262,29 @@ export const PROFILE_B_ORCHESTRATOR: OrchestratorModels = {
 };
 
 /**
+ * Rate-limit failover chains for the orchestrator model roles, keyed by
+ * modelRole name. Written to `retry.fallbackChains` by the user-setup apply
+ * path so a usage-limited primary fails over to its opencode-zen equivalent
+ * instead of fail-fast at retry.maxDelayMs. Lives OUTSIDE ProfileMap (like the
+ * orchestrator consts) so ProfileMap stays exactly 24 roles for lint-agents.
+ *
+ * Selectors are provider-qualified and omit thinkingLevel so the fallback
+ * candidate inherits the current level (agent-session.ts retry path). omp's
+ * #resolveRetryFallbackRole matches the active model's base selector against
+ * modelRoles.<role>, so a codex subagent whose base equals modelRoles.default
+ * (e.g. openai-codex/gpt-5.4) also benefits from the default chain.
+ */
+export const PROFILE_A_FALLBACK_CHAINS: Record<string, string[]> = {
+  default: ["opencode-zen/gpt-5.4"],
+  title: ["opencode-zen/gpt-5.4-mini"],
+};
+
+export const PROFILE_B_FALLBACK_CHAINS: Record<string, string[]> = {
+  default: ["opencode-zen/claude-opus-4-7"],
+  title: ["opencode-zen/claude-haiku-4-5"],
+};
+
+/**
  * Profile B — Anthropic opt-in.
  * Promotes Anthropic models to primary for reasoning-heavy roles.
  * Preserves opencode-zen/glm-5 for explorer and librarian (1M context window).

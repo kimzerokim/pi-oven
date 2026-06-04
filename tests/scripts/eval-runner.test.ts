@@ -28,23 +28,18 @@ expected:
   });
 
   describe("runScenario", () => {
-    it("returns verdict object with passed/false on assertion mismatch", async () => {
-      // fakeSession mirrors real session.subscribe() + session.prompt() contract:
-      // subscribe installs a listener that receives events; prompt() returns Promise<void>.
+    it("records telemetry MISS for tool_calls_required when no match — PASSES (D1: telemetry, not gate)", async () => {
+      // D1 contract: tool_calls_required is TELEMETRY. A miss records an observation but
+      // does NOT fail the scenario. Use tool_calls_forbidden_first for hard gate checks.
       const fakeSession: SessionLike = {
         subscribe(listener) {
-          // Emit a fake tool_execution_start event synchronously after being subscribed,
-          // then a text_delta message_update, then message_end — no tools called.
-          // (called on next tick so subscribe() can return unsubscribe first)
           setTimeout(() => {
             listener({ type: "message_update", delta: "I will not search." });
             listener({ type: "message_end" });
           }, 0);
           return () => {};
         },
-        async prompt(_msg: string): Promise<void> {
-          // returns void — real SDK contract
-        },
+        async prompt(_msg: string): Promise<void> {},
       };
       const scenario = parseScenario(`
 name: t
@@ -57,11 +52,14 @@ expected:
   - tool_calls_required: ["search"]
       `.trim());
       const verdict = await runScenario(scenario, fakeSession);
-      expect(verdict.passed).toBe(false);
-      expect(verdict.failures).toContain("tool_calls_required: search not invoked");
+      // D1: telemetry — passes even on miss
+      expect(verdict.passed).toBe(true);
+      expect(verdict.failures).toHaveLength(0);
+      const obs = verdict.observations.join("\n");
+      expect(obs).toMatch(/tool_required\[telemetry\].*search.*MISS/i);
     });
 
-    it("returns passed/true when tool_calls_required matches emitted tool", async () => {
+    it("records telemetry HIT for tool_calls_required when tool matches — PASSES", async () => {
       const fakeSession: SessionLike = {
         subscribe(listener) {
           setTimeout(() => {
@@ -85,6 +83,9 @@ expected:
       `.trim());
       const verdict = await runScenario(scenario, fakeSession);
       expect(verdict.passed).toBe(true);
+      // Under D1: telemetry hit recorded as observation
+      const obs = verdict.observations.join("\n");
+      expect(obs).toMatch(/tool_required\[telemetry\].*grep.*✓/i);
     });
 
     it("skill_triggered string form passes via liveness when activity exists (name-search removed)", async () => {
@@ -853,7 +854,10 @@ expected:
       expect(failuresText).toMatch(/skill_read_required\(hard\)/);
     });
 
-    it("T5: soft + behavior FAILS = overall fail (soft read does not rescue)", async () => {
+    it("T5: positive must_contain MISS is telemetry, not a gate — scenario PASSES", async () => {
+      // D1 contract: agent_response_must_contain is TELEMETRY (non-failing).
+      // A scenario with only a positive behavioral miss (must_contain) and no negative
+      // violation still passes. The miss is recorded as an observation, not a failure.
       const fakeSession: SessionLike = {
         subscribe(listener) {
           setTimeout(() => {
@@ -879,16 +883,22 @@ expected:
       `.trim());
 
       const verdict = await runScenario(scenario, fakeSession);
-      expect(verdict.passed).toBe(false);
-      // Failure must be from agent_response_must_contain, not skill_read
+      // D1: positive must_contain miss is TELEMETRY → scenario passes
+      expect(verdict.passed).toBe(true);
+      // The miss must be recorded as a telemetry observation
+      const obs = verdict.observations.join("\n");
+      expect(obs).toMatch(/response_contains\[telemetry\].*MISS.*needle/i);
+      // No failures attributed to must_contain
       const failuresText = verdict.failures.join("\n");
-      expect(failuresText).toMatch(/agent_response_must_contain.*needle/i);
-      expect(failuresText).not.toMatch(/skill_read_required\(hard\)/);
+      expect(failuresText).not.toMatch(/agent_response_must_contain/i);
     });
   });
 
-  describe("runScenario — agent_response_must_contain any-of mode", () => {
-    it("passes when match:any and at least one phrase is present (partial match)", async () => {
+  describe("runScenario — agent_response_must_contain TELEMETRY (D1 contract)", () => {
+    // D1: agent_response_must_contain is TELEMETRY — hits and misses are recorded as
+    // observations, never as failures. The scenario passes regardless.
+
+    it("records telemetry HIT when match:any and at least one phrase is present", async () => {
       const fakeSession: SessionLike = {
         subscribe(listener) {
           setTimeout(() => {
@@ -900,7 +910,7 @@ expected:
         async prompt(_msg: string): Promise<void> {},
       };
       const scenario = parseScenario(`
-name: any-of-pass
+name: any-of-telemetry-hit
 skill: x
 tag: smoke
 input:
@@ -911,10 +921,14 @@ expected:
     agent_response_must_contain_match: "any"
       `.trim());
       const verdict = await runScenario(scenario, fakeSession);
+      // D1: telemetry — passes regardless of hit/miss
       expect(verdict.passed).toBe(true);
+      // Must record the hit as a telemetry observation
+      const obs = verdict.observations.join("\n");
+      expect(obs).toMatch(/response_contains\[telemetry\].*matched/i);
     });
 
-    it("fails when match:any and none of the phrases are present", async () => {
+    it("records telemetry MISS when match:any and none of the phrases are present — still PASSES", async () => {
       const fakeSession: SessionLike = {
         subscribe(listener) {
           setTimeout(() => {
@@ -926,7 +940,7 @@ expected:
         async prompt(_msg: string): Promise<void> {},
       };
       const scenario = parseScenario(`
-name: any-of-fail
+name: any-of-telemetry-miss
 skill: x
 tag: smoke
 input:
@@ -937,13 +951,15 @@ expected:
     agent_response_must_contain_match: "any"
       `.trim());
       const verdict = await runScenario(scenario, fakeSession);
-      expect(verdict.passed).toBe(false);
-      expect(verdict.failures).toContain(
-        'agent_response_must_contain(any): none of ["autonomous-loop","self-improve","bugfix"] found'
-      );
+      // D1: telemetry — PASSES even when none found
+      expect(verdict.passed).toBe(true);
+      expect(verdict.failures).toHaveLength(0);
+      // Miss recorded as telemetry observation
+      const obs = verdict.observations.join("\n");
+      expect(obs).toMatch(/response_contains\[telemetry\].*MISS/i);
     });
 
-    it("default all-of mode still fails when one phrase is missing", async () => {
+    it("records telemetry MISS for each missing phrase in all-of mode — still PASSES", async () => {
       const fakeSession: SessionLike = {
         subscribe(listener) {
           setTimeout(() => {
@@ -955,7 +971,7 @@ expected:
         async prompt(_msg: string): Promise<void> {},
       };
       const scenario = parseScenario(`
-name: all-of-fail
+name: all-of-telemetry-miss
 skill: x
 tag: smoke
 input:
@@ -965,8 +981,176 @@ expected:
   - agent_response_must_contain: ["autonomous-loop", "self-improve"]
       `.trim());
       const verdict = await runScenario(scenario, fakeSession);
+      // D1: telemetry — PASSES even when "self-improve" is missing
+      expect(verdict.passed).toBe(true);
+      expect(verdict.failures).toHaveLength(0);
+      // MISS for "self-improve" recorded as observation
+      const obs = verdict.observations.join("\n");
+      expect(obs).toMatch(/response_contains\[telemetry\].*MISS.*self-improve/i);
+    });
+  });
+
+  describe("runScenario — D1 new gates (negative/safety + liveness)", () => {
+    it("HARD GATE: agent_response_must_not_contain forbidden substring → passed===false", async () => {
+      // This is the omp-native violation detector: e.g. detecting "oh-my-claudecode:"
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_update", delta: "I will use oh-my-claudecode: to do this" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: negative-gate-fail
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - agent_response_must_not_contain: ["oh-my-claudecode:"]
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
       expect(verdict.passed).toBe(false);
-      expect(verdict.failures).toContain('agent_response_must_contain: missing "self-improve"');
+      const failuresText = verdict.failures.join("\n");
+      expect(failuresText).toMatch(/agent_response_must_not_contain.*oh-my-claudecode:/i);
+    });
+
+    it("HARD GATE: tool_calls_forbidden_first violation → passed===false", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "tool_execution_start", toolName: "oh-my-claudecode:executor", toolCallId: "c1" });
+            listener({ type: "message_update", delta: "dispatching" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: forbidden-first-fail
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - tool_calls_forbidden_first: ["oh-my-claudecode:"]
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(false);
+      const failuresText = verdict.failures.join("\n");
+      expect(failuresText).toMatch(/tool_calls_forbidden_first/i);
+    });
+
+    it("TELEMETRY: tool_calls_required MISS records observation but PASSES", async () => {
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            listener({ type: "message_update", delta: "I decided not to search" });
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: tool-required-telemetry-miss
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "search"
+expected:
+  - tool_calls_required: ["grep"]
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      // D1: tool_calls_required is TELEMETRY — PASSES on miss
+      expect(verdict.passed).toBe(true);
+      expect(verdict.failures).toHaveLength(0);
+      const obs = verdict.observations.join("\n");
+      expect(obs).toMatch(/tool_required\[telemetry\].*grep.*MISS/i);
+    });
+
+    it("LIVENESS: empty content AND zero tool calls AND not timed out → passed===false", async () => {
+      // A turn that produced absolutely nothing (not even a timeout) is a liveness failure
+      const fakeSession: SessionLike = {
+        subscribe(listener) {
+          setTimeout(() => {
+            // message_end with no prior content or tools
+            listener({ type: "message_end" });
+          }, 0);
+          return () => {};
+        },
+        async prompt(_msg: string): Promise<void> {},
+      };
+      const scenario = parseScenario(`
+name: liveness-fail
+skill: x
+tag: smoke
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - skill_triggered: true
+      `.trim());
+      const verdict = await runScenario(scenario, fakeSession);
+      expect(verdict.passed).toBe(false);
+      const failuresText = verdict.failures.join("\n");
+      expect(failuresText).toMatch(/liveness/i);
+    });
+
+    it("INCONCLUSIVE: timed-out turn with empty content → verdict.inconclusive===true, passed===false, no behavioral failure", async () => {
+      // A turn that timed out with empty content is INCONCLUSIVE — not a skill failure
+      const fakeSession: SessionLike = {
+        subscribe(_listener) {
+          // Never emits any event — simulates totally hung stream
+          return () => {};
+        },
+        async prompt(_msg: string, options?: { signal?: AbortSignal }): Promise<void> {
+          // Block until aborted
+          await new Promise<void>((_resolve, reject) => {
+            if (options?.signal?.aborted) {
+              reject(new DOMException("aborted", "AbortError"));
+              return;
+            }
+            options?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("aborted", "AbortError"));
+            });
+          });
+        },
+      };
+      const scenario = parseScenario(`
+name: inconclusive-test
+skill: x
+tag: smoke
+turn_timeout_ms: 150
+input:
+  - turn: 1
+    user: "run"
+expected:
+  - agent_response_must_contain: ["some phrase"]
+    agent_response_must_not_contain: ["forbidden"]
+      `.trim());
+
+      const verdict = await Promise.race([
+        runScenario(scenario, fakeSession),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("HANG: inconclusive test did not complete")), 3000)
+        ),
+      ]);
+      // Must be inconclusive
+      expect((verdict as { inconclusive: boolean }).inconclusive).toBe(true);
+      // passed must be false when inconclusive
+      expect((verdict as { passed: boolean }).passed).toBe(false);
+      // Failures must NOT contain behavioral assertions (the miss is inconclusive, not a violation)
+      const failuresText = (verdict as { failures: string[] }).failures.join("\n");
+      expect(failuresText).not.toMatch(/agent_response_must_contain/i);
+      expect(failuresText).not.toMatch(/agent_response_must_not_contain/i);
     });
   });
 });

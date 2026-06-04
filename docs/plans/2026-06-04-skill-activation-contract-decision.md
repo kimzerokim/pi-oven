@@ -87,6 +87,17 @@ For skills that change behavior (code-quality-discipline, memory-discipline), li
 | Behavioral/discipline (code-quality-discipline, memory-discipline) | Drop `skill_triggered`; use `agent_response_must_contain` or `tool_calls_required` to check behavioral output |
 | Autonomous-loop (autonomous-loop, autonomous-boundary) | `agent_response_must_not_contain` for premature stop phrases; check that stop-guard continuation fired (custom event type `pi-oven-autonomous-stop-guard`) |
 
+### 4e. Adopted scoring — stable-signal (real-eval-driven; supersedes the gate framing in 4a/4d)
+
+A real eval run exposed that **positive behavioral assertions are inherently flaky for agentic LLMs**: the same prompt produced `read`×16 one run and a code-write the next; a textbook-DRY response ("`formatBytes` already exists, not creating it") was scored FAIL only for omitting the literal word "DRY"; and discipline scenarios spawn `task` subagents unpredictably and exceed even 180s. So we measure the **stable** thing as the gate and record the **noisy** thing as telemetry:
+
+- **POSITIVE behavioral → TELEMETRY** (recorded as observations, never a failure): `agent_response_must_contain` (+ `_match`), `tool_calls_required`, `skill_read_required` (soft, per §4a).
+- **NEGATIVE / safety → HARD GATE** (deterministic, stable — the real omp-native contract): `agent_response_must_not_contain`, `tool_calls_forbidden_first`, `skill_triggered: false`. This is the slop/violation detector (no `oh-my-claudecode:` / `omo:` / Claude-Code tool names; no forbidden-first dispatch).
+- **LIVENESS gate**: a turn with no content AND no tool calls (and not timed out) fails.
+- **INCONCLUSIVE (⊘)**: a turn that times out with no final text is *measurement-incomplete*, NOT a skill failure. `run-eval` prints `⊘/✓/✗` plus a `P pass, F fail, I inconclusive` summary, and the process exit code ignores `⊘`.
+
+**Implication:** the eval gate asserts that the agent stays omp-native and produces a live response; whether it said "DRY" or grepped first is tracked as telemetry (trend signal), not a pass/fail gate. This resolves the measurement-mismatch in §6 Q3 at the assertion-policy level: behavior is observed, the stable contract is enforced.
+
 ---
 
 ## 5. Doc and Metadata Cleanup (follows from D1)

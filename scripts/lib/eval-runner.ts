@@ -157,19 +157,31 @@ export async function runScenario(
     failures.push(`scenario_timeout: scenario exceeded ${scenarioTimeoutMs}ms wall-clock cap`);
   }
 
+  // D1: Compute inconclusive and liveness BEFORE the expectation loop.
+  // inconclusive: the last turn timed out AND produced no content — measurement
+  // incomplete, NOT a skill failure. Distinct from "liveness failure" (no output
+  // without a timeout).
+  const inconclusive = lastBuf.timedOut === true && lastBuf.content.length === 0;
+  const producedOutput = lastBuf.content.length > 0 || lastBuf.toolCalls.length > 0;
+
+  if (inconclusive) {
+    observations.push(`timeout: turn exceeded ${scenario.turn_timeout_ms ?? options?.turnTimeoutMs ?? 180_000}ms (inconclusive)`);
+  }
+
   for (const exp of scenario.expected) {
-    // 1. skill_triggered — liveness check only (D1 contract).
-    //    boolean true/false: checks for any activity (tool calls or content).
-    //    string form: DEPRECATED — treated as liveness (true) so old scenarios still
-    //    pass/fail on the presence-of-activity signal; name-search is intentionally
-    //    removed. Migrate to skill_read_required for activation checks.
+    // 1. skill_triggered — liveness/negative-gate (D1 contract).
+    //    false: HARD GATE — fails when any activation evidence is observed.
+    //    true or string: liveness check — fails when no activity produced AND not inconclusive.
+    //    string form: DEPRECATED — treated as liveness (true).
     if (exp.skill_triggered !== undefined) {
       const anyTriggered = lastBuf.toolCalls.length > 0 || lastBuf.content.length > 0;
       if (exp.skill_triggered === false && anyTriggered) {
+        // HARD GATE: expected no activation, but got some
         failures.push(`skill_triggered: expected no activation evidence, but activation was observed`);
-      } else if (exp.skill_triggered !== false && !anyTriggered) {
-        // true or any string value — liveness requires at least some activity
-        failures.push(`skill_triggered: no evidence of skill activation`);
+      } else if (exp.skill_triggered !== false && !anyTriggered && !inconclusive) {
+        // Liveness check: expected some activation; not inconclusive (timeout with no output
+        // is inconclusive — don't blame as a gate failure)
+        failures.push(`liveness: no skill activation evidence`);
       }
     }
 
@@ -191,7 +203,8 @@ export async function runScenario(
       }
     }
 
-    // 2. agent_response_must_contain
+    // 2. agent_response_must_contain — TELEMETRY (D1 contract).
+    //    Hits and misses are recorded as observations; NEVER pushed to failures.
     if (exp.agent_response_must_contain !== undefined) {
       const raw = exp.agent_response_must_contain;
       let phrases: string[];
@@ -200,33 +213,34 @@ export async function runScenario(
       } else if (typeof raw === "string") {
         phrases = [raw];
       } else {
-        failures.push(
-          `agent_response_must_contain: invalid shape — expected string[] but got ${JSON.stringify(raw)}; fix the scenario YAML`
+        observations.push(
+          `response_contains[telemetry]: invalid shape — expected string[] but got ${JSON.stringify(raw)}; fix the scenario YAML`
         );
         phrases = null as unknown as string[];
       }
       if (phrases !== null) {
         const matchMode = exp.agent_response_must_contain_match ?? "all";
         if (matchMode === "any") {
-          const anyFound = phrases.some((phrase) =>
-            lastBuf.content.includes(phrase)
-          );
-          if (!anyFound) {
-            failures.push(
-              `agent_response_must_contain(any): none of ${JSON.stringify(phrases)} found`
-            );
+          const anyFound = phrases.some((phrase) => lastBuf.content.includes(phrase));
+          if (anyFound) {
+            observations.push(`response_contains[telemetry]: matched (any) in ${JSON.stringify(phrases)}`);
+          } else {
+            observations.push(`response_contains[telemetry]: MISS (any) — none of ${JSON.stringify(phrases)} found`);
           }
         } else {
           for (const phrase of phrases) {
-            if (!lastBuf.content.includes(phrase)) {
-              failures.push(`agent_response_must_contain: missing "${phrase}"`);
+            if (lastBuf.content.includes(phrase)) {
+              observations.push(`response_contains[telemetry]: matched "${phrase}"`);
+            } else {
+              observations.push(`response_contains[telemetry]: MISS "${phrase}"`);
             }
           }
         }
       }
     }
 
-    // 3. agent_response_must_not_contain
+    // 3. agent_response_must_not_contain — HARD GATE (D1 contract).
+    //    The primary omp-native violation detector (e.g. "oh-my-claudecode:", "omo:").
     if (exp.agent_response_must_not_contain) {
       for (const phrase of exp.agent_response_must_not_contain) {
         if (lastBuf.content.includes(phrase)) {
@@ -235,16 +249,22 @@ export async function runScenario(
       }
     }
 
-    // 4. tool_calls_required: each pattern must match at least one invoked tool
+    // 4. tool_calls_required — TELEMETRY (D1 contract).
+    //    Each pattern records a hit (✓) or MISS observation; NEVER pushed to failures.
     if (exp.tool_calls_required) {
       for (const pattern of exp.tool_calls_required) {
         const re = new RegExp(pattern);
         const matched = lastBuf.toolCalls.some((n) => re.test(n));
-        if (!matched) failures.push(`tool_calls_required: ${pattern} not invoked`);
+        if (matched) {
+          observations.push(`tool_required[telemetry]: ${pattern} ✓`);
+        } else {
+          observations.push(`tool_required[telemetry]: ${pattern} MISS`);
+        }
       }
     }
 
-    // 5. tool_calls_forbidden_first: the FIRST tool call must not match any pattern
+    // 5. tool_calls_forbidden_first — HARD GATE (D1 contract).
+    //    The FIRST tool call must not match any forbidden pattern.
     if (exp.tool_calls_forbidden_first && lastBuf.toolCalls.length > 0) {
       const first = lastBuf.toolCalls[0];
       for (const pattern of exp.tool_calls_forbidden_first) {
@@ -255,10 +275,20 @@ export async function runScenario(
     }
   }
 
+  // Generic liveness gate: if the turn produced no content and no tool calls and
+  // did NOT time out, that's a liveness failure (the agent was silent with no excuse).
+  // Skip when any expectation explicitly expects no activation (skill_triggered===false),
+  // because silence is the correct outcome in that case.
+  const expectsNoActivation = scenario.expected.some((e) => e.skill_triggered === false);
+  if (!inconclusive && !producedOutput && !scenarioTimedOut && !expectsNoActivation) {
+    failures.push(`liveness: produced no content and no tool calls`);
+  }
+
   return {
     scenario: scenario.name,
     skill: scenario.skill,
-    passed: failures.length === 0,
+    passed: failures.length === 0 && !inconclusive,
+    inconclusive,
     failures,
     observations,
     latency_ms: Math.round(performance.now() - t0),

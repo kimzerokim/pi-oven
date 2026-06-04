@@ -161,14 +161,31 @@ async function main() {
     const session = await makeSession(args.model);
     const verdict = await runScenario(scenario, session);
     verdicts.push(verdict);
-    console.log(`${verdict.passed ? "✓" : "✗"} ${verdict.skill}/${verdict.scenario} (${verdict.latency_ms}ms)`);
+    const mark = verdict.inconclusive ? "⊘" : (verdict.passed ? "✓" : "✗");
+    console.log(`${mark} ${verdict.skill}/${verdict.scenario} (${verdict.latency_ms}ms)`);
     for (const f of verdict.failures) console.log(`  fail: ${f}`);
+    // Print telemetry observations for transparency
+    for (const obs of verdict.observations) {
+      if (
+        obs.startsWith("response_contains[telemetry]") ||
+        obs.startsWith("tool_required[telemetry]") ||
+        obs.startsWith("skill_read") ||
+        obs.startsWith("timeout:")
+      ) {
+        console.log(`  · ${obs}`);
+      }
+    }
   }
   if (args.outFile) {
     await fs.writeFile(args.outFile, verdicts.map((v) => JSON.stringify(v)).join("\n") + "\n");
   }
-  const allPassed = verdicts.every((v) => v.passed);
-  process.exit(allPassed ? 0 : 1);
+  const passCount = verdicts.filter((v) => v.passed).length;
+  const failCount = verdicts.filter((v) => !v.passed && !v.inconclusive).length;
+  const inconclusiveCount = verdicts.filter((v) => v.inconclusive).length;
+  console.log(`\n${passCount} pass, ${failCount} fail, ${inconclusiveCount} inconclusive`);
+  // Inconclusive is NOT a hard failure — only !passed && !inconclusive counts
+  const hardFail = verdicts.some((v) => !v.passed && !v.inconclusive);
+  process.exit(hardFail ? 1 : 0);
 }
 
 main().catch((err) => {

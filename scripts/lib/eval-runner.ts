@@ -156,20 +156,31 @@ export async function runScenario(
   }
 
   for (const exp of scenario.expected) {
-    // 1. skill_triggered
+    // 1. skill_triggered — liveness check only (D1 contract).
+    //    boolean true/false: checks for any activity (tool calls or content).
+    //    string form: DEPRECATED — treated as liveness (true) so old scenarios still
+    //    pass/fail on the presence-of-activity signal; name-search is intentionally
+    //    removed. Migrate to skill_read_required for activation checks.
     if (exp.skill_triggered !== undefined) {
       const anyTriggered = lastBuf.toolCalls.length > 0 || lastBuf.content.length > 0;
-      const target = typeof exp.skill_triggered === "string" ? exp.skill_triggered : null;
-      const targetTriggered = target
-        ? lastBuf.toolCalls.some((n) => n.includes(target)) || lastBuf.content.includes(target)
-        : anyTriggered;
-
-      if (exp.skill_triggered === true && !anyTriggered) {
-        failures.push(`skill_triggered: no evidence of skill activation`);
-      } else if (exp.skill_triggered === false && anyTriggered) {
+      if (exp.skill_triggered === false && anyTriggered) {
         failures.push(`skill_triggered: expected no activation evidence, but activation was observed`);
-      } else if (typeof exp.skill_triggered === "string" && !targetTriggered) {
-        failures.push(`skill_triggered: expected "${exp.skill_triggered}" in tool calls or response content`);
+      } else if (exp.skill_triggered !== false && !anyTriggered) {
+        // true or any string value — liveness requires at least some activity
+        failures.push(`skill_triggered: no evidence of skill activation`);
+      }
+    }
+
+    // 1b. skill_read_required — honest activation check (D1 contract).
+    //     Passes when the turn's tool calls include a read of skill://<name>.
+    //     omp records skill body loads as a tool invocation whose name contains
+    //     the skill:// URI, e.g. "read skill://codebase-survey".
+    if (exp.skill_read_required !== undefined) {
+      const name = exp.skill_read_required;
+      const uri = `skill://${name}`;
+      const read = lastBuf.toolCalls.some((n) => n.includes(uri));
+      if (!read) {
+        failures.push(`skill_read_required: ${uri} not read (no matching tool call found)`);
       }
     }
 

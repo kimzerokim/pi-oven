@@ -8,7 +8,23 @@ export interface ScenarioTurn {
  *  agent_response_must_explain, state_transition_must_reach) land in Plan 3.
  */
 export interface ScenarioExpectation {
-  skill_triggered?: boolean | string;          // true = any activation, false = no activation, string = token must appear in tool-call name or response text
+  /**
+   * Liveness check only (D1 contract).
+   * - true: passes when the turn produced any tool call or non-empty content
+   * - false: passes when the turn produced no tool calls and empty content
+   * - string form: DEPRECATED — treated as liveness (true) regardless of value;
+   *   the old name-search path (string appears in toolCalls/content) is removed.
+   *   Use skill_read_required for activation checks; use agent_response_must_contain
+   *   for behavioral checks.
+   */
+  skill_triggered?: boolean | string;
+  /**
+   * Passes when the turn's tool calls include a read of skill://<name>.
+   * This is the honest "the model loaded the skill" signal under D1: omp records
+   * skill body loads as a tool invocation whose name contains "skill://<name>".
+   * Use for loadable/procedural skills (codebase-survey, spec-and-review, etc.).
+   */
+  skill_read_required?: string;
   agent_response_must_contain?: string[];      // substrings required in aggregated content
   agent_response_must_contain_match?: "all" | "any";  // "all" (default) = every phrase required; "any" = at least one phrase required
   agent_response_must_not_contain?: string[];  // substrings forbidden in aggregated content

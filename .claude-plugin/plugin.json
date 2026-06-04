@@ -1,6 +1,6 @@
 {
   "name": "pi-oven",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Curated omp workflow + discipline layer",
   "skills": [
     "./skills/memory-discipline/SKILL.md",

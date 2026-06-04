@@ -1,7 +1,7 @@
 ---
 name: deep-dive
 version: 0.1.0
-description: "MUST read this skill at the START of any deep bug investigation, intermittent-failure hunt, or root-cause/trace request before planning or proposing a fix (triggers: deep dive, deep-dive, investigate deeply, intermittent, root cause, trace and clarify, deep investigation, 깊게 파봐, 심층 분석, 원인 추적). It dispatches 3 parallel pi-oven:tracer lanes, then a bounded clarification of only the unknowns the trace could not resolve."
+description: "MUST read this skill at the START of any deep bug investigation, intermittent-failure hunt, or root-cause/trace request before planning or proposing a fix. It dispatches 3 parallel pi-oven:tracer lanes, then a bounded clarification of only the unknowns the trace could not resolve."
 ---
 
 # deep-dive
@@ -19,6 +19,7 @@ deep-dive is **not** a relentless requirements interview — when full spec conv
 - Bug investigation: something broke and the fix needs to be understood before planning
 - Feature exploration: need to understand how something currently works before defining changes
 - The problem is ambiguous, causal, and evidence-heavy — jumping to code would waste cycles
+- deep-dive is the deep-investigation leg of `systematic-debugging`: invoked when its Phase 1 / Phase 1.5 cannot isolate the root cause via single-lane tracing. When invoked from there, seed the 3 trace lanes with the prior Phase 1 + 1.5 findings rather than starting cold.
 
 ## When not to use
 
@@ -94,8 +95,12 @@ Each tracer lane must:
 - Name the critical unknown for the lane
 - Recommend the best discriminating probe
 
-After all tracer lanes and deep-researcher complete:
-- Run synthesis: rank hypotheses by confidence, detect convergence (if two hypotheses reduce to the same mechanism, merge explicitly)
+After all tracer lanes and deep-researcher complete, dispatch `pi-oven:analyst` to synthesize the lanes (this is deep-dive's own "deep analysis → `pi-oven:analyst`" routing — see Dispatch discipline). The analyst:
+- Ranks hypotheses by confidence and identifies convergence (if two hypotheses reduce to the same mechanism, merge explicitly)
+- Extracts the per-lane critical unknowns
+- Recommends the best discriminating probe (the single next probe that would collapse uncertainty fastest)
+
+Then:
 - **Conditional REPL probe:** if static trace analysis is insufficient (e.g., log parsing, metric correlation, or trace file analysis is needed to confirm/rule out a hypothesis), dispatch `pi-oven:data-runner` via `task` to run a targeted REPL probe. This is a conditional post-lane dispatch — not a hypothesis lane and not part of the parallel fan-out. Dispatch only when static analysis leaves a hypothesis unresolved by evidence.
 - Produce the trace output structure (see below)
 - Save to `.omc/specs/deep-dive-trace-{slug}.md`
@@ -171,6 +176,8 @@ Present execution options to the user via `ask`. Always pass `spec_path` explici
 2. **Direct execution**: `autonomous-loop` with the spec as input
 3. **Planning only**: `writing-plans` with the spec as input (skip critic loop)
 4. **Refine further**: return to Phase 4 clarification loop
+
+Any option whose path writes code must follow `tdd-strict` — the failing test comes first, before the fix.
 
 ## Tool usage
 

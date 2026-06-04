@@ -69,7 +69,7 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 
 ## Status
 
-**Current: v0.1.0** — initial release on `origin/main`. Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
+**Current: v0.1.1** — core-flow wiring release (4-flow skill chains + spec-stage hardening). Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
 
 **Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@kzk (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 

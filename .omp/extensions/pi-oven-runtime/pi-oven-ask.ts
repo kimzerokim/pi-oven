@@ -9,6 +9,7 @@ import {
   type Component,
   type SelectItem,
   SelectList,
+  wrapTextWithAnsi,
 } from "@oh-my-pi/pi-tui";
 import { getMarkdownTheme, getSelectListTheme } from "@oh-my-pi/pi-coding-agent";
 import type {
@@ -134,14 +135,33 @@ export function foldLabel(opt: PiOvenAskOption): string {
 
 class PiOvenAskContainer extends Container {
   readonly #list: SelectList;
-  constructor(question: string, list: SelectList) {
+  readonly #dim: (s: string) => string;
+  constructor(question: string, list: SelectList, dim: (s: string) => string = (s) => s) {
     super();
     this.#list = list;
+    this.#dim = dim;
     this.addChild(new Markdown(question, 1, 0, getMarkdownTheme()));
     this.addChild(list);
   }
   handleInput(data: string): void {
     this.#list.handleInput(data);
+  }
+  // The SelectList renders only a single truncated description line per option. To
+  // show the FULL rationale, render the focused option's description — wrapped to the
+  // available width, multi-line — in a detail panel below the list. Recomputed each
+  // frame from the live selection, so it follows the cursor. Append-only: the base
+  // question + list render is preserved verbatim.
+  render(width: number): string[] {
+    const lines = super.render(width);
+    const desc = this.#list.getSelectedItem()?.description;
+    if (desc && desc.trim().length > 0) {
+      const wrapWidth = Math.max(20, width - 4);
+      lines.push("");
+      for (const line of wrapTextWithAnsi(desc, wrapWidth)) {
+        lines.push(this.#dim(`  ${line}`));
+      }
+    }
+    return lines;
   }
 }
 
@@ -288,7 +308,7 @@ async function askSingle(
   const items = buildSelectItems(options);
   const rec = clampRecommended(params.recommended, options.length);
 
-  const choice = await ctx.ui.custom<string | undefined>((_tui, _theme, _keybindings, done) => {
+  const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _keybindings, done) => {
     const list = new SelectList(items, items.length, getSelectListTheme(), {
       minPrimaryColumnWidth: 24,
       maxPrimaryColumnWidth: 48,
@@ -296,7 +316,7 @@ async function askSingle(
     if (rec !== undefined) list.setSelectedIndex(rec);
     list.onSelect = (item) => done(item.value);
     list.onCancel = () => done(undefined);
-    return new PiOvenAskContainer(question, list);
+    return new PiOvenAskContainer(question, list, (s) => theme.fg("dim", s));
   });
 
   if (choice === undefined) return formatAskResult(question, undefined, undefined);
@@ -327,7 +347,7 @@ async function askOneLabel(
 
   const items = buildSelectItems(options);
   if (extraDone) items.push({ value: DONE_VALUE, label: DONE_LABEL });
-  return ctx.ui.custom<string | undefined>((_tui, _theme, _keybindings, done) => {
+  return ctx.ui.custom<string | undefined>((_tui, theme, _keybindings, done) => {
     const list = new SelectList(items, items.length, getSelectListTheme(), {
       minPrimaryColumnWidth: 24,
       maxPrimaryColumnWidth: 48,
@@ -335,7 +355,7 @@ async function askOneLabel(
     if (rec !== undefined) list.setSelectedIndex(rec);
     list.onSelect = (item) => done(item.value);
     list.onCancel = () => done(undefined);
-    return new PiOvenAskContainer(question, list);
+    return new PiOvenAskContainer(question, list, (s) => theme.fg("dim", s));
   });
 }
 

@@ -56,6 +56,8 @@ The error surfaces deep (git init in wrong dir, file written to wrong path). Fix
 
 When you cannot trace by hand, instrument: capture `new Error().stack` plus context (dir, cwd, env) *before* the dangerous operation, run, and grep the output. In tests use `console.error` (loggers may be suppressed). To find which test pollutes shared state, bisect: run tests one at a time until the first polluter appears.
 
+When hand-instrumentation yields low-confidence findings, or evidence conflicts across multiple plausible origins, escalate to `deep-dive` (3 parallel autonomous tracer lanes ranked by hypothesis confidence) rather than thrashing single-lane. Pass the current Phase 1 + Phase 1.5 findings as seed context so the lanes start from evidence, not from scratch.
+
 ### Phase 2 — Pattern analysis
 
 1. Find a working example of the same pattern in the codebase.
@@ -76,6 +78,10 @@ When you cannot trace by hand, instrument: capture `new Error().stack` plus cont
 2. **One fix** addressing the root cause. No "while I'm here" extras, no bundled refactor.
 3. **Verify** — test passes, nothing else broke, issue actually resolved.
 4. **If it fails, count attempts.** < 3 → return to Phase 1 with new data. **≥ 3 → STOP and question the architecture.**
+
+### Exit gates (after the fix is verified)
+
+Once the fix is verified, it is not "done" yet. Before commit it MUST pass `pre-commit-gate`, then exit via `fresh-verifier` (independent final verification in a clean context). Never self-declare done — the agent that wrote the fix cannot also be the one that signs off on it.
 
 ## Defense in depth (after root cause is known)
 
@@ -122,6 +128,7 @@ In an omp session, route investigation and fix to dedicated heterogeneous-model 
 - Write the failing test that pins the root cause before the fix, and the regression test after (Phase 4 step 1): dispatch `pi-oven:test-engineer` (defers to `tdd-strict`).
 - Implement the single root-cause fix plus defense-in-depth layers (Phase 4): dispatch `pi-oven:executor`.
 - Independently confirm the fix resolved the issue and broke nothing (Phase 4 step 3): dispatch `pi-oven:verifier` — never self-verify in the same context.
+- After `pi-oven:verifier` PASSes the functional check, dispatch `pi-oven:code-reviewer` for a separate code-quality pass — the two-stage pattern from `subagent-driven-development` (functional verify, then quality review). Never self-review in the executor's context.
 - After 3 failed fixes / suspected architectural fault: escalate to `pi-oven:oracle` for a strategic re-think before any further attempt.
 
 Outside omp the main agent runs the four phases inline.

@@ -9,6 +9,7 @@ Source: superpowers:brainstorming (ported to pi-oven)
 - Read `docs/` and `src/` for adjacent modules and naming conventions
 - Identify existing patterns the new feature must conform to
 - Check `docs/specs/` for any prior spec on the same topic
+- If this brainstorming is part of a `spec-and-review` flow, confirm `codebase-survey` (Step 0) has run and cite its report during Q&A — brainstorming is NOT a replacement for the survey (sequence: `codebase-survey` → `brainstorming` → drafting)
 - Do not skip: building on wrong assumptions wastes the entire Q&A phase
 
 ## Step 2 — Visual Companion offer (v1 stub)
@@ -22,13 +23,14 @@ Source: superpowers:brainstorming (ported to pi-oven)
 
 - One question per turn — never a numbered list of five questions at once — and pair each with your recommended answer
 - Prefer multiple-choice: "Should auth use A) JWT, B) session cookie, or C) API key?"
-- For single-select option questions, prefer the `pi-oven_ask` tool with options as `{label, description}` so each option's rationale shows beside it in the live picker; keep the built-in `ask` for multi-select or free-form questions
+- For single-select option questions, prefer the `pi-oven_ask` tool with options as `{label, description}` so each option's rationale shows beside it in the live picker; write a substantive 1–3 sentence `description` per option (trade-off + when to pick + consequence), not a few words; keep the built-in `ask` for multi-select or free-form questions
 - Walk every branch of the design tree, resolving inter-decision dependencies one-by-one
 - Explore instead of asking: when an answer is discoverable in the codebase, read the code rather than asking the user
+- Dispatch for external docs: when a design question depends on external API/SDK/library behavior, dispatch `pi-oven:document-specialist` (or `pi-oven:librarian` for web/citations) to fetch current docs rather than asking the user
 - Sharpen fuzzy or overloaded terms into a precise canonical term; challenge any term that conflicts with existing project language ("you say 'account' — Customer or User?")
 - Stress-test with concrete edge-case scenarios that force precision on concept boundaries
 - Cross-reference each stated claim against the code; surface contradictions explicitly
-- **Convergence gate, not a count:** continue until every design dimension (Goals, Non-goals, Constraints, Data model, API surface, Open questions) is resolved or explicitly deferred by the user. Do not stop because you "feel" you have enough — track each dimension and keep questioning the unresolved ones. There is no fixed question count
+- **Convergence gate + question budget:** continue until every design dimension (Goals, Non-goals, Constraints, Data model, API surface, Open questions) is resolved or explicitly deferred by the user. Do not stop because you "feel" you have enough — track each dimension and keep questioning the unresolved ones. Ask **at least 15 and at most 100 questions** (one per turn): never present for approval before the 15-question floor, keep going until the gate is met, and hard-stop at the 100-question ceiling (mark any remaining dimensions OPEN)
 - **Stall rule:** if a dimension stops converging after a few rounds, surface the stall and ask the user to decide it directly or mark it OPEN
 
 ## Step 4 — 2–3 approaches

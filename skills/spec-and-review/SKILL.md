@@ -1,7 +1,7 @@
 ---
 name: spec-and-review
 version: 0.1.0
-description: "Read this skill WHEN creating a new spec, plan, or architectural design document — or when cross-vendor critique is needed before locking in a design decision. Runs a Codex + Zen critic fan-out loop. (triggers: spec 잡자, 스펙 잡자, 기획안 작성, plan draft, codex review, brainstorm)"
+description: "Read this skill WHEN creating a new spec, plan, or architectural design document — or when cross-vendor critique is needed before locking in a design decision. Runs a Codex + Zen critic fan-out loop."
 ---
 
 # spec-and-review
@@ -120,7 +120,7 @@ When running spec-and-review inside omp:
 
 - Step 0 (codebase survey precondition): dispatch `pi-oven:explorer`, and `pi-oven:librarian` when external research is needed.
 - Step 0b (novel domain / SOTA research): dispatch `pi-oven:deep-researcher` for academic papers, external library research, or SOTA landscape — runs alongside librarian, not as a replacement.
-- Step 1 (draft authoring): the main agent leads; consult `pi-oven:architect` for system-design decisions and `pi-oven:document-specialist` for SDK accuracy.
+- Step 1 (draft authoring): the main agent leads; consult `pi-oven:architect` for system-design decisions. If the draft will reference external SDK/framework APIs, dispatch `pi-oven:document-specialist` BEFORE writing the API-surface section to verify signatures and version compatibility — do not draft external API surfaces from memory.
 - Step 2 (cross-vendor review): dispatch `pi-oven:critic` as the BLOCKER/NIT quality gate.
 
 **irc coordination at critic fan-out.** When dispatching the two-provider critic review (Codex + Zen), each critic subagent must: (1) call `irc(op:"list")` to discover sibling peer ids; (2) broadcast confirmed P0/P1 findings via `irc(op:"send", to:"all", message:"P0 finding confirmed in <file>: <summary>", awaitReply:false)` so the other critic and the orchestrator are immediately notified. The orchestrator awaits all critic replies before synthesizing — do not poll; await the task results directly.
@@ -128,3 +128,5 @@ When running spec-and-review inside omp:
 - Step 3 (synthesis and acceptance loop): the main agent owns synthesis.
 - Experiment-style verification (falsifiability) when relevant: dispatch `pi-oven:analyst`.
 - Empirical metric / performance spec validation: dispatch `pi-oven:data-runner` to confirm numeric claims before locking the spec.
+
+**External-research trigger heuristic.** Dispatch `pi-oven:librarian` (Step 0) or `pi-oven:document-specialist` (Step 1) when the survey or draft involves an external API, SDK, third-party service, open-source library, or external data source whose behavior is not adequately documented in the codebase. When the codebase already pins the behavior (existing wrappers, recorded contracts, in-repo docs), no external research is needed.

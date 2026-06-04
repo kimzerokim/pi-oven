@@ -1,7 +1,7 @@
 ---
 name: large-task-delegation
 version: 0.1.0
-description: "Read this skill WHEN the task involves 3+ file edits, 200+ LoC, 5+ file reads, or a multi-stage workflow. Governs dispatch-only main role: scope → subagent → review → commit gate. (triggers: 큰 작업, 대규모 수정, 여러 파일 변경, 버그 전수조사)"
+description: "Read this skill WHEN the task involves 3+ file edits, 200+ LoC, 5+ file reads, or a multi-stage workflow. Governs dispatch-only main role: scope → subagent → review → commit gate."
 ---
 
 # large-task-delegation
@@ -15,8 +15,6 @@ Any one of these conditions triggers mandatory dispatch:
 - 5+ files needing full reads for verification, audit, or spec authoring
 - Multi-stage workflow: build + test + Playwright + code-reviewer in sequence
 - Single Plan (any of A-N in `docs/plans/*.md`) covering its full scope
-
-Keyword triggers: "큰 작업", "버그 전수조사", "마무리 해줘", "사이클 자율", "plan 쪼개", "Stage 3", "ralph로 돌려", "끝까지 끝내줘".
 
 ## Main = dispatch + review only
 
@@ -48,6 +46,14 @@ mid-execution 5+ file reads → halt + re-route regardless of prior override.
 | REPL data execution / empirical validation | `pi-oven:data-runner` | omit model (inherits parent version) |
 
 `model="opus"` MUST NOT be specified in any dispatch. Omit model for critic/verifier/planner/deep-researcher/data-runner — this inherits the parent version and avoids version mismatch.
+
+## Sub-flow routing for specialized work types
+
+Within a large task, route by work type before dispatching `pi-oven:executor` directly:
+
+- Investigation reveals a root-cause bug → route via `systematic-debugging` (tracer/debugger) before fixing.
+- Scope is refactoring or architecture → route via `improve-codebase-architecture` (survey/candidates) before implementing.
+- Otherwise → dispatch `pi-oven:executor` directly.
 
 ## Parallel dispatch
 

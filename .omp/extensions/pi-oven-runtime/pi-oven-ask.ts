@@ -115,14 +115,54 @@ export function formatAskResult(
   };
 }
 
+function summarizeBatchAnswer(answer: PiOvenAskBatchAnswer): string {
+  if (
+    answer.selected !== undefined &&
+    answer.customInput === undefined &&
+    (answer.selectedMany === undefined || answer.selectedMany.length === 0)
+  ) {
+    return `User selected: ${answer.selected}`;
+  }
+  if (
+    answer.customInput !== undefined &&
+    answer.selected === undefined &&
+    (answer.selectedMany === undefined || answer.selectedMany.length === 0)
+  ) {
+    const custom = answer.customInput.includes("\n")
+      ? answer.customInput.replaceAll("\n", " / ")
+      : answer.customInput;
+    return `User provided custom input: ${custom}`;
+  }
+
+  const parts: string[] = [];
+  if (answer.selected !== undefined) parts.push(`selected=${answer.selected}`);
+  if (answer.selectedMany !== undefined && answer.selectedMany.length > 0) {
+    parts.push(`selectedMany=${answer.selectedMany.join(", ")}`);
+  }
+  if (answer.customInput !== undefined) {
+    const custom = answer.customInput.includes("\n")
+      ? answer.customInput.replaceAll("\n", " / ")
+      : answer.customInput;
+    parts.push(`customInput=${custom}`);
+  }
+  return parts.join(" | ");
+}
+
 export function formatBatchResult(
   answers: Record<string, PiOvenAskBatchAnswer>
 ): AgentToolResult<PiOvenAskDetails> {
   const keys = Object.keys(answers);
-  const text =
-    keys.length === 0
-      ? "User cancelled the selection"
-      : `User answered ${keys.length} question${keys.length === 1 ? "" : "s"}`;
+  let text: string;
+  if (keys.length === 0) {
+    text = "User cancelled the selection";
+  } else if (keys.length === 1) {
+    text = summarizeBatchAnswer(answers[keys[0]!]!) || "User answered 1 question";
+  } else {
+    const summary = keys
+      .map((key) => `${key}: ${summarizeBatchAnswer(answers[key]!) || "no response"}`)
+      .join("; ");
+    text = `User answered ${keys.length} questions: ${summary}`;
+  }
   return {
     content: [{ type: "text" as const, text }],
     details: { mode: "batch", answers },

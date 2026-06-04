@@ -27,7 +27,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 600 pass currently
+bun test             # 602 pass currently
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -69,7 +69,7 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 
 ## Status
 
-**Current: v0.1.2** — setup self-locate fix (cwd-independent agent resolution) + doctor 11-check unify (memory/killer-tools check #11 + SoT skill-list fix) + doc/version drift sweep. Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
+**Current: v0.1.3** — `pi-oven_ask` batch results now surface the actual selection in the visible text (`User selected:` / `User provided custom input:`), so the setup wizard's Step 0 single-question contract is readable. Builds on v0.1.2 (setup self-locate fix + doctor 11-check unify). Version SoT = `package.json` + `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`, kept in lockstep by `release:pi-oven` (CI's version-parity step enforces it).
 
 **Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@kzk (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 

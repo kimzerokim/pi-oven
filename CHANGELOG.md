@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.3
+
+- `pi-oven_ask` batch results now surface the actual selection in the visible tool text instead of a generic "User answered N questions": a single-question batch renders `User selected: <label>` or `User provided custom input: <value>` (newlines normalized), and multi-question batches list each `id: <summary>`. This makes the `/pi-oven:setup` Step 0 single-question contract readable — the wizard reads the choice back from the visible text. Adds `summarizeBatchAnswer` + tests; `commands/setup.md` Step 0 documents reading `details.selected` / `details.customInput` with the visible-text fallback.
+
 ## v0.1.2
 
 - `/pi-oven:setup` now resolves the agent files from the script's own install location (`import.meta.dir`) instead of the caller's cwd, so `--status` shows the real per-role model defaults for users who installed pi-oven globally (previously every role rendered `(no agent file)` outside the dev checkout). Adds `resolveDefaultAgentsDir` (script-relative → install-cache → graceful fallback); the apply path's maintainer-vs-user mode selector is unchanged.

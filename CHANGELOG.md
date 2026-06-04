@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.7 - 2026-06-04
+
+- docs(release): bump human-facing version refs to v0.1.7
+- docs: note retry.fallbackChains routing + drop stale syncPiOvenAgentMirrors gitignore comment
+- test(runtime): cover gate-handler pure helper functions
+- refactor(runtime): remove dead agent-mirror sync and stream-of-consciousness comments
+- fix(lint): enforce tools/blocked_tools consistency as the real capability boundary
+- feat(setup): write retry.fallbackChains so codex orchestrator roles fail over to opencode-zen
+- docs(plans): spec + plan for session-findings fixes (fallback, blocked_tools, dead code)
+- fix(setup,runtime): restore per-project language/marker writers, keep install detection global-only
+- feat(runtime,setup): enforce skill-chain gates and global install policy
+- feat(skills,agents): wire omp power-tools, make research subagent-driven, de-phantom refs
+- fix(eval): run authed with a fast default model + load workspace extension
+- feat: add ISO timestamp formatting utilities
 ## v0.1.6 - 2026-06-04
 
 - feat(skills): omp-native skill activation contract — description discovery + keyword whitelist

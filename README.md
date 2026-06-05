@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from four frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.8-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-708%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.9-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-756%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
@@ -37,7 +37,7 @@ omp plugin install pi-oven@kzk --force
 
 # 3. Verify
 omp plugin list | grep pi-oven
-# Expected: pi-oven@kzk (0.1.8)
+# Expected: pi-oven@kzk (0.1.9)
 ```
 
 ### One-shot (install automatic, setup interactive)

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.9 - 2026-06-05
+
+- docs(release): bump human-facing version refs to v0.1.9
+- fix(profiles,setup): enabled-only models A/B/C/D + Profile D + robust validation + global onboarding/language
+- docs(setup): fix stale Profile B (now openai-codex-only) + per-role override refs
 ## v0.1.8 - 2026-06-05
 
 - docs(release): bump human-facing version refs to v0.1.8

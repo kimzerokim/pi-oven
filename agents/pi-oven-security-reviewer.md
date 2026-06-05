@@ -3,7 +3,7 @@ name: pi-oven:security-reviewer
 description: Security vulnerability detection — OWASP Top 10, STRIDE, secrets, supply chain, CI/CD
 model:
   - anthropic/claude-opus-4-8
-  - opencode-zen/claude-opus-4-8
+  - openai-codex/gpt-5.5
 thinkingLevel: xhigh
 mode: subagent
 tools: ["read","search","find","bash","recall","web_search"]

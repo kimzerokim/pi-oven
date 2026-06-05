@@ -21,7 +21,7 @@ import { runApply } from "./pi-oven-setup/apply";
 import { runOverride } from "./pi-oven-setup/override";
 import { runIsolate } from "./pi-oven-setup/isolate";
 import { resolveDefaultAgentsDir } from "./pi-oven-setup/cache-resolver";
-import { normalizeLanguage, setProjectLanguage, markSetupComplete } from "./pi-oven-setup/project-config";
+import { normalizeLanguage, setProjectLanguage, setGlobalLanguage, markSetupComplete, markSetupCompleteGlobal } from "./pi-oven-setup/project-config";
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -107,8 +107,9 @@ if (values.language !== undefined) {
     process.exit(1);
   }
   await setProjectLanguage(lang);
+  await setGlobalLanguage(lang);
   process.stdout.write(
-    `Project default language set to "${lang}" (.pi-oven/config.json).\n`
+    `Default response language set to "${lang}" globally (~/.pi-oven/config.json) and project-locally (.pi-oven/config.json).\n`
   );
   process.exit(0);
 }
@@ -193,15 +194,15 @@ if (values.status) {
   markRouting = true;
 } else if (values.profile || values.apply) {
   const profile = (values.profile as string | undefined) ?? "A";
-  if (profile !== "A" && profile !== "B" && profile !== "C") {
+  if (profile !== "A" && profile !== "B" && profile !== "C" && profile !== "D") {
     process.stderr.write(
-      `Invalid profile "${profile}". Allowed: A, B, C.\n`
+      `Invalid profile "${profile}". Allowed: A, B, C, D.\n`
     );
     process.exit(1);
   }
 
   result = await runApply({
-    profile: profile as "A" | "B" | "C",
+    profile: profile as "A" | "B" | "C" | "D",
     validateMode,
     spawnFn,
     agentsDir,
@@ -243,6 +244,7 @@ if (hasIsolate && result.exitCode === 0) {
 // before the success exit so a failure (exitCode !== 0) never marks the project.
 if (markRouting && result.exitCode === 0) {
   await markSetupComplete();
+  await markSetupCompleteGlobal();
 }
 
 process.stdout.write(result.output);

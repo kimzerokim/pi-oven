@@ -259,30 +259,51 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   const injector = new RulesInjector();
 
   // -------------------------------------------------------------------------
-  // Install detection is GLOBAL-ONLY: the "is pi-oven installed" signal comes
-  // from the populated global agents dir, never from a project-local marker.
-  // Project-local `.pi-oven/config.json` is still honored for the OPTIONAL
-  // per-project response language and the CLAUDE.md opt-out, but it is NOT an
-  // install/setup signal. Fail-soft: any FS fault leaves the defaults.
+  // Setup detection: effectiveSetupComplete = true iff the user has RUN setup
+  // (i.e. setupCompletedAt is a non-empty string in either the global config
+  // ~/.pi-oven/config.json OR the project-local .pi-oven/config.json).
+  // Mere installation (agent files present) does NOT count as setup complete.
+  // Fail-soft: any FS/parse error → treat as NOT complete so the notice shows.
   let effectiveSetupComplete = false;
+  const globalConfigPath = path.resolve(os.homedir(), ".pi-oven", "config.json");
+  const projectConfigPath = path.resolve(repoRoot, ".pi-oven", "config.json");
   try {
-    if (existsSync(agentsDir)) {
-      const files = readdirSync(agentsDir);
-      effectiveSetupComplete = files.some(
-        (f) => f.startsWith("pi-oven-") && f.endsWith(".md")
-      );
+    const raw = readFileSync(globalConfigPath, "utf-8");
+    const parsed = JSON.parse(raw) as { setupCompletedAt?: unknown };
+    if (typeof parsed.setupCompletedAt === "string" && parsed.setupCompletedAt.length > 0) {
+      effectiveSetupComplete = true;
     }
-  } catch (err) {
-    pi.logger.debug(`pi-oven: global install detection failed: ${err}`);
+  } catch {
+    // not present or unreadable — keep false
+  }
+  if (!effectiveSetupComplete) {
+    try {
+      const raw = readFileSync(projectConfigPath, "utf-8");
+      const parsed = JSON.parse(raw) as { setupCompletedAt?: unknown };
+      if (typeof parsed.setupCompletedAt === "string" && parsed.setupCompletedAt.length > 0) {
+        effectiveSetupComplete = true;
+      }
+    } catch {
+      // not present or unreadable — keep false
+    }
   }
 
-  // Read the OPTIONAL project-local config (language + CLAUDE.md opt-out only).
+  // Read config: GLOBAL language first, then PROJECT-LOCAL overrides.
+  // Resolution order: project language > global language > no language set.
   // resolveLanguage re-validates the persisted string so a hand-edited
   // config.json can never poison the system prompt. Fail-open on any fault.
   let projectInstructionsEnabled = true;
   try {
-    const configPath = path.resolve(repoRoot, ".pi-oven", "config.json");
-    const raw = readFileSync(configPath, "utf-8");
+    const raw = readFileSync(globalConfigPath, "utf-8");
+    const parsed = JSON.parse(raw) as { language?: unknown };
+    const resolved =
+      typeof parsed.language === "string" ? resolveLanguage(parsed.language) : null;
+    if (resolved) injector.setLanguage(resolved);
+  } catch {
+    // global config absent or unreadable — no language set from global
+  }
+  try {
+    const raw = readFileSync(projectConfigPath, "utf-8");
     const parsed = JSON.parse(raw) as {
       language?: unknown;
       projectInstructions?: unknown;

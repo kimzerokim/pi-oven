@@ -2,8 +2,8 @@
 name: pi-oven:code-simplifier
 description: Deletion-first code simplifier — removes dead code, AI slop, and unnecessary complexity while preserving exact behavior
 model:
-  - opencode-zen/qwen3.5-plus
-  - opencode-zen/minimax-m2.7
+  - opencode-zen/glm-5.1
+  - opencode-zen/minimax-m2.5
 thinkingLevel: xhigh
 mode: subagent
 tools: ["*"]

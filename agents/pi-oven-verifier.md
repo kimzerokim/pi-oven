@@ -3,7 +3,7 @@ name: pi-oven:verifier
 description: Fresh-agent cycle-exit verifier — 4 sub-checks, evidence-based PASS or BLOCK
 model:
   - opencode-zen/kimi-k2.6
-  - opencode-zen/glm-5
+  - opencode-zen/glm-5.1
 thinkingLevel: high
 mode: subagent
 tools: ["read","search","find","bash","recall","task","report_finding"]

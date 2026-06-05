@@ -22,18 +22,21 @@ import {
   PROFILE_A,
   PROFILE_B,
   PROFILE_C,
+  PROFILE_D,
   PROFILE_A_ORCHESTRATOR,
   PROFILE_B_ORCHESTRATOR,
   PROFILE_C_ORCHESTRATOR,
+  PROFILE_D_ORCHESTRATOR,
   PROFILE_A_FALLBACK_CHAINS,
   PROFILE_B_FALLBACK_CHAINS,
   PROFILE_C_FALLBACK_CHAINS,
+  PROFILE_D_FALLBACK_CHAINS,
   ROLES,
   type ProfileMap,
 } from "./profiles";
 
 export interface ApplyOptions {
-  profile: "A" | "B" | "C";
+  profile: "A" | "B" | "C" | "D";
   validateMode?: "smoke" | "full" | "none";
   spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
   agentsDir?: string; // maintainer generate target (repo agents/)
@@ -58,7 +61,13 @@ export async function runApply(
   opts: ApplyOptions
 ): Promise<{ exitCode: number; output: string }> {
   const profileMap: ProfileMap =
-    opts.profile === "C" ? PROFILE_C : opts.profile === "B" ? PROFILE_B : PROFILE_A;
+    opts.profile === "D"
+      ? PROFILE_D
+      : opts.profile === "C"
+      ? PROFILE_C
+      : opts.profile === "B"
+      ? PROFILE_B
+      : PROFILE_A;
 
   let memoryConfigLine = "";
 
@@ -72,7 +81,9 @@ export async function runApply(
     // rejected — setModelRoles read-merge-writes the whole record, preserving
     // sibling roles. Never task.agentModelOverrides for A/B (anti-Spec-E).
     const orchestrator =
-      opts.profile === "C"
+      opts.profile === "D"
+        ? PROFILE_D_ORCHESTRATOR
+        : opts.profile === "C"
         ? PROFILE_C_ORCHESTRATOR
         : opts.profile === "B"
         ? PROFILE_B_ORCHESTRATOR
@@ -82,16 +93,18 @@ export async function runApply(
       { spawnFn: opts.spawnFn }
     );
     const fallbackChains =
-      opts.profile === "C"
+      opts.profile === "D"
+        ? PROFILE_D_FALLBACK_CHAINS
+        : opts.profile === "C"
         ? PROFILE_C_FALLBACK_CHAINS
         : opts.profile === "B"
         ? PROFILE_B_FALLBACK_CHAINS
         : PROFILE_A_FALLBACK_CHAINS;
     await setRetryFallbackChains(fallbackChains, { spawnFn: opts.spawnFn });
 
-    // Profile B + C: bulk-write all 24 per-role task.agentModelOverrides.
+    // Profile B + C + D: bulk-write all 24 per-role task.agentModelOverrides.
     // Deliberate Spec E relaxation — profile A writes ZERO per-role overrides.
-    if (opts.profile === "B" || opts.profile === "C") {
+    if (opts.profile === "B" || opts.profile === "C" || opts.profile === "D") {
       const overrideRecord: Record<string, string> = {};
       for (const role of ROLES) {
         overrideRecord[`pi-oven:${role}`] = profileMap[role].primary;

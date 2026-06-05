@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { runApply } from "../../../scripts/pi-oven-setup/apply";
-import { ROLES, PROFILE_A, PROFILE_B, PROFILE_C, PROFILE_B_ORCHESTRATOR, PROFILE_B_FALLBACK_CHAINS, PROFILE_C_ORCHESTRATOR, PROFILE_C_FALLBACK_CHAINS } from "../../../scripts/pi-oven-setup/profiles";
+import { ROLES, PROFILE_A, PROFILE_B, PROFILE_C, PROFILE_D, PROFILE_B_ORCHESTRATOR, PROFILE_B_FALLBACK_CHAINS, PROFILE_C_ORCHESTRATOR, PROFILE_C_FALLBACK_CHAINS, PROFILE_D_ORCHESTRATOR, PROFILE_D_FALLBACK_CHAINS } from "../../../scripts/pi-oven-setup/profiles";
 import { readAgentFiles } from "../../../scripts/pi-oven-setup/agent-rewriter";
 
 // ---------------------------------------------------------------------------
@@ -536,8 +536,8 @@ describe("runApply", () => {
     expect(written["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
     // explorer (medium) → sonnet-4-6
     expect(written["pi-oven:explorer"]).toBe("anthropic/claude-sonnet-4-6");
-    // git-master (low) → haiku-4-5
-    expect(written["pi-oven:git-master"]).toBe("anthropic/claude-haiku-4-5");
+    // git-master (low) → sonnet-4-6 (haiku-4-5 disabled on this account)
+    expect(written["pi-oven:git-master"]).toBe("anthropic/claude-sonnet-4-6");
     // qa-tester (high thinkingLevel, strict tier → opus-4-8)
     expect(written["pi-oven:qa-tester"]).toBe("anthropic/claude-opus-4-8");
   });
@@ -669,9 +669,91 @@ describe("runApply", () => {
     expect(written["pi-oven:critic"]).toBe("openai-codex/gpt-5.5");
     // explorer (medium) → gpt-5.4-mini
     expect(written["pi-oven:explorer"]).toBe("openai-codex/gpt-5.4-mini");
-    // git-master (low) → gpt-5.4-nano
-    expect(written["pi-oven:git-master"]).toBe("openai-codex/gpt-5.4-nano");
+    // git-master (low) → gpt-5.4-mini (gpt-5.4-nano not supported)
+    expect(written["pi-oven:git-master"]).toBe("openai-codex/gpt-5.4-mini");
     // executor (high) → gpt-5.4
     expect(written["pi-oven:executor"]).toBe("openai-codex/gpt-5.4");
+  });
+
+  // -------------------------------------------------------------------------
+  // Profile D — user setup path: writes modelRoles + fallbackChains + 24 overrides (all opencode-zen/)
+  // -------------------------------------------------------------------------
+
+  function makeProfileDSpawn() {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      if (args[0] === "config" && args[1] === "get" && args[2] === "modelRoles") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "task.agentModelOverrides", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+    return { spawnCalls, mockSpawnFn };
+  }
+
+  it("runApply profile D WITHOUT agentsDir writes PROFILE_D_ORCHESTRATOR values for modelRoles", async () => {
+    const { spawnCalls, mockSpawnFn } = makeProfileDSpawn();
+
+    await runApply({ profile: "D", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const setCall = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
+    );
+    expect(setCall).toBeDefined();
+    const merged = JSON.parse(setCall!.args[3]);
+    expect(merged.default).toBe(PROFILE_D_ORCHESTRATOR.default);
+    expect(merged.title).toBe(PROFILE_D_ORCHESTRATOR.title);
+  });
+
+  it("runApply profile D WITHOUT agentsDir writes PROFILE_D_FALLBACK_CHAINS", async () => {
+    const { spawnCalls, mockSpawnFn } = makeProfileDSpawn();
+
+    await runApply({ profile: "D", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const setCall = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "retry.fallbackChains"
+    );
+    expect(setCall).toBeDefined();
+    const merged = JSON.parse(setCall!.args[3]);
+    expect(merged.default).toEqual(PROFILE_D_FALLBACK_CHAINS.default);
+    expect(merged.title).toEqual(PROFILE_D_FALLBACK_CHAINS.title);
+  });
+
+  it("runApply profile D WITHOUT agentsDir writes all 24 task.agentModelOverrides all startsWith opencode-zen/", async () => {
+    const { spawnCalls, mockSpawnFn } = makeProfileDSpawn();
+
+    await runApply({ profile: "D", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const overrideWrites = spawnCalls.filter(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
+    );
+    expect(overrideWrites.length).toBe(1);
+    const written = JSON.parse(overrideWrites[0].args[3]);
+    for (const role of ROLES) {
+      expect(written[`pi-oven:${role}`]).toBe(PROFILE_D[role].primary);
+      expect(written[`pi-oven:${role}`]).toMatch(/^opencode-zen\//);
+    }
+  });
+
+  it("runApply profile A still writes ZERO task.agentModelOverrides after D support added (non-regression)", async () => {
+    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
+
+    await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const overrideWrites = spawnCalls.filter(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
+    );
+    expect(overrideWrites.length).toBe(0);
   });
 });

@@ -2,7 +2,7 @@
 name: pi-oven:designer
 description: UI/UX design implementation — component spec, layout, accessibility, design system, mockup handoff
 model:
-  - opencode-zen/qwen3.5-plus
+  - opencode-zen/glm-5.1
   - opencode-zen/minimax-m2.5
 thinkingLevel: high
 mode: subagent

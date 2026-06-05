@@ -9,6 +9,10 @@ import {
   markSetupComplete,
   isSetupComplete,
   clearSetupComplete,
+  setGlobalLanguage,
+  readGlobalLanguage,
+  markSetupCompleteGlobal,
+  isSetupCompleteGlobal,
   type ProjectLanguage,
 } from "../../../scripts/pi-oven-setup/project-config";
 
@@ -284,5 +288,116 @@ describe("project-config — setup-completion marker", () => {
     expect(isSetupComplete({ cwd })).toBe(false);
     // No file was created by the no-op clear
     expect(existsSync(configFile(cwd))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Global config helpers (os.homedir()/.pi-oven/config.json)
+// Tests use an injectable homeDir so no writes go to the real ~/.pi-oven.
+// ---------------------------------------------------------------------------
+
+function globalConfigFile(homeDir: string): string {
+  return join(homeDir, ".pi-oven", "config.json");
+}
+
+describe("project-config — setGlobalLanguage / readGlobalLanguage round-trip", () => {
+  let homeDir: string;
+
+  beforeEach(() => {
+    homeDir = join(
+      tmpdir(),
+      `global-lang-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(homeDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it("setGlobalLanguage 'ko' then readGlobalLanguage returns 'ko'", async () => {
+    await setGlobalLanguage("ko", { homeDir });
+    expect(await readGlobalLanguage({ homeDir })).toBe("ko");
+  });
+
+  it("setGlobalLanguage 'en' then readGlobalLanguage returns 'en'", async () => {
+    await setGlobalLanguage("en", { homeDir });
+    expect(await readGlobalLanguage({ homeDir })).toBe("en");
+  });
+
+  it("setGlobalLanguage writes to homeDir/.pi-oven/config.json with the language key", async () => {
+    await setGlobalLanguage("ko", { homeDir });
+    const parsed = JSON.parse(readFileSync(globalConfigFile(homeDir), "utf-8"));
+    expect(parsed.language).toBe("ko");
+  });
+
+  it("setGlobalLanguage read-merges: preserves pre-existing sibling keys", async () => {
+    mkdirSync(join(homeDir, ".pi-oven"), { recursive: true });
+    writeFileSync(globalConfigFile(homeDir), JSON.stringify({ keepMe: true }), "utf-8");
+    await setGlobalLanguage("ko", { homeDir });
+    const parsed = JSON.parse(readFileSync(globalConfigFile(homeDir), "utf-8"));
+    expect(parsed.language).toBe("ko");
+    expect(parsed.keepMe).toBe(true);
+  });
+
+  it("readGlobalLanguage returns null when file is absent", async () => {
+    expect(await readGlobalLanguage({ homeDir })).toBeNull();
+  });
+
+  it("readGlobalLanguage re-validates stored value (poisoned returns null)", async () => {
+    mkdirSync(join(homeDir, ".pi-oven"), { recursive: true });
+    writeFileSync(
+      globalConfigFile(homeDir),
+      JSON.stringify({ language: "ko\ninjected" }),
+      "utf-8"
+    );
+    expect(await readGlobalLanguage({ homeDir })).toBeNull();
+  });
+});
+
+describe("project-config — markSetupCompleteGlobal / isSetupCompleteGlobal", () => {
+  let homeDir: string;
+
+  beforeEach(() => {
+    homeDir = join(
+      tmpdir(),
+      `global-marker-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(homeDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it("isSetupCompleteGlobal is false before any mark (file absent)", () => {
+    expect(isSetupCompleteGlobal({ homeDir })).toBe(false);
+  });
+
+  it("markSetupCompleteGlobal writes a non-empty setupCompletedAt at the global path", async () => {
+    await markSetupCompleteGlobal({ homeDir });
+    const parsed = JSON.parse(readFileSync(globalConfigFile(homeDir), "utf-8"));
+    expect(typeof parsed.setupCompletedAt).toBe("string");
+    expect(parsed.setupCompletedAt.length).toBeGreaterThan(0);
+    expect(Number.isNaN(Date.parse(parsed.setupCompletedAt))).toBe(false);
+  });
+
+  it("isSetupCompleteGlobal is true after markSetupCompleteGlobal", async () => {
+    await markSetupCompleteGlobal({ homeDir });
+    expect(isSetupCompleteGlobal({ homeDir })).toBe(true);
+  });
+
+  it("markSetupCompleteGlobal preserves an existing language key", async () => {
+    await setGlobalLanguage("ko", { homeDir });
+    await markSetupCompleteGlobal({ homeDir });
+    const parsed = JSON.parse(readFileSync(globalConfigFile(homeDir), "utf-8"));
+    expect(parsed.language).toBe("ko");
+    expect(typeof parsed.setupCompletedAt).toBe("string");
+  });
+
+  it("isSetupCompleteGlobal fails soft to false on absent/unparsable file", () => {
+    mkdirSync(join(homeDir, ".pi-oven"), { recursive: true });
+    writeFileSync(globalConfigFile(homeDir), "{ not json", "utf-8");
+    expect(isSetupCompleteGlobal({ homeDir })).toBe(false);
   });
 });

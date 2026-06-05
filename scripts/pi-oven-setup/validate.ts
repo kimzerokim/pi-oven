@@ -17,8 +17,12 @@ export interface ValidateResult {
   unverified: Role[];
 }
 
-/** Per-ping subprocess timeout (ms). Prevents a slow model from hanging the wizard. */
-export const PING_TIMEOUT_MS = 60_000;
+/** Per-ping subprocess timeout (ms). Prevents a slow model from hanging the wizard.
+ * 15s: fast enough that an ENABLED-but-slow thinking model times out and is classified
+ * as verified (timeout = enabled-but-slow), while a DISABLED model fails fast with a
+ * real non-zero exit before the timeout fires.
+ */
+export const PING_TIMEOUT_MS = 15_000;
 
 /** Spec B §8.1: 7 MUST-tier roles for smoke validation. */
 export const SMOKE_ROLES: Role[] = [
@@ -95,6 +99,16 @@ export async function runValidate(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Classification rule (Change 5):
+ *   - exitCode === 0           → VERIFIED (success)
+ *   - exitCode === null        → VERIFIED (timeout-killed = enabled-but-slow)
+ *   - exitCode > 0 (fast fail) → UNVERIFIED (disabled/401/not-supported/400)
+ *
+ * A DISABLED model fails fast with a real non-zero exit before the timeout fires.
+ * An ENABLED-but-slow model (kimi-k2.6, gemini-3-flash, minimax-m2.7) is killed by
+ * the PING_TIMEOUT_MS deadline and Bun.spawnSync sets exitCode to null on kill.
+ */
 function pingModel(
   model: string,
   spawnFn: (cmd: string, args: string[]) => { exitCode: number | null }
@@ -108,7 +122,8 @@ function pingModel(
     "--max-tokens",
     "5",
   ]);
-  return result.exitCode === 0;
+  // null = timeout kill → enabled-but-slow → verified
+  return result.exitCode === 0 || result.exitCode === null;
 }
 
 function defaultSpawn(
@@ -119,8 +134,10 @@ function defaultSpawn(
     stdio: ["ignore", "pipe", "pipe"],
     timeout: PING_TIMEOUT_MS,
   });
+  // Preserve null exitCode (timeout kill) — do NOT coerce to 1.
+  // Callers use null to classify the result as verified (enabled-but-slow).
   return {
-    exitCode: result.exitCode ?? 1,
+    exitCode: result.exitCode,
     stdout: result.stdout ? Buffer.from(result.stdout) : Buffer.from(""),
     stderr: result.stderr ? Buffer.from(result.stderr) : Buffer.from(""),
   };

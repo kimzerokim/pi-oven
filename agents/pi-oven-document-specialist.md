@@ -3,7 +3,7 @@ name: pi-oven:document-specialist
 description: External docs and SDK reference specialist — local repo docs first, curated backends second, `read`-URL fallback, no recursive task dispatch
 model:
   - opencode-zen/minimax-m2.5
-  - opencode-zen/qwen3.5-plus
+  - opencode-zen/glm-5.1
 thinkingLevel: medium
 mode: subagent
 tools: ["read","search","find","bash","recall","web_search"]

@@ -159,10 +159,12 @@ describe("runValidate", () => {
   });
 
   it("partial failure: some verified, some alternates, some unverified", async () => {
-    // executor primary succeeds; explorer primary fails, alternate succeeds; verifier both fail
+    // executor primary succeeds (openai-codex/gpt-5.4) → verified
+    // explorer primary fails, alternate succeeds (opencode-zen/glm-5.1) → alternates
+    // critic: primary=anthropic/claude-opus-4-8 (not in set), alternate=openai-codex/gpt-5.5 (not in set) → unverified
     const successModels = new Set([
-      PROFILE_A.executor.primary,
-      PROFILE_A.explorer.registry_alternate,
+      PROFILE_A.executor.primary,         // openai-codex/gpt-5.4
+      PROFILE_A.explorer.registry_alternate, // opencode-zen/glm-5.1
     ]);
     const result = await runValidate(PROFILE_A, {
       mode: "smoke",
@@ -170,7 +172,7 @@ describe("runValidate", () => {
     });
     expect(result.verified).toContain("executor");
     expect(result.alternates).toContain("explorer");
-    expect(result.unverified).toContain("verifier");
+    expect(result.unverified).toContain("critic");
     expect(result.ok).toBe(false);
   });
 
@@ -186,16 +188,19 @@ describe("runValidate", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Bug 2: spawnFn simulating timeout/failure → role classified as unverified
+// Timeout classification: slow-enabled models resolve as VERIFIED
 // ---------------------------------------------------------------------------
 
-describe("runValidate — timeout/failure via spawnFn", () => {
-  it("a spawnFn that returns non-zero exitCode causes the role to land in unverified, ok=false", async () => {
-    // Simulate a hanging/slow model: spawnFn always returns non-zero (timeout-like failure)
+describe("runValidate — timeout classification (Change 5)", () => {
+  /**
+   * A timeout-killed spawn returns exitCode=null (Bun.spawnSync sets exitCode null
+   * when killed by timeout signal). This should be treated as VERIFIED (enabled-but-slow).
+   */
+  it("spawnFn returning exitCode=null (timeout kill) → role VERIFIED", async () => {
     const timeoutSpawn = (_cmd: string, _args: string[]) => ({
-      exitCode: 1,
+      exitCode: null,
       stdout: Buffer.from(""),
-      stderr: Buffer.from("timed out"),
+      stderr: Buffer.from(""),
     });
 
     const result = await runValidate(PROFILE_A, {
@@ -203,10 +208,75 @@ describe("runValidate — timeout/failure via spawnFn", () => {
       spawnFn: timeoutSpawn as any,
     });
 
-    expect(result.ok).toBe(false);
+    expect(result.verified.length).toBe(SMOKE_ROLES.length);
+    expect(result.alternates.length).toBe(0);
+    expect(result.unverified.length).toBe(0);
+    expect(result.ok).toBe(true);
+  });
+
+  /**
+   * A fast non-zero exit (real error: disabled/401/not-supported) returns exitCode > 0.
+   * This should be treated as UNVERIFIED.
+   */
+  it("spawnFn returning fast non-zero exitCode → role UNVERIFIED", async () => {
+    const errorSpawn = (_cmd: string, _args: string[]) => ({
+      exitCode: 1,
+      stdout: Buffer.from(""),
+      stderr: Buffer.from("401 Unauthorized"),
+    });
+
+    const result = await runValidate(PROFILE_A, {
+      mode: "smoke",
+      spawnFn: errorSpawn as any,
+    });
+
     expect(result.unverified.length).toBe(SMOKE_ROLES.length);
     expect(result.verified.length).toBe(0);
     expect(result.alternates.length).toBe(0);
+    expect(result.ok).toBe(false);
+  });
+
+  /**
+   * When primary times out (exitCode=null), it is VERIFIED — alternate must NOT be pinged.
+   */
+  it("primary timeout (exitCode=null) → verified without pinging alternate", async () => {
+    const pingedModels: string[] = [];
+    const timeoutSpawn = (_cmd: string, args: string[]) => {
+      const modelIdx = args.indexOf("--model");
+      if (modelIdx !== -1) pingedModels.push(args[modelIdx + 1]);
+      return { exitCode: null, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    const result = await runValidate(PROFILE_A, {
+      mode: "smoke",
+      spawnFn: timeoutSpawn as any,
+    });
+
+    // Only primary pings (7), no alternate pings
+    expect(pingedModels.length).toBe(SMOKE_ROLES.length);
+    expect(result.verified.length).toBe(SMOKE_ROLES.length);
+    expect(result.alternates.length).toBe(0);
+  });
+
+  /**
+   * Primary exits 0 → verified. Alternate must NOT be pinged.
+   */
+  it("primary exit 0 → verified without pinging alternate", async () => {
+    const pingedModels: string[] = [];
+    const okSpawn = (_cmd: string, args: string[]) => {
+      const modelIdx = args.indexOf("--model");
+      if (modelIdx !== -1) pingedModels.push(args[modelIdx + 1]);
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") };
+    };
+
+    await runValidate(PROFILE_A, { mode: "smoke", spawnFn: okSpawn as any });
+    // Only 7 primary pings, no alternates
+    expect(pingedModels.length).toBe(SMOKE_ROLES.length);
+  });
+
+  it("PING_TIMEOUT_MS is 15000 (15s for fast slow-model resolution)", async () => {
+    const { PING_TIMEOUT_MS } = await import("../../../scripts/pi-oven-setup/validate");
+    expect(PING_TIMEOUT_MS).toBe(15_000);
   });
 
   it("PING_TIMEOUT_MS constant is exported and is a positive number (≤ 120_000)", async () => {

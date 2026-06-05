@@ -3,7 +3,7 @@ name: pi-oven:analyst
 description: Data analysis and metrics investigation — quantitative and qualitative analysis, log mining, statistical summaries, anomaly detection, structured findings
 model:
   - opencode-zen/kimi-k2.6
-  - opencode-zen/glm-5
+  - opencode-zen/glm-5.1
 thinkingLevel: xhigh
 mode: subagent
 tools: ["read","search","find","bash","eval","recall"]

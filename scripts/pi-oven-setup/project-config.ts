@@ -17,6 +17,7 @@
 
 import { promises as fs, readFileSync } from "fs";
 import * as path from "path";
+import * as os from "os";
 import { resolveLanguage } from "../../.omp/extensions/pi-oven-runtime/language";
 
 /**
@@ -199,4 +200,92 @@ export async function clearSetupComplete(opts?: { cwd?: string }): Promise<void>
 
   const { [SETUP_COMPLETE_KEY]: _removed, ...rest } = existing;
   await fs.writeFile(file, JSON.stringify(rest, null, 2) + "\n", "utf-8");
+}
+
+// ---------------------------------------------------------------------------
+// Global config helpers — ~/.pi-oven/config.json
+// Same schema as the project-local config ({ language, setupCompletedAt }).
+// Writes to os.homedir()/.pi-oven/config.json (or homeDir override for tests).
+// ---------------------------------------------------------------------------
+
+function globalConfigPath(homeDir: string): string {
+  return path.resolve(homeDir, CONFIG_DIR, CONFIG_FILE);
+}
+
+/**
+ * Write `{ language }` to `~/.pi-oven/config.json` (or homeDir/.pi-oven/config.json).
+ * Creates the directory if missing and read-merges to preserve other keys.
+ * The `lang` value must already be validated (pass through resolveLanguage first).
+ */
+export async function setGlobalLanguage(
+  lang: ProjectLanguage,
+  opts?: { homeDir?: string }
+): Promise<void> {
+  const homeDir = opts?.homeDir ?? os.homedir();
+  const file = globalConfigPath(homeDir);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+
+  const existing = await readConfigObject(file);
+  const merged = { ...existing, language: lang };
+  await fs.writeFile(file, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+}
+
+/**
+ * Read the global default language from `~/.pi-oven/config.json`.
+ * Returns the canonical/free-form language, or `null` if absent/unparsable/
+ * missing/invalid. Re-validates through `resolveLanguage` (same defence as the
+ * project-local reader).
+ */
+export async function readGlobalLanguage(
+  opts?: { homeDir?: string }
+): Promise<ProjectLanguage | null> {
+  const homeDir = opts?.homeDir ?? os.homedir();
+  const file = globalConfigPath(homeDir);
+  try {
+    const raw = await fs.readFile(file, "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const lang = (parsed as Record<string, unknown>).language;
+    if (typeof lang === "string") return resolveLanguage(lang);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Mark setup complete globally by writing `setupCompletedAt` (current ISO-8601
+ * timestamp) to `~/.pi-oven/config.json`. Read-merges so other keys survive.
+ */
+export async function markSetupCompleteGlobal(opts?: { homeDir?: string }): Promise<void> {
+  const homeDir = opts?.homeDir ?? os.homedir();
+  const file = globalConfigPath(homeDir);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+
+  const existing = await readConfigObject(file);
+  const merged = { ...existing, [SETUP_COMPLETE_KEY]: new Date().toISOString() };
+  await fs.writeFile(file, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+}
+
+/**
+ * Synchronously report whether global setup has been completed: `true` iff
+ * `~/.pi-oven/config.json` parses and carries a non-empty `setupCompletedAt`.
+ * Fail-soft to `false` on any error. Sync so it is safe to call at extension load.
+ */
+export function isSetupCompleteGlobal(opts?: { homeDir?: string }): boolean {
+  const homeDir = opts?.homeDir ?? os.homedir();
+  const file = globalConfigPath(homeDir);
+  try {
+    const raw = readFileSync(file, "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return false;
+    }
+    const ts = (parsed as Record<string, unknown>)[SETUP_COMPLETE_KEY];
+    return typeof ts === "string" && ts.length > 0;
+  } catch {
+    return false;
+  }
 }

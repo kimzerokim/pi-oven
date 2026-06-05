@@ -2,8 +2,8 @@
 name: pi-oven:qa-tester
 description: E2E and integration test specialist — dev server health checks, Playwright visual verification, regression suite execution, and console error gating
 model:
-  - opencode-zen/qwen3.5-plus
-  - opencode-zen/qwen3.6-plus
+  - openai-codex/gpt-5.4-mini
+  - anthropic/claude-sonnet-4-6
 thinkingLevel: high
 mode: subagent
 tools: ["*"]

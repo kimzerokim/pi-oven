@@ -259,7 +259,7 @@
     <span><span class="dot"></span> 24개 file-based agents</span>
     <span><span class="dot"></span> 22개 skills (3개 UC5 ops 포함)</span>
     <span><span class="dot"></span> 3개 commands · 1개 omp extension</span>
-    <span><span class="dot amber"></span> 6개 model family heterogeneous</span>
+    <span><span class="dot amber"></span> 7개 model family heterogeneous</span>
   </div>
   <p>
     <strong>pi-oven 는 omp 의 플러그인입니다</strong> (<code>oh-my-pi</code>, pi-coding-agent harness). 마켓플레이스 <code>kzk</code> 에 <code>pi-oven@kzk</code> 로 배포됩니다 (현재 <strong>v0.1.5</strong>, 설치 캐시 <code>kzk___pi-oven___0.1.5</code>).
@@ -271,7 +271,7 @@
   </p>
   <div class="note">
     <strong>pi-oven 의 차별점</strong>: 형제 프로젝트 <code>kzk-harness</code> 는 Claude Code (전부 Anthropic) 위에 markdown 스킬 + 훅을 얹습니다.
-    pi-oven 는 다릅니다 — 24개 에이전트가 <strong>이종(heterogeneous) 모델에 걸쳐</strong> 돌고 (gpt-5.4 · minimax-m2.5 · qwen3.5-plus · kimi-k2.6 · opus-4-8), 각 에이전트 본문에 그 모델에 맞춰진 execution-context 블록을 담습니다.
+    pi-oven 는 다릅니다 — 24개 에이전트가 <strong>이종(heterogeneous) 모델에 걸쳐</strong> 돌고 (gpt-5.4 · gpt-5.4-mini · minimax-m2.5 · glm-5.1 · kimi-k2.6 · opus-4-8), 각 에이전트 본문에 그 모델에 맞춰진 execution-context 블록을 담습니다.
     Model-fit 이 일급(first-class) 관심사입니다. 자세한 내용은 <a href="#model-routing">§3 모델 라우팅</a>.
   </div>
   <div class="note">
@@ -335,7 +335,7 @@
   <h2>3. 모델 라우팅 — pi-oven 의 핵심 차별점 ★</h2>
   <p>
     24개 에이전트는 <strong>이종 모델에 걸쳐</strong> 돕니다. 에이전트가 전부 Anthropic 위에서 도는 것이 아닙니다.
-    PROFILE_A 는 24개 역할을 gpt-5.4 · minimax-m2.5 · qwen3.5-plus · kimi-k2.6 · opus-4-8 에 분산합니다.
+    PROFILE_A 는 24개 역할을 gpt-5.4 · gpt-5.4-mini · minimax-m2.5 · glm-5.1 · kimi-k2.6 · opus-4-8 에 분산합니다.
   </p>
 
   <h3>핵심 원칙 — 모델별 execution-context</h3>
@@ -347,8 +347,9 @@
     <thead><tr><th>모델 패밀리</th><th>execution-context 튜닝 방향</th></tr></thead>
     <tbody>
       <tr><td><code>openai-codex/gpt-5.4</code></td><td><strong>Bias to action / XML-bound rules</strong> — upfront plan 선언 금지 (early stopping 유발), 합리적 가정으로 바로 실행, outcome-first 출력. 강한 규칙은 XML 태그로 바운드해 falsifiability/구조 강조 (executor/debugger/test-engineer/architect/metis/data-runner). primary openai-codex → opencode-zen <code>gpt-5.4</code> fallback.</td></tr>
-      <tr><td><code>opencode-zen/minimax-m2.5</code></td><td><strong>Crisp + schema</strong> — 간결하고 schema 지향. 빠른 read-only 탐색/문서/리서치 생성에 최적 (explorer/writer/document-specialist/deep-researcher).</td></tr>
-      <tr><td><code>opencode-zen/qwen3.5-plus</code></td><td><strong>Vision + structured outputs</strong> — 멀티모달 + 구조화 출력, thinking-level 에 맞춘 추론 깊이 (multimodal-looker/qa-tester/designer/code-simplifier/librarian/git-master).</td></tr>
+      <tr><td><code>openai-codex/gpt-5.4-mini</code></td><td><strong>Vision / lightweight</strong> — 멀티모달 + 경량 추론. vision 분석 + QA 검증에 최적 (multimodal-looker/qa-tester).</td></tr>
+      <tr><td><code>opencode-zen/minimax-m2.5</code></td><td><strong>Crisp + schema</strong> — 간결하고 schema 지향. 빠른 read-only 탐색/문서/리서치/librarian/git 작업에 최적 (explorer/writer/document-specialist/deep-researcher/librarian/git-master).</td></tr>
+      <tr><td><code>opencode-zen/glm-5.1</code></td><td><strong>Design + simplification</strong> — UI/UX 디자인 spec 및 dead-code 단순화에 최적 (designer/code-simplifier).</td></tr>
       <tr><td><code>opencode-zen/kimi-k2.6</code></td><td><strong>Structured + thinking-match</strong> — 구조화된 출력, thinking-level 에 맞춘 추론 깊이 (code-reviewer/verifier/analyst/tracer).</td></tr>
       <tr><td><code>anthropic/claude-opus-4-8</code></td><td><strong>XML-friendly (advisory)</strong> — XML 구조에 친화적, 깊은 분석/리뷰 (critic/planner/security-reviewer/oracle). fallback <code>opencode-zen/claude-opus-4-8</code>.</td></tr>
     </tbody>
@@ -361,8 +362,9 @@
     <tbody>
       <tr><td><code>anthropic/claude-opus-4-8</code></td><td>xhigh / high</td><td>critic, planner, security-reviewer, oracle</td></tr>
       <tr><td><code>openai-codex/gpt-5.4</code></td><td>high / xhigh</td><td>executor, debugger, test-engineer, architect, metis, data-runner (+ planner alt)</td></tr>
-      <tr><td><code>opencode-zen/minimax-m2.5</code></td><td>medium / high</td><td>explorer, writer, document-specialist, deep-researcher</td></tr>
-      <tr><td><code>opencode-zen/qwen3.5-plus</code></td><td>high</td><td>multimodal-looker, qa-tester (vision), designer, code-simplifier, librarian, git-master</td></tr>
+      <tr><td><code>openai-codex/gpt-5.4-mini</code></td><td>medium</td><td>multimodal-looker, qa-tester (vision)</td></tr>
+      <tr><td><code>opencode-zen/minimax-m2.5</code></td><td>medium / high</td><td>explorer, writer, document-specialist, deep-researcher, librarian, git-master</td></tr>
+      <tr><td><code>opencode-zen/glm-5.1</code></td><td>high</td><td>designer, code-simplifier</td></tr>
       <tr><td><code>opencode-zen/kimi-k2.6</code></td><td>medium → xhigh</td><td>code-reviewer, verifier, analyst, tracer</td></tr>
     </tbody>
   </table>
@@ -402,8 +404,10 @@ flowchart LR
   </div>
   <div class="note">
     <strong>Provider whitelist</strong> (load + CI lint 에서 강제): <code>opencode-zen/</code>, <code>openai-codex/</code> 는 항상 허용; <code>anthropic/</code> 는 에이전트 파일이 이미 <code>anthropic/*</code> 모델을 선언한 경우에만.
-    <strong>PROFILE_B</strong> (openai-codex-only opt-in) 는 <strong>DEFERRED</strong> — 사용자 명시 지시 없이 bump/재정의 금지.
-    <strong>PROFILE_C</strong> (tier-appropriate all-Anthropic) — <code>--profile C</code> 는 24개 전 역할에 <code>task.agentModelOverrides</code> 를 기록하는 유일한 프로파일 (A/B 는 오케스트레이터 모델만 설정). <code>--reset</code> 으로 기록된 override 제거.
+    <strong>PROFILE_B</strong> (openai-codex-only): gpt-5.5/gpt-5.4/gpt-5.4-mini by tier. git-master 는 gpt-5.4-mini (gpt-5.4-nano 미지원). 24개 전 역할 <code>task.agentModelOverrides</code> 기록.
+    <strong>PROFILE_C</strong> (all-Anthropic): opus-4-8 / sonnet-4-6. git-master + orchestrator title 은 sonnet-4-6 (haiku-4-5 미지원). 24개 전 역할 <code>task.agentModelOverrides</code> 기록.
+    <strong>PROFILE_D</strong> (opencode-zen-only, 신규): kimi-k2.6 (heavy/coding) · minimax-m2.5 (mid/low) · gemini-3-flash (vision). Anthropic/OpenAI Codex 불필요. 24개 전 역할 <code>task.agentModelOverrides</code> 기록. <code>--reset</code> 으로 기록된 override 제거.
+    Profile A 는 오케스트레이터 모델만 설정 (per-role override 없음); B/C/D 는 24개 전 역할 override 기록.
   </div>
 </section>
 
@@ -968,8 +972,8 @@ flowchart TD
     <tbody>
       <tr>
         <td><code>/pi-oven:setup</code></td>
-        <td>agent 모델 라우팅 셋업 위저드 — Profile A (릴리스 기본), Profile B (openai-codex-only), Profile C (all-Anthropic). 메인 오케스트레이터 모델도 설정.</td>
-        <td><code>--status</code> · <code>--reset</code> · <code>--import &lt;file&gt;</code> · <code>--apply --profile A|B|C</code> · <code>--validate smoke|full|none</code> · <code>--override &lt;role&gt;=&lt;model&gt;</code> · <code>--isolate</code> | <code>--no-isolate</code></td>
+        <td>agent 모델 라우팅 셋업 위저드 — Profile A (릴리스 기본), Profile B (openai-codex-only), Profile C (all-Anthropic), Profile D (opencode-zen-only). 메인 오케스트레이터 모델도 설정.</td>
+        <td><code>--status</code> · <code>--reset</code> · <code>--import &lt;file&gt;</code> · <code>--apply --profile A|B|C|D</code> · <code>--validate smoke|full|none</code> · <code>--override &lt;role&gt;=&lt;model&gt;</code> · <code>--isolate</code> | <code>--no-isolate</code></td>
       </tr>
       <tr>
         <td><code>/pi-oven:doctor</code></td>
@@ -1032,7 +1036,7 @@ flowchart TD
     </tbody>
   </table>
 
-  <h3><code>opencode-zen/minimax-m2.5</code> — crisp 탐색 / 문서 / 리서치 (4)</h3>
+  <h3><code>opencode-zen/minimax-m2.5</code> — crisp 탐색 / 문서 / 리서치 / librarian / git (6)</h3>
   <table>
     <thead><tr><th>role</th><th>thinkingLevel</th><th>용도</th></tr></thead>
     <tbody>
@@ -1040,21 +1044,29 @@ flowchart TD
       <tr><td><code>pi-oven:writer</code></td><td>medium</td><td>기술 문서 — README, API docs, changelog, inline comment, user guide</td></tr>
       <tr><td><code>pi-oven:document-specialist</code></td><td>medium</td><td>외부 docs + SDK reference — local repo docs first, curated backend, read(URL) fallback (no 재귀 dispatch)</td></tr>
       <tr><td><code>pi-oven:deep-researcher</code> <span class="badge entry">신규</span></td><td>high</td><td>멀티소스 adversarial 리서치 — web_search + arxiv/PDF full-text + 모순 검증 + cited synthesis. <code>retain</code>/<code>recall</code>/<code>reflect</code> 핵심. librarian(라이브러리 소스) · document-specialist(빠른 docs) 와 구분</td></tr>
+      <tr><td><code>pi-oven:librarian</code></td><td>high</td><td>웹 리서치 + 외부 문서 — 공식 docs, SDK reference, OSS 예제, citation-backed (READONLY)</td></tr>
+      <tr><td><code>pi-oven:git-master</code></td><td>medium</td><td>git 전문 — atomic commit, style-matched message, rebase, safe branch 관리</td></tr>
     </tbody>
   </table>
 
-  <h3><code>opencode-zen/qwen3.5-plus</code> — vision / 디자인 / 리뷰 / git (6)</h3>
+  <h3><code>openai-codex/gpt-5.4-mini</code> — vision (2)</h3>
   <table>
     <thead><tr><th>role</th><th>thinkingLevel</th><th>용도</th></tr></thead>
     <tbody>
-      <tr><td><code>pi-oven:multimodal-looker</code></td><td>high</td><td>vision + 이미지 분석 — 스크린샷, UI mockup, 다이어그램, PDF (READONLY)</td></tr>
-      <tr><td><code>pi-oven:qa-tester</code></td><td>high</td><td>E2E + 통합 테스트 — dev server health check, Playwright visual 검증, 회귀 suite, console error gating</td></tr>
-      <tr><td><code>pi-oven:designer</code></td><td>high</td><td>UI/UX 디자인 구현 — 컴포넌트 spec, layout, accessibility, design system, mockup handoff</td></tr>
-      <tr><td><code>pi-oven:code-simplifier</code></td><td>xhigh</td><td>deletion-first 단순화 — dead code, AI slop, 불필요 복잡도 제거 (정확한 동작 보존)</td></tr>
-      <tr><td><code>pi-oven:librarian</code></td><td>high</td><td>웹 리서치 + 외부 문서 — 공식 docs, SDK reference, OSS 예제, citation-backed (READONLY)</td></tr>
-      <tr><td><code>pi-oven:git-master</code></td><td>high</td><td>git 전문 — atomic commit, style-matched message, rebase, safe branch 관리</td></tr>
+      <tr><td><code>pi-oven:multimodal-looker</code></td><td>medium</td><td>vision + 이미지 분석 — 스크린샷, UI mockup, 다이어그램, PDF (READONLY)</td></tr>
+      <tr><td><code>pi-oven:qa-tester</code></td><td>medium</td><td>E2E + 통합 테스트 — dev server health check, Playwright visual 검증, 회귀 suite, console error gating</td></tr>
     </tbody>
   </table>
+
+  <h3><code>opencode-zen/glm-5.1</code> — 디자인 / 단순화 (2)</h3>
+  <table>
+    <thead><tr><th>role</th><th>thinkingLevel</th><th>용도</th></tr></thead>
+    <tbody>
+      <tr><td><code>pi-oven:designer</code></td><td>high</td><td>UI/UX 디자인 구현 — 컴포넌트 spec, layout, accessibility, design system, mockup handoff</td></tr>
+      <tr><td><code>pi-oven:code-simplifier</code></td><td>high</td><td>deletion-first 단순화 — dead code, AI slop, 불필요 복잡도 제거 (정확한 동작 보존)</td></tr>
+    </tbody>
+  </table>
+
 </section>
 
 <section id="extension">

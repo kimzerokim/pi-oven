@@ -3,7 +3,7 @@ name: pi-oven:explorer
 description: Read-only codebase search specialist — files, patterns, relationships
 model:
   - opencode-zen/minimax-m2.5
-  - opencode-zen/qwen3.5-plus
+  - opencode-zen/glm-5.1
 thinkingLevel: medium
 mode: subagent
 tools: ["read","search","find","bash","web_search","lsp","ast_grep"]

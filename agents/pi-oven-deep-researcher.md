@@ -3,7 +3,7 @@ name: pi-oven:deep-researcher
 description: Multi-source adversarial web researcher — fan-out search, PDF/arxiv ingestion, contradiction check, synthesis with memory
 model:
   - opencode-zen/minimax-m2.5
-  - opencode-zen/qwen3.5-plus
+  - opencode-zen/glm-5.1
 thinkingLevel: high
 mode: subagent
 tools: ["read","search","find","web_search","retain","recall","reflect"]

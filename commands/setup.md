@@ -1,7 +1,7 @@
 ---
 name: pi-oven-setup
-description: Configure pi-oven agent model routing — Profile A (release default), Profile B (openai-codex-only), or Profile C (tier-appropriate all-Anthropic)
-argument-hint: [--status | --reset [--full] | --import <file> | --apply --profile A|B|C] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate]
+description: Configure pi-oven agent model routing — Profile A (release default), Profile B (openai-codex-only), Profile C (all-Anthropic), or Profile D (opencode-zen-only)
+argument-hint: [--status | --reset [--full] | --import <file> | --apply --profile A|B|C|D] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate]
 ---
 
 # /pi-oven:setup
@@ -39,7 +39,9 @@ Parse the user's intent from their initial request:
 
 ### Step 0 — Primary language
 
-Before anything else, ask the user which language setup and the agents should use. Call the `pi-oven_ask` tool with exactly two arguments — `question` (a string) and `options` (an array of `{ label, description }`). It takes no other arguments, and its UI automatically appends an "Other (type your own)" entry. Then read the user's choice from `details.selected` (the picked option's label) or `details.customInput` (free text), falling back to the visible `User selected:` / `User provided custom input:` line. If neither is present, treat it as a cancel and stop — do NOT silently re-ask.
+Before anything else, ask the user which language will be the **default response language going forward** — this is a global preference, not just for the current project. Call the `pi-oven_ask` tool with exactly two arguments — `question` (a string) and `options` (an array of `{ label, description }`). It takes no other arguments, and its UI automatically appends an "Other (type your own)" entry. Then read the user's choice from `details.selected` (the picked option's label) or `details.customInput` (free text), falling back to the visible `User selected:` / `User provided custom input:` line. If neither is present, treat it as a cancel and stop — do NOT silently re-ask.
+
+Use a question framing like: "pi-oven 셋업 — 앞으로의 기본 응답 언어를 무엇으로 할까요?" (or in English: "pi-oven setup — what should be the default response language going forward?")
 
 Exact option set:
 
@@ -56,7 +58,7 @@ bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language en    # if English wa
 bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language "<the exact name the user typed>"   # if "Other" was chosen, e.g. --language "Español"
 ```
 
-This writes the per-project default language to `<cwd>/.pi-oven/config.json` (machine-local, gitignored); the pi-oven extension injects it at runtime so agents respond in the chosen language. Canonical `ko`/`en` carry rich directives; any other accepted name gets a generic directive that simply names the language.
+This writes the **global** default language to `~/.pi-oven/config.json` (machine-global, never committed), persisting the choice as the default response language for all future pi-oven sessions. A per-project override can be set in `<cwd>/.pi-oven/config.json` (machine-local, gitignored) and takes precedence when present. The pi-oven extension injects the resolved language at runtime so agents respond in the chosen language. Canonical `ko`/`en` carry rich directives; any other accepted name gets a generic directive that simply names the language.
 
 Then conduct ALL remaining steps (Steps 1–6 below) IN the chosen language — render every prompt, summary, and report in Korean if `한국어 (Korean)` was picked, in the named language if a custom one was typed, otherwise in English.
 
@@ -84,7 +86,7 @@ Detecting provider authentication...
   openai-codex  authed  (N models available)
   anthropic     authed  (N models available)   ← only if detected
 
-Available profiles: A (default), B (openai-codex-only), C (tier-appropriate all-Anthropic)
+Available profiles: A (default), B (openai-codex-only), C (all-Anthropic), D (opencode-zen-only)
 ```
 
 If neither openai-codex nor anthropic is detected, say:
@@ -92,7 +94,7 @@ If neither openai-codex nor anthropic is detected, say:
 ```
   anthropic     not detected
 
-Available profiles: A only.
+Available profiles: A (default), D (opencode-zen-only).
 Profile B requires openai-codex authentication; Profile C requires direct Anthropic API authentication.
 To enable: authenticate with the relevant provider in omp, then re-run /pi-oven:setup.
 ```
@@ -124,20 +126,22 @@ Present the options based on Step 1 findings:
 
 - Profile A (release default, opencode-zen + openai-codex + anthropic advisory roles) — always available.
 - Profile B (openai-codex-only) — only show this option if `openai-codex` auth was detected in Step 1.
-- Profile C (tier-appropriate all-Anthropic) — only show this option if native `anthropic` auth was detected in Step 1.
+- Profile C (all-Anthropic) — only show this option if native `anthropic` auth was detected in Step 1.
+- Profile D (opencode-zen-only) — always available when `opencode-zen` auth was detected in Step 1.
 
-If only Profile A is possible, default to it without asking. Otherwise, show the available profiles and ask:
+If only Profile A is possible (no openai-codex, no anthropic), also offer Profile D if opencode-zen is authed. Otherwise, show the available profiles and ask:
 
 ```
 Select profile:
   [A] Profile A — Release default (opencode-zen + openai-codex, anthropic for 4 advisory roles)   (default)
-  [B] Profile B — openai-codex-only (gpt-5.5/5.4/5.4-mini/5.4-nano by tier, writes 24 per-role overrides)   ← only if openai-codex authed
-  [C] Profile C — All-Anthropic tier-appropriate (opus-4-8 / sonnet-4-6 / haiku-4-5, writes 24 per-role overrides)   ← only if anthropic authed
+  [B] Profile B — openai-codex-only (gpt-5.5/5.4/5.4-mini by tier, writes 24 per-role overrides)   ← only if openai-codex authed
+  [C] Profile C — All-Anthropic (opus-4-8 / sonnet-4-6, writes 24 per-role overrides)   ← only if anthropic authed
+  [D] Profile D — opencode-zen-only (kimi-k2.6 / minimax-m2.5 / gemini-3-flash, writes 24 per-role overrides)   ← always if opencode-zen authed
 
 Enter choice [A]:
 ```
 
-If the user selects Profile B or Profile C, display this notice and ask for confirmation before proceeding:
+If the user selects Profile B, C, or D, display this notice and ask for confirmation before proceeding:
 
 ```
 NOTICE: Auth-fallback limitation (Spec A §6.3)
@@ -148,10 +152,11 @@ pi-oven subagents may incur unexpected billing if their primary model fails auth
 This is an omp internal behavior that pi-oven cannot override.
 Profile B is safe only when openai-codex auth is active and stable.
 Profile C is safe only when anthropic auth is active and stable.
-Proceed with Profile <B|C>? [y/N]:
+Profile D is safe only when opencode-zen auth is active and stable.
+Proceed with Profile <B|C|D>? [y/N]:
 ```
 
-Profiles B and C each write all 24 `task.agentModelOverrides` entries (one per role) into `~/.omp/agent/config.yml`. Profile A only sets the main orchestrator model (`modelRoles`) — it writes no per-role overrides (subagent models come from committed agent frontmatter). Run `--reset` to clear the 24 written overrides and return to profile-defaults-from-frontmatter routing.
+Profiles B, C, and D each write all 24 `task.agentModelOverrides` entries (one per role) into `~/.omp/agent/config.yml`. Profile A only sets the main orchestrator model (`modelRoles`) — it writes no per-role overrides (subagent models come from committed agent frontmatter). Run `--reset` to clear the 24 written overrides and return to profile-defaults-from-frontmatter routing.
 
 ### Step 4 — Optional per-role override
 
@@ -245,8 +250,9 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 | Flag | Behavior |
 |---|---|
 | `--profile A` | Apply Profile A (release default). |
-| `--profile B` | Apply Profile B (openai-codex-only: gpt-5.5 for xhigh roles, gpt-5.4 for high, gpt-5.4-mini for medium, gpt-5.4-nano for low). Requires openai-codex auth detected. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
-| `--profile C` | Apply Profile C (tier-appropriate all-Anthropic: opus-4-8 for high/xhigh roles, sonnet-4-6 for medium, haiku-4-5 for low). Requires anthropic auth. Writes all 24 per-role `task.agentModelOverrides`. Profile A is orchestrator-only (sets modelRoles, no per-role overrides); B and C each write all 24. Reversible via `--reset`. |
+| `--profile B` | Apply Profile B (openai-codex-only: gpt-5.5 for xhigh roles, gpt-5.4 for high, gpt-5.4-mini for medium and git-master; gpt-5.4-nano is unsupported). Requires openai-codex auth detected. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
+| `--profile C` | Apply Profile C (all-Anthropic: opus-4-8 for high/xhigh roles, sonnet-4-6 for medium and for git-master + orchestrator title; haiku-4-5 is unavailable). Requires anthropic auth. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
+| `--profile D` | Apply Profile D (opencode-zen-only: kimi-k2.6 for heavy/coding roles, minimax-m2.5 for mid/low, gemini-3-flash for vision). Requires opencode-zen auth. Writes all 24 per-role `task.agentModelOverrides`. Profile A is orchestrator-only (sets modelRoles, no per-role overrides); B, C, and D each write all 24. Reversible via `--reset`. |
 | `--override <role>=<model>` | Override a specific role's model in config.yml task.agentModelOverrides. Repeatable. |
 | `--validate=smoke` | (Default) Ping 7 MUST-tier roles after persist. |
 | `--validate=full` | Ping all 24 roles. |
@@ -255,7 +261,7 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 | `--reset` | Remove all `pi-oven:*` keys from config.yml task.agentModelOverrides. Does not touch agent files. |
 | `--reset --full` | Full reset for a clean uninstall: in addition to removing the `pi-oven:*` overrides, reset the other pi-oven-managed keys (`modelRoles`, `disabledProviders`, `setupVersion`) to their omp type-defaults so config.yml returns to the "new user" state. Never touches omp-internal keys (e.g. `lastChangelogVersion`). No-op-safe when those keys are absent. |
 | `--import <file>` | Import JSON config file (schema: §7.1). |
-| `--language <ko\|en\|name>` | Persist the per-project default language to `.pi-oven/config.json`. Accepts `ko`/`en` or any plain language name (letters, spaces, `()-.`; ≤ 40 chars). Set in Step 0. |
+| `--language <ko\|en\|name>` | Persist the default response language globally to `~/.pi-oven/config.json` (machine-global). A per-project override in `<cwd>/.pi-oven/config.json` takes precedence when present. Accepts `ko`/`en` or any plain language name (letters, spaces, `()-.`; ≤ 40 chars). Set in Step 0. |
 | `--isolate` | Make omp IGNORE the `~/.claude` Claude-Code context layer (omc CLAUDE.md + pi-oven): writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (user-global, machine-local, preserves sibling providers) and purges any legacy `claude-plugins` entry. It does NOT disable `claude-plugins` — pi-oven's own `/pi-oven:*` commands load through that provider, so disabling it would remove them. omc/agentmemory marketplace plugin commands remain visible. pi-oven keeps loading and injects the repo-root `CLAUDE.md`. omp-only — never touches `~/.claude` on disk. Restart omp to apply. Combinable with `--profile`/`--apply` (runs after). |
 | `--no-isolate` | Undo `--isolate`: remove `claude` + any legacy `claude-plugins` from `disabledProviders` (preserves any other providers). |
 
@@ -274,4 +280,4 @@ All `omp plugin config` operations use the plugin name `pi-oven` (bare). Do NOT 
 
 ## Known limitations (surface if relevant)
 
-- **Parent session fallback hole**: When a pi-oven subagent's primary model is unauthed, omp falls back to the parent session model (not the next array entry). Profile B is safe only when openai-codex auth is active and stable; Profile C is safe only when anthropic auth is active and stable. This is an omp internal behavior that pi-oven cannot override (Spec A §6.3).
+- **Parent session fallback hole**: When a pi-oven subagent's primary model is unauthed, omp falls back to the parent session model (not the next array entry). Profile B is safe only when openai-codex auth is active and stable; Profile C is safe only when anthropic auth is active and stable; Profile D is safe only when opencode-zen auth is active and stable. This is an omp internal behavior that pi-oven cannot override (Spec A §6.3).

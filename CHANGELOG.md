@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.8 - 2026-06-05
+
+- docs(release): bump human-facing version refs to v0.1.8
+- feat(profiles): redefine A/B/C model routing — cheaper A, openai-codex B, anthropic C
+- feat(setup): add Profile C (all-Anthropic) + bump PROFILE_B to opus-4-8
+- fix(setup): parse quoted agent name in status + bound validate ping timeout
 ## v0.1.7 - 2026-06-04
 
 - docs(release): bump human-facing version refs to v0.1.7

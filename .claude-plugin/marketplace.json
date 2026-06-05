@@ -16,7 +16,7 @@
         "path": ".",
         "ref": "main"
       },
-      "version": "0.1.7",
+      "version": "0.1.8",
       "category": "workflow",
       "tags": [
         "autonomous",

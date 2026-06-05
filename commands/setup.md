@@ -1,6 +1,6 @@
 ---
 name: pi-oven-setup
-description: Configure pi-oven agent model routing — Profile A (release default), Profile B (Anthropic opt-in), or Profile C (tier-appropriate all-Anthropic)
+description: Configure pi-oven agent model routing — Profile A (release default), Profile B (openai-codex-only), or Profile C (tier-appropriate all-Anthropic)
 argument-hint: [--status | --reset [--full] | --import <file> | --apply --profile A|B|C] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate]
 ---
 
@@ -71,8 +71,8 @@ omp --list-models 2>&1
 Parse the "Provider models" section. Look for native provider rows:
 
 - A line matching `^opencode-zen\s+` → opencode-zen is authed.
-- A line matching `^openai-codex\s+` → openai-codex is authed.
-- A line matching `^anthropic\s+claude-` → native Anthropic API is authed (direct API key, NOT opencode-zen wrappers). This is the Profile B activation condition.
+- A line matching `^openai-codex\s+` → openai-codex is authed. This is the Profile B activation condition.
+- A line matching `^anthropic\s+claude-` → native Anthropic API is authed (direct API key, NOT opencode-zen wrappers). This is the Profile C activation condition.
 
 Important: rows like `opencode-zen/claude-*` in the model ID column do NOT count as native Anthropic auth. Only a dedicated `anthropic` provider row in the Provider models table confirms native auth.
 
@@ -84,17 +84,17 @@ Detecting provider authentication...
   openai-codex  authed  (N models available)
   anthropic     authed  (N models available)   ← only if detected
 
-Available profiles: A (default), B (Anthropic opt-in), C (tier-appropriate all-Anthropic)
+Available profiles: A (default), B (openai-codex-only), C (tier-appropriate all-Anthropic)
 ```
 
-If anthropic is not detected, say:
+If neither openai-codex nor anthropic is detected, say:
 
 ```
   anthropic     not detected
 
 Available profiles: A only.
-Profiles B and C require direct Anthropic API authentication.
-To enable: authenticate with the Anthropic provider in omp, then re-run /pi-oven:setup.
+Profile B requires openai-codex authentication; Profile C requires direct Anthropic API authentication.
+To enable: authenticate with the relevant provider in omp, then re-run /pi-oven:setup.
 ```
 
 ### Step 2 — Parent session check
@@ -122,17 +122,17 @@ If the file is absent or stale, proceed without comment.
 
 Present the options based on Step 1 findings:
 
-- Profile A (release default, opencode-zen + openai-codex) — always available.
-- Profile B (Anthropic opt-in) — only show this option if native `anthropic` auth was detected in Step 1.
+- Profile A (release default, opencode-zen + openai-codex + anthropic advisory roles) — always available.
+- Profile B (openai-codex-only) — only show this option if `openai-codex` auth was detected in Step 1.
 - Profile C (tier-appropriate all-Anthropic) — only show this option if native `anthropic` auth was detected in Step 1.
 
-If only Profile A is possible, default to it without asking. If anthropic is also available, ask:
+If only Profile A is possible, default to it without asking. Otherwise, show the available profiles and ask:
 
 ```
 Select profile:
-  [A] Profile A — Release default (opencode-zen + openai-codex)   (default)
-  [B] Profile B — Anthropic opt-in (anthropic primary, opencode-zen fallback)
-  [C] Profile C — All-Anthropic tier-appropriate (opus-4-8 / sonnet-4-6 / haiku-4-5, writes 24 per-role overrides)
+  [A] Profile A — Release default (opencode-zen + openai-codex, anthropic for 4 advisory roles)   (default)
+  [B] Profile B — openai-codex-only (gpt-5.5/5.4/5.4-mini/5.4-nano by tier, writes 24 per-role overrides)   ← only if openai-codex authed
+  [C] Profile C — All-Anthropic tier-appropriate (opus-4-8 / sonnet-4-6 / haiku-4-5, writes 24 per-role overrides)   ← only if anthropic authed
 
 Enter choice [A]:
 ```
@@ -143,14 +143,15 @@ If the user selects Profile B or Profile C, display this notice and ask for conf
 NOTICE: Auth-fallback limitation (Spec A §6.3)
 When a pi-oven subagent's primary model is in the omp registry but unauthed,
 omp falls back to the PARENT SESSION's active model — not the next item in
-the model array. If your parent session runs an anthropic model, pi-oven
-subagents may use Anthropic billing even when their primary model fails auth.
+the model array. If your parent session runs a subscription-provider model,
+pi-oven subagents may incur unexpected billing if their primary model fails auth.
 This is an omp internal behavior that pi-oven cannot override.
-Profile B/C is safe when anthropic auth is active and stable.
+Profile B is safe only when openai-codex auth is active and stable.
+Profile C is safe only when anthropic auth is active and stable.
 Proceed with Profile <B|C>? [y/N]:
 ```
 
-Profile C additionally writes all 24 `task.agentModelOverrides` entries (one per role) into `~/.omp/agent/config.yml`. This is the only profile that does so — A and B only set the main orchestrator model (`modelRoles`). Run `--reset` to clear the 24 written overrides and return to profile-defaults-from-frontmatter routing.
+Profiles B and C each write all 24 `task.agentModelOverrides` entries (one per role) into `~/.omp/agent/config.yml`. Profile A only sets the main orchestrator model (`modelRoles`) — it writes no per-role overrides (subagent models come from committed agent frontmatter). Run `--reset` to clear the 24 written overrides and return to profile-defaults-from-frontmatter routing.
 
 ### Step 4 — Optional per-role override
 
@@ -165,7 +166,7 @@ Apply profile defaults to all 24 roles? [Y/n]:
 `n`: collect per-role overrides through conversation. For each role the user wants to override, ask which model to use. Validate that the model string starts with an allowed prefix:
 
 - Always allowed: `opencode-zen/`, `openai-codex/`
-- Allowed when Profile B AND anthropic was detected: `anthropic/`
+- Allowed when Profile C AND anthropic was detected: `anthropic/`
 
 Reject strings that do not match with a clear error and re-ask. When the user specifies at least one override, the profile is treated as `custom`.
 
@@ -244,8 +245,8 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 | Flag | Behavior |
 |---|---|
 | `--profile A` | Apply Profile A (release default). |
-| `--profile B` | Apply Profile B (Anthropic opt-in). Requires anthropic auth detected. |
-| `--profile C` | Apply Profile C (tier-appropriate all-Anthropic: opus-4-8 for high/xhigh roles, sonnet-4-6 for medium, haiku-4-5 for low). Requires anthropic auth. Writes all 24 per-role `task.agentModelOverrides` — the only profile that does so (A/B write zero per-role overrides). Reversible via `--reset`. |
+| `--profile B` | Apply Profile B (openai-codex-only: gpt-5.5 for xhigh roles, gpt-5.4 for high, gpt-5.4-mini for medium, gpt-5.4-nano for low). Requires openai-codex auth detected. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
+| `--profile C` | Apply Profile C (tier-appropriate all-Anthropic: opus-4-8 for high/xhigh roles, sonnet-4-6 for medium, haiku-4-5 for low). Requires anthropic auth. Writes all 24 per-role `task.agentModelOverrides`. Profile A is orchestrator-only (sets modelRoles, no per-role overrides); B and C each write all 24. Reversible via `--reset`. |
 | `--override <role>=<model>` | Override a specific role's model in config.yml task.agentModelOverrides. Repeatable. |
 | `--validate=smoke` | (Default) Ping 7 MUST-tier roles after persist. |
 | `--validate=full` | Ping all 24 roles. |
@@ -273,4 +274,4 @@ All `omp plugin config` operations use the plugin name `pi-oven` (bare). Do NOT 
 
 ## Known limitations (surface if relevant)
 
-- **Parent session fallback hole**: When a pi-oven subagent's primary model is unauthed, omp falls back to the parent session model (not the next array entry). Profile B is safe only when Anthropic auth is active and stable. This is an omp internal behavior that pi-oven cannot override (Spec A §6.3).
+- **Parent session fallback hole**: When a pi-oven subagent's primary model is unauthed, omp falls back to the parent session model (not the next array entry). Profile B is safe only when openai-codex auth is active and stable; Profile C is safe only when anthropic auth is active and stable. This is an omp internal behavior that pi-oven cannot override (Spec A §6.3).

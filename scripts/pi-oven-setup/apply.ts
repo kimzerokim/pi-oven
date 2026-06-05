@@ -89,9 +89,9 @@ export async function runApply(
         : PROFILE_A_FALLBACK_CHAINS;
     await setRetryFallbackChains(fallbackChains, { spawnFn: opts.spawnFn });
 
-    // Profile C only: bulk-write all 24 per-role task.agentModelOverrides.
-    // Deliberate Spec E relaxation — A/B write ZERO per-role overrides.
-    if (opts.profile === "C") {
+    // Profile B + C: bulk-write all 24 per-role task.agentModelOverrides.
+    // Deliberate Spec E relaxation — profile A writes ZERO per-role overrides.
+    if (opts.profile === "B" || opts.profile === "C") {
       const overrideRecord: Record<string, string> = {};
       for (const role of ROLES) {
         overrideRecord[`pi-oven:${role}`] = profileMap[role].primary;

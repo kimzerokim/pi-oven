@@ -175,7 +175,7 @@ Show a summary in chat:
 
 ```
 Summary:
-  Profile: <A|B>
+  Profile: <A|B|C>
   Roles with custom override: <N>
   Provider: <anthropic enabled | anthropic not used>
 
@@ -185,7 +185,7 @@ Ready to persist model overrides to config.yml task.agentModelOverrides. Proceed
 On confirmation, dispatch via Bash (using the resolved `$PI_OVEN_DIR`):
 
 ```
-bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile <A|B> --validate=smoke
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile <A|B|C> --validate=smoke
 ```
 
 If there are per-role overrides, add one `--override <role>=<model>` flag per override:

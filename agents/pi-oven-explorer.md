@@ -2,12 +2,12 @@
 name: pi-oven:explorer
 description: Read-only codebase search specialist — files, patterns, relationships
 model:
-  - opencode-zen/gemini-3-flash
-  - opencode-zen/claude-haiku-4-5
+  - opencode-zen/minimax-m2.5
+  - opencode-zen/qwen3.5-plus
 thinkingLevel: medium
 mode: subagent
-tools: ["read", "search", "find", "bash", "web_search", "lsp", "ast_grep"]
-blocked_tools: ["write", "edit", "apply_patch", "task"]
+tools: ["read","search","find","bash","web_search","lsp","ast_grep"]
+blocked_tools: ["write","edit","apply_patch","task"]
 ---
 
 ## Role

@@ -2,8 +2,8 @@
 name: pi-oven:tracer
 description: Causal investigation — call graphs, execution traces, dependency mapping, competing hypotheses, evidence ranking, next-probe recommendations (no fixing)
 model:
-  - opencode-zen/glm-5.1
-  - opencode-zen/claude-sonnet-4-6
+  - opencode-zen/kimi-k2.6
+  - opencode-zen/glm-5
 thinkingLevel: high
 mode: subagent
 tools: ["read","search","find","bash"]

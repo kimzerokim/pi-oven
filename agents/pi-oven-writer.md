@@ -2,12 +2,12 @@
 name: pi-oven:writer
 description: Technical documentation — README, API docs, changelogs, inline comments, user guides
 model:
-  - opencode-zen/gemini-3-flash
-  - opencode-zen/claude-haiku-4-5
+  - opencode-zen/minimax-m2.5
+  - opencode-zen/qwen3.5-plus
 thinkingLevel: medium
 mode: subagent
-tools: ["read", "search", "find", "write", "edit", "web_search"]
-blocked_tools: ["apply_patch", "bash", "task"]
+tools: ["read","search","find","write","edit","web_search"]
+blocked_tools: ["apply_patch","bash","task"]
 ---
 
 ## Role

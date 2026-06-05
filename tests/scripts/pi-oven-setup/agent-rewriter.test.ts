@@ -231,10 +231,10 @@ describe("rewriteAllAgents", () => {
     expect(rewritten.length).toBe(ROLES.length);
     expect(skipped.length).toBe(0);
 
-    // Verify executor now has anthropic primary
+    // Verify executor now has openai-codex primary (PROFILE_B is openai-codex-only)
     const entries = await readAgentFiles(tempDir);
     const executor = entries.find((e) => e.role === "executor")!;
-    expect(executor.currentModel[0]).toBe("anthropic/claude-sonnet-4-6");
+    expect(executor.currentModel[0]).toBe("openai-codex/gpt-5.4");
   });
 
   it("skips roles whose files do not exist", async () => {

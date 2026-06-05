@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { runApply } from "../../../scripts/pi-oven-setup/apply";
-import { ROLES, PROFILE_A, PROFILE_B, PROFILE_C, PROFILE_C_ORCHESTRATOR, PROFILE_C_FALLBACK_CHAINS } from "../../../scripts/pi-oven-setup/profiles";
+import { ROLES, PROFILE_A, PROFILE_B, PROFILE_C, PROFILE_B_ORCHESTRATOR, PROFILE_B_FALLBACK_CHAINS, PROFILE_C_ORCHESTRATOR, PROFILE_C_FALLBACK_CHAINS } from "../../../scripts/pi-oven-setup/profiles";
 import { readAgentFiles } from "../../../scripts/pi-oven-setup/agent-rewriter";
 
 // ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ describe("runApply", () => {
 
     // Merged whole-record contains the new default+title AND preserves the sibling.
     const merged = JSON.parse(modelRoleSets[0].args[3]);
-    expect(merged.default).toBe("gpt-5.4:high");
+    expect(merged.default).toBe("openai-codex/gpt-5.4:high");
     expect(merged.title).toBe("gpt-5.4-mini:low");
     expect(merged.someSibling).toBe("keep");
 
@@ -253,7 +253,7 @@ describe("runApply", () => {
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
     );
     const merged = JSON.parse(setCall!.args[3]);
-    expect(merged.default).toBe("gpt-5.4:high");
+    expect(merged.default).toBe("openai-codex/gpt-5.4:high");
     expect(merged.title).toBe("gpt-5.4-mini:low");
   });
 
@@ -267,7 +267,7 @@ describe("runApply", () => {
     );
     expect(setCall).toBeDefined();
     const merged = JSON.parse(setCall!.args[3]);
-    expect(merged.default).toEqual(["opencode-zen/gpt-5.4"]);
+    expect(merged.default).toEqual(["opencode-zen/kimi-k2.6"]);
     expect(merged.title).toEqual(["opencode-zen/gpt-5.4-mini"]);
   });
 
@@ -280,8 +280,8 @@ describe("runApply", () => {
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
     );
     const merged = JSON.parse(setCall!.args[3]);
-    expect(merged.default).toBe("anthropic/claude-opus-4-8:high");
-    expect(merged.title).toBe("anthropic/claude-haiku-4-5:low");
+    expect(merged.default).toBe("openai-codex/gpt-5.5:high");
+    expect(merged.title).toBe("openai-codex/gpt-5.4-mini:low");
   });
 
   it("runApply WITH agentsDir rewrites agent files and writes ZERO modelRoles", async () => {
@@ -542,7 +542,7 @@ describe("runApply", () => {
     expect(written["pi-oven:qa-tester"]).toBe("anthropic/claude-opus-4-8");
   });
 
-  it("runApply profile A still writes ZERO task.agentModelOverrides (A/B non-regression)", async () => {
+  it("runApply profile A still writes ZERO task.agentModelOverrides (A non-regression)", async () => {
     const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
 
     await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
@@ -553,14 +553,125 @@ describe("runApply", () => {
     expect(overrideWrites.length).toBe(0);
   });
 
-  it("runApply profile B still writes ZERO task.agentModelOverrides (A/B non-regression)", async () => {
-    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
+  // -------------------------------------------------------------------------
+  // Profile B — user setup path: writes modelRoles + fallbackChains + 24 overrides
+  // -------------------------------------------------------------------------
+
+  it("runApply profile B WITHOUT agentsDir writes all 24 task.agentModelOverrides entries with openai-codex/ models", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      if (args[0] === "config" && args[1] === "get" && args[2] === "modelRoles") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "task.agentModelOverrides", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
 
     await runApply({ profile: "B", validateMode: "none", spawnFn: mockSpawnFn });
 
     const overrideWrites = spawnCalls.filter(
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
     );
-    expect(overrideWrites.length).toBe(0);
+    // One set call for the bulk write (all 24 roles in one call)
+    expect(overrideWrites.length).toBe(1);
+    const written = JSON.parse(overrideWrites[0].args[3]);
+    // All 24 pi-oven:* keys must be present with correct PROFILE_B models
+    for (const role of ROLES) {
+      expect(written[`pi-oven:${role}`]).toBe(PROFILE_B[role].primary);
+    }
+    // All models must start with "openai-codex/"
+    for (const role of ROLES) {
+      expect(written[`pi-oven:${role}`]).toMatch(/^openai-codex\//);
+    }
+  });
+
+  it("runApply profile B WITHOUT agentsDir writes PROFILE_B_ORCHESTRATOR + PROFILE_B_FALLBACK_CHAINS", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      if (args[0] === "config" && args[1] === "get" && args[2] === "modelRoles") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "task.agentModelOverrides", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    await runApply({ profile: "B", validateMode: "none", spawnFn: mockSpawnFn });
+
+    // modelRoles write
+    const modelRolesCall = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
+    );
+    expect(modelRolesCall).toBeDefined();
+    const mergedRoles = JSON.parse(modelRolesCall!.args[3]);
+    expect(mergedRoles.default).toBe(PROFILE_B_ORCHESTRATOR.default);
+    expect(mergedRoles.title).toBe(PROFILE_B_ORCHESTRATOR.title);
+
+    // retry.fallbackChains write
+    const fallbackCall = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "retry.fallbackChains"
+    );
+    expect(fallbackCall).toBeDefined();
+    const mergedChains = JSON.parse(fallbackCall!.args[3]);
+    expect(mergedChains.default).toEqual(PROFILE_B_FALLBACK_CHAINS.default);
+    expect(mergedChains.title).toEqual(PROFILE_B_FALLBACK_CHAINS.title);
+  });
+
+  it("runApply profile B WITHOUT agentsDir: specific roles have correct openai-codex models", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      if (args[0] === "config" && args[1] === "get" && args[2] === "modelRoles") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "task.agentModelOverrides", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    await runApply({ profile: "B", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const overrideWrite = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
+    );
+    const written = JSON.parse(overrideWrite!.args[3]);
+    // critic (xhigh) → gpt-5.5
+    expect(written["pi-oven:critic"]).toBe("openai-codex/gpt-5.5");
+    // explorer (medium) → gpt-5.4-mini
+    expect(written["pi-oven:explorer"]).toBe("openai-codex/gpt-5.4-mini");
+    // git-master (low) → gpt-5.4-nano
+    expect(written["pi-oven:git-master"]).toBe("openai-codex/gpt-5.4-nano");
+    // executor (high) → gpt-5.4
+    expect(written["pi-oven:executor"]).toBe("openai-codex/gpt-5.4");
   });
 });

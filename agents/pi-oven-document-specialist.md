@@ -2,12 +2,12 @@
 name: pi-oven:document-specialist
 description: External docs and SDK reference specialist — local repo docs first, curated backends second, `read`-URL fallback, no recursive task dispatch
 model:
-  - opencode-zen/gemini-3-flash
-  - opencode-zen/claude-haiku-4-5
+  - opencode-zen/minimax-m2.5
+  - opencode-zen/qwen3.5-plus
 thinkingLevel: medium
 mode: subagent
-tools: ["read", "search", "find", "bash", "recall", "web_search"]
-blocked_tools: ["write", "edit", "apply_patch", "task"]
+tools: ["read","search","find","bash","recall","web_search"]
+blocked_tools: ["write","edit","apply_patch","task"]
 ---
 
 ## Role

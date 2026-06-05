@@ -2,8 +2,8 @@
 name: pi-oven:librarian
 description: Library and SDK source-reading specialist — answers "what does this library/API do?" by reading source directly, with structured citation output. READONLY, no recursive task dispatch.
 model:
-  - opencode-zen/glm-5.1
-  - opencode-zen/claude-sonnet-4-6
+  - opencode-zen/qwen3.5-plus
+  - opencode-zen/minimax-m2.5
 thinkingLevel: medium
 mode: subagent
 tools: ["read","search","find","bash","lsp","web_search","ast_grep","recall"]

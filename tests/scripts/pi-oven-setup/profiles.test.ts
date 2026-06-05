@@ -9,6 +9,8 @@ import {
   PROFILE_C,
   PROFILE_C_ORCHESTRATOR,
   PROFILE_C_FALLBACK_CHAINS,
+  PROFILE_A_FALLBACK_CHAINS,
+  PROFILE_B_FALLBACK_CHAINS,
 } from "../../../scripts/pi-oven-setup/profiles";
 
 /**
@@ -79,27 +81,100 @@ describe("profiles", () => {
       }
     });
 
-    it("the 6 reasoning roles primary is opencode-zen/glm-5.1", () => {
-      for (const role of [
-        "verifier",
-        "code-reviewer",
-        "code-simplifier",
-        "tracer",
-        "analyst",
-        "librarian",
-      ] as const) {
-        expect(PROFILE_A[role].primary).toBe("opencode-zen/glm-5.1");
+    // PROFILE_A model routing — new assignments (v0.1.7+)
+    it("explorer primary is opencode-zen/minimax-m2.5", () => {
+      expect(PROFILE_A["explorer"].primary).toBe("opencode-zen/minimax-m2.5");
+    });
+
+    it("explorer registry_alternate is opencode-zen/qwen3.5-plus", () => {
+      expect(PROFILE_A["explorer"].registry_alternate).toBe("opencode-zen/qwen3.5-plus");
+    });
+
+    it("code-reviewer primary is opencode-zen/kimi-k2.6", () => {
+      expect(PROFILE_A["code-reviewer"].primary).toBe("opencode-zen/kimi-k2.6");
+    });
+
+    it("verifier primary is opencode-zen/kimi-k2.6", () => {
+      expect(PROFILE_A["verifier"].primary).toBe("opencode-zen/kimi-k2.6");
+    });
+
+    it("analyst primary is opencode-zen/kimi-k2.6", () => {
+      expect(PROFILE_A["analyst"].primary).toBe("opencode-zen/kimi-k2.6");
+    });
+
+    it("tracer primary is opencode-zen/kimi-k2.6", () => {
+      expect(PROFILE_A["tracer"].primary).toBe("opencode-zen/kimi-k2.6");
+    });
+
+    it("verifier/code-reviewer/analyst/tracer registry_alternate is opencode-zen/glm-5", () => {
+      for (const role of ["verifier", "code-reviewer", "analyst", "tracer"] as const) {
+        expect(PROFILE_A[role].registry_alternate).toBe("opencode-zen/glm-5");
       }
     });
 
-    it("contains no kimi-k2.6 and no gpt-5.3-codex anywhere", () => {
+    it("multimodal-looker primary is opencode-zen/qwen3.5-plus", () => {
+      expect(PROFILE_A["multimodal-looker"].primary).toBe("opencode-zen/qwen3.5-plus");
+    });
+
+    it("qa-tester primary is opencode-zen/qwen3.5-plus", () => {
+      expect(PROFILE_A["qa-tester"].primary).toBe("opencode-zen/qwen3.5-plus");
+    });
+
+    it("git-master primary is opencode-zen/qwen3.5-plus", () => {
+      expect(PROFILE_A["git-master"].primary).toBe("opencode-zen/qwen3.5-plus");
+    });
+
+    it("code-simplifier primary is opencode-zen/qwen3.5-plus", () => {
+      expect(PROFILE_A["code-simplifier"].primary).toBe("opencode-zen/qwen3.5-plus");
+    });
+
+    it("librarian primary is opencode-zen/qwen3.5-plus", () => {
+      expect(PROFILE_A["librarian"].primary).toBe("opencode-zen/qwen3.5-plus");
+    });
+
+    it("designer primary is opencode-zen/qwen3.5-plus", () => {
+      expect(PROFILE_A["designer"].primary).toBe("opencode-zen/qwen3.5-plus");
+    });
+
+    it("writer primary is opencode-zen/minimax-m2.5", () => {
+      expect(PROFILE_A["writer"].primary).toBe("opencode-zen/minimax-m2.5");
+    });
+
+    it("document-specialist primary is opencode-zen/minimax-m2.5", () => {
+      expect(PROFILE_A["document-specialist"].primary).toBe("opencode-zen/minimax-m2.5");
+    });
+
+    it("deep-researcher primary is opencode-zen/minimax-m2.5", () => {
+      expect(PROFILE_A["deep-researcher"].primary).toBe("opencode-zen/minimax-m2.5");
+    });
+
+    it("contains no gpt-5.3-codex anywhere", () => {
       for (const role of ROLES) {
         const { primary, registry_alternate } = PROFILE_A[role];
         for (const id of [primary, registry_alternate]) {
-          expect(id).not.toContain("kimi-k2.6");
           expect(id).not.toContain("gpt-5.3-codex");
         }
       }
+    });
+  });
+
+  describe("PROFILE_A_ORCHESTRATOR new assignments", () => {
+    it("default is openai-codex/gpt-5.4:high", () => {
+      expect(PROFILE_A_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.4:high");
+    });
+
+    it("title is unchanged gpt-5.4-mini:low", () => {
+      expect(PROFILE_A_ORCHESTRATOR.title).toBe("gpt-5.4-mini:low");
+    });
+  });
+
+  describe("PROFILE_A_FALLBACK_CHAINS new assignments", () => {
+    it("default chain is opencode-zen/kimi-k2.6", () => {
+      expect(PROFILE_A_FALLBACK_CHAINS.default).toEqual(["opencode-zen/kimi-k2.6"]);
+    });
+
+    it("title chain is unchanged opencode-zen/gpt-5.4-mini", () => {
+      expect(PROFILE_A_FALLBACK_CHAINS.title).toEqual(["opencode-zen/gpt-5.4-mini"]);
     });
   });
 
@@ -110,12 +185,79 @@ describe("profiles", () => {
       }
     });
 
-    it("all primaries use anthropic/ or opencode-zen/ prefix (no openai-codex direct)", () => {
+    it("all primaries use openai-codex/ prefix (openai-codex-only profile)", () => {
       for (const role of ROLES) {
         const p = PROFILE_B[role].primary;
-        const ok = p.startsWith("anthropic/") || p.startsWith("opencode-zen/");
-        expect(ok).toBe(true);
+        expect(p.startsWith("openai-codex/")).toBe(true);
       }
+    });
+
+    it("all registry_alternates use opencode-zen/ prefix", () => {
+      for (const role of ROLES) {
+        const alt = PROFILE_B[role].registry_alternate;
+        expect(alt.startsWith("opencode-zen/")).toBe(true);
+      }
+    });
+
+    it("all xhigh roles use openai-codex/gpt-5.5", () => {
+      for (const role of ROLES) {
+        if (PROFILE_B[role].thinkingLevel === "xhigh") {
+          expect(PROFILE_B[role].primary).toBe("openai-codex/gpt-5.5");
+        }
+      }
+    });
+
+    it("all high roles use openai-codex/gpt-5.4", () => {
+      for (const role of ROLES) {
+        if (PROFILE_B[role].thinkingLevel === "high") {
+          expect(PROFILE_B[role].primary).toBe("openai-codex/gpt-5.4");
+        }
+      }
+    });
+
+    it("all medium roles use openai-codex/gpt-5.4-mini", () => {
+      for (const role of ROLES) {
+        if (PROFILE_B[role].thinkingLevel === "medium") {
+          expect(PROFILE_B[role].primary).toBe("openai-codex/gpt-5.4-mini");
+        }
+      }
+    });
+
+    it("all low roles use openai-codex/gpt-5.4-nano", () => {
+      for (const role of ROLES) {
+        if (PROFILE_B[role].thinkingLevel === "low") {
+          expect(PROFILE_B[role].primary).toBe("openai-codex/gpt-5.4-nano");
+        }
+      }
+    });
+
+    it("registry_alternate mirrors primary model id under opencode-zen/", () => {
+      // Per spec: openai-codex/<id> -> opencode-zen/<id>
+      for (const role of ROLES) {
+        const primary = PROFILE_B[role].primary;
+        const modelId = primary.replace(/^openai-codex\//, "");
+        expect(PROFILE_B[role].registry_alternate).toBe(`opencode-zen/${modelId}`);
+      }
+    });
+  });
+
+  describe("PROFILE_B_ORCHESTRATOR new assignments", () => {
+    it("default is openai-codex/gpt-5.5:high", () => {
+      expect(PROFILE_B_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.5:high");
+    });
+
+    it("title is openai-codex/gpt-5.4-mini:low", () => {
+      expect(PROFILE_B_ORCHESTRATOR.title).toBe("openai-codex/gpt-5.4-mini:low");
+    });
+  });
+
+  describe("PROFILE_B_FALLBACK_CHAINS new assignments", () => {
+    it("default chain is opencode-zen/gpt-5.5", () => {
+      expect(PROFILE_B_FALLBACK_CHAINS.default).toEqual(["opencode-zen/gpt-5.5"]);
+    });
+
+    it("title chain is opencode-zen/gpt-5.4-mini", () => {
+      expect(PROFILE_B_FALLBACK_CHAINS.title).toEqual(["opencode-zen/gpt-5.4-mini"]);
     });
   });
 
@@ -137,17 +279,13 @@ describe("profiles", () => {
 
   describe("orchestrator models", () => {
     it("PROFILE_A_ORCHESTRATOR sets the main session + title models", () => {
-      expect(PROFILE_A_ORCHESTRATOR.default).toBe("gpt-5.4:high");
+      expect(PROFILE_A_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.4:high");
       expect(PROFILE_A_ORCHESTRATOR.title).toBe("gpt-5.4-mini:low");
     });
 
-    it("PROFILE_B_ORCHESTRATOR uses updated anthropic opus-4-8 id", () => {
-      expect(PROFILE_B_ORCHESTRATOR.default).toBe(
-        "anthropic/claude-opus-4-8:high"
-      );
-      expect(PROFILE_B_ORCHESTRATOR.title).toBe(
-        "anthropic/claude-haiku-4-5:low"
-      );
+    it("PROFILE_B_ORCHESTRATOR uses openai-codex/gpt-5.5 as default", () => {
+      expect(PROFILE_B_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.5:high");
+      expect(PROFILE_B_ORCHESTRATOR.title).toBe("openai-codex/gpt-5.4-mini:low");
     });
   });
 });

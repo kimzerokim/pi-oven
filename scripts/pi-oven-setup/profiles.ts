@@ -47,16 +47,17 @@ export type ProfileMap = Record<Role, ModelEntry>;
 /**
  * Profile A — Release default.
  * Benchmark + cost-optimized routing.
- * 3 high-stakes roles (critic, security-reviewer, oracle) use anthropic/ primary.
- * 5 roles use openai-codex/ subscription as primary
- * (executor/debugger/test-engineer = gpt-5.4;
+ * 4 high-stakes roles (critic, security-reviewer, oracle, planner) use anthropic/ primary.
+ * 6 roles use openai-codex/ subscription as primary
+ * (executor/debugger/test-engineer/data-runner = gpt-5.4;
  *  architect/metis = gpt-5.4; planner alternate = gpt-5.4).
- * 6 reasoning roles (verifier, code-reviewer, code-simplifier, tracer,
- *  analyst, librarian) use opencode-zen/glm-5.1 as primary.
+ * 4 reasoning roles (verifier, code-reviewer, analyst, tracer) use opencode-zen/kimi-k2.6.
+ * 4 content/search roles (explorer, writer, document-specialist, deep-researcher) use opencode-zen/minimax-m2.5.
+ * 6 utility roles (multimodal-looker, qa-tester, designer, code-simplifier, librarian, git-master) use opencode-zen/qwen3.5-plus.
  * Default fallback policy: opencode-zen/ wrapper of the same model id.
  * Exception: planner falls back to openai-codex/gpt-5.4 for codex-review
  * cross-validation per user policy.
- * Provider mix: anthropic 4 (planner primary + critic + security-reviewer + oracle), openai-codex 5, opencode-zen 13.
+ * Provider mix: anthropic 4, openai-codex 6, opencode-zen 14.
  */
 export const PROFILE_A: ProfileMap = {
   executor: {
@@ -67,15 +68,15 @@ export const PROFILE_A: ProfileMap = {
     blocked_tools: [],
   },
   explorer: {
-    primary: "opencode-zen/gemini-3-flash",
-    registry_alternate: "opencode-zen/claude-haiku-4-5",
+    primary: "opencode-zen/minimax-m2.5",
+    registry_alternate: "opencode-zen/qwen3.5-plus",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "web_search", "lsp", "ast_grep"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   verifier: {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/kimi-k2.6",
+    registry_alternate: "opencode-zen/glm-5",
     thinkingLevel: "high",
     tools: ["read", "search", "find", "bash", "recall", "task", "report_finding"],
     blocked_tools: ["write", "edit", "apply_patch"],
@@ -95,8 +96,8 @@ export const PROFILE_A: ProfileMap = {
     blocked_tools: ["write", "edit", "apply_patch"],
   },
   "code-reviewer": {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/kimi-k2.6",
+    registry_alternate: "opencode-zen/glm-5",
     thinkingLevel: "high",
     tools: ["read", "search", "find", "bash", "lsp", "ast_grep", "recall", "report_finding"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
@@ -123,57 +124,57 @@ export const PROFILE_A: ProfileMap = {
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   writer: {
-    primary: "opencode-zen/gemini-3-flash",
-    registry_alternate: "opencode-zen/claude-haiku-4-5",
+    primary: "opencode-zen/minimax-m2.5",
+    registry_alternate: "opencode-zen/qwen3.5-plus",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "write", "edit", "web_search"],
     blocked_tools: ["apply_patch", "bash", "task"],
   },
   designer: {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/qwen3.5-plus",
+    registry_alternate: "opencode-zen/minimax-m2.5",
     thinkingLevel: "high",
     tools: ["*"],
     blocked_tools: [],
   },
   "code-simplifier": {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/qwen3.5-plus",
+    registry_alternate: "opencode-zen/minimax-m2.7",
     thinkingLevel: "xhigh",
     tools: ["*"],
     blocked_tools: [],
   },
   "qa-tester": {
-    primary: "opencode-zen/gemini-3.5-flash",
-    registry_alternate: "opencode-zen/claude-haiku-4-5",
+    primary: "opencode-zen/qwen3.5-plus",
+    registry_alternate: "opencode-zen/qwen3.6-plus",
     thinkingLevel: "high",
     tools: ["*"],
     blocked_tools: [],
   },
   "git-master": {
-    primary: "opencode-zen/claude-haiku-4-5",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/qwen3.5-plus",
+    registry_alternate: "opencode-zen/minimax-m2.5",
     thinkingLevel: "low",
     tools: ["read", "search", "find", "bash"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   "document-specialist": {
-    primary: "opencode-zen/gemini-3-flash",
-    registry_alternate: "opencode-zen/claude-haiku-4-5",
+    primary: "opencode-zen/minimax-m2.5",
+    registry_alternate: "opencode-zen/qwen3.5-plus",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "recall", "web_search"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   tracer: {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/kimi-k2.6",
+    registry_alternate: "opencode-zen/glm-5",
     thinkingLevel: "high",
     tools: ["read", "search", "find", "bash"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   analyst: {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/kimi-k2.6",
+    registry_alternate: "opencode-zen/glm-5",
     thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "eval", "recall"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
@@ -186,15 +187,15 @@ export const PROFILE_A: ProfileMap = {
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   librarian: {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/qwen3.5-plus",
+    registry_alternate: "opencode-zen/minimax-m2.5",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "lsp", "web_search", "ast_grep", "recall"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   "multimodal-looker": {
-    primary: "opencode-zen/gemini-3-flash",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/qwen3.5-plus",
+    registry_alternate: "opencode-zen/qwen3.6-plus",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "inspect_image"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
@@ -214,8 +215,8 @@ export const PROFILE_A: ProfileMap = {
     blocked_tools: ["write", "edit", "apply_patch"],
   },
   "deep-researcher": {
-    primary: "opencode-zen/gemini-3-flash",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "opencode-zen/minimax-m2.5",
+    registry_alternate: "opencode-zen/qwen3.5-plus",
     thinkingLevel: "high",
     tools: ["read", "search", "find", "web_search", "retain", "recall", "reflect"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
@@ -252,13 +253,13 @@ export interface OrchestratorModels {
 }
 
 export const PROFILE_A_ORCHESTRATOR: OrchestratorModels = {
-  default: "gpt-5.4:high",
+  default: "openai-codex/gpt-5.4:high",
   title: "gpt-5.4-mini:low",
 };
 
 export const PROFILE_B_ORCHESTRATOR: OrchestratorModels = {
-  default: "anthropic/claude-opus-4-8:high",
-  title: "anthropic/claude-haiku-4-5:low",
+  default: "openai-codex/gpt-5.5:high",
+  title: "openai-codex/gpt-5.4-mini:low",
 };
 
 /**
@@ -275,13 +276,13 @@ export const PROFILE_B_ORCHESTRATOR: OrchestratorModels = {
  * (e.g. openai-codex/gpt-5.4) also benefits from the default chain.
  */
 export const PROFILE_A_FALLBACK_CHAINS: Record<string, string[]> = {
-  default: ["opencode-zen/gpt-5.4"],
+  default: ["opencode-zen/kimi-k2.6"],
   title: ["opencode-zen/gpt-5.4-mini"],
 };
 
 export const PROFILE_B_FALLBACK_CHAINS: Record<string, string[]> = {
-  default: ["opencode-zen/claude-opus-4-8"],
-  title: ["opencode-zen/claude-haiku-4-5"],
+  default: ["opencode-zen/gpt-5.5"],
+  title: ["opencode-zen/gpt-5.4-mini"],
 };
 
 export const PROFILE_C_ORCHESTRATOR: OrchestratorModels = {
@@ -295,176 +296,184 @@ export const PROFILE_C_FALLBACK_CHAINS: Record<string, string[]> = {
 };
 
 /**
- * Profile B — Anthropic opt-in.
- * Promotes Anthropic models to primary for reasoning-heavy roles.
- * Preserves opencode-zen/glm-5 for explorer and librarian (1M context window).
- * Verbatim from Spec B §5 table.
+ * Profile B — openai-codex-only.
+ * All 24 roles use openai-codex/ primary, tiered by thinkingLevel:
+ *   xhigh  → openai-codex/gpt-5.5
+ *   high   → openai-codex/gpt-5.4
+ *   medium → openai-codex/gpt-5.4-mini
+ *   low    → openai-codex/gpt-5.4-nano
+ * Vision override: multimodal-looker and qa-tester keep their tier model
+ * (all gpt-5.4/5.5/5.4-mini/5.4-nano have vision per survey).
+ * registry_alternate = opencode-zen/ mirror of the same model id.
+ * tools and blocked_tools copied verbatim from PROFILE_A.
  */
 export const PROFILE_B: ProfileMap = {
   executor: {
-    primary: "anthropic/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["*"],
     blocked_tools: [],
   },
   explorer: {
-    primary: "anthropic/claude-haiku-4-5",
-    registry_alternate: "opencode-zen/claude-haiku-4-5",
+    primary: "openai-codex/gpt-5.4-mini",
+    registry_alternate: "opencode-zen/gpt-5.4-mini",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "web_search", "lsp", "ast_grep"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   verifier: {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["read", "search", "find", "bash", "recall", "task", "report_finding"],
     blocked_tools: ["write", "edit", "apply_patch"],
   },
   critic: {
-    primary: "anthropic/claude-opus-4-8",
-    registry_alternate: "opencode-zen/claude-opus-4-8",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "report_finding", "recall"],
     blocked_tools: ["write", "edit", "apply_patch", "bash", "task"],
   },
   planner: {
-    primary: "anthropic/claude-opus-4-8",
-    registry_alternate: "openai-codex/gpt-5.4",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["read", "search", "find", "bash", "recall", "task"],
     blocked_tools: ["write", "edit", "apply_patch"],
   },
   "code-reviewer": {
-    primary: "anthropic/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["read", "search", "find", "bash", "lsp", "ast_grep", "recall", "report_finding"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   debugger: {
-    primary: "anthropic/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["*"],
     blocked_tools: [],
   },
   "test-engineer": {
-    primary: "anthropic/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["*"],
     blocked_tools: [],
   },
   "security-reviewer": {
-    primary: "anthropic/claude-opus-4-8",
-    registry_alternate: "opencode-zen/claude-opus-4-8",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "recall", "web_search"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   writer: {
-    primary: "anthropic/claude-haiku-4-5",
-    registry_alternate: "opencode-zen/claude-haiku-4-5",
+    primary: "openai-codex/gpt-5.4-mini",
+    registry_alternate: "opencode-zen/gpt-5.4-mini",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "write", "edit", "web_search"],
     blocked_tools: ["apply_patch", "bash", "task"],
   },
   designer: {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["*"],
     blocked_tools: [],
   },
   "code-simplifier": {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "xhigh",
     tools: ["*"],
     blocked_tools: [],
   },
   "qa-tester": {
-    primary: "anthropic/claude-haiku-4-5",
-    registry_alternate: "opencode-zen/claude-haiku-4-5",
+    // thinkingLevel=high; all gpt-5.4 variants have vision per survey — no vision bump needed
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["*"],
     blocked_tools: [],
   },
   "git-master": {
-    primary: "anthropic/claude-haiku-4-5",
-    registry_alternate: "opencode-zen/claude-haiku-4-5",
+    primary: "openai-codex/gpt-5.4-nano",
+    registry_alternate: "opencode-zen/gpt-5.4-nano",
     thinkingLevel: "low",
     tools: ["read", "search", "find", "bash"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   "document-specialist": {
-    primary: "anthropic/claude-haiku-4-5",
-    registry_alternate: "opencode-zen/claude-haiku-4-5",
+    primary: "openai-codex/gpt-5.4-mini",
+    registry_alternate: "opencode-zen/gpt-5.4-mini",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "recall", "web_search"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   tracer: {
-    primary: "anthropic/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["read", "search", "find", "bash"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   analyst: {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "eval", "recall"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   architect: {
-    primary: "anthropic/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "lsp", "ast_grep", "recall", "retain"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   librarian: {
-    primary: "opencode-zen/glm-5.1",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4-mini",
+    registry_alternate: "opencode-zen/gpt-5.4-mini",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "lsp", "web_search", "ast_grep", "recall"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   "multimodal-looker": {
-    primary: "anthropic/claude-haiku-4-5",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    // thinkingLevel=medium; gpt-5.4-mini has vision per survey — no vision bump needed
+    primary: "openai-codex/gpt-5.4-mini",
+    registry_alternate: "opencode-zen/gpt-5.4-mini",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "inspect_image"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   oracle: {
-    primary: "anthropic/claude-opus-4-8",
-    registry_alternate: "opencode-zen/claude-opus-4-8",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "recall", "retain"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   metis: {
-    primary: "anthropic/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "recall", "task"],
     blocked_tools: ["write", "edit", "apply_patch"],
   },
   "deep-researcher": {
-    primary: "anthropic/claude-haiku-4-5",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["read", "search", "find", "web_search", "retain", "recall", "reflect"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   "data-runner": {
-    primary: "anthropic/claude-sonnet-4-6",
-    registry_alternate: "opencode-zen/claude-sonnet-4-6",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
     tools: ["bash", "eval", "read", "write", "retain"],
     blocked_tools: ["edit", "apply_patch", "task"],

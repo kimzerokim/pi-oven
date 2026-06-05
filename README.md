@@ -10,7 +10,7 @@
 
 - **24 self-contained agents** under the `pi-oven:` namespace — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis, deep-researcher, data-runner. All 24 are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier use `report_finding` for structured findings. Each is a markdown file in `agents/` with locked model + tool whitelist.
 - **22 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, git-workflow, aws, bitbucket-pipeline, cloudflare, memory-discipline (mnemopi-backed retain/recall/reflect discipline with curated runtime keyword matching).
-- **`/pi-oven:setup` wizard** — Profile A (release default, opencode-zen + openai-codex) or Profile B (Anthropic Pro/Max opt-in), agent-file source of truth, drift detection on every session.
+- **`/pi-oven:setup` wizard** — Profile A (release default, heterogeneous cost-optimized), Profile B (openai-codex-only), or Profile C (all-Anthropic), agent-file source of truth, drift detection on every session.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
 - **Project `CLAUDE.md` injection + omp isolation** — the runtime extension reads your repo-root `CLAUDE.md` and injects it into the main + sub agent system prompt (omp does not read repo-root `CLAUDE.md` natively). `/pi-oven:setup --isolate` then makes omp ignore the global `~/.claude` context layer (`~/.claude/CLAUDE.md` + pi-oven skills/hooks), so omp runs as a pi-oven-first environment. It keeps the `claude-plugins` provider enabled (that is how pi-oven's own `/pi-oven:*` commands load), so omc/agentmemory marketplace plugin commands remain visible — the trade-off for not killing pi-oven's own commands. See [omp isolation & project CLAUDE.md](#omp-isolation--project-claudemd).
 
@@ -24,9 +24,9 @@ Prerequisites:
 - **bun** ≥ 1.3.14
 - **git**
 - At least one provider authenticated in your omp environment:
-  - OpenCode Zen subscription (recommended — covers claude / gpt wrappers)
+  - OpenCode Zen subscription (recommended — covers minimax / qwen / kimi / glm wrappers; enables Profile A)
   - OpenAI Codex / ChatGPT subscription (5.3+)
-  - Anthropic Pro/Max (optional — enables Profile B)
+  - Anthropic Pro/Max (optional — enables Profile B or C)
 
 ```sh
 # 1. Add the marketplace catalog
@@ -75,7 +75,7 @@ The wizard will:
 
 0. Ask your primary language first (Step 0) — pick `한국어 (Korean)`, `English`, or type your OWN language (e.g. `Español`, `日本語`, `Français`) and it becomes the project default. The wizard conducts the rest of setup in that language and persists it as the project default language to `.pi-oven/config.json` (machine-local, gitignored). The pi-oven extension injects this default at runtime so agents respond in your chosen language; if no config is set, the ambient project/global language preference is respected (nothing is forced).
 1. Detect which providers are authenticated (`opencode-zen`, `openai-codex`, `anthropic`).
-2. Offer Profile A (release default) or Profile B (Anthropic opt-in, if available).
+2. Offer Profile A (release default), Profile B (openai-codex-only), or Profile C (all-Anthropic, if available).
 3. Optionally let you override individual agent roles.
 4. Persist your choice to plugin config + rewrite all 24 agent files in-place.
 5. Run a smoke validation (7 MUST-tier roles pinged) and report the result.
@@ -145,7 +145,7 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 
 ## Agent roster
 
-24 agents, grouped by purpose. All agents are omp-native (read/search/find/bash/web_search + killer tools debug/eval/browser/retain/recall/reflect/lsp/ast_grep; irc auto-injected). Each agent's `model:` field locks the LLM choice; the validator at plugin load rejects any agent whose model prefix is outside the whitelist (`opencode-zen/`, `openai-codex/`, or `anthropic/` when Profile B is active).
+24 agents, grouped by purpose. All agents are omp-native (read/search/find/bash/web_search + killer tools debug/eval/browser/retain/recall/reflect/lsp/ast_grep; irc auto-injected). Each agent's `model:` field locks the LLM choice; the validator at plugin load rejects any agent whose model prefix is outside the whitelist (`opencode-zen/`, `openai-codex/`, or `anthropic/` when Profile B or C is active).
 
 ### MUST tier (always available, core workflow)
 
@@ -159,7 +159,7 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 | `pi-oven:code-reviewer` | Code quality review, spec compliance |
 | `pi-oven:debugger` | Root-cause investigation + fix (absorbs tracer pattern) |
 
-### SHOULD tier (enabled by default, optional in Profile B trim)
+### SHOULD tier (enabled by default, optional in Profile B/C trim)
 
 | Dispatch name | Purpose |
 |---|---|
@@ -183,8 +183,8 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 | `pi-oven:multimodal-looker` | Vision / image / screenshot analysis |
 | `pi-oven:oracle` | Codebase knowledge Q&A |
 | `pi-oven:metis` | Requirements clarification (Socratic interview) |
-| `pi-oven:deep-researcher` | Web research + arxiv-PDF fetch + adversarial synthesis (`opencode-zen/gemini-3-flash`, high) |
-| `pi-oven:data-runner` | Eval REPL data execution + batch result analysis (`openai-codex/gpt-5.4`, high) |
+| `pi-oven:deep-researcher` | Web research + arxiv-PDF fetch + adversarial synthesis |
+| `pi-oven:data-runner` | Eval REPL data execution + batch result analysis |
 
 ---
 
@@ -230,32 +230,42 @@ The wizard accepts subcommands:
 | `/pi-oven:setup --reset` | Clear all pi-oven plugin config + revert agent files to Profile A |
 | `/pi-oven:setup --import <file>` | Apply a JSON config (validated against the 24-role schema + provider whitelist) |
 | `/pi-oven:setup --reapply` | Re-apply the persisted Profile to agent files (used after `omp plugin upgrade`) |
-| `/pi-oven:setup --apply --profile A` | Non-interactive apply with explicit profile |
-| `/pi-oven:setup --apply --profile B --validate full` | Full 24-role smoke ping (default is 7 MUST-tier) |
+| `/pi-oven:setup --apply --profile A\|B\|C` | Non-interactive apply with explicit profile |
+| `/pi-oven:setup --apply --profile B --validate full` | Full 24-role smoke ping (default is 7 MUST-tier); same flag works for `--profile C` |
 | `/pi-oven:setup --apply --profile A --override executor=openai-codex/gpt-5.4` | Per-role override (repeatable) |
 | `/pi-oven:setup --isolate` | Make omp ignore the `~/.claude` context layer (writes `disabledProviders: [claude]`; keeps `claude-plugins` so pi-oven's own `/pi-oven:*` commands survive). Combinable, e.g. `--apply --profile A --isolate` |
 | `/pi-oven:setup --no-isolate` | Re-enable the `~/.claude` layer in omp (removes `claude` + any legacy `claude-plugins`) |
 
 ### Profile A (release default)
 
-Optimized for users with **OpenCode Zen + OpenAI Codex subscriptions** — no Anthropic dependency.
+Heterogeneous cost-optimized. Requires **OpenCode Zen + OpenAI Codex subscriptions** — no Anthropic dependency.
 
 - Codex roles (executor, debugger, test-engineer, architect, metis): `openai-codex/gpt-5.4` (alternate: `opencode-zen/gpt-5.4`)
-- Explorer / docs (explorer, writer, document-specialist, multimodal-looker): `opencode-zen/gemini-3-flash`
+- Explorer / docs (explorer, writer, document-specialist, multimodal-looker): `opencode-zen/minimax-m2.5`
+- Reasoning-heavy (critic, planner, security-reviewer, oracle): `anthropic/claude-opus-4-8` (advisory; no hard Anthropic auth required — falls back to `opencode-zen/kimi-k2.6` if unavailable)
+- Structured review / design (designer, verifier, code-reviewer, code-simplifier, tracer, analyst, librarian): `opencode-zen/qwen3.5-plus`
+- Vision (qa-tester): `opencode-zen/kimi-k2.6` · Cheap git (git-master): `opencode-zen/minimax-m2.5`
+
+Beyond the 24 subagent roles, `/pi-oven:setup --profile` also sets the **main orchestrator** model — omp `modelRoles.default` = canonical `gpt-5.4` (openai-codex-first, `opencode-zen/kimi-k2.6` fallback). The 22 skills enforce subagent dispatch so the orchestrator routes work to the right agent instead of doing it inline.
+
+### Profile B (openai-codex-only)
+
+Requires **OpenAI Codex / ChatGPT subscription** — no OpenCode Zen or Anthropic dependency. All roles use codex variants tiered by task weight.
+
+- Heavy reasoning / implementation (executor, debugger, architect, critic, planner, security-reviewer, oracle, metis): `openai-codex/gpt-5.5`
+- Standard roles (test-engineer, code-reviewer, verifier, writer, designer, code-simplifier, tracer, analyst, deep-researcher, data-runner): `openai-codex/gpt-5.4`
+- Explorer / docs (explorer, document-specialist, multimodal-looker, librarian): `openai-codex/gpt-5.4-mini`
+- Cheap fan-out (qa-tester, git-master): `openai-codex/gpt-5.4-nano`
+
+If your OpenAI Codex credential is revoked, the wizard's `--status` reports drift and recommends `/pi-oven:setup --reapply` after re-authenticating.
+
+### Profile C (all-Anthropic)
+
+Activates only when your omp environment is authenticated with native Anthropic (Pro/Max). All roles use Anthropic models tiered by task weight.
+
 - Reasoning-heavy (critic, planner, security-reviewer, oracle): `anthropic/claude-opus-4-8`
-- Structured review / design (designer, verifier, code-reviewer, code-simplifier, tracer, analyst, librarian): `opencode-zen/glm-5.1`
-- Vision (qa-tester): `opencode-zen/gemini-3.5-flash` · Cheap git (git-master): `opencode-zen/claude-haiku-4-5`
-
-Beyond the 24 subagent roles, `/pi-oven:setup --profile` also sets the **main orchestrator** model — omp `modelRoles.default` = canonical `gpt-5.4` (openai-codex-first, opencode-zen fallback). The 22 skills enforce subagent dispatch so the orchestrator routes work to the right agent instead of doing it inline.
-
-### Profile B (Anthropic opt-in)
-
-Activates only when your omp environment is authenticated with native Anthropic (Pro/Max). Promotes Anthropic models for reasoning-heavy roles; **preserves `opencode-zen/glm-5` for explorer + librarian** to keep the 1M context window for repo-wide work.
-
-- Executor: `anthropic/claude-sonnet-4-6`
-- Reasoning-heavy: `anthropic/claude-opus-4-8`
-- Cheap fan-out: `anthropic/claude-haiku-4-5`
-- Explorer / Librarian: `opencode-zen/glm-5` (unchanged from Profile A)
+- Implementation / review (executor, debugger, architect, test-engineer, code-reviewer, verifier, designer, code-simplifier, metis, tracer, analyst, deep-researcher, data-runner): `anthropic/claude-sonnet-4-6`
+- Cheap fan-out (explorer, writer, document-specialist, multimodal-looker, librarian, qa-tester, git-master): `anthropic/claude-haiku-4-5`
 
 If your Anthropic credential is revoked, the wizard's `--status` reports drift and recommends `/pi-oven:setup --reapply` after re-running `/pi-oven:setup` with Profile A.
 
@@ -300,9 +310,9 @@ Three providers allowed:
 
 | Provider | Status | Typical use |
 |---|---|---|
-| `opencode-zen` | Always allowed | Default for Profile A. Wraps claude / gpt / kimi / glm. |
-| `openai-codex` | Always allowed | ChatGPT subscription, codex variants (5.3-codex, 5.4) |
-| `anthropic` | Opt-in (Profile B) | Pro / Max subscription only. Falls back automatically if revoked. |
+| `opencode-zen` | Always allowed | Default for Profile A. Wraps minimax / qwen / kimi / glm and others. |
+| `openai-codex` | Always allowed | ChatGPT subscription, codex variants (5.3-codex, 5.4, 5.5) |
+| `anthropic` | Opt-in (Profile B or C) | Pro / Max subscription only. Falls back automatically if revoked. |
 
 Any other provider prefix (`bedrock/`, `gemini/`, `cerebras/`, `github-copilot/`, ...) is **hard-blocked** at plugin load. The validator logs a `WHITELIST VIOLATION` error with the offending agent file path.
 
@@ -318,7 +328,7 @@ When a pi-oven agent's primary model is unauthenticated (e.g., you select Profil
 
 ### omp plugin upgrade resets agent files
 
-`omp plugin upgrade pi-oven@kzk` overwrites the install-cache `agents/` directory with the repo defaults (Profile A). If you previously selected Profile B, re-run `/pi-oven:setup --reapply` to restore the anthropic model routing.
+`omp plugin upgrade pi-oven@kzk` overwrites the install-cache `agents/` directory with the repo defaults (Profile A). If you previously selected Profile B or C, re-run `/pi-oven:setup --reapply` to restore your model routing.
 
 The drift detector emits a warning at session start if it notices the agent files no longer match your persisted Profile.
 
@@ -436,7 +446,7 @@ pi-oven/
 
 ## Architecture in one paragraph
 
-pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin. The 24 agent files in `agents/pi-oven-*.md` are the single source of truth for model routing — each file's frontmatter `model:` array names the primary + alternate that the omp `task` tool will resolve at dispatch time. All 24 agents are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier emit structured findings via `report_finding`. A load-time TypeScript validator (`.omp/extensions/pi-oven.ts`) enforces the provider whitelist by reading the agent files themselves: if any file references an `anthropic/*` model, the validator includes `anthropic/` in `ALLOWED_PREFIXES`; otherwise Profile A is in effect. The `/pi-oven:setup` wizard mutates the agent files in-place to switch Profiles; the `session_start` hook detects drift between agent files and persisted plugin config and emits a warning. 22 skills layer workflow discipline on top, including UC5 ops connectors (`aws`, `bitbucket-pipeline`, `cloudflare`) and the always-on `memory-discipline` skill (mnemopi backend).
+pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin. The 24 agent files in `agents/pi-oven-*.md` are the single source of truth for model routing — each file's frontmatter `model:` array names the primary + alternate that the omp `task` tool will resolve at dispatch time. All 24 agents are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier emit structured findings via `report_finding`. A load-time TypeScript validator (`.omp/extensions/pi-oven.ts`) enforces the provider whitelist by reading the agent files themselves: if any file references an `anthropic/*` model, the validator includes `anthropic/` in `ALLOWED_PREFIXES` (Profile B or C is active); otherwise only `opencode-zen/` and `openai-codex/` are allowed (Profile A). The `/pi-oven:setup` wizard mutates the agent files in-place to switch Profiles; the `session_start` hook detects drift between agent files and persisted plugin config and emits a warning. 22 skills layer workflow discipline on top, including UC5 ops connectors (`aws`, `bitbucket-pipeline`, `cloudflare`) and the always-on `memory-discipline` skill (mnemopi backend).
 
 ---
 

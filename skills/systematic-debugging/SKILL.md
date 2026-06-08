@@ -39,10 +39,10 @@ Complete each phase before the next.
 ### Phase 1 — Root cause
 
 1. **Read the error completely** — stack traces, line numbers, file paths, error codes. They often contain the answer.
-2. **Reproduce reliably** — exact steps, every time? Not reproducible → gather more data, do not guess.
+2. **Reproduce reliably** — use `bash` to run the exact failing build/test command every time. Not reproducible → use `eval` to compute/inspect intermediate values; gather more data, do not guess.
 3. **Check recent changes** — `git diff`, recent commits, new deps, config/env drift.
-4. **Instrument component boundaries** (multi-component systems: CI→build→sign, API→service→DB). Before any fix, log what enters and exits each boundary, run once, and read the evidence to locate WHICH layer fails. Then investigate that layer.
-5. **Trace data flow backward** when the error is deep in the stack — see Phase 1.5.
+4. **Instrument component boundaries** (multi-component systems: CI→build→sign, API→service→DB). Before any fix, log what enters and exits each boundary, run once, and read the evidence to locate WHICH layer fails. Use `lsp diagnostics` on the failing file to surface type errors immediately. Then investigate that layer.
+5. **Trace data flow backward** when the error is deep in the stack — use `lsp goto-definition` and `lsp find-references` to follow symbols across boundaries without manual grep. See Phase 1.5.
 
 ### Phase 1.5 — Backward root-cause tracing
 
@@ -62,15 +62,15 @@ When hand-instrumentation yields low-confidence findings, or evidence conflicts 
 
 ENFORCEMENT: Main dispatches `pi-oven:explorer` or `pi-oven:tracer` for pattern research. Main MUST NOT read 3+ files inline to analyze patterns.
 
-1. Find a working example of the same pattern in the codebase using `search` or `ast_grep`.
-2. Use `lsp references` and `lsp definition` to map the pattern's impact radius and contract.
+1. Find a working example of the same pattern in the codebase using `ast_grep` (structural search) before falling back to plain `search`.
+2. Use `lsp find-references` and `lsp goto-definition` to map the pattern's impact radius and contract.
 3. Read any reference implementation **completely** — no skimming; partial understanding guarantees bugs.
 4. List every difference between working and broken, however small. "That can't matter" is a trap.
 5. Map dependencies, config, env, and assumptions.
 
 ### Phase 3 — Hypothesis
 
-1. State ONE hypothesis: "I think X is root cause because Y." Write it down, be specific. Use `debug` (DAP debugger) to inspect live program state (variables, call stack, step-through) and verify the hypothesis against reality. Use `lsp definition` and `lsp references` to trace the hypothesis across boundaries.
+1. State ONE hypothesis: "I think X is root cause because Y." Write it down, be specific. Use `debug` (DAP debugger) to set breakpoints, step through execution, and inspect live program state (variables, call stack) — never speculate about runtime behavior when you can observe it. Use `eval` to compute values or reproduce the condition inline. Use `lsp goto-definition` and `lsp find-references` to trace the hypothesis across boundaries.
 2. Test it with the **smallest possible** change. One variable at a time.
 3. Verify: worked → Phase 4. Didn't → form a NEW hypothesis, do not stack fixes.
 4. If you don't understand X, say so and research — do not pretend.
@@ -79,9 +79,9 @@ ENFORCEMENT: Main dispatches `pi-oven:explorer` or `pi-oven:tracer` for pattern 
 
 ENFORCEMENT: Main dispatches `pi-oven:executor` for the fix implementation and `pi-oven:tracer` for regression analysis. Main MUST NOT implement the fix or research its side effects inline.
 
-1. **Failing test first** — simplest reproduction, automated. Must exist before the fix (route via `tdd-strict`). Use `lsp diagnostics` to confirm the test fails as expected.
-2. **One fix** addressing the root cause. No "while I'm here" extras, no bundled refactor.
-3. **Verify** — test passes, nothing else broke, issue actually resolved.
+1. **Failing test first** — simplest reproduction, automated. Must exist before the fix (route via `tdd-strict`). Use `lsp diagnostics` to confirm type errors; use `bash` to run the test suite and confirm the test fails as expected.
+2. **One fix** addressing the root cause. Prefer `lsp` and `ast_grep` for structural navigation over broad file reads. No "while I'm here" extras, no bundled refactor.
+3. **Verify** — use `bash` to run tests; `lsp diagnostics` to confirm zero new errors; issue actually resolved.
 4. **If it fails, count attempts.** < 3 → return to Phase 1 with new data. **≥ 3 → STOP and question the architecture.**
 
 ### Exit gates (after the fix is verified)

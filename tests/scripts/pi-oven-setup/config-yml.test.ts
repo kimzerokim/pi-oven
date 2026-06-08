@@ -14,6 +14,8 @@ import {
   setModelRoles,
   readRetryFallbackChains,
   setRetryFallbackChains,
+  setToolEnablementConfig,
+  TOOL_ENABLEMENT,
   PI_OVEN_MANAGED_PROVIDERS,
   PI_OVEN_DEPRECATED_PROVIDERS,
 } from "../../../scripts/pi-oven-setup/config-yml";
@@ -854,6 +856,35 @@ describe("setRetryFallbackChains", () => {
     await expect(setRetryFallbackChains({}, { spawnFn: fn })).rejects.toThrow(
       /omp config set retry.fallbackChains failed/
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setToolEnablementConfig — writes the gated-tool enablement flags (Prong 2)
+// ---------------------------------------------------------------------------
+
+describe("setToolEnablementConfig", () => {
+  it("writes every TOOL_ENABLEMENT flag via `omp config set <key> <value>`", async () => {
+    const calls: string[][] = [];
+    const spawnFn = (_cmd: string, args: string[]) => {
+      calls.push(args);
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+    await setToolEnablementConfig({ spawnFn });
+    // one `config set <key> true` per enablement key
+    for (const [key, val] of Object.entries(TOOL_ENABLEMENT)) {
+      expect(calls).toContainEqual(["config", "set", key, String(val)]);
+    }
+    expect(TOOL_ENABLEMENT["inspect_image.enabled"]).toBe(true);
+    expect(Object.keys(TOOL_ENABLEMENT)).toEqual([
+      "inspect_image.enabled", "web_search.enabled", "lsp.enabled",
+      "astGrep.enabled", "browser.enabled", "debug.enabled",
+    ]);
+  });
+
+  it("throws (including stderr) on a non-zero set exit", async () => {
+    const spawnFn = () => ({ exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("boom") });
+    await expect(setToolEnablementConfig({ spawnFn })).rejects.toThrow(/boom/);
   });
 });
 

@@ -4,6 +4,7 @@ import {
   DISCIPLINE_DEDUP_KEY,
   LANGUAGE_DEDUP_KEY,
   PROJECT_INSTRUCTIONS_DEDUP_KEY,
+  ORCHESTRATOR_CONDUCT_DEDUP_KEY,
   type PreservedRules,
 } from "../../../.omp/extensions/pi-oven-runtime/rules-injector";
 
@@ -142,6 +143,44 @@ describe("RulesInjector — rehydrate (AC3 step 3)", () => {
     const hits = sp.filter((s) => s.includes(DISCIPLINE_DEDUP_KEY));
     expect(hits).toHaveLength(1);
     expect(sp.some((s) => s.includes("VERIFY"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Orchestrator conduct block (Spec §4 / Plan B1 — parent-only standing conduct)
+//
+//   - Interactive variant: SKILL-FIRST + WAIT-FOR-USER + ASK-WHEN-AMBIGUOUS,
+//     names the `read("skill://<name>")` invocation, carries the dedup marker.
+//   - Autonomous variant: SKILL-FIRST + KEEP GOING per the boundary contract,
+//     relaxes the WAIT-FOR-USER rule (no polite stop in a running loop).
+// ---------------------------------------------------------------------------
+
+describe("orchestrator conduct block", () => {
+  it("interactive: contains SKILL-FIRST + WAIT-FOR-USER + skill:// + dedup marker", () => {
+    const inj = new RulesInjector();
+    const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
+    expect(b).toContain(ORCHESTRATOR_CONDUCT_DEDUP_KEY);
+    expect(b).toMatch(/SKILL-FIRST/);
+    expect(b).toMatch(/WAIT FOR THE USER|wait for the user/i);
+    expect(b).toMatch(/ASK WHEN AMBIGUOUS|ask when ambiguous/i);
+    expect(b).toMatch(/skill:\/\//);
+  });
+
+  it("autonomous: relaxes WAIT and points to the boundary contract / keep going", () => {
+    const inj = new RulesInjector();
+    const b = inj.buildOrchestratorConductBlock({ autonomousActive: true });
+    expect(b).toContain(ORCHESTRATOR_CONDUCT_DEDUP_KEY);
+    expect(b).toMatch(/SKILL-FIRST/);
+    expect(b).toMatch(/autonomous/i);
+    expect(b).toMatch(/boundary contract|keep going/i);
+    // the running-loop variant must NOT impose the interactive WAIT-FOR-USER stop
+    expect(b).not.toMatch(/WAIT FOR THE USER/);
+  });
+
+  it("the conduct block starts with the dedup marker comment", () => {
+    const inj = new RulesInjector();
+    const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
+    expect(b.startsWith(`<!-- ${ORCHESTRATOR_CONDUCT_DEDUP_KEY} -->`)).toBe(true);
   });
 });
 

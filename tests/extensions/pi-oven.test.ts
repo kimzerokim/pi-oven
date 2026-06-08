@@ -7,10 +7,18 @@ import {
   validateAgentRegistry,
   getAllowedPrefixes,
   captureSessionModel,
+  buildSetupChecklistNotice,
+  readSetupComplete,
+  countProjectRoutingRoles,
+  applyOrchestratorConduct,
   type AgentFileEntry,
   type SessionModelCapture,
 } from "../../.omp/extensions/pi-oven";
 import { readProjectInstructions } from "../../.omp/extensions/pi-oven";
+import {
+  RulesInjector,
+  ORCHESTRATOR_CONDUCT_DEDUP_KEY,
+} from "../../.omp/extensions/pi-oven-runtime/rules-injector";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-ext-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -203,6 +211,70 @@ describe("validateAgentRegistry", () => {
 
 
 // ---------------------------------------------------------------------------
+// applyOrchestratorConduct — parent-only standing conduct injection (Plan B2)
+//
+// Pure helper wired into before_agent_start AFTER injector.applyToSystemPrompt:
+//   - parent only: UNSHIFTS the conduct block to index 0 so it reads first.
+//   - deduped: re-applying never produces a second block.
+//   - non-parent: returns the array unchanged (no conduct injection).
+// ---------------------------------------------------------------------------
+
+describe("applyOrchestratorConduct", () => {
+  it("injects conduct for parent only, deduped, placed first", () => {
+    const inj = new RulesInjector();
+    const out = applyOrchestratorConduct([], inj, {
+      isParentSession: true,
+      autonomousActive: false,
+    });
+    expect(out.some((s) => s.includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY))).toBe(true);
+    // conduct block must be FIRST (unshifted into the post-applyToSystemPrompt array)
+    expect(out[0].includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY)).toBe(true);
+
+    const twice = applyOrchestratorConduct(out, inj, {
+      isParentSession: true,
+      autonomousActive: false,
+    });
+    expect(twice.filter((s) => s.includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY)).length).toBe(1);
+
+    const sub = applyOrchestratorConduct([], inj, {
+      isParentSession: false,
+      autonomousActive: false,
+    });
+    expect(sub.some((s) => s.includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY))).toBe(false);
+  });
+
+  it("places the conduct block at index 0 ahead of existing prompt entries", () => {
+    const inj = new RulesInjector();
+    const out = applyOrchestratorConduct(["existing-entry"], inj, {
+      isParentSession: true,
+      autonomousActive: false,
+    });
+    expect(out[0].includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY)).toBe(true);
+    expect(out).toContain("existing-entry");
+  });
+
+  it("non-parent returns the input array unchanged", () => {
+    const inj = new RulesInjector();
+    const input = ["a", "b"];
+    const out = applyOrchestratorConduct(input, inj, {
+      isParentSession: false,
+      autonomousActive: false,
+    });
+    expect(out).toEqual(["a", "b"]);
+  });
+
+  it("autonomous parent injects the autonomous conduct variant", () => {
+    const inj = new RulesInjector();
+    const out = applyOrchestratorConduct([], inj, {
+      isParentSession: true,
+      autonomousActive: true,
+    });
+    expect(out[0].includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY)).toBe(true);
+    expect(out[0]).toMatch(/boundary contract|keep going/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // session_start: captureSessionModel
 // ---------------------------------------------------------------------------
 
@@ -303,6 +375,167 @@ describe("readProjectInstructions", () => {
     mkdirSync(join(repoRoot, ".claude"), { recursive: true });
     writeFileSync(join(repoRoot, ".claude", "CLAUDE.md"), "scoped config — must be ignored");
     expect(readProjectInstructions(repoRoot)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildSetupChecklistNotice — always-shown onboarding checklist (§4)
+// ---------------------------------------------------------------------------
+
+describe("buildSetupChecklistNotice", () => {
+  it("renders the neither state: both ✗, run hint, uninstall hint, warning level", () => {
+    const { message, level } = buildSetupChecklistNotice(false, false);
+    expect(message).toContain("pi-oven setup");
+    expect(message).toContain("[✗] Global   (~/.pi-oven/config.json)");
+    expect(message).toContain("[✗] Project  (.pi-oven/config.json) — run /pi-oven:setup");
+    expect(message).toContain("omp plugin uninstall pi-oven@kzk");
+    expect(level).toBe("warning");
+  });
+
+  it("renders the global-only state: Global ✓ / Project ✗, run hint, warning level (project incomplete)", () => {
+    const { message, level } = buildSetupChecklistNotice(true, false);
+    expect(message).toContain("[✓] Global   (~/.pi-oven/config.json)");
+    expect(message).toContain("[✗] Project  (.pi-oven/config.json) — run /pi-oven:setup");
+    // uninstall hint shown only when NEITHER is complete
+    expect(message).not.toContain("omp plugin uninstall");
+    expect(level).toBe("warning");
+  });
+
+  it("renders the project-only state: Global ✗ / Project ✓, no run hint, info level", () => {
+    const { message, level } = buildSetupChecklistNotice(false, true);
+    expect(message).toContain("[✗] Global   (~/.pi-oven/config.json)");
+    expect(message).toContain("[✓] Project  (.pi-oven/config.json)");
+    expect(message).not.toContain("run /pi-oven:setup");
+    expect(message).not.toContain("omp plugin uninstall");
+    expect(level).toBe("info");
+  });
+
+  it("renders the both-complete state: both ✓, no hints, info level", () => {
+    const { message, level } = buildSetupChecklistNotice(true, true);
+    expect(message).toContain("[✓] Global   (~/.pi-oven/config.json)");
+    expect(message).toContain("[✓] Project  (.pi-oven/config.json)");
+    expect(message).not.toContain("run /pi-oven:setup");
+    expect(message).not.toContain("omp plugin uninstall");
+    expect(level).toBe("info");
+  });
+
+  it("level is chosen by projectComplete, independent of globalComplete", () => {
+    // project complete -> info regardless of global
+    expect(buildSetupChecklistNotice(false, true).level).toBe("info");
+    expect(buildSetupChecklistNotice(true, true).level).toBe("info");
+    // project incomplete -> warning regardless of global
+    expect(buildSetupChecklistNotice(false, false).level).toBe("warning");
+    expect(buildSetupChecklistNotice(true, false).level).toBe("warning");
+  });
+
+  it("appends the project routing line when routingRoleCount > 0", () => {
+    const { message } = buildSetupChecklistNotice(true, true, 24);
+    expect(message).toContain("↳ project model routing active (24 roles)");
+  });
+
+  it("omits the project routing line when routingRoleCount is 0", () => {
+    const { message } = buildSetupChecklistNotice(true, true, 0);
+    expect(message).not.toContain("project model routing active");
+  });
+
+  it("is always a 2+ line checklist (always shown, never empty)", () => {
+    const { message } = buildSetupChecklistNotice(true, true);
+    expect(message.split("\n").length).toBeGreaterThanOrEqual(3); // header + 2 markers
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readSetupComplete + countProjectRoutingRoles — fail-soft config readers
+// ---------------------------------------------------------------------------
+
+describe("readSetupComplete", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("returns true when setupCompletedAt is a non-empty string", () => {
+    const p = join(dir, "config.json");
+    writeFileSync(p, JSON.stringify({ setupCompletedAt: "2026-06-05T00:00:00Z" }));
+    expect(readSetupComplete(p)).toBe(true);
+  });
+
+  it("returns false when setupCompletedAt is an empty string", () => {
+    const p = join(dir, "config.json");
+    writeFileSync(p, JSON.stringify({ setupCompletedAt: "" }));
+    expect(readSetupComplete(p)).toBe(false);
+  });
+
+  it("returns false when setupCompletedAt is absent", () => {
+    const p = join(dir, "config.json");
+    writeFileSync(p, JSON.stringify({ language: "ko" }));
+    expect(readSetupComplete(p)).toBe(false);
+  });
+
+  it("returns false when the file is absent (fail-soft)", () => {
+    expect(readSetupComplete(join(dir, "missing.json"))).toBe(false);
+  });
+
+  it("returns false when the file is malformed JSON (fail-soft)", () => {
+    const p = join(dir, "config.json");
+    writeFileSync(p, "{ not json");
+    expect(readSetupComplete(p)).toBe(false);
+  });
+});
+
+describe("countProjectRoutingRoles", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("counts only pi-oven:* keys in task.agentModelOverrides", () => {
+    const p = join(dir, "settings.json");
+    writeFileSync(
+      p,
+      JSON.stringify({
+        task: {
+          agentModelOverrides: {
+            "pi-oven:executor": "openai-codex/gpt-5.4",
+            "pi-oven:critic": "anthropic/claude-opus-4-8",
+            "other:agent": "opencode-zen/glm-5.1",
+          },
+        },
+      })
+    );
+    expect(countProjectRoutingRoles(p)).toBe(2);
+  });
+
+  it("returns 0 when there are no pi-oven:* keys", () => {
+    const p = join(dir, "settings.json");
+    writeFileSync(p, JSON.stringify({ task: { agentModelOverrides: { "x:y": "z" } } }));
+    expect(countProjectRoutingRoles(p)).toBe(0);
+  });
+
+  it("returns 0 when task.agentModelOverrides is absent", () => {
+    const p = join(dir, "settings.json");
+    writeFileSync(p, JSON.stringify({ extensions: {} }));
+    expect(countProjectRoutingRoles(p)).toBe(0);
+  });
+
+  it("returns 0 when the file is absent (fail-soft)", () => {
+    expect(countProjectRoutingRoles(join(dir, "missing.json"))).toBe(0);
+  });
+
+  it("returns 0 when the file is malformed JSON (fail-soft)", () => {
+    const p = join(dir, "settings.json");
+    writeFileSync(p, "{ not json");
+    expect(countProjectRoutingRoles(p)).toBe(0);
   });
 });
 // ---------------------------------------------------------------------------

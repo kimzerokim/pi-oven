@@ -10,7 +10,7 @@ description: "Read this skill before planning or fixing when the task needs a br
 
 ENFORCEMENT: Main does NOT do this skill's substantive work inline. Main's direct-action budget is narrow — 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation MUST be dispatched. Main only dispatches, synthesizes, and reviews — it never reads 5+ files or implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
 
-RIGHT-AGENT ROUTING (model-fit + role-fit is first-class; use these exact names): read-heavy survey → `pi-oven:explorer`; causal trace → `pi-oven:tracer`; structural analysis → `pi-oven:analyst`.
+RIGHT-AGENT ROUTING (model-fit + role-fit is first-class; use these exact names): read-heavy survey → `pi-oven:explorer`; causal trace → `pi-oven:tracer`; structural analysis → `pi-oven:analyst`. Navigation tools: prefer `lsp` (diagnostics, goto-definition, find-references, hover) and `ast_grep` (structural search) over manual reads or plain grep for code traversal.
 
 ## When to use
 
@@ -55,7 +55,7 @@ The subagent returns a 200-word evidence summary in its final message. Main agen
 ## CRG / grep
 
 - **CRG configured**: use `query_graph` + `semantic_search_nodes` + `get_impact_radius`. Never silently fall back to grep when CRG is configured but returns empty — an empty CRG result is data, not an error.
- - **CRG absent**: use `ast_grep_search` → `lsp symbols` → `lsp references` → `lsp hover` → grep in that order. Use `lsp references` to trace call chains and `lsp hover` for type inspection.
+ - **CRG absent**: use `ast_grep` (structural search) → `lsp symbols` → `lsp find-references` → `lsp hover` → grep in that order. Prefer `ast_grep` over plain grep for pattern matching; use `lsp find-references` to trace call chains and `lsp hover` for type inspection. Never fall through to grep for a structural query that `ast_grep` can answer.
  - pi-oven maps CRG roles as follows: `query_graph` → `ast_grep_search`, `semantic_search_nodes` → `lsp symbols`, `get_impact_radius` → recursive `lsp references`.
 
 ## Report path

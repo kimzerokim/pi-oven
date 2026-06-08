@@ -569,3 +569,21 @@ describe("PROFILE_D", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// PROFILE_B — tools/blocked_tools must mirror PROFILE_A verbatim (lint + SoT)
+// ---------------------------------------------------------------------------
+
+describe("PROFILE_B", () => {
+  it("tools per role matches PROFILE_A verbatim", () => {
+    for (const role of ROLES) {
+      expect(PROFILE_B[role].tools).toEqual(PROFILE_A[role].tools);
+    }
+  });
+
+  it("blocked_tools per role matches PROFILE_A verbatim", () => {
+    for (const role of ROLES) {
+      expect(PROFILE_B[role].blocked_tools).toEqual(PROFILE_A[role].blocked_tools);
+    }
+  });
+});

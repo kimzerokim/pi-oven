@@ -470,6 +470,49 @@ export async function setMemoryAndAsyncConfig(opts?: ConfigYmlOpts): Promise<voi
 }
 
 // ---------------------------------------------------------------------------
+// setToolEnablementConfig — writes the gated-tool enablement flags so the
+// agents' tool mandates are not toothless. Scalar dotted keys → individual
+// `omp config set <dotted.key> <value>` (same scalar-write transport as
+// setMemoryAndAsyncConfig; no read-merge needed, these are not record-typed).
+// ---------------------------------------------------------------------------
+
+/**
+ * Tool-enablement flags written on global-scope setup so the agents' tool
+ * mandates are not toothless. inspect_image defaults FALSE in omp (blocks vision
+ * agents); the rest default true but are written defensively so a user toggle
+ * can't silently neuter a mandated tool. Scalar keys → individual `omp config
+ * set <dotted.key> <value>` (no read-merge needed; not record-typed). The EXACT
+ * casing is the omp setting key (astGrep camelCase, inspect_image snake) — do
+ * not normalize it.
+ */
+export const TOOL_ENABLEMENT: Record<string, boolean> = {
+  "inspect_image.enabled": true,
+  "web_search.enabled": true,
+  "lsp.enabled": true,
+  "astGrep.enabled": true,
+  "browser.enabled": true,
+  "debug.enabled": true,
+};
+
+/**
+ * Write every TOOL_ENABLEMENT flag via individual `omp config set <key> <value>`
+ * calls (one per key, scalar values). Mirrors setMemoryAndAsyncConfig. Throws
+ * (including stderr) on any non-zero exit. Called from apply.ts on global-scope
+ * user setup only — project scope writes routing files, never `omp config set`.
+ */
+export async function setToolEnablementConfig(opts?: ConfigYmlOpts): Promise<void> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  for (const [key, value] of Object.entries(TOOL_ENABLEMENT)) {
+    const result = spawn("omp", ["config", "set", key, String(value)]);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `setToolEnablementConfig: omp config set ${key} failed (exit ${String(result.exitCode)}): ${result.stderr?.toString() ?? ""}`
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // disabledProviders (ARRAY) — the ~/.claude isolation toggle.
 // Same transport as the overrides path: omp config get disabledProviders --json
 // → in-memory merge → omp config set disabledProviders '<whole-merged-json>'.

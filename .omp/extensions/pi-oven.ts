@@ -26,7 +26,10 @@ import {
   extractTextFromContent,
   updateStopGuardOnTurnStart,
 } from "./pi-oven-runtime/autonomous-stop-guard";
-import { RulesInjector } from "./pi-oven-runtime/rules-injector";
+import {
+  RulesInjector,
+  ORCHESTRATOR_CONDUCT_DEDUP_KEY,
+} from "./pi-oven-runtime/rules-injector";
 import { GateStateStore } from "./pi-oven-runtime/gate-state";
 import { createGateHandler } from "./pi-oven-runtime/gate-handler";
 import { registerPiOvenAsk } from "./pi-oven-runtime/pi-oven-ask";
@@ -43,6 +46,90 @@ export interface AgentFileEntry {
 export interface SessionModelCapture {
   model: string;
   capturedAt: number;
+}
+
+export interface SetupChecklistNotice {
+  message: string;
+  level: "info" | "warning";
+}
+
+// ---------------------------------------------------------------------------
+// Setup onboarding checklist (Spec project-scoped-model-routing §4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the always-shown 2-line (optionally 3-line) setup checklist notice.
+ *
+ * - Line 1: header "pi-oven setup".
+ * - Line 2: Global  marker (~/.pi-oven/config.json).
+ * - Line 3: Project marker (.pi-oven/config.json) — appends " — run /pi-oven:setup"
+ *   only while the project layer is incomplete.
+ * - Optional routing line: when the project `.omp/settings.json` declares any
+ *   `pi-oven:*` model overrides, append "  ↳ project model routing active (N roles)".
+ * - Uninstall hint appended ONLY when neither layer is complete.
+ *
+ * Level is "info" once the project layer is complete (or both), else "warning".
+ */
+export function buildSetupChecklistNotice(
+  globalComplete: boolean,
+  projectComplete: boolean,
+  routingRoleCount: number = 0
+): SetupChecklistNotice {
+  const mark = (done: boolean) => (done ? "✓" : "✗");
+  const lines = [
+    "pi-oven setup",
+    `  [${mark(globalComplete)}] Global   (~/.pi-oven/config.json)`,
+    `  [${mark(projectComplete)}] Project  (.pi-oven/config.json)${
+      projectComplete ? "" : " — run /pi-oven:setup"
+    }`,
+  ];
+  if (routingRoleCount > 0) {
+    lines.push(`  ↳ project model routing active (${routingRoleCount} roles)`);
+  }
+  if (!globalComplete && !projectComplete) {
+    lines.push(
+      "  To stop seeing this, uninstall the plugin: omp plugin uninstall pi-oven@kzk"
+    );
+  }
+  return {
+    message: lines.join("\n"),
+    level: projectComplete ? "info" : "warning",
+  };
+}
+
+/**
+ * Read a `.pi-oven/config.json` and report whether `setupCompletedAt` is a
+ * non-empty string. Fail-soft: any FS/parse error → false.
+ */
+export function readSetupComplete(configPath: string): boolean {
+  try {
+    const raw = readFileSync(configPath, "utf-8");
+    const parsed = JSON.parse(raw) as { setupCompletedAt?: unknown };
+    return (
+      typeof parsed.setupCompletedAt === "string" &&
+      parsed.setupCompletedAt.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Count `pi-oven:*` keys in `<repoRoot>/.omp/settings.json`
+ * `task.agentModelOverrides` (the project model-routing layer). Fail-soft → 0.
+ */
+export function countProjectRoutingRoles(settingsPath: string): number {
+  try {
+    const raw = readFileSync(settingsPath, "utf-8");
+    const parsed = JSON.parse(raw) as {
+      task?: { agentModelOverrides?: Record<string, unknown> };
+    };
+    const overrides = parsed.task?.agentModelOverrides;
+    if (!overrides || typeof overrides !== "object") return 0;
+    return Object.keys(overrides).filter((k) => k.startsWith("pi-oven:")).length;
+  } catch {
+    return 0;
+  }
 }
 
 
@@ -237,6 +324,28 @@ export function readProjectInstructions(
   }
 }
 
+/**
+ * Inject the parent-only orchestrator-conduct block. Pure helper, called AFTER
+ * `injector.applyToSystemPrompt(...)` (which APPENDS): for the parent session it
+ * UNSHIFTS the conduct block to index 0 so it reads first; for non-parent
+ * sessions (subagents) it returns the array unchanged. Deduped on the conduct
+ * marker so re-application never produces a second block. Non-mutating.
+ */
+export function applyOrchestratorConduct(
+  systemPrompt: string[],
+  injector: RulesInjector,
+  opts: { isParentSession: boolean; autonomousActive: boolean }
+): string[] {
+  if (!opts.isParentSession) return systemPrompt.slice();
+  if (systemPrompt.some((s) => s.includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY))) {
+    return systemPrompt.slice();
+  }
+  return [
+    injector.buildOrchestratorConductBlock({ autonomousActive: opts.autonomousActive }),
+    ...systemPrompt,
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Extension entrypoint
 // ---------------------------------------------------------------------------
@@ -259,34 +368,18 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   const injector = new RulesInjector();
 
   // -------------------------------------------------------------------------
-  // Setup detection: effectiveSetupComplete = true iff the user has RUN setup
-  // (i.e. setupCompletedAt is a non-empty string in either the global config
-  // ~/.pi-oven/config.json OR the project-local .pi-oven/config.json).
+  // Setup detection: compute the global and project completion markers as two
+  // SEPARATE booleans so session_start can render the always-shown checklist
+  // (Spec project-scoped-model-routing §4). A layer is "complete" iff
+  // `setupCompletedAt` is a non-empty string in its `.pi-oven/config.json`.
   // Mere installation (agent files present) does NOT count as setup complete.
   // Fail-soft: any FS/parse error → treat as NOT complete so the notice shows.
-  let effectiveSetupComplete = false;
   const globalConfigPath = path.resolve(os.homedir(), ".pi-oven", "config.json");
   const projectConfigPath = path.resolve(repoRoot, ".pi-oven", "config.json");
-  try {
-    const raw = readFileSync(globalConfigPath, "utf-8");
-    const parsed = JSON.parse(raw) as { setupCompletedAt?: unknown };
-    if (typeof parsed.setupCompletedAt === "string" && parsed.setupCompletedAt.length > 0) {
-      effectiveSetupComplete = true;
-    }
-  } catch {
-    // not present or unreadable — keep false
-  }
-  if (!effectiveSetupComplete) {
-    try {
-      const raw = readFileSync(projectConfigPath, "utf-8");
-      const parsed = JSON.parse(raw) as { setupCompletedAt?: unknown };
-      if (typeof parsed.setupCompletedAt === "string" && parsed.setupCompletedAt.length > 0) {
-        effectiveSetupComplete = true;
-      }
-    } catch {
-      // not present or unreadable — keep false
-    }
-  }
+  const projectSettingsPath = path.resolve(repoRoot, ".omp", "settings.json");
+  const globalComplete = readSetupComplete(globalConfigPath);
+  const projectComplete = readSetupComplete(projectConfigPath);
+  const projectRoutingRoleCount = countProjectRoutingRoles(projectSettingsPath);
 
   // Read config: GLOBAL language first, then PROJECT-LOCAL overrides.
   // Resolution order: project language > global language > no language set.
@@ -368,6 +461,12 @@ export default function piOvenPi(pi: ExtensionAPI): void {
       const effectiveMatchedSkills =
         promptMatchedSkills.length > 0 ? promptMatchedSkills : skillKeywordState.matchedSkills;
 
+      // Hoisted to the outer handler scope so the SAME boolean drives BOTH the
+      // autonomous reminder block and the orchestrator-conduct injection below
+      // (parent-only; false for non-parent sessions). Single definition — never
+      // re-declared at the injection point.
+      let needsAutonomousReminder = false;
+
       if (isParentSession) {
         const fsm = await store.readState();
         const remainingFromState =
@@ -382,7 +481,7 @@ export default function piOvenPi(pi: ExtensionAPI): void {
             : effectiveMatchedSkills.map((skill) => skill.name);
         const reminders: string[] = [];
         const branchContract = await store.readBranchContract();
-        const needsAutonomousReminder =
+        needsAutonomousReminder =
           (fsm.kind === "OK" && fsm.state.active) ||
           effectiveMatchedSkills.some((skill) => skill.name === "autonomous-loop");
         if (needsAutonomousReminder) {
@@ -402,6 +501,14 @@ export default function piOvenPi(pi: ExtensionAPI): void {
 
       let systemPrompt = injector.applyToSystemPrompt(event.systemPrompt ?? []);
       if (isParentSession) {
+        // Parent-only standing conduct block — placed FIRST (unshifted) so it
+        // reads before the discipline/keyword blocks. Reuses the SAME
+        // needsAutonomousReminder boolean to relax the WAIT/ASK rules under an
+        // active autonomous loop.
+        systemPrompt = applyOrchestratorConduct(systemPrompt, injector, {
+          isParentSession,
+          autonomousActive: needsAutonomousReminder,
+        });
         const keywordPrompt = buildKeywordMatchedSkillsPrompt(effectiveMatchedSkills);
         if (
           keywordPrompt !== null &&
@@ -444,16 +551,13 @@ export default function piOvenPi(pi: ExtensionAPI): void {
         hasUI?: boolean;
         ui?: { notify?: (message: string, level: string) => void };
       };
-      if (
-        uiCtx.hasUI &&
-        uiCtx.ui &&
-        typeof uiCtx.ui.notify === "function" &&
-        !effectiveSetupComplete
-      ) {
-        uiCtx.ui.notify(
-          "pi-oven is not set up for this project. Run /pi-oven:setup to configure it — or, if you don't want to see this, uninstall the plugin with: omp plugin uninstall pi-oven@kzk",
-          "warning"
+      if (uiCtx.hasUI && uiCtx.ui && typeof uiCtx.ui.notify === "function") {
+        const notice = buildSetupChecklistNotice(
+          globalComplete,
+          projectComplete,
+          projectRoutingRoleCount
         );
+        uiCtx.ui.notify(notice.message, notice.level);
       }
     } catch (err) {
       pi.logger.debug(`pi-oven: setup-state notice skipped: ${err}`);
@@ -539,7 +643,7 @@ export default function piOvenPi(pi: ExtensionAPI): void {
     pi.logger.debug(`pi-oven: pi-oven_ask registration skipped: ${err}`);
   }
 
-  pi.setLabel("pi-oven v0.1.6");
+  pi.setLabel("pi-oven v0.1.10");
   pi.logger.info("pi-oven loaded");
 
 }

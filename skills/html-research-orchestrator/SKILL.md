@@ -23,9 +23,9 @@ RIGHT-AGENT ROUTING (model-fit + role-fit is first-class): external research →
 
 ## Stage 1 — External research dispatch (evidence collection)
 
-Dispatch `pi-oven:document-specialist` (or `pi-oven:librarian` when source-code-level references are needed) with explicit citation requirements:
+Dispatch `pi-oven:document-specialist` (or `pi-oven:librarian` when source-code-level references are needed) with explicit citation requirements. The dispatched agent MUST use `web_search` for every external/library/API/framework/doc question — source is truth, training data is history. Never let an agent answer from memory on a factual claim that can be verified against a live source.
 
-- Every claim must cite a source URL.
+- Every claim must cite a source URL obtained via `web_search` or direct source read; claims with no verifiable source are excluded.
 - Prefer primary sources (official docs, standards, vendor docs, papers) before secondary commentary.
 - Capture publication/update date when available.
 - Flag contradictions and confidence per claim (`high|medium|low`).

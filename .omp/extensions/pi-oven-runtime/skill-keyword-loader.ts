@@ -77,6 +77,8 @@ export const SKILL_KEYWORD_WHITELIST: Record<string, readonly string[]> = {
     "trace and clarify",
     "deep investigation",
     "investigate deeply",
+    "research this",
+    "dig into",
     "깊게 조사",
   ],
   "deep-init": [
@@ -110,6 +112,7 @@ export const SKILL_KEYWORD_WHITELIST: Record<string, readonly string[]> = {
   "html-research-orchestrator": [
     "html report",
     "research html",
+    "research report",
     "html 리포트",
     "조사 보고서 html",
     "리서치 html",
@@ -146,6 +149,9 @@ export const SKILL_KEYWORD_WHITELIST: Record<string, readonly string[]> = {
     "git commit",
     "git push",
     "gh pr create",
+    "commit this",
+    "ready to commit",
+    "create a pr",
   ],
   "receiving-code-review": [
     "apply review",
@@ -161,6 +167,9 @@ export const SKILL_KEYWORD_WHITELIST: Record<string, readonly string[]> = {
     "plan 만들어",
     "codex review",
     "cross-vendor review",
+    "write a spec",
+    "design doc",
+    "review the plan",
   ],
   "subagent-driven-development": [
     "execute plan",
@@ -176,9 +185,29 @@ export const SKILL_KEYWORD_WHITELIST: Record<string, readonly string[]> = {
     "race condition",
     "regression",
     "test failure",
+    "debug this",
+    "fix the bug",
+    "why is it failing",
+    "its broken",
   ],
-  "tdd-strict": ["tdd", "test first", "red-green", "테스트 먼저", "테스트부터"],
-  "writing-plans": ["plan it", "write plan", "계획 세워줘", "구현 계획", "plan만들어"],
+  "tdd-strict": [
+    "tdd",
+    "test first",
+    "red-green",
+    "test driven",
+    "write tests first",
+    "테스트 먼저",
+    "테스트부터",
+  ],
+  "writing-plans": [
+    "plan it",
+    "write plan",
+    "implementation plan",
+    "break it down",
+    "계획 세워줘",
+    "구현 계획",
+    "plan만들어",
+  ],
 };
 
 export interface SkillKeywordIndexEntry {
@@ -323,6 +352,7 @@ export function buildKeywordMatchedSkillsPrompt(matchedSkills: MatchedSkill[]): 
     "",
     "The latest user message matched these pi-oven skills from the curated keyword whitelist.",
     "You MUST load each listed skill with `read(\"skill://<name>\")` before taking substantive action in this turn.",
+    "This is a hard precondition, NOT a suggestion: do not begin any skill-governed work until the matching skill is loaded and followed.",
     "Preserve all non-conflicting rules across the matched skills. If two skills conflict, prefer the more specific one.",
     "",
   ];

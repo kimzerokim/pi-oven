@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.10 - 2026-06-08
+
+- feat(setup): project-scoped model routing & per-project setup
+- feat(agents,runtime): omp tool discipline & orchestrator conduct
 ## v0.1.9 - 2026-06-05
 
 - docs(release): bump human-facing version refs to v0.1.9

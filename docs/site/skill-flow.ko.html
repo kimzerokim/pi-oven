@@ -390,7 +390,8 @@ flowchart LR
 </pre>
   </div>
   <ul>
-    <li><strong>우선순위</strong>: <code>task.agentModelOverrides[pi-oven:&lt;role&gt;]</code> &gt; agent-file <code>model:</code> frontmatter &gt; session default.</li>
+    <li><strong>우선순위</strong> (낮음→높음): agent-file <code>model:</code> frontmatter &lt; 글로벌 <code>~/.omp/agent/config.yml</code> <code>task.agentModelOverrides</code> &lt; <strong>프로젝트 <code>&lt;projectRoot&gt;/.omp/settings.json</code> <code>task.agentModelOverrides</code></strong> &lt; runtime CLI flag. 미설정 역할은 session default 로 fallback.</li>
+    <li><strong>프로젝트 라우팅 (<code>--scope project</code>)</strong>: omp 가 <code>&lt;cwd&gt;/.omp/settings.json</code> 를 <code>level:"project"</code> 로 읽어 글로벌 <code>config.yml</code> 위에 deep-merge (record 는 키별 병합, 배열은 교체). <code>/pi-oven:setup --scope project</code> 는 <strong>모든 프로필(A 포함)의 24개 전 역할 override</strong> + <code>modelRoles</code> + <code>retry.fallbackChains</code> 를 여기에 기록 (language/마커는 <code>&lt;cwd&gt;/.pi-oven/config.json</code>). 커밋해서 팀 공유 가능하거나 gitignore 로 머신-로컬. <strong>Spec E carve-out</strong>: 프로젝트 레이어는 별도 namespace 이므로 글로벌 Profile-A orchestrator-only 불변식은 그대로.</li>
     <li>PROFILE_A 는 <strong>릴리스 기본값</strong>(frontmatter 에 baked-in) + override 메커니즘입니다.</li>
     <li><strong>개인 override (git dirt 없음)</strong>: <code>/pi-oven:setup --override &lt;role&gt;=&lt;model&gt;</code> → <code>~/.omp/agent/config.yml</code> 에 <code>task.agentModelOverrides["pi-oven:&lt;role&gt;"]</code> 기록 (machine-global, uncommitted). 에이전트 파일은 건드리지 않음.</li>
     <li><strong>메인 오케스트레이터 모델</strong>: <code>/pi-oven:setup --profile</code> 는 24개 서브에이전트 외에 <strong>최상위 세션(오케스트레이터) 모델</strong>도 설정합니다 — omp <code>modelRoles.default</code> = canonical <code>gpt-5.4:high</code>, <code>modelRoles.title</code> = <code>gpt-5.4-mini:low</code> (provider prefix 없음 → openai-codex-first, opencode-zen fallback).</li>

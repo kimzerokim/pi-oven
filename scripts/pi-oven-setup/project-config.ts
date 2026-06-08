@@ -270,6 +270,41 @@ export async function markSetupCompleteGlobal(opts?: { homeDir?: string }): Prom
 }
 
 /**
+ * Clear the GLOBAL setup-completion marker: read-merge that DELETES
+ * `setupCompletedAt` from `~/.pi-oven/config.json` while preserving `language`
+ * and any other keys. No-op when the global config file is absent (does not
+ * create one). Mirrors `clearSetupComplete` for the global path.
+ */
+export async function clearSetupCompleteGlobal(opts?: { homeDir?: string }): Promise<void> {
+  const homeDir = opts?.homeDir ?? os.homedir();
+  const file = globalConfigPath(homeDir);
+
+  // No-op when absent — never create a config file just to clear a missing key.
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf-8");
+  } catch {
+    return;
+  }
+
+  let existing: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      existing = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // unparsable — nothing to clear; leave the file untouched
+    return;
+  }
+
+  if (!(SETUP_COMPLETE_KEY in existing)) return;
+
+  const { [SETUP_COMPLETE_KEY]: _removed, ...rest } = existing;
+  await fs.writeFile(file, JSON.stringify(rest, null, 2) + "\n", "utf-8");
+}
+
+/**
  * Synchronously report whether global setup has been completed: `true` iff
  * `~/.pi-oven/config.json` parses and carries a non-empty `setupCompletedAt`.
  * Fail-soft to `false` on any error. Sync so it is safe to call at extension load.

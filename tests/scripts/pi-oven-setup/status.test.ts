@@ -211,3 +211,96 @@ describe("runStatus", () => {
     expect(result.output).not.toContain("override(config.yml)");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Two-layer status — project(.omp/settings.json) rows win per role
+// ---------------------------------------------------------------------------
+
+describe("runStatus — project layer", () => {
+  let tempDir: string;
+  let agentsDir: string;
+  let cwd: string;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+    agentsDir = join(tempDir, "agents");
+    mkdirSync(agentsDir, { recursive: true });
+    // A separate isolated cwd holding the .omp/settings.json project layer.
+    cwd = join(tempDir, "proj");
+    mkdirSync(cwd, { recursive: true });
+    for (const role of ROLES) {
+      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+    }
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function seedProject(data: object): void {
+    mkdirSync(join(cwd, ".omp"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".omp", "settings.json"),
+      JSON.stringify(data, null, 2) + "\n",
+      "utf-8"
+    );
+  }
+
+  it("header names both files + precedence note + project-file presence", async () => {
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } } });
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain(".omp/settings.json");
+    expect(result.output).toContain("config.yml");
+    expect(result.output).toMatch(/project wins per role/i);
+    expect(result.output).toMatch(/present/i);
+  });
+
+  it("header reports the project file ABSENT when there is none", async () => {
+    const spawnFn = makeSpawnFn({ overrides: {} });
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toMatch(/absent/i);
+  });
+
+  it("a project-layer role is labelled project(.omp/settings.json)", async () => {
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
+    expect(criticLine).toContain("opencode-zen/kimi-k2.6");
+    expect(criticLine).toContain("project(.omp/settings.json)");
+  });
+
+  it("project layer WINS over the global override for the same role", async () => {
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    // Global override sets a DIFFERENT model for critic — project must win.
+    const spawnFn = makeSpawnFn({ overrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
+    expect(criticLine).toContain("opencode-zen/kimi-k2.6");
+    expect(criticLine).toContain("project(.omp/settings.json)");
+    expect(criticLine).not.toContain("override(config.yml)");
+  });
+
+  it("a role only in the global layer still shows override(config.yml)", async () => {
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    const spawnFn = makeSpawnFn({ overrides: { "pi-oven:executor": "openai-codex/gpt-5.3-codex" } });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    const executorLine = result.output.split("\n").find((l) => /^\s*executor\s/.test(l))!;
+    expect(executorLine).toContain("openai-codex/gpt-5.3-codex");
+    expect(executorLine).toContain("override(config.yml)");
+  });
+
+  it("a role in neither layer shows default(frontmatter)", async () => {
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    const plannerLine = result.output.split("\n").find((l) => /^\s*planner\s/.test(l))!;
+    expect(plannerLine).toContain("default(frontmatter)");
+  });
+});

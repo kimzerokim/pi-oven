@@ -340,8 +340,8 @@ describe("pi-oven-setup CLI --language dispatch", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("--language ko writes .pi-oven/config.json with \"ko\" and exits 0", async () => {
-    const { exitCode } = await runCLIInCwd(["--language", "ko"], tempDir);
+  it("--language ko --scope project writes .pi-oven/config.json with \"ko\" and exits 0", async () => {
+    const { exitCode } = await runCLIInCwd(["--language", "ko", "--scope", "project"], tempDir);
     expect(exitCode).toBe(0);
 
     const parsed = JSON.parse(
@@ -350,8 +350,8 @@ describe("pi-oven-setup CLI --language dispatch", () => {
     expect(parsed.language).toBe("ko");
   });
 
-  it("--language english normalizes and writes \"en\"", async () => {
-    const { exitCode } = await runCLIInCwd(["--language", "english"], tempDir);
+  it("--language english --scope project normalizes and writes \"en\"", async () => {
+    const { exitCode } = await runCLIInCwd(["--language", "english", "--scope", "project"], tempDir);
     expect(exitCode).toBe(0);
     const parsed = JSON.parse(
       readFileSync(join(tempDir, ".pi-oven", "config.json"), "utf-8")
@@ -359,8 +359,8 @@ describe("pi-oven-setup CLI --language dispatch", () => {
     expect(parsed.language).toBe("en");
   });
 
-  it("--language with a custom name (Español) writes \"Español\" and exits 0", async () => {
-    const { exitCode } = await runCLIInCwd(["--language", "Español"], tempDir);
+  it("--language --scope project with a custom name (Español) writes \"Español\" and exits 0", async () => {
+    const { exitCode } = await runCLIInCwd(["--language", "Español", "--scope", "project"], tempDir);
     expect(exitCode).toBe(0);
     const parsed = JSON.parse(
       readFileSync(join(tempDir, ".pi-oven", "config.json"), "utf-8")
@@ -372,7 +372,7 @@ describe("pi-oven-setup CLI --language dispatch", () => {
     // "fr" is now a VALID free-form name; an embedded newline is the genuinely
     // invalid input that must fail the safe-name whitelist + write no config.
     const { exitCode, stderr } = await runCLIInCwd(
-      ["--language", "Español\ninjected directive"],
+      ["--language", "Español\ninjected directive", "--scope", "project"],
       tempDir
     );
     expect(exitCode).not.toBe(0);
@@ -399,8 +399,21 @@ function markerExists(cwd: string): boolean {
   }
 }
 
+/** True iff homeDir/.pi-oven/config.json carries a non-empty setupCompletedAt. */
+function globalMarkerExists(homeDir: string): boolean {
+  const file = join(homeDir, ".pi-oven", "config.json");
+  if (!existsSync(file)) return false;
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf-8"));
+    return typeof parsed.setupCompletedAt === "string" && parsed.setupCompletedAt.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 describe("pi-oven-setup CLI setup-completion marker", () => {
   let tempDir: string;
+  let homeDir: string;
 
   beforeEach(() => {
     tempDir = join(
@@ -408,32 +421,55 @@ describe("pi-oven-setup CLI setup-completion marker", () => {
       `cli-marker-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
     mkdirSync(tempDir, { recursive: true });
+    // Isolated HOME so a GLOBAL marker write never touches the real ~/.pi-oven.
+    homeDir = join(
+      tmpdir(),
+      `cli-marker-home-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(homeDir, { recursive: true });
   });
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
+    rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("default --apply success writes the setup-completion marker", async () => {
+  it("default (global) --apply success writes the GLOBAL marker, not the project marker", async () => {
     const { exitCode } = await runCLIInCwd(["--apply"], tempDir, {
       PI_OVEN_MOCK_SPAWN: "1",
       PI_OVEN_VALIDATE_MODE: "none",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+    expect(globalMarkerExists(homeDir)).toBe(true);
+    expect(markerExists(tempDir)).toBe(false);
+  });
+
+  it("--scope project --apply success writes the PROJECT marker, not the global marker", async () => {
+    const { exitCode } = await runCLIInCwd(["--apply", "--scope", "project"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      PI_OVEN_VALIDATE_MODE: "none",
+      HOME: homeDir,
     });
     expect(exitCode).toBe(0);
     expect(markerExists(tempDir)).toBe(true);
+    expect(globalMarkerExists(homeDir)).toBe(false);
   });
 
   it("--status does NOT write the marker", async () => {
     const { exitCode } = await runCLIInCwd(["--status"], tempDir, {
       PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
     });
     expect(exitCode).toBe(0);
     expect(markerExists(tempDir)).toBe(false);
+    expect(globalMarkerExists(homeDir)).toBe(false);
   });
 
   it("--language only does NOT write the marker", async () => {
-    const { exitCode } = await runCLIInCwd(["--language", "ko"], tempDir, {
+    const { exitCode } = await runCLIInCwd(["--language", "ko", "--scope", "project"], tempDir, {
       PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
     });
     expect(exitCode).toBe(0);
     // config.json exists (language was set) but carries no setupCompletedAt
@@ -441,14 +477,133 @@ describe("pi-oven-setup CLI setup-completion marker", () => {
     expect(markerExists(tempDir)).toBe(false);
   });
 
-  it("--override success writes the setup-completion marker", async () => {
+  it("--override success (global) writes the GLOBAL marker", async () => {
     const { exitCode } = await runCLIInCwd(
       ["--override", "critic=anthropic/claude-opus-4-8"],
       tempDir,
-      { PI_OVEN_MOCK_SPAWN: "1" }
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
+    );
+    expect(exitCode).toBe(0);
+    expect(globalMarkerExists(homeDir)).toBe(true);
+  });
+
+  it("--scope project --override success writes the PROJECT marker", async () => {
+    const { exitCode } = await runCLIInCwd(
+      ["--override", "critic=anthropic/claude-opus-4-8", "--scope", "project"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
     expect(exitCode).toBe(0);
     expect(markerExists(tempDir)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --scope flag: accept / validate / route language + marker to the chosen layer
+// ---------------------------------------------------------------------------
+
+describe("pi-oven-setup CLI --scope", () => {
+  let tempDir: string;
+  let homeDir: string;
+
+  beforeEach(() => {
+    tempDir = join(
+      tmpdir(),
+      `cli-scope-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(tempDir, { recursive: true });
+    homeDir = join(
+      tmpdir(),
+      `cli-scope-home-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(homeDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it("--scope project is accepted (exit 0)", async () => {
+    const { exitCode } = await runCLIInCwd(["--apply", "--scope", "project"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      PI_OVEN_VALIDATE_MODE: "none",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+  });
+
+  it("--scope global is accepted (exit 0)", async () => {
+    const { exitCode } = await runCLIInCwd(["--apply", "--scope", "global"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      PI_OVEN_VALIDATE_MODE: "none",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+  });
+
+  it("--scope bogus exits 1 with the Allowed message", async () => {
+    const { exitCode, stderr } = await runCLIInCwd(["--apply", "--scope", "bogus"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/Invalid scope "bogus"\. Allowed: global, project\./);
+  });
+
+  it("--language ko --scope project writes the PROJECT config.json only (not global)", async () => {
+    const { exitCode } = await runCLIInCwd(["--language", "ko", "--scope", "project"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+    const projectCfg = JSON.parse(
+      readFileSync(join(tempDir, ".pi-oven", "config.json"), "utf-8")
+    );
+    expect(projectCfg.language).toBe("ko");
+    // No global config.json written.
+    expect(existsSync(join(homeDir, ".pi-oven", "config.json"))).toBe(false);
+  });
+
+  it("--language ko --scope global writes the GLOBAL config.json only (not project)", async () => {
+    const { exitCode } = await runCLIInCwd(["--language", "ko", "--scope", "global"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+    const globalCfg = JSON.parse(
+      readFileSync(join(homeDir, ".pi-oven", "config.json"), "utf-8")
+    );
+    expect(globalCfg.language).toBe("ko");
+    // No project config.json written.
+    expect(existsSync(join(tempDir, ".pi-oven", "config.json"))).toBe(false);
+  });
+
+  it("--language ko (no --scope) defaults to global and writes the GLOBAL config.json only", async () => {
+    const { exitCode } = await runCLIInCwd(["--language", "ko"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+    const globalCfg = JSON.parse(
+      readFileSync(join(homeDir, ".pi-oven", "config.json"), "utf-8")
+    );
+    expect(globalCfg.language).toBe("ko");
+    expect(existsSync(join(tempDir, ".pi-oven", "config.json"))).toBe(false);
+  });
+
+  it("--scope project --apply writes the project .omp/settings.json", async () => {
+    const { exitCode } = await runCLIInCwd(["--apply", "--scope", "project"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      PI_OVEN_VALIDATE_MODE: "none",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+    const settings = JSON.parse(
+      readFileSync(join(tempDir, ".omp", "settings.json"), "utf-8")
+    );
+    // Profile A under project scope writes ALL 24 overrides.
+    expect(Object.keys(settings.task.agentModelOverrides).length).toBe(ROLES.length);
   });
 });
 

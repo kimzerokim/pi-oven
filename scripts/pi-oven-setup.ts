@@ -42,9 +42,23 @@ const { values } = parseArgs({
     language: { type: "string" },
     isolate: { type: "boolean", default: false },
     "no-isolate": { type: "boolean", default: false },
+    scope: { type: "string" },
   },
   strict: false,
 });
+
+// ---------------------------------------------------------------------------
+// Resolve + validate --scope (default "global"). Governs WHERE --language /
+// --profile|--apply / --override / --reset write, and which completion marker is
+// recorded. "global" preserves today's behavior byte-for-byte.
+// ---------------------------------------------------------------------------
+
+const rawScope = (values.scope as string | undefined) ?? "global";
+if (rawScope !== "global" && rawScope !== "project") {
+  process.stderr.write(`Invalid scope "${rawScope}". Allowed: global, project.\n`);
+  process.exit(1);
+}
+const scope = rawScope as "global" | "project";
 
 // ---------------------------------------------------------------------------
 // Resolve shared options from env + flags
@@ -106,11 +120,17 @@ if (values.language !== undefined) {
     process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
   }
-  await setProjectLanguage(lang);
-  await setGlobalLanguage(lang);
-  process.stdout.write(
-    `Default response language set to "${lang}" globally (~/.pi-oven/config.json) and project-locally (.pi-oven/config.json).\n`
-  );
+  if (scope === "project") {
+    await setProjectLanguage(lang);
+    process.stdout.write(
+      `Default response language set to "${lang}" project-locally (.pi-oven/config.json).\n`
+    );
+  } else {
+    await setGlobalLanguage(lang);
+    process.stdout.write(
+      `Default response language set to "${lang}" globally (~/.pi-oven/config.json).\n`
+    );
+  }
   process.exit(0);
 }
 
@@ -175,7 +195,7 @@ let markRouting = false;
 if (values.status) {
   // If --override present, apply overrides first (§3.4: write-before-status)
   if (hasOverride) {
-    const overrideResult = await runOverride({ entries: overrideEntries, spawnFn });
+    const overrideResult = await runOverride({ entries: overrideEntries, spawnFn, scope });
     if (overrideResult.exitCode !== 0) {
       process.stderr.write(overrideResult.output);
       process.exit(overrideResult.exitCode);
@@ -188,7 +208,7 @@ if (values.status) {
   const statusAgentsDir = agentsDir ?? (await resolveDefaultAgentsDir(import.meta.dir));
   result = await runStatus({ spawnFn, agentsDir: statusAgentsDir });
 } else if (values.reset) {
-  result = await runReset({ spawnFn, full: Boolean(values.full) });
+  result = await runReset({ spawnFn, full: Boolean(values.full), scope });
 } else if (values.import !== undefined) {
   result = await runImport(values.import as string, { spawnFn });
   markRouting = true;
@@ -206,11 +226,12 @@ if (values.status) {
     validateMode,
     spawnFn,
     agentsDir,
+    scope,
   });
   markRouting = true;
 } else if (hasOverride) {
   // Standalone --override (no other action flag)
-  const overrideResult = await runOverride({ entries: overrideEntries, spawnFn });
+  const overrideResult = await runOverride({ entries: overrideEntries, spawnFn, scope });
   result = { exitCode: overrideResult.exitCode, output: overrideResult.output };
   if (result.exitCode !== 0) {
     process.stderr.write(result.output);
@@ -223,7 +244,7 @@ if (values.status) {
   result = { exitCode: 0, output: "" };
 } else {
   process.stderr.write(
-    "No action specified. Use --profile <A|B|C>, --status, --reset, --import <file>, --override <role>=<model>, or --isolate/--no-isolate.\n"
+    "No action specified. Use --profile <A|B|C|D>, --status, --reset, --import <file>, --override <role>=<model>, or --isolate/--no-isolate. Add --scope <global|project> to target the global config or this project's .omp/settings.json.\n"
   );
   process.exit(1);
 }
@@ -243,8 +264,11 @@ if (hasIsolate && result.exitCode === 0) {
 // (default --apply / --profile / --import / standalone --override). Placed just
 // before the success exit so a failure (exitCode !== 0) never marks the project.
 if (markRouting && result.exitCode === 0) {
-  await markSetupComplete();
-  await markSetupCompleteGlobal();
+  if (scope === "project") {
+    await markSetupComplete();
+  } else {
+    await markSetupCompleteGlobal();
+  }
 }
 
 process.stdout.write(result.output);

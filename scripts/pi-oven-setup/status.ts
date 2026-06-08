@@ -10,12 +10,19 @@
 import { readAgentModelOverrides, type ConfigYmlOpts } from "./config-yml";
 import { readAgentFiles } from "./agent-rewriter";
 import { ROLES } from "./profiles";
+import {
+  readProjectAgentModelOverrides,
+  projectSettingsPath,
+} from "./project-settings";
+import { existsSync } from "fs";
 
 export interface StatusOptions extends ConfigYmlOpts {
   /** Override agents directory (for tests). */
   agentsDir?: string;
   /** list-models fixture output (for unresolved-override warning in tests). */
   listModelsOutput?: string;
+  /** Project root whose `.omp/settings.json` layer is shown (default cwd). */
+  cwd?: string;
 }
 
 export async function runStatus(
@@ -23,22 +30,35 @@ export async function runStatus(
 ): Promise<{ exitCode: number; output: string }> {
   const lines: string[] = [];
 
-  // Header: scope
-  lines.push("Effective model overrides — scope: machine-global (~/.omp/agent/config.yml)");
+  // Resolve the project layer path + existence for the header.
+  const cwd = opts?.cwd ?? process.cwd();
+  const projectFile = projectSettingsPath(cwd);
+  const projectFileExists = existsSync(projectFile);
+
+  // Header: both layers + precedence note + project-file presence.
+  lines.push("Effective model overrides — two layers, project wins per role:");
+  lines.push(`  project: ${projectFile} (${projectFileExists ? "present" : "absent"})`);
+  lines.push("  override: machine-global (~/.omp/agent/config.yml)");
+  lines.push("  default:  agent-file frontmatter");
   lines.push("");
 
   // Read configured overrides (graceful: returns {} on any failure)
   const overrides = await readAgentModelOverrides(opts);
 
+  // Read the PROJECT layer (authoritative for project routing; soft read → {}).
+  const projectOverrides = await readProjectAgentModelOverrides({ cwd });
+
   // Read frontmatter model[0] per role from agent files
   const frontmatterMap = await buildFrontmatterMap(opts?.agentsDir);
 
-  // Collect stray override keys (pi-oven:* keys not in ROLES)
+  // Collect stray override keys (pi-oven:* keys not in ROLES) from BOTH layers.
   const strayWarnings: string[] = [];
-  for (const key of Object.keys(overrides)) {
-    if (key.startsWith("pi-oven:")) {
+  const seenStray = new Set<string>();
+  for (const key of [...Object.keys(overrides), ...Object.keys(projectOverrides)]) {
+    if (key.startsWith("pi-oven:") && !seenStray.has(key)) {
       const role = key.slice("pi-oven:".length);
       if (!(ROLES as readonly string[]).includes(role)) {
+        seenStray.add(key);
         strayWarnings.push(`  WARNING: unknown role override key "${key}" (not in ROLES)`);
       }
     }
@@ -50,13 +70,28 @@ export async function runStatus(
 
   for (const role of ROLES) {
     const colonKey = `pi-oven:${role}`;
+    const projectModel = projectOverrides[colonKey];
     const overrideModel = overrides[colonKey];
     const frontmatterModel = frontmatterMap[role];
 
     let effectiveModel: string;
     let source: string;
 
-    if (overrideModel !== undefined) {
+    if (projectModel !== undefined) {
+      // PROJECT layer wins per role (deep-merges OVER global at omp load time).
+      effectiveModel = projectModel;
+      source = "project(.omp/settings.json)";
+
+      // Check resolvability if listModelsOutput provided
+      if (opts?.listModelsOutput !== undefined) {
+        const resolvable = isModelInList(projectModel, opts.listModelsOutput);
+        if (!resolvable) {
+          unresolvedWarnings.push(
+            `  WARNING: project override ${role}=${projectModel} 미해소 — session default 로 fallback 중`
+          );
+        }
+      }
+    } else if (overrideModel !== undefined) {
       effectiveModel = overrideModel;
       source = "override(config.yml)";
 

@@ -1,12 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync } from "fs";
+import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { runReset } from "../../../scripts/pi-oven-setup/reset";
 import {
   markSetupComplete,
   isSetupComplete,
+  markSetupCompleteGlobal,
+  isSetupCompleteGlobal,
 } from "../../../scripts/pi-oven-setup/project-config";
+import {
+  projectSettingsPath,
+  readProjectAgentModelOverrides,
+} from "../../../scripts/pi-oven-setup/project-settings";
 
 // ---------------------------------------------------------------------------
 // SpawnFn mock factory
@@ -201,7 +207,7 @@ describe("runReset — --full mode", () => {
   });
 });
 
-describe("runReset — clears the project setup-completion marker", () => {
+describe("runReset — global scope clears the GLOBAL marker, not the project marker", () => {
   let cwd: string;
 
   beforeEach(() => {
@@ -216,30 +222,156 @@ describe("runReset — clears the project setup-completion marker", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("after a successful reset the project marker is cleared", async () => {
+  it("global reset does NOT clear the PROJECT marker (it targets the global marker now)", async () => {
     const getResponse = {
       type: "record",
       value: { "pi-oven:critic": "anthropic/claude-opus-4-8" },
     };
     const { spawnFn } = makeSpawn(getResponse);
 
+    // A project marker present at cwd must survive a GLOBAL-scope reset — Spec §5.5
+    // moved global reset's marker-clear off the project path onto the global path.
     await markSetupComplete({ cwd });
     expect(isSetupComplete({ cwd })).toBe(true);
 
     const result = await runReset({ spawnFn, cwd });
+    expect(result.exitCode).toBe(0);
+    // PROJECT marker is untouched by a global reset.
+    expect(isSetupComplete({ cwd })).toBe(true);
+  });
+});
+
+describe("runReset — global scope clears the GLOBAL marker (isolated homeDir)", () => {
+  let homeDir: string;
+
+  beforeEach(() => {
+    homeDir = join(
+      tmpdir(),
+      `reset-global-marker-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(homeDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it("after a successful global reset the GLOBAL marker is cleared", async () => {
+    const getResponse = {
+      type: "record",
+      value: { "pi-oven:critic": "anthropic/claude-opus-4-8" },
+    };
+    const { spawnFn } = makeSpawn(getResponse);
+
+    await markSetupCompleteGlobal({ homeDir });
+    expect(isSetupCompleteGlobal({ homeDir })).toBe(true);
+
+    const result = await runReset({ spawnFn, homeDir });
+    expect(result.exitCode).toBe(0);
+    expect(isSetupCompleteGlobal({ homeDir })).toBe(false);
+  });
+});
+
+describe("runReset — project scope", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = join(
+      tmpdir(),
+      `reset-project-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(cwd, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  function seedProjectSettings(cwdDir: string, data: object): void {
+    mkdirSync(join(cwdDir, ".omp"), { recursive: true });
+    writeFileSync(projectSettingsPath(cwdDir), JSON.stringify(data, null, 2) + "\n", "utf-8");
+  }
+
+  it("project reset removes only pi-oven:* keys from .omp/settings.json (no global config get/set)", async () => {
+    seedProjectSettings(cwd, {
+      task: {
+        agentModelOverrides: {
+          "pi-oven:critic": "anthropic/claude-opus-4-8",
+          "user:foo": "model-x",
+        },
+      },
+    });
+    const { spawnFn, calls } = makeSpawn({ type: "record", value: {} });
+
+    const result = await runReset({ spawnFn, cwd, scope: "project" });
+    expect(result.exitCode).toBe(0);
+
+    // pi-oven:* removed, sibling preserved
+    const remaining = await readProjectAgentModelOverrides({ cwd });
+    expect(remaining["pi-oven:critic"]).toBeUndefined();
+    const parsed = JSON.parse(readFileSync(projectSettingsPath(cwd), "utf-8"));
+    expect(parsed.task.agentModelOverrides["user:foo"]).toBe("model-x");
+
+    // ZERO global config get/set/reset calls — project scope never touches config.yml
+    const configCalls = calls.filter((c) => c.args[0] === "config");
+    expect(configCalls.length).toBe(0);
+  });
+
+  it("project reset clears the PROJECT marker, not the global marker", async () => {
+    seedProjectSettings(cwd, {
+      task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } },
+    });
+    const { spawnFn } = makeSpawn({ type: "record", value: {} });
+
+    await markSetupComplete({ cwd });
+    expect(isSetupComplete({ cwd })).toBe(true);
+
+    const result = await runReset({ spawnFn, cwd, scope: "project" });
     expect(result.exitCode).toBe(0);
     expect(isSetupComplete({ cwd })).toBe(false);
   });
 
-  it("clears the marker even on a no-op reset (no pi-oven:* overrides present)", async () => {
-    const getResponse = { type: "record", value: {} };
-    const { spawnFn } = makeSpawn(getResponse);
+  it("project --full reset clears modelRoles + retry.fallbackChains too", async () => {
+    seedProjectSettings(cwd, {
+      task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } },
+      modelRoles: { default: "openai-codex/gpt-5.4:high", title: "gpt-5.4-mini:low" },
+      retry: { fallbackChains: { default: ["opencode-zen/kimi-k2.6"] } },
+    });
+    const { spawnFn } = makeSpawn({ type: "record", value: {} });
 
-    await markSetupComplete({ cwd });
-    expect(isSetupComplete({ cwd })).toBe(true);
-
-    const result = await runReset({ spawnFn, cwd });
+    const result = await runReset({ spawnFn, cwd, scope: "project", full: true });
     expect(result.exitCode).toBe(0);
-    expect(isSetupComplete({ cwd })).toBe(false);
+
+    // Everything pi-oven-managed gone → file removed (became {})
+    expect(existsSync(projectSettingsPath(cwd))).toBe(false);
+  });
+
+  it("project --full reset preserves unrelated retry siblings + top-level keys", async () => {
+    seedProjectSettings(cwd, {
+      extensions: ["my-ext"],
+      task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } },
+      modelRoles: { default: "openai-codex/gpt-5.4:high" },
+      retry: { fallbackChains: { default: ["x"] }, maxDelayMs: 5000 },
+    });
+    const { spawnFn } = makeSpawn({ type: "record", value: {} });
+
+    const result = await runReset({ spawnFn, cwd, scope: "project", full: true });
+    expect(result.exitCode).toBe(0);
+
+    const parsed = JSON.parse(readFileSync(projectSettingsPath(cwd), "utf-8"));
+    expect(parsed.extensions).toEqual(["my-ext"]);
+    expect(parsed.modelRoles).toBeUndefined();
+    expect(parsed.retry.fallbackChains).toBeUndefined();
+    expect(parsed.retry.maxDelayMs).toBe(5000);
+    expect(parsed.task).toBeUndefined();
+  });
+
+  it("project reset on an absent settings file is a no-op (exit 0, file not created)", async () => {
+    const { spawnFn } = makeSpawn({ type: "record", value: {} });
+
+    const result = await runReset({ spawnFn, cwd, scope: "project" });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toMatch(/already cleared|cleared/i);
+    expect(existsSync(projectSettingsPath(cwd))).toBe(false);
   });
 });

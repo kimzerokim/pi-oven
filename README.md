@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from four frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.9-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-756%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.10-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-853%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
@@ -37,7 +37,7 @@ omp plugin install pi-oven@kzk --force
 
 # 3. Verify
 omp plugin list | grep pi-oven
-# Expected: pi-oven@kzk (0.1.9)
+# Expected: pi-oven@kzk (0.1.10)
 ```
 
 ### One-shot (install automatic, setup interactive)
@@ -233,6 +233,7 @@ The wizard accepts subcommands:
 | `/pi-oven:setup --apply --profile A\|B\|C\|D` | Non-interactive apply with explicit profile |
 | `/pi-oven:setup --apply --profile B --validate full` | Full 24-role smoke ping (default is 7 MUST-tier); same flag works for `--profile C`, `--profile D` |
 | `/pi-oven:setup --apply --profile A --override executor=openai-codex/gpt-5.4` | Per-role override (repeatable) |
+| `/pi-oven:setup --apply --profile A --scope project` | Write per-project routing (default scope is `global`). See [Per-project routing](#per-project-routing---scope-project) |
 | `/pi-oven:setup --isolate` | Make omp ignore the `~/.claude` context layer (writes `disabledProviders: [claude]`; keeps `claude-plugins` so pi-oven's own `/pi-oven:*` commands survive). Combinable, e.g. `--apply --profile A --isolate` |
 | `/pi-oven:setup --no-isolate` | Re-enable the `~/.claude` layer in omp (removes `claude` + any legacy `claude-plugins`) |
 
@@ -282,6 +283,23 @@ Requires **OpenCode Zen subscription** — no Anthropic or OpenAI Codex dependen
 Writes all 24 per-role `task.agentModelOverrides` on `--profile D`. Use `--reset` to revert.
 
 If your OpenCode Zen credential is revoked, the wizard's `--status` reports drift and recommends `/pi-oven:setup --reapply` after re-authenticating.
+
+### Per-project routing (`--scope project`)
+
+By default, setup applies **globally** — model routing, language, and the setup-complete marker are written to your machine-global config (`~/.omp/agent/config.yml` + `~/.pi-oven/config.json`), shared by every project. The wizard's **Step 0.5** lets you choose per-project instead:
+
+| | `--scope global` (default) | `--scope project` |
+|---|---|---|
+| Per-role overrides | global `config.yml` — profiles B/C/D only (A stays orchestrator-only) | `<repoRoot>/.omp/settings.json` — **all 24 roles for EVERY profile, including A** |
+| `modelRoles` + `retry.fallbackChains` | global `config.yml` | `<repoRoot>/.omp/settings.json` |
+| language + setup marker | global `~/.pi-oven/config.json` | `<repoRoot>/.pi-oven/config.json` |
+| memory/async infra | global `config.yml` | global-only (not written under project scope) |
+
+omp reads `<repoRoot>/.omp/settings.json` at project level and **deep-merges it over** your global config (record settings merge key-by-key; arrays replace), so a project override wins per-role over global — even over a Profile-A frontmatter default. That means a single project can pin *different* models from your global default. The file is **committable** (share routing with a team) or **gitignorable** (machine-local) — your choice. Launch omp from the **repo root** so the project settings are discovered. The setup notice at session start shows a `↳ project model routing active (N roles)` line whenever this file carries `pi-oven:*` overrides.
+
+```sh
+/pi-oven:setup --apply --profile A --scope project   # write Profile A's 24 roles to this repo's .omp/settings.json
+```
 
 ---
 

@@ -7,6 +7,7 @@
 import { ROLES, type Role } from "./profiles";
 import { isResolvableModelId, type ModelIdValidatorOpts } from "./model-id-validator";
 import { setAgentModelOverride, type ConfigYmlOpts } from "./config-yml";
+import { setProjectAgentModelOverrides } from "./project-settings";
 
 export interface OverrideOptions {
   /** Raw "role=model" entries from --override (repeatable). */
@@ -15,6 +16,16 @@ export interface OverrideOptions {
   listModelsOutput?: string;
   /** Injectable spawn for config-yml get/set (tests). */
   spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
+  /**
+   * WHERE the overrides are written:
+   *   - "global" (default) → homedir-global `~/.omp/agent/config.yml` via the
+   *     per-entry `setAgentModelOverride` loop (unchanged behavior).
+   *   - "project" → `<cwd>/.omp/settings.json` via ONE batched
+   *     `setProjectAgentModelOverrides` call.
+   */
+  scope?: "global" | "project";
+  /** Project root the project-scope writer targets (default process.cwd()). */
+  cwd?: string;
 }
 
 const ROLES_SET: ReadonlySet<string> = new Set(ROLES);
@@ -99,10 +110,21 @@ export async function runOverride(
   // ---------------------------------------------------------------------------
 
   const applied: Array<{ colonKey: string; model: string }> = [];
+  const scope = opts.scope ?? "global";
 
-  for (const { colonKey, model } of parsed) {
-    await setAgentModelOverride(colonKey, model, configOpts);
-    applied.push({ colonKey, model });
+  if (scope === "project") {
+    // Batch all parsed entries into ONE atomic write to <cwd>/.omp/settings.json.
+    const record: Record<string, string> = {};
+    for (const { colonKey, model } of parsed) {
+      record[colonKey] = model;
+      applied.push({ colonKey, model });
+    }
+    await setProjectAgentModelOverrides(record, { cwd: opts.cwd });
+  } else {
+    for (const { colonKey, model } of parsed) {
+      await setAgentModelOverride(colonKey, model, configOpts);
+      applied.push({ colonKey, model });
+    }
   }
 
   const lines = applied.map((a) => `  ${a.colonKey} = ${a.model}`).join("\n");

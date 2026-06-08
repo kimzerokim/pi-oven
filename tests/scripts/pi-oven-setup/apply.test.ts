@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, rmSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { runApply } from "../../../scripts/pi-oven-setup/apply";
-import { ROLES, PROFILE_A, PROFILE_B, PROFILE_C, PROFILE_D, PROFILE_B_ORCHESTRATOR, PROFILE_B_FALLBACK_CHAINS, PROFILE_C_ORCHESTRATOR, PROFILE_C_FALLBACK_CHAINS, PROFILE_D_ORCHESTRATOR, PROFILE_D_FALLBACK_CHAINS } from "../../../scripts/pi-oven-setup/profiles";
+import { ROLES, PROFILE_A, PROFILE_B, PROFILE_C, PROFILE_D, PROFILE_A_ORCHESTRATOR, PROFILE_A_FALLBACK_CHAINS, PROFILE_B_ORCHESTRATOR, PROFILE_B_FALLBACK_CHAINS, PROFILE_C_ORCHESTRATOR, PROFILE_C_FALLBACK_CHAINS, PROFILE_D_ORCHESTRATOR, PROFILE_D_FALLBACK_CHAINS } from "../../../scripts/pi-oven-setup/profiles";
 import { readAgentFiles } from "../../../scripts/pi-oven-setup/agent-rewriter";
+import {
+  projectSettingsPath,
+  readProjectSettingsSoft,
+  readProjectAgentModelOverrides,
+} from "../../../scripts/pi-oven-setup/project-settings";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -755,5 +760,203 @@ describe("runApply", () => {
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
     );
     expect(overrideWrites.length).toBe(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // Prong 2 — global scope enables gated tools; project scope does NOT
+  // -------------------------------------------------------------------------
+
+  it("global scope enables tools (inspect_image etc); project scope does not", async () => {
+    const calls: string[][] = [];
+    const spawnFn = (_c: string, a: string[]) => {
+      calls.push(a);
+      if (a[0] === "config" && a[1] === "get") {
+        return { exitCode: 0, stdout: Buffer.from(JSON.stringify({ key: a[2], value: {}, type: "record" })) };
+      }
+      return { exitCode: 0, stdout: Buffer.from("") };
+    };
+    const result = await runApply({ profile: "A", validateMode: "none", spawnFn }); // global default
+    expect(calls).toContainEqual(["config", "set", "inspect_image.enabled", "true"]);
+    expect(result.output).toContain("✓ tools enabled:");
+
+    const projectCwd = makeTempDir();
+    const calls2: string[][] = [];
+    const spawnFn2 = (_c: string, a: string[]) => {
+      calls2.push(a);
+      return { exitCode: 0, stdout: Buffer.from("") };
+    };
+    await runApply({ profile: "A", validateMode: "none", scope: "project", cwd: projectCwd, spawnFn: spawnFn2 });
+    expect(calls2.some((a) => a[0] === "config" && a[1] === "set")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scope:"project" — writes to <cwd>/.omp/settings.json, ZERO omp config calls
+// ---------------------------------------------------------------------------
+
+describe("runApply — scope:project (writes .omp/settings.json)", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = join(
+      tmpdir(),
+      `apply-project-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(cwd, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  // A spawnFn that records EVERY call so we can assert ZERO omp config set/get.
+  function makeRecordingSpawn() {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      // Validation pings (-p) succeed; nothing else should be called in this path.
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+    return { spawnCalls, mockSpawnFn };
+  }
+
+  it("profile A writes all 24 overrides to the project file (NOT global), with NO omp config set/get", async () => {
+    const { spawnCalls, mockSpawnFn } = makeRecordingSpawn();
+
+    const result = await runApply({
+      profile: "A",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      scope: "project",
+      cwd,
+    });
+    expect(result.exitCode).toBe(0);
+
+    // All 24 per-role overrides land in the project file for Profile A.
+    const overrides = await readProjectAgentModelOverrides({ cwd });
+    for (const role of ROLES) {
+      expect(overrides[`pi-oven:${role}`]).toBe(PROFILE_A[role].primary);
+    }
+
+    // ZERO omp config calls — project scope must never touch the global config.yml.
+    const configCalls = spawnCalls.filter((c) => c.args[0] === "config");
+    expect(configCalls.length).toBe(0);
+  });
+
+  it("profile A writes modelRoles + retry.fallbackChains to the project file", async () => {
+    const { mockSpawnFn } = makeRecordingSpawn();
+
+    await runApply({
+      profile: "A",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      scope: "project",
+      cwd,
+    });
+
+    const data = (await readProjectSettingsSoft({ cwd })) as any;
+    expect(data.modelRoles.default).toBe(PROFILE_A_ORCHESTRATOR.default);
+    expect(data.modelRoles.title).toBe(PROFILE_A_ORCHESTRATOR.title);
+    expect(data.retry.fallbackChains.default).toEqual(PROFILE_A_FALLBACK_CHAINS.default);
+    expect(data.retry.fallbackChains.title).toEqual(PROFILE_A_FALLBACK_CHAINS.title);
+  });
+
+  it("profile D writes all 24 overrides + modelRoles + retry to the project file, ZERO omp config calls", async () => {
+    const { spawnCalls, mockSpawnFn } = makeRecordingSpawn();
+
+    await runApply({
+      profile: "D",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      scope: "project",
+      cwd,
+    });
+
+    const overrides = await readProjectAgentModelOverrides({ cwd });
+    for (const role of ROLES) {
+      expect(overrides[`pi-oven:${role}`]).toBe(PROFILE_D[role].primary);
+      expect(overrides[`pi-oven:${role}`]).toMatch(/^opencode-zen\//);
+    }
+    const data = (await readProjectSettingsSoft({ cwd })) as any;
+    expect(data.modelRoles.default).toBe(PROFILE_D_ORCHESTRATOR.default);
+    expect(data.retry.fallbackChains.default).toEqual(PROFILE_D_FALLBACK_CHAINS.default);
+
+    const configCalls = spawnCalls.filter((c) => c.args[0] === "config");
+    expect(configCalls.length).toBe(0);
+  });
+
+  it("project scope does NOT write the memory/async infra (no config set memory.backend)", async () => {
+    const { spawnCalls, mockSpawnFn } = makeRecordingSpawn();
+
+    await runApply({
+      profile: "A",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      scope: "project",
+      cwd,
+    });
+
+    const memoryCalls = spawnCalls.filter(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && typeof c.args[2] === "string" && c.args[2].startsWith("memory.")
+    );
+    expect(memoryCalls.length).toBe(0);
+  });
+
+  it("preserves a hand-authored sibling top-level key in the project file", async () => {
+    mkdirSync(join(cwd, ".omp"), { recursive: true });
+    writeFileSync(
+      projectSettingsPath(cwd),
+      JSON.stringify({ extensions: ["keep-me"] }, null, 2) + "\n",
+      "utf-8"
+    );
+    const { mockSpawnFn } = makeRecordingSpawn();
+
+    await runApply({
+      profile: "A",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      scope: "project",
+      cwd,
+    });
+
+    const data = (await readProjectSettingsSoft({ cwd })) as any;
+    expect(data.extensions).toEqual(["keep-me"]);
+  });
+
+  it("output names the project file + scope", async () => {
+    const { mockSpawnFn } = makeRecordingSpawn();
+    const result = await runApply({
+      profile: "A",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      scope: "project",
+      cwd,
+    });
+    expect(result.output).toContain(projectSettingsPath(cwd));
+  });
+
+  it("scope:global (default) still writes via omp config and does NOT create a project file", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      if (args[0] === "config" && args[1] === "get") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: args[2], value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn, cwd });
+
+    // Global path writes modelRoles via omp config set…
+    const modelRoleSets = spawnCalls.filter(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
+    );
+    expect(modelRoleSets.length).toBe(1);
+    // …and creates NO project settings file.
+    expect(existsSync(projectSettingsPath(cwd))).toBe(false);
   });
 });

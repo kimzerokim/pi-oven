@@ -3,8 +3,15 @@
  * TDD red phase — written before implementation.
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { runOverride } from "../../../scripts/pi-oven-setup/override";
+import {
+  projectSettingsPath,
+  readProjectAgentModelOverrides,
+} from "../../../scripts/pi-oven-setup/project-settings";
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -313,5 +320,112 @@ describe("runOverride — stateful merge round-trip (AC#2)", () => {
     expect(storedRecord["pi-oven:executor"]).toBe("openai-codex/gpt-5.3-codex");
     // Pre-existing non-pi-oven sibling survived all writes
     expect(storedRecord["claude-code:foo"]).toBe("existingmodel");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scope:"project" — batches all entries into ONE .omp/settings.json write,
+// leaves the global config.yml untouched.
+// ---------------------------------------------------------------------------
+
+describe("runOverride — scope:project", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = join(
+      tmpdir(),
+      `override-project-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(cwd, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("writes the project file and makes ZERO omp config set/get calls", async () => {
+    const calls: string[][] = [];
+    const spawnFn = (cmd: string, args: string[]) => {
+      calls.push([cmd, ...args]);
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    const result = await runOverride({
+      entries: ["critic=anthropic/claude-opus-4-8", "executor=opencode-zen/gpt-5.3-codex"],
+      listModelsOutput: LIST_MODELS_FIXTURE,
+      spawnFn,
+      scope: "project",
+      cwd,
+    });
+
+    expect(result.exitCode).toBe(0);
+
+    // Both entries land in the project file in ONE write.
+    const overrides = await readProjectAgentModelOverrides({ cwd });
+    expect(overrides["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(overrides["pi-oven:executor"]).toBe("opencode-zen/gpt-5.3-codex");
+
+    // The validator may spawn `omp --list-models` only when no listModelsOutput is
+    // injected; here it is injected, so no `config` spawn must occur at all.
+    const configCalls = calls.filter((c) => c.includes("config"));
+    expect(configCalls.length).toBe(0);
+  });
+
+  it("applied[] reflects every batched entry", async () => {
+    const spawnFn = (_cmd: string, _args: string[]) =>
+      ({ exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") });
+
+    const result = await runOverride({
+      entries: ["critic=anthropic/claude-opus-4-8", "executor=opencode-zen/gpt-5.3-codex"],
+      listModelsOutput: LIST_MODELS_FIXTURE,
+      spawnFn,
+      scope: "project",
+      cwd,
+    });
+
+    expect(result.applied.map((a) => a.colonKey).sort()).toEqual([
+      "pi-oven:critic",
+      "pi-oven:executor",
+    ]);
+  });
+
+  it("a validation failure writes NO project file (validate-all-then-write-all)", async () => {
+    const spawnFn = (_cmd: string, _args: string[]) =>
+      ({ exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") });
+
+    const result = await runOverride({
+      entries: ["critic=anthropic/claude-opus-4-8", "unknownrole=anthropic/claude-opus-4-8"],
+      listModelsOutput: LIST_MODELS_FIXTURE,
+      spawnFn,
+      scope: "project",
+      cwd,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(existsSync(projectSettingsPath(cwd))).toBe(false);
+  });
+
+  it("preserves a hand-authored sibling key in the project file", async () => {
+    mkdirSync(join(cwd, ".omp"), { recursive: true });
+    writeFileSync(
+      projectSettingsPath(cwd),
+      JSON.stringify({ extensions: ["keep"] }, null, 2) + "\n",
+      "utf-8"
+    );
+
+    const spawnFn = (_cmd: string, _args: string[]) =>
+      ({ exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") });
+
+    await runOverride({
+      entries: ["critic=anthropic/claude-opus-4-8"],
+      listModelsOutput: LIST_MODELS_FIXTURE,
+      spawnFn,
+      scope: "project",
+      cwd,
+    });
+
+    const parsed = JSON.parse(readFileSync(projectSettingsPath(cwd), "utf-8"));
+    expect(parsed.extensions).toEqual(["keep"]);
+    expect(parsed.task.agentModelOverrides["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
   });
 });

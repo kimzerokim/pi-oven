@@ -50,17 +50,39 @@ Exact option set:
 
 The user may instead pick "Other (type your own)" and enter any plain language name (examples: `Español`, `日本語`, `Français`). A free-form name must be a plain language label: letters, spaces, and `()-.` only, up to 40 characters — the script rejects anything else (newlines, backticks, `<>`, `#`, `;`, etc.) because the value is injected verbatim into the agent system prompt.
 
-After the user picks, persist the choice by dispatching the resolved script with the matching flag:
+Do NOT persist the language yet — the write is deferred to Step 0.5 so it can be paired with the chosen `--scope`.
+
+### Step 0.5 — Setup scope
+
+Right after the language choice, ask whether this setup applies **globally** (the default for every project) or **only to this project**. Call the `pi-oven_ask` tool with exactly two arguments — `question` (a string) and `options` (an array of `{ label, description }`); it takes no other arguments. Read the user's choice the same way as Step 0 (`details.selected` / the visible `User selected:` line); if neither is present, treat it as a cancel and stop.
+
+Question framing: "이번 셋업을 글로벌(모든 프로젝트 기본값)로 적용할까요, 이 프로젝트에만 적용할까요?" (or in English: "Apply this setup globally (default for all projects) or to this project only?")
+
+Exact option set:
+
+- Option 1 — label: `글로벌 (모든 프로젝트 기본값)`, description: `~/.pi-oven + 글로벌 config.yml`
+- Option 2 — label: `이 프로젝트만`, description: `.omp/settings.json + .pi-oven/config.json (이 레포에서만)`
+
+Map the choice to `<scope>`: Option 1 → `global` (today's behavior), Option 2 → `project`. Reuse `<scope>` for EVERY remaining dispatch in this flow.
+
+**What scope changes:**
+
+- **`global` (default)** — exactly today's behavior. Per-role overrides (profiles B/C/D) and `modelRoles`/`retry.fallbackChains` go to the user-global `~/.omp/agent/config.yml`; language + the setup-complete marker go to `~/.pi-oven/config.json`.
+- **`project`** — per-role overrides for **EVERY profile (A, B, C, and D — all 24 roles)**, plus `modelRoles` and `retry.fallbackChains`, are written to `<cwd>/.omp/settings.json` (omp reads this at project level and it wins per-role over global). Language + the setup-complete marker go to `<cwd>/.pi-oven/config.json`. Memory/async infra is global-only and is NOT written under project scope (configure it once via a global-scope run).
+
+`.omp/settings.json` is **NOT auto-committed and NOT auto-gitignored**: commit it to share per-project routing with a team, or gitignore it for machine-local use. Tell the user both options. Launch omp from the **repo root** — project settings load from `<cwd>/.omp/` (no git-root ancestor walk).
+
+Now persist the language WITH the chosen scope by dispatching the resolved script:
 
 ```bash
-bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language ko    # if 한국어 (Korean) was chosen
-bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language en    # if English was chosen
-bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language "<the exact name the user typed>"   # if "Other" was chosen, e.g. --language "Español"
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language ko --scope <global|project>    # if 한국어 (Korean) was chosen
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language en --scope <global|project>    # if English was chosen
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --language "<the exact name the user typed>" --scope <global|project>   # if "Other" was chosen, e.g. --language "Español"
 ```
 
-This writes the **global** default language to `~/.pi-oven/config.json` (machine-global, never committed), persisting the choice as the default response language for all future pi-oven sessions. A per-project override can be set in `<cwd>/.pi-oven/config.json` (machine-local, gitignored) and takes precedence when present. The pi-oven extension injects the resolved language at runtime so agents respond in the chosen language. Canonical `ko`/`en` carry rich directives; any other accepted name gets a generic directive that simply names the language.
+Under `--scope global` this writes the **global** default language to `~/.pi-oven/config.json` (machine-global, never committed); under `--scope project` it writes a per-project override to `<cwd>/.pi-oven/config.json` (machine-local, gitignored), which takes precedence when present. The pi-oven extension injects the resolved language at runtime so agents respond in the chosen language. Canonical `ko`/`en` carry rich directives; any other accepted name gets a generic directive that simply names the language.
 
-Then conduct ALL remaining steps (Steps 1–6 below) IN the chosen language — render every prompt, summary, and report in Korean if `한국어 (Korean)` was picked, in the named language if a custom one was typed, otherwise in English.
+Then conduct ALL remaining steps (Steps 1–6 below) IN the chosen language — render every prompt, summary, and report in Korean if `한국어 (Korean)` was picked, in the named language if a custom one was typed, otherwise in English — and thread `--scope <scope>` into every later dispatch.
 
 ### Step 1 — Detect authed providers
 
@@ -188,21 +210,23 @@ Summary:
 Ready to persist model overrides to config.yml task.agentModelOverrides. Proceed? [Y/n]:
 ```
 
-On confirmation, dispatch via Bash (using the resolved `$PI_OVEN_DIR`):
+On confirmation, dispatch via Bash (using the resolved `$PI_OVEN_DIR`), threading the `<scope>` chosen in Step 0.5:
 
 ```
-bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile <A|B|C> --validate=smoke
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile <A|B|C|D> --scope <global|project> --validate=smoke
 ```
 
 If there are per-role overrides, add one `--override <role>=<model>` flag per override:
 
 ```
-bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile A --override executor=anthropic/claude-opus-4-8 --validate=smoke
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile A --scope <global|project> --override executor=anthropic/claude-opus-4-8 --validate=smoke
 ```
 
 Do not add `--validate=none` unless the user explicitly asked to skip validation.
 
-The script writes model overrides to `~/.omp/agent/config.yml` (`task.agentModelOverrides`, keyed by colon name `pi-oven:<role>`). This is user-global and machine-local — it is NOT committed to the repo. The wizard MUST NOT modify `agents/pi-oven-*.md` files; those are committed PROFILE_A baseline artifacts and are read-only from the wizard's perspective.
+Under `--scope global` (default) the script writes model overrides to `~/.omp/agent/config.yml` (`task.agentModelOverrides`, keyed by colon name `pi-oven:<role>`) — user-global, machine-local, NOT committed. It also **force-enables the 6 omp tool flags** (`inspect_image.enabled`, `web_search.enabled`, `lsp.enabled`, `astGrep.enabled`, `browser.enabled`, `debug.enabled`) so the agent body mandates have teeth. These flags are re-enabled on every global-scope run with no opt-out — this is intentional so a user toggle cannot silently neuter a mandated tool. `--reset --full` leaves these flags alone (they are omp-global infra, not pi-oven routing). **Project-scope-only users** (those who never ran a global-scope setup) keep `inspect_image.enabled=false` — vision agents (multimodal-looker, qa-tester) are toothless for them; vision requires at least one global-scope setup run.
+
+Under `--scope project` it writes overrides to `<cwd>/.omp/settings.json` instead — and under project scope **every profile (A/B/C/D) writes all 24 per-role overrides** there (so a project can fully diverge from the committed Profile-A frontmatter), plus `modelRoles` and `retry.fallbackChains`. That project file is committable (share routing with a team) or gitignorable (machine-local). Project scope does NOT write the 6 tool flags — configure those once via a global-scope run. In both scopes the wizard MUST NOT modify `agents/pi-oven-*.md` files; those are committed PROFILE_A baseline artifacts and are read-only from the wizard's perspective.
 
 The script handles persist (config.yml write) and smoke validation in a single batch call. Do not invoke it more than once for the same flow.
 
@@ -261,7 +285,8 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 | `--reset` | Remove all `pi-oven:*` keys from config.yml task.agentModelOverrides. Does not touch agent files. |
 | `--reset --full` | Full reset for a clean uninstall: in addition to removing the `pi-oven:*` overrides, reset the other pi-oven-managed keys (`modelRoles`, `disabledProviders`, `setupVersion`) to their omp type-defaults so config.yml returns to the "new user" state. Never touches omp-internal keys (e.g. `lastChangelogVersion`). No-op-safe when those keys are absent. |
 | `--import <file>` | Import JSON config file (schema: §7.1). |
-| `--language <ko\|en\|name>` | Persist the default response language globally to `~/.pi-oven/config.json` (machine-global). A per-project override in `<cwd>/.pi-oven/config.json` takes precedence when present. Accepts `ko`/`en` or any plain language name (letters, spaces, `()-.`; ≤ 40 chars). Set in Step 0. |
+| `--language <ko\|en\|name>` | Persist the default response language. With `--scope global` (default) writes to `~/.pi-oven/config.json` (machine-global); with `--scope project` writes the per-project override `<cwd>/.pi-oven/config.json` (which takes precedence when present). Accepts `ko`/`en` or any plain language name (letters, spaces, `()-.`; ≤ 40 chars). Set in Step 0/0.5. |
+| `--scope global\|project` | WHERE this setup writes (default `global`). `global` = today's behavior: per-role overrides (B/C/D), `modelRoles`, `retry.fallbackChains` → `~/.omp/agent/config.yml`; language + setup-complete marker → `~/.pi-oven/config.json`. `project` = per-project routing: **all 24 per-role overrides for EVERY profile (incl. A)**, `modelRoles`, and `retry.fallbackChains` → `<cwd>/.omp/settings.json` (omp reads it at project level; wins per-role over global); language + marker → `<cwd>/.pi-oven/config.json`. The project file is committable (share with a team) or gitignorable (machine-local). Memory/async infra is global-only (not written under project scope). Set in Step 0.5; thread into `--language`/`--profile`/`--override`/`--reset`. Launch omp from the repo root. |
 | `--isolate` | Make omp IGNORE the `~/.claude` Claude-Code context layer (omc CLAUDE.md + pi-oven): writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (user-global, machine-local, preserves sibling providers) and purges any legacy `claude-plugins` entry. It does NOT disable `claude-plugins` — pi-oven's own `/pi-oven:*` commands load through that provider, so disabling it would remove them. omc/agentmemory marketplace plugin commands remain visible. pi-oven keeps loading and injects the repo-root `CLAUDE.md`. omp-only — never touches `~/.claude` on disk. Restart omp to apply. Combinable with `--profile`/`--apply` (runs after). |
 | `--no-isolate` | Undo `--isolate`: remove `claude` + any legacy `claude-plugins` from `disabledProviders` (preserves any other providers). |
 

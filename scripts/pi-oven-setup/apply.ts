@@ -17,7 +17,13 @@
 
 import { rewriteAllAgents } from "./agent-rewriter";
 import { runValidate } from "./validate";
-import { setModelRoles, setMemoryAndAsyncConfig, setRetryFallbackChains, setAgentModelOverrides } from "./config-yml";
+import { setModelRoles, setMemoryAndAsyncConfig, setRetryFallbackChains, setAgentModelOverrides, setToolEnablementConfig } from "./config-yml";
+import {
+  setProjectAgentModelOverrides,
+  setProjectModelRoles,
+  setProjectRetryFallbackChains,
+  projectSettingsPath,
+} from "./project-settings";
 import {
   PROFILE_A,
   PROFILE_B,
@@ -40,6 +46,19 @@ export interface ApplyOptions {
   validateMode?: "smoke" | "full" | "none";
   spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
   agentsDir?: string; // maintainer generate target (repo agents/)
+  /**
+   * WHERE the user-setup branch writes model routing:
+   *   - "global" (default) → homedir-global `~/.omp/agent/config.yml` via the
+   *     config-yml writers. Behavior is byte-for-byte unchanged from before.
+   *   - "project" → `<cwd>/.omp/settings.json` via the project-settings writers.
+   *     ALL profiles (incl. A) write all 24 per-role overrides + modelRoles +
+   *     retry.fallbackChains there; NO global config-yml writer runs and the
+   *     memory/async infra is NOT written (configure that once via global scope).
+   * Ignored on the maintainer path (with agentsDir).
+   */
+  scope?: "global" | "project";
+  /** Project root the project-scope writers target (default process.cwd()). */
+  cwd?: string;
 }
 
 /**
@@ -70,16 +89,17 @@ export async function runApply(
       : PROFILE_A;
 
   let memoryConfigLine = "";
+  let toolsEnabledLine = "";
+  let scopeLine = "";
+
+  const scope = opts.scope ?? "global";
 
   if (opts.agentsDir) {
     // Maintainer generate: rewrite agent files only, write no config keys.
     await rewriteAllAgents(opts.agentsDir, profileMap);
   } else {
-    // User setup: write the MAIN ORCHESTRATOR model pair (modelRoles default +
-    // title) in ONE atomic whole-record merge-write. omp's schema declares
-    // `modelRoles` as a record, so dotted `modelRoles.default` writes are
-    // rejected — setModelRoles read-merge-writes the whole record, preserving
-    // sibling roles. Never task.agentModelOverrides for A/B (anti-Spec-E).
+    // Resolve the orchestrator pair + fallback chains for the profile (shared by
+    // both scopes).
     const orchestrator =
       opts.profile === "D"
         ? PROFILE_D_ORCHESTRATOR
@@ -88,10 +108,6 @@ export async function runApply(
         : opts.profile === "B"
         ? PROFILE_B_ORCHESTRATOR
         : PROFILE_A_ORCHESTRATOR;
-    await setModelRoles(
-      { default: orchestrator.default, title: orchestrator.title },
-      { spawnFn: opts.spawnFn }
-    );
     const fallbackChains =
       opts.profile === "D"
         ? PROFILE_D_FALLBACK_CHAINS
@@ -100,23 +116,63 @@ export async function runApply(
         : opts.profile === "B"
         ? PROFILE_B_FALLBACK_CHAINS
         : PROFILE_A_FALLBACK_CHAINS;
-    await setRetryFallbackChains(fallbackChains, { spawnFn: opts.spawnFn });
 
-    // Profile B + C + D: bulk-write all 24 per-role task.agentModelOverrides.
-    // Deliberate Spec E relaxation — profile A writes ZERO per-role overrides.
-    if (opts.profile === "B" || opts.profile === "C" || opts.profile === "D") {
+    if (scope === "project") {
+      // PROJECT setup: write the model routing into <cwd>/.omp/settings.json
+      // (the omp project layer), which deep-merges OVER global. EVERY profile
+      // (incl. A) writes ALL 24 per-role overrides here — agent-file frontmatter
+      // is the global plugin default, so a project that wants different models
+      // must carry explicit overrides for all 24 roles to actually diverge. This
+      // is a DIFFERENT layer than the global config.yml, so Spec E's per-role
+      // global ban for Profile A is not violated. NO global config-yml writer
+      // runs and the memory/async infra is NOT written (configure once globally).
+      const cwd = opts.cwd ?? process.cwd();
       const overrideRecord: Record<string, string> = {};
       for (const role of ROLES) {
         overrideRecord[`pi-oven:${role}`] = profileMap[role].primary;
       }
-      await setAgentModelOverrides(overrideRecord, { spawnFn: opts.spawnFn });
-    }
+      await setProjectAgentModelOverrides(overrideRecord, { cwd });
+      await setProjectModelRoles(
+        { default: orchestrator.default, title: orchestrator.title },
+        { cwd }
+      );
+      await setProjectRetryFallbackChains(fallbackChains, { cwd });
+      scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles + modelRoles + retry.fallbackChains)\n`;
+    } else {
+      // User setup (global): write the MAIN ORCHESTRATOR model pair (modelRoles
+      // default + title) in ONE atomic whole-record merge-write. omp's schema
+      // declares `modelRoles` as a record, so dotted `modelRoles.default` writes
+      // are rejected — setModelRoles read-merge-writes the whole record,
+      // preserving sibling roles. Never task.agentModelOverrides for A (anti-Spec-E).
+      await setModelRoles(
+        { default: orchestrator.default, title: orchestrator.title },
+        { spawnFn: opts.spawnFn }
+      );
+      await setRetryFallbackChains(fallbackChains, { spawnFn: opts.spawnFn });
 
-    // Write mnemopi memory backend + async.enabled for native memory/irc.
-    // Does NOT touch task.agentModelOverrides for A/B (Spec E boundary preserved).
-    await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });
-    memoryConfigLine =
-      "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled\n";
+      // Profile B + C + D: bulk-write all 24 per-role task.agentModelOverrides.
+      // Deliberate Spec E relaxation — profile A writes ZERO per-role overrides.
+      if (opts.profile === "B" || opts.profile === "C" || opts.profile === "D") {
+        const overrideRecord: Record<string, string> = {};
+        for (const role of ROLES) {
+          overrideRecord[`pi-oven:${role}`] = profileMap[role].primary;
+        }
+        await setAgentModelOverrides(overrideRecord, { spawnFn: opts.spawnFn });
+      }
+
+      // Write mnemopi memory backend + async.enabled for native memory/irc.
+      // Does NOT touch task.agentModelOverrides for A (Spec E boundary preserved).
+      await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });
+      memoryConfigLine =
+        "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled\n";
+
+      // Enable omp's gated tools so the agents' tool mandates have teeth
+      // (inspect_image defaults false; the rest are written defensively). Global
+      // scope only — project scope writes routing files, never `omp config set`.
+      await setToolEnablementConfig({ spawnFn: opts.spawnFn });
+      toolsEnabledLine =
+        "✓ tools enabled: inspect_image, web_search, lsp, ast_grep, browser, debug\n";
+    }
   }
 
   // Validate
@@ -148,7 +204,9 @@ export async function runApply(
     exitCode: 0,
     output:
       `Profile ${opts.profile} active. ${summaryParts.join(", ")}.\n` +
+      scopeLine +
       memoryConfigLine +
+      toolsEnabledLine +
       `Setup complete.\n`,
   };
 }

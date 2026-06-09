@@ -84,8 +84,11 @@ export function getSkillReadName(event: ToolCallEventLike): string | null {
   if (event.toolName !== "read") return null;
   const path = event.input?.path;
   if (typeof path !== "string") return null;
-  const match = /^skill:\/\/([^/:]+)/.exec(path);
-  return match?.[1] ?? null;
+  const match = /^skill:\/\/([^/?#]+)/.exec(path);
+  if (!match) return null;
+  const host = match[1].replace(/^pi-oven:/, ""); // strip the pi-oven: namespace (one prefix)
+  const name = host.split(":")[0];                // drop any :line-range suffix
+  return name.length > 0 ? name : null;
 }
 
 export function toGateFsmView(view: Awaited<ReturnType<GateStateStore["readState"]>>): GateFsmView {

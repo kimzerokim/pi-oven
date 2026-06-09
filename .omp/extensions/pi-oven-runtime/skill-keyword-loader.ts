@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import * as path from "path";
 
+export const PI_OVEN_SKILL_NS = "pi-oven";
 export const KEYWORD_SKILL_DEDUP_KEY = "pi-oven:keyword-skills@v1";
 const MAX_MATCHED_SKILLS = 8;
 
@@ -351,13 +352,13 @@ export function buildKeywordMatchedSkillsPrompt(matchedSkills: MatchedSkill[]): 
     "## Runtime keyword-matched skills",
     "",
     "The latest user message matched these pi-oven skills from the curated keyword whitelist.",
-    "You MUST load each listed skill with `read(\"skill://<name>\")` before taking substantive action in this turn.",
+    `You MUST load each listed skill with \`read("skill://pi-oven:<name>")\` before taking substantive action in this turn.`,
     "This is a hard precondition, NOT a suggestion: do not begin any skill-governed work until the matching skill is loaded and followed.",
     "Preserve all non-conflicting rules across the matched skills. If two skills conflict, prefer the more specific one.",
     "",
   ];
   for (const skill of matchedSkills) {
-    lines.push(`- \`skill://${skill.name}\` — matched by: ${skill.matchedPhrases.join(", ")}`);
+    lines.push(`- \`skill://${PI_OVEN_SKILL_NS}:${skill.name}\` — matched by: ${skill.matchedPhrases.join(", ")}`);
   }
   return lines.join("\n");
 }

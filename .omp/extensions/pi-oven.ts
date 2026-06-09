@@ -492,7 +492,7 @@ export default function piOvenPi(pi: ExtensionAPI): void {
           }
           if (remainingSkills.length > 0) {
             reminders.push(
-              `Before code-write, read ${remainingSkills.map((name) => `skill://${name}`).join(", ")}.`
+              `Before code-write, read ${remainingSkills.map((name) => `skill://pi-oven:${name}`).join(", ")}.`
             );
           }
         }

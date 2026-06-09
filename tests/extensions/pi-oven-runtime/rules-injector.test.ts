@@ -182,6 +182,50 @@ describe("orchestrator conduct block", () => {
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
     expect(b.startsWith(`<!-- ${ORCHESTRATOR_CONDUCT_DEDUP_KEY} -->`)).toBe(true);
   });
+
+  it("ORCHESTRATOR_CONDUCT_DEDUP_KEY ends with @v2", () => {
+    expect(ORCHESTRATOR_CONDUCT_DEDUP_KEY).toMatch(/@v2$/);
+  });
+
+  it("interactive: uses skill://pi-oven:<name> form (not bare skill://<name>)", () => {
+    const inj = new RulesInjector();
+    const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
+    expect(b).toContain("skill://pi-oven:");
+  });
+
+  it("autonomous: uses skill://pi-oven:<name> form (not bare skill://<name>)", () => {
+    const inj = new RulesInjector();
+    const b = inj.buildOrchestratorConductBlock({ autonomousActive: true });
+    expect(b).toContain("skill://pi-oven:");
+  });
+
+  it("interactive: contains SKILL PRECEDENCE rule forbidding superpowers:* namespace", () => {
+    const inj = new RulesInjector();
+    const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
+    expect(b).toContain("superpowers:");
+    expect(b).toMatch(/pi-oven skills are authoritative|SKILL PRECEDENCE/i);
+  });
+
+  it("interactive: contains AGENT NAMING rule forbidding kzk:<role>", () => {
+    const inj = new RulesInjector();
+    const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
+    expect(b).toContain("kzk:");
+    expect(b).toMatch(/pi-oven:<role>|AGENT NAMING/i);
+  });
+
+  it("autonomous: contains SKILL PRECEDENCE rule forbidding superpowers:* namespace", () => {
+    const inj = new RulesInjector();
+    const b = inj.buildOrchestratorConductBlock({ autonomousActive: true });
+    expect(b).toContain("superpowers:");
+    expect(b).toMatch(/pi-oven skills are authoritative|SKILL PRECEDENCE/i);
+  });
+
+  it("autonomous: contains AGENT NAMING rule forbidding kzk:<role>", () => {
+    const inj = new RulesInjector();
+    const b = inj.buildOrchestratorConductBlock({ autonomousActive: true });
+    expect(b).toContain("kzk:");
+    expect(b).toMatch(/pi-oven:<role>|AGENT NAMING/i);
+  });
 });
 
 // ---------------------------------------------------------------------------

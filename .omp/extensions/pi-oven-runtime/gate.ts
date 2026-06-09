@@ -167,7 +167,7 @@ export function decideGate(input: GateInput): GateDecision {
 
     const remainingSkills = getRemainingSkills(requiredSkills, skillReads);
     if (remainingSkills.length > 0) {
-      const required = remainingSkills.map((name) => `skill://${name}`).join(", ");
+      const required = remainingSkills.map((name) => `skill://pi-oven:${name}`).join(", ");
       return {
         block: true,
         reason: `pi-oven: code-write blocked — required skills not yet read: ${required}. Read them first.`,

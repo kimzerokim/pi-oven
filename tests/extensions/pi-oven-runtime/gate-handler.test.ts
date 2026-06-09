@@ -266,7 +266,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
 
     const blocked = await h(writeEvent("src/example.ts"));
     expect(blocked?.block).toBe(true);
-    expect(blocked?.reason).toMatch(/skill:\/\/autonomous-loop/i);
+    expect(blocked?.reason).toMatch(/skill:\/\/pi-oven:autonomous-loop/i);
 
     const readRes = await h(readEvent("skill://autonomous-loop"));
     expect(readRes?.block ?? false).toBe(false);
@@ -472,6 +472,21 @@ describe("gateHandler — pure helpers", () => {
     expect(getSkillReadName({ toolName: "write", input: { path: "skill://autonomous-loop" } } as any)).toBe(null);
     // malformed URI
     expect(getSkillReadName({ toolName: "read", input: { path: "skill://" } } as any)).toBe(null);
+  });
+
+  it("getSkillReadName: maps all 4 namespaced URI forms to the bare skill key", () => {
+    // form 1: namespaced — skill://pi-oven:brainstorming
+    expect(getSkillReadName({ toolName: "read", input: { path: "skill://pi-oven:brainstorming" } } as any)).toBe("brainstorming");
+    // form 2: legacy bare — skill://brainstorming (must still work)
+    expect(getSkillReadName({ toolName: "read", input: { path: "skill://brainstorming" } } as any)).toBe("brainstorming");
+    // form 3: namespaced with sub-path — skill://pi-oven:brainstorming/references/x.md
+    expect(getSkillReadName({ toolName: "read", input: { path: "skill://pi-oven:brainstorming/references/x.md" } } as any)).toBe("brainstorming");
+    // form 4: namespaced with line-range suffix — skill://pi-oven:brainstorming:1-5
+    expect(getSkillReadName({ toolName: "read", input: { path: "skill://pi-oven:brainstorming:1-5" } } as any)).toBe("brainstorming");
+    // non-read tool → always null
+    expect(getSkillReadName({ toolName: "write", input: { path: "skill://pi-oven:brainstorming" } } as any)).toBe(null);
+    // non-skill path → null
+    expect(getSkillReadName({ toolName: "read", input: { path: "/etc/passwd" } } as any)).toBe(null);
   });
 
   it("toGateFsmView: maps state views correctly", () => {

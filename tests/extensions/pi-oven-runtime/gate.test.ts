@@ -254,7 +254,7 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
       })
     );
     expect(r.block).toBe(true);
-    expect(r.reason).toMatch(/skill:\/\/large-task-delegation/i);
+    expect(r.reason).toMatch(/skill:\/\/pi-oven:large-task-delegation/i);
   });
 
   it("allows code-write once the branch contract exists and all required skills were read", () => {

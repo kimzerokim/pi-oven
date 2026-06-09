@@ -62,9 +62,9 @@ describe("skill-keyword-loader", () => {
 
     const prompt = buildKeywordMatchedSkillsPrompt(started.matchedSkills);
     expect(prompt).toContain(KEYWORD_SKILL_DEDUP_KEY);
-    expect(prompt).toContain("skill://autonomous-loop");
-    expect(prompt).toContain("skill://large-task-delegation");
-    expect(prompt).toContain("skill://spec-and-review");
+    expect(prompt).toContain("skill://pi-oven:autonomous-loop");
+    expect(prompt).toContain("skill://pi-oven:large-task-delegation");
+    expect(prompt).toContain("skill://pi-oven:spec-and-review");
     expect(prompt).toContain("curated keyword whitelist");
   });
 
@@ -74,8 +74,22 @@ describe("skill-keyword-loader", () => {
     ]);
     expect(prompt).not.toBeNull();
     expect(prompt!).toMatch(/hard precondition/i);
-    // existing MUST-load line preserved
-    expect(prompt!).toContain('read("skill://<name>")');
+    // body text must use the namespaced form
+    expect(prompt!).toContain('read("skill://pi-oven:<name>")');
+  });
+
+  it("buildKeywordMatchedSkillsPrompt emits namespaced skill:// URIs, not bare ones", () => {
+    const prompt = buildKeywordMatchedSkillsPrompt([
+      { name: "brainstorming", matchedPhrases: ["brainstorm"] },
+    ]);
+    expect(prompt).not.toBeNull();
+    // must contain the namespaced form
+    expect(prompt!).toContain("skill://pi-oven:brainstorming");
+    // must NOT contain a bare (non-namespaced) skill:// line entry
+    // (bare skill:// in the body text example is updated too, so we check no line-item bare form)
+    const lines = prompt!.split("\n");
+    const skillLines = lines.filter((l) => l.startsWith("- `skill://"));
+    expect(skillLines.every((l) => l.includes("skill://pi-oven:"))).toBe(true);
   });
 
   it("matches the broadened common phrasings for the user-triggered skills", () => {

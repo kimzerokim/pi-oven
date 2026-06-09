@@ -210,9 +210,9 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
 
     expect(res.systemPrompt.some((s) => s.includes("pi-oven:keyword-skills@v1"))).toBe(true);
     const joined = res.systemPrompt.join("\n");
-    expect(joined).toContain("skill://autonomous-loop");
-    expect(joined).toContain("skill://large-task-delegation");
-    expect(joined).toContain("skill://spec-and-review");
+    expect(joined).toContain("skill://pi-oven:autonomous-loop");
+    expect(joined).toContain("skill://pi-oven:large-task-delegation");
+    expect(joined).toContain("skill://pi-oven:spec-and-review");
   });
 
 
@@ -247,7 +247,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     const joined = res.systemPrompt.join("\n");
     expect(joined).toContain("Current autonomous reminder:");
     expect(joined).toContain(".pi-oven/state/branch-contract.json");
-    expect(joined).toContain("skill://autonomous-loop");
+    expect(joined).toContain("skill://pi-oven:autonomous-loop");
   });
 
   it("turn_start syncs autonomous active state and matched skills into the gate store", async () => {
@@ -312,6 +312,6 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     const joined = res.systemPrompt.join("\n");
     expect(joined).toContain("Current autonomous reminder:");
     expect(joined).toContain(".pi-oven/state/branch-contract.json");
-    expect(joined).toContain("skill://autonomous-loop");
+    expect(joined).toContain("skill://pi-oven:autonomous-loop");
   });
 });

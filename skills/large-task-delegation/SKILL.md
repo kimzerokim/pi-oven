@@ -121,4 +121,4 @@ Hard rules that survive any override:
 
 ---
 
-Anti-patterns + dispatch template: skill://pi-oven/large-task-delegation/references/dispatch-anatomy.md
+Anti-patterns + dispatch template: skill://pi-oven:large-task-delegation/references/dispatch-anatomy.md

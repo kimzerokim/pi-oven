@@ -23,8 +23,9 @@ const PI_OVEN_TOKEN = /(?<!\/)pi-oven:([a-z][a-z0-9-]*)/g;
 // Known phantom skill names removed from the tree — must never reappear as a
 // bare backtick skill reference. Skill→skill references should use skill://<name>.
 const PHANTOM_SKILL_DENYLIST = new Set<string>(["freshness-guard", "executing-plans"]);
-// skill://<name> or skill://pi-oven/<name>/… — capture the skill name segment.
-const SKILL_URI = /skill:\/\/(?:pi-oven\/)?([a-z][a-z0-9-]*)/g;
+// skill://<name> or skill://pi-oven:<name>/… — capture the skill name segment.
+// The old slash form skill://pi-oven/<name> is REJECTED (matches no registered skill).
+const SKILL_URI = /skill:\/\/(?:pi-oven:)?([a-z][a-z0-9-]*)/g;
 const BACKTICK_TOKEN = /`([a-z][a-z0-9-]*)`/g;
 
 function readSkillDirs(root: string): string[] {

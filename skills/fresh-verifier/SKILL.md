@@ -139,5 +139,5 @@ The `agents/pi-oven-verifier.md` profile defaults to `model: sonnet`. Opus promo
 
 ---
 
-References: `skill://pi-oven/fresh-verifier/references/4-sub-check.md` — 4 sub-check detail.
+References: `skill://pi-oven:fresh-verifier/references/4-sub-check.md` — 4 sub-check detail.
 Sources: omc `verify` skill (evidence-first workflow); `superpowers:verification-before-completion` (evidence before claims principle).

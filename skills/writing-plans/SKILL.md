@@ -141,7 +141,7 @@ This path is the pi-oven project override. Do not use `docs/superpowers/plans/` 
 
 ---
 
-Header + task template: skill://pi-oven/writing-plans/references/template.md
+Header + task template: skill://pi-oven:writing-plans/references/template.md
 
 ## Agent Dispatch (omp)
 

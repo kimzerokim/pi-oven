@@ -91,7 +91,7 @@ This skill is the **orchestration layer only**. It dispatches and sequences suba
 
 ---
 
-Dispatch prompt templates: skill://pi-oven/subagent-driven-development/references/prompts.md
+Dispatch prompt templates: skill://pi-oven:subagent-driven-development/references/prompts.md
 
 ## Agent Dispatch (omp)
 

@@ -68,7 +68,7 @@ Invoke `writing-plans` **only**. No other implementation skill is valid at exit.
 
 ---
 
-Deeper rationale + checklist detail: skill://pi-oven/brainstorming/references/checklist.md
+Deeper rationale + checklist detail: skill://pi-oven:brainstorming/references/checklist.md
 
 ## Agent Dispatch (omp)
 

@@ -39,9 +39,16 @@ describe("lint-skills skill→skill references", () => {
     expect(runLint(dir).code).toBe(0);
   });
 
-  it("accepts the skill://pi-oven/<name>/references form", () => {
-    writeSkill(dir, "alpha", "Detail: skill://pi-oven/alpha/references/x.md");
+  it("accepts the skill://pi-oven:<name>/references form (colon)", () => {
+    writeSkill(dir, "alpha", "Detail: skill://pi-oven:alpha/references/x.md");
     expect(runLint(dir).code).toBe(0);
+  });
+
+  it("rejects the broken slash form skill://pi-oven/<name>/references", () => {
+    writeSkill(dir, "alpha", "Detail: skill://pi-oven/alpha/references/x.md");
+    const { code, stderr } = runLint(dir);
+    expect(code).toBe(1);
+    expect(stderr).toContain("pi-oven");
   });
 
   it("flags a removed phantom skill referenced as a bare backtick token", () => {

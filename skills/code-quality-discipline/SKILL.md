@@ -65,7 +65,7 @@ Run before commit or handoff:
 
 ---
 
-Deep rationale + examples: skill://pi-oven/code-quality-discipline/references/principles.md
+Deep rationale + examples: skill://pi-oven:code-quality-discipline/references/principles.md
 
 ## Agent Dispatch (omp)
 

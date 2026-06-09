@@ -82,7 +82,7 @@ If the process is not alive or the log tail shows errors, fix the dev server bef
 - **v1 (Plan 1)**: SKILL.md skill-layer enforcement only. The model reads this skill and self-enforces the gate sequence. No hard intercept.
 - **Plan 3**: TypeScript extension hook — `pi.on('tool_call', { tool: 'Bash' })` — intercepts every `git commit`, `git push`, and `gh pr` call at the omp runtime layer. Gates 3.5 and Gate 6 are Plan 3 from day one (they require the hook intercept to be reliable). Gates 0–5 start as Plan 1 skill-layer and gain hard intercept in Plan 3.
 
-Per-gate procedure: skill://pi-oven/pre-commit-gate/references/gate-detail.md
+Per-gate procedure: skill://pi-oven:pre-commit-gate/references/gate-detail.md
 
 ## Agent Dispatch (omp)
 

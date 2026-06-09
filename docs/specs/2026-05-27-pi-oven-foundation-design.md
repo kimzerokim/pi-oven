@@ -60,7 +60,7 @@ OpenAI Codex (OAuth 구독, omp 내부 directly routed) + OpenCode Zen 양대 de
 
 - 각 SKILL.md self-contained. **No `harness-share.md` hub** (Approach B). 룰 중복 감수, hub 단일점 의존 회피.
 - SKILL.md body **target ≤ 500 단어 compressed format** (호출 시 token cost 통제), **hard cap 800 lines** (invariant audit, CI enforce).
-- 깊은 context: `skills/<name>/references/<topic>.md` — omp `skill://pi-oven/<name>/references/<topic>.md` URL 로 lazy-load. 일반 호출 path 에는 안 들어옴.
+- 깊은 context: `skills/<name>/references/<topic>.md` — omp `skill://pi-oven:<name>/references/<topic>.md` URL 로 lazy-load. 일반 호출 path 에는 안 들어옴.
 - Shared discipline (TDD strict / autonomous boundary / 10-stage pre-commit gate / cross-vendor critic / fresh-verifier) 은 **3 layer 로 enforce**:
   - TS extension event-level enforcement (block / inject / dispatch)
   - TTSR rule pack text-level enforcement (keyword 감지 후 system-reminder 주입)

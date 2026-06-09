@@ -74,7 +74,7 @@ Example: `docs/harness/surveys/2026-05-27-auth-session-survey.md`
 
 ---
 
-Per-step detail: skill://pi-oven/codebase-survey/references/8-step-checklist.md
+Per-step detail: skill://pi-oven:codebase-survey/references/8-step-checklist.md
 
 ## Agent Dispatch (omp)
 

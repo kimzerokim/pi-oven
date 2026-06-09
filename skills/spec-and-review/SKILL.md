@@ -110,7 +110,7 @@ Every finding from every critic provider must be assigned one of these three cat
 
 ---
 
-Pattern loop detail: skill://pi-oven/spec-and-review/references/pattern-loop.md
+Pattern loop detail: skill://pi-oven:spec-and-review/references/pattern-loop.md
 
 ## Agent Dispatch (omp)
 

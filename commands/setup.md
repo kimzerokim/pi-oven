@@ -1,7 +1,7 @@
 ---
 name: pi-oven-setup
 description: Configure pi-oven agent model routing — Profile A (release default), Profile B (openai-codex-only), Profile C (all-Anthropic), or Profile D (opencode-zen-only)
-argument-hint: [--status | --reset [--full] | --import <file> | --apply --profile A|B|C|D] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate]
+argument-hint: [--status | --reset [--full] | --import <file> | --apply --profile A|B|C|D] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate] [--suppress-sibling-skills | --no-suppress-sibling-skills]
 ---
 
 # /pi-oven:setup
@@ -289,6 +289,8 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 | `--scope global\|project` | WHERE this setup writes (default `global`). `global` = today's behavior: per-role overrides (B/C/D), `modelRoles`, `retry.fallbackChains` → `~/.omp/agent/config.yml`; language + setup-complete marker → `~/.pi-oven/config.json`. `project` = per-project routing: **all 24 per-role overrides for EVERY profile (incl. A)**, `modelRoles`, and `retry.fallbackChains` → `<cwd>/.omp/settings.json` (omp reads it at project level; wins per-role over global); language + marker → `<cwd>/.pi-oven/config.json`. The project file is committable (share with a team) or gitignorable (machine-local). Memory/async infra is global-only (not written under project scope). Set in Step 0.5; thread into `--language`/`--profile`/`--override`/`--reset`. Launch omp from the repo root. |
 | `--isolate` | Make omp IGNORE the `~/.claude` Claude-Code context layer (omc CLAUDE.md + pi-oven): writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (user-global, machine-local, preserves sibling providers) and purges any legacy `claude-plugins` entry. It does NOT disable `claude-plugins` — pi-oven's own `/pi-oven:*` commands load through that provider, so disabling it would remove them. omc/agentmemory marketplace plugin commands remain visible. pi-oven keeps loading and injects the repo-root `CLAUDE.md`. omp-only — never touches `~/.claude` on disk. Restart omp to apply. Combinable with `--profile`/`--apply` (runs after). |
 | `--no-isolate` | Undo `--isolate`: remove `claude` + any legacy `claude-plugins` from `disabledProviders` (preserves any other providers). |
+| `--suppress-sibling-skills` | Opt-in (GLOBAL-only): hide sibling marketplace plugin SKILLS from omp by writing `skills.ignoredSkills` globs (`superpowers:*`, `oh-my-claudecode:*`; SoT `PI_OVEN_SIBLING_SKILL_GLOBS`) to `~/.omp/agent/config.yml` (union-merge, preserves user-set globs). Complements `--isolate` (which hides the `~/.claude` CONTEXT layer; this hides sibling SKILLS so they can't shadow pi-oven's same-named skills). pi-oven's own `pi-oven:*` skills are unaffected. Rejected under `--scope project`. Restart omp to apply. Note: clearing later also removes identical user-set globs (no provenance tracking). |
+| `--no-suppress-sibling-skills` | Undo `--suppress-sibling-skills`: remove the pi-oven-managed sibling globs from `skills.ignoredSkills` (preserves other globs). `--reset` also clears them. |
 
 The 7 MUST-tier roles for smoke validation are: executor, explorer, verifier, critic, planner, code-reviewer, debugger.
 

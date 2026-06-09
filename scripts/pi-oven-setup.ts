@@ -20,6 +20,7 @@ import { runImport } from "./pi-oven-setup/import";
 import { runApply } from "./pi-oven-setup/apply";
 import { runOverride } from "./pi-oven-setup/override";
 import { runIsolate } from "./pi-oven-setup/isolate";
+import { runSuppressSibling } from "./pi-oven-setup/suppress-sibling";
 import { resolveDefaultAgentsDir } from "./pi-oven-setup/cache-resolver";
 import { normalizeLanguage, setProjectLanguage, setGlobalLanguage, markSetupComplete, markSetupCompleteGlobal } from "./pi-oven-setup/project-config";
 
@@ -42,6 +43,8 @@ const { values } = parseArgs({
     language: { type: "string" },
     isolate: { type: "boolean", default: false },
     "no-isolate": { type: "boolean", default: false },
+    "suppress-sibling-skills": { type: "boolean", default: false },
+    "no-suppress-sibling-skills": { type: "boolean", default: false },
     scope: { type: "string" },
   },
   strict: false,
@@ -75,8 +78,8 @@ const spawnFn = mockSpawn
   ? (_cmd: string, args: string[]) => {
       // Return valid JSON for `omp config get <key> --json`
       if (args[0] === "config" && args[1] === "get") {
-        // disabledProviders is an ARRAY-typed setting; everything else is a record.
-        if (args[2] === "disabledProviders") {
+        // disabledProviders and skills.ignoredSkills are ARRAY-typed settings; everything else is a record.
+        if (args[2] === "disabledProviders" || args[2] === "skills.ignoredSkills") {
           const payload = JSON.stringify({ key: args[2], value: [], type: "array", description: "" });
           return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") } as any;
         }
@@ -176,6 +179,26 @@ if (wantIsolate && wantNoIsolate) {
 }
 const hasIsolate = wantIsolate || wantNoIsolate;
 
+// --suppress-sibling-skills / --no-suppress-sibling-skills toggle omp's
+// skills.ignoredSkills (sibling marketplace skill suppression, §3.4).
+// GLOBAL-ONLY: rejected under --scope project. Mutually exclusive with each other.
+// Standalone is valid; may also combine with any primary action (runs after it).
+const wantSuppressSibling = Boolean(values["suppress-sibling-skills"]);
+const wantNoSuppressSibling = Boolean(values["no-suppress-sibling-skills"]);
+if (wantSuppressSibling && wantNoSuppressSibling) {
+  process.stderr.write(
+    "--suppress-sibling-skills and --no-suppress-sibling-skills are mutually exclusive. Cannot use both at once.\n"
+  );
+  process.exit(1);
+}
+if (wantSuppressSibling && scope === "project") {
+  process.stderr.write(
+    "--suppress-sibling-skills is global-only: it writes ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+  );
+  process.exit(1);
+}
+const hasSuppressSibling = wantSuppressSibling || wantNoSuppressSibling;
+
 // ---------------------------------------------------------------------------
 // Dispatch — precedence per §3.3/§3.4:
 //   --override + --status → override-write first, then status
@@ -238,9 +261,10 @@ if (values.status) {
     process.exit(result.exitCode);
   }
   markRouting = true;
-} else if (hasIsolate) {
-  // Standalone --isolate / --no-isolate (no primary model-routing action).
-  // The isolation toggle itself runs in the shared post-dispatch step below.
+} else if (hasIsolate || hasSuppressSibling) {
+  // Standalone --isolate / --no-isolate / --suppress-sibling-skills /
+  // --no-suppress-sibling-skills (no primary model-routing action).
+  // The toggles themselves run in the shared post-dispatch step below.
   result = { exitCode: 0, output: "" };
 } else {
   process.stderr.write(
@@ -254,6 +278,12 @@ if (values.status) {
 if (hasIsolate && result.exitCode === 0) {
   const iso = await runIsolate({ enable: wantIsolate, spawnFn });
   result = { exitCode: iso.exitCode, output: result.output + iso.output };
+}
+
+// Sibling-skill suppression toggle runs after isolate (if any), also only on success.
+if (hasSuppressSibling && result.exitCode === 0) {
+  const suppress = await runSuppressSibling({ enable: wantSuppressSibling, spawnFn });
+  result = { exitCode: suppress.exitCode, output: result.output + suppress.output };
 }
 
 // ---------------------------------------------------------------------------

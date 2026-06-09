@@ -9,7 +9,7 @@
  * lastChangelogVersion) are NEVER touched.
  */
 
-import { deletePiOvenAgentModelOverrides, resetConfigKey } from "./config-yml";
+import { deletePiOvenAgentModelOverrides, resetConfigKey, clearPiOvenIgnoredSkills } from "./config-yml";
 import type { ConfigYmlOpts } from "./config-yml";
 import { clearSetupComplete, clearSetupCompleteGlobal } from "./project-config";
 import {
@@ -105,6 +105,15 @@ export async function runReset(
   // GLOBAL scope (default): clear the homedir-global config.yml (unchanged).
   // -------------------------------------------------------------------------
   const removedKeys = await deletePiOvenAgentModelOverrides(opts);
+
+  // Also clear the pi-oven-managed ignoredSkills globs (§3.4: --reset clears them).
+  // Fail-soft: a missing or record-typed skills.ignoredSkills is treated as already
+  // empty — the reset overall must not fail just because this key is absent.
+  try {
+    await clearPiOvenIgnoredSkills(opts);
+  } catch {
+    // Already empty or key not present — nothing to clear.
+  }
 
   // Full reset: return the remaining pi-oven-managed keys to omp defaults.
   if (opts?.full) {

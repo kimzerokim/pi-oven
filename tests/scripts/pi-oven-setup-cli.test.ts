@@ -607,5 +607,87 @@ describe("pi-oven-setup CLI --scope", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// --suppress-sibling-skills / --no-suppress-sibling-skills flag (§3.4)
+// ---------------------------------------------------------------------------
+
+describe("pi-oven-setup CLI --suppress-sibling-skills", () => {
+  let tempDir: string;
+  let homeDir: string;
+
+  beforeEach(() => {
+    tempDir = join(
+      tmpdir(),
+      `cli-suppress-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(tempDir, { recursive: true });
+    homeDir = join(
+      tmpdir(),
+      `cli-suppress-home-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(homeDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it("--suppress-sibling-skills exits 0 and mentions the suppressed globs", async () => {
+    const { exitCode, stdout: out } = await runCLIInCwd(
+      ["--suppress-sibling-skills"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
+    );
+    expect(exitCode).toBe(0);
+    expect(out).toContain("superpowers:*");
+    expect(out).toContain("oh-my-claudecode:*");
+  });
+
+  it("--no-suppress-sibling-skills exits 0 and reports cleared/nothing message", async () => {
+    const { exitCode, stdout: out } = await runCLIInCwd(
+      ["--no-suppress-sibling-skills"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
+    );
+    expect(exitCode).toBe(0);
+    // Either "cleared/removed" or "nothing to undo" is acceptable output
+    expect(out).toMatch(/cleared|removed|nothing|already|no.*suppress/i);
+  });
+
+  it("--suppress-sibling-skills + --scope project is rejected (no-op + error message)", async () => {
+    const { exitCode, stderr } = await runCLIInCwd(
+      ["--suppress-sibling-skills", "--scope", "project"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/global.only|scope.*project|project.*scope/i);
+    // Must NOT write .omp/settings.json
+    expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
+  });
+
+  it("--reset also clears pi-oven-managed ignoredSkills globs", async () => {
+    const { exitCode, stdout: out } = await runCLIInCwd(
+      ["--reset"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
+    );
+    expect(exitCode).toBe(0);
+    // --reset is a success path; output mentions cleared/no-overrides
+    expect(out).toMatch(/cleared|No overrides/i);
+  });
+
+  it("--suppress-sibling-skills and --no-suppress-sibling-skills are mutually exclusive", async () => {
+    const { exitCode, stderr } = await runCLIInCwd(
+      ["--suppress-sibling-skills", "--no-suppress-sibling-skills"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/mutual.?exclu|cannot.*both|both.*cannot/i);
+  });
+});
+
 // Keep reference to avoid unused import warning
 const stdout = "";

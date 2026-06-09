@@ -513,6 +513,119 @@ export async function setToolEnablementConfig(opts?: ConfigYmlOpts): Promise<voi
 }
 
 // ---------------------------------------------------------------------------
+// skills.ignoredSkills (ARRAY) — opt-in sibling-skill suppression (§3.4).
+// Same transport as disabledProviders: omp config get skills.ignoredSkills --json
+// → in-memory union/diff → omp config set skills.ignoredSkills '<whole-merged-json>'.
+// ---------------------------------------------------------------------------
+
+/**
+ * The sibling marketplace skill globs pi-oven writes into `skills.ignoredSkills`
+ * when the user opts in via `--suppress-sibling-skills`. Excludes agentmemory:*
+ * by design (D5 decision: non-overlapping memory tools).
+ */
+export const PI_OVEN_SIBLING_SKILL_GLOBS = [
+  "superpowers:*",
+  "oh-my-claudecode:*",
+] as const;
+
+/**
+ * Generic STRICT read for any array-typed omp setting (the WRITE path, fail-closed).
+ * Spawns `omp config get <key> --json`. Returns { ok: true, list } or { ok: false, error }.
+ * Callers MUST abort on ok:false — never merge-into-[] then set (would wipe siblings).
+ */
+export async function readStringArraySettingStrict(
+  key: string,
+  opts?: ConfigYmlOpts
+): Promise<{ ok: true; list: string[] } | { ok: false; error: string }> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "get", key, "--json"]);
+
+  if (result.exitCode !== 0) {
+    return { ok: false, error: `omp config get exited ${String(result.exitCode)}` };
+  }
+
+  const stdout = result.stdout?.toString() ?? "";
+  return parseGetArrayOutput(stdout);
+}
+
+/**
+ * STRICT read of `skills.ignoredSkills` for the WRITE path (fail-closed).
+ * Delegates to the generic readStringArraySettingStrict.
+ */
+export async function readIgnoredSkillsStrict(
+  opts?: ConfigYmlOpts
+): Promise<{ ok: true; list: string[] } | { ok: false; error: string }> {
+  return readStringArraySettingStrict("skills.ignoredSkills", opts);
+}
+
+/**
+ * ENABLE sibling suppression: readIgnoredSkillsStrict → if !ok ABORT(throw) →
+ * union-add PI_OVEN_SIBLING_SKILL_GLOBS (via mergeDisabledProviders reused as
+ * a pure string-array helper) → `omp config set skills.ignoredSkills '<json>'`.
+ * Idempotent — re-adding already-present globs is a no-op union.
+ * Returns the resulting ignoredSkills list. Preserves user-set sibling globs.
+ */
+export async function setPiOvenIgnoredSkills(opts?: ConfigYmlOpts): Promise<string[]> {
+  const readResult = await readIgnoredSkillsStrict(opts);
+  if (!readResult.ok) {
+    throw new Error(`setPiOvenIgnoredSkills: readIgnoredSkillsStrict failed — ${readResult.error}`);
+  }
+
+  const merged = mergeDisabledProviders(readResult.list, {
+    op: "add",
+    providers: PI_OVEN_SIBLING_SKILL_GLOBS,
+  });
+
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const setResult = spawn("omp", ["config", "set", "skills.ignoredSkills", JSON.stringify(merged)]);
+
+  if (setResult.exitCode !== 0) {
+    throw new Error(
+      `setPiOvenIgnoredSkills: omp config set failed (exit ${String(setResult.exitCode)}): ${setResult.stderr?.toString() ?? ""}`
+    );
+  }
+
+  return merged;
+}
+
+/**
+ * DISABLE sibling suppression: readIgnoredSkillsStrict → if !ok ABORT(throw) →
+ * set-difference remove PI_OVEN_SIBLING_SKILL_GLOBS → set.
+ * Returns the sorted list of globs actually removed. No-op (skips set) when none
+ * of the managed globs are present. Preserves sibling globs the user set themselves
+ * EXCEPT identical globs (provenance-loss limitation, same as disabledProviders).
+ */
+export async function clearPiOvenIgnoredSkills(opts?: ConfigYmlOpts): Promise<string[]> {
+  const readResult = await readIgnoredSkillsStrict(opts);
+  if (!readResult.ok) {
+    throw new Error(`clearPiOvenIgnoredSkills: readIgnoredSkillsStrict failed — ${readResult.error}`);
+  }
+
+  const current = readResult.list;
+  const removed = [...PI_OVEN_SIBLING_SKILL_GLOBS].filter((g) => current.includes(g)).sort();
+
+  if (removed.length === 0) {
+    return [];
+  }
+
+  const merged = mergeDisabledProviders(current, {
+    op: "remove",
+    providers: PI_OVEN_SIBLING_SKILL_GLOBS,
+  });
+
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const setResult = spawn("omp", ["config", "set", "skills.ignoredSkills", JSON.stringify(merged)]);
+
+  if (setResult.exitCode !== 0) {
+    throw new Error(
+      `clearPiOvenIgnoredSkills: omp config set failed (exit ${String(setResult.exitCode)}): ${setResult.stderr?.toString() ?? ""}`
+    );
+  }
+
+  return removed;
+}
+
+// ---------------------------------------------------------------------------
 // disabledProviders (ARRAY) — the ~/.claude isolation toggle.
 // Same transport as the overrides path: omp config get disabledProviders --json
 // → in-memory merge → omp config set disabledProviders '<whole-merged-json>'.

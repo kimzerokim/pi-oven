@@ -9,7 +9,7 @@ import { PROFILE_A, PROFILE_B, ROLES } from "../../../scripts/pi-oven-setup/prof
 /** Build a mock spawnFn that returns exit 0 for models in successSet, else exit 1. */
 function makeSpawnFn(successModels: Set<string>) {
   return (_cmd: string, args: string[]) => {
-    // omp -p "..." --model <model> --no-tools --max-tokens 5
+    // omp -p "..." --model <model> --no-tools
     const modelIdx = args.indexOf("--model");
     const model = modelIdx !== -1 ? args[modelIdx + 1] : null;
     const ok = model !== null && successModels.has(model);

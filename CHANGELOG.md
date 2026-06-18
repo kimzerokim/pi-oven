@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.12 - 2026-06-18
+
+- fix(setup): remove unsupported `omp --max-tokens` flag from model smoke validation
+
 ## v0.1.11 - 2026-06-18
 
 - fix(runtime): namespaced `skill://pi-oven:<name>` injection so pi-oven skills resolve before sibling plugins

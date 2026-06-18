@@ -119,8 +119,6 @@ function pingModel(
     "--model",
     model,
     "--no-tools",
-    "--max-tokens",
-    "5",
   ]);
   // null = timeout kill → enabled-but-slow → verified
   return result.exitCode === 0 || result.exitCode === null;

@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from four frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.12-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-893%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.13-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-893%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
@@ -37,7 +37,7 @@ omp plugin install pi-oven@kzk --force
 
 # 3. Verify
 omp plugin list | grep pi-oven
-# Expected: pi-oven@kzk (0.1.12)
+# Expected: pi-oven@kzk (0.1.13)
 ```
 
 ### One-shot (install automatic, setup interactive)
@@ -252,6 +252,8 @@ Requires **OpenAI Codex / ChatGPT subscription** — no OpenCode Zen or Anthropi
 - `openai-codex/gpt-5.5:xhigh`: verifier, critic, planner, code-reviewer, debugger, security-reviewer, code-simplifier, tracer, analyst, architect, oracle, deep-researcher.
 - `openai-codex/gpt-5.4:high`: designer, qa-tester, data-runner.
 - `openai-codex/gpt-5.4:medium`: explorer, writer, git-master, document-specialist, librarian, multimodal-looker, plus the title model role.
+
+Profile B sets the main orchestrator to `openai-codex/gpt-5.4:high` so OpenAI-subscription users get the 1M context window. Runtime retry fallback chains for Profile B are empty, so setup does not route usage-limit retries through OpenCode Zen.
 
 Profile B intentionally avoids `gpt-5.4-mini` and `gpt-5.4-nano`. Setup writes Profile B subagent overrides as model selectors with reasoning-effort suffixes (for example `openai-codex/gpt-5.5:xhigh`), so the install path carries both model and thinking-level routing.
 

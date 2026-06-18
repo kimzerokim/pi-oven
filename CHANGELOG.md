@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.13 - 2026-06-18
+
+- fix(setup): route Profile B main orchestrator to `openai-codex/gpt-5.4:high` for the 1M OpenAI Codex context window
+- fix(setup): keep Profile B runtime fallback chains empty so OpenAI-subscription setup does not route through OpenCode Zen
+
 ## v0.1.12 - 2026-06-18
 
 - fix(setup): remove unsupported `omp --max-tokens` flag from model smoke validation

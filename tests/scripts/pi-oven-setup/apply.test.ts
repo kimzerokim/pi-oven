@@ -285,7 +285,7 @@ describe("runApply", () => {
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
     );
     const merged = JSON.parse(setCall!.args[3]);
-    expect(merged.default).toBe("openai-codex/gpt-5.5:high");
+    expect(merged.default).toBe("openai-codex/gpt-5.4:high");
     expect(merged.title).toBe("openai-codex/gpt-5.4:medium");
   });
 

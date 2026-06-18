@@ -292,8 +292,8 @@ describe("profiles", () => {
   });
 
   describe("PROFILE_B_ORCHESTRATOR new assignments", () => {
-    it("default is openai-codex/gpt-5.5:high", () => {
-      expect(PROFILE_B_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.5:high");
+    it("default is openai-codex/gpt-5.4:high for the 1M OpenAI window", () => {
+      expect(PROFILE_B_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.4:high");
     });
 
     it("title is openai-codex/gpt-5.4:medium", () => {
@@ -302,12 +302,12 @@ describe("profiles", () => {
   });
 
   describe("PROFILE_B_FALLBACK_CHAINS new assignments", () => {
-    it("default chain is opencode-zen/gpt-5.5", () => {
-      expect(PROFILE_B_FALLBACK_CHAINS.default).toEqual(["opencode-zen/gpt-5.5"]);
+    it("default chain is empty so Profile B stays openai-codex-only at runtime", () => {
+      expect(PROFILE_B_FALLBACK_CHAINS.default).toEqual([]);
     });
 
-    it("title chain is opencode-zen/gpt-5.4", () => {
-      expect(PROFILE_B_FALLBACK_CHAINS.title).toEqual(["opencode-zen/gpt-5.4"]);
+    it("title chain is empty so Profile B does not use opencode-zen fallback", () => {
+      expect(PROFILE_B_FALLBACK_CHAINS.title).toEqual([]);
     });
   });
 
@@ -337,8 +337,8 @@ describe("profiles", () => {
       expect(PROFILE_A_ORCHESTRATOR.title).toBe("gpt-5.4-mini:low");
     });
 
-    it("PROFILE_B_ORCHESTRATOR uses openai-codex/gpt-5.5 high as default and gpt-5.4 medium for title", () => {
-      expect(PROFILE_B_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.5:high");
+    it("PROFILE_B_ORCHESTRATOR uses openai-codex/gpt-5.4 high as default and gpt-5.4 medium for title", () => {
+      expect(PROFILE_B_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.4:high");
       expect(PROFILE_B_ORCHESTRATOR.title).toBe("openai-codex/gpt-5.4:medium");
     });
   });

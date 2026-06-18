@@ -235,8 +235,7 @@ export const PROFILE_A: ProfileMap = {
  * `modelRoles.title` (the cheap model omp uses to auto-title sessions). These
  * live OUTSIDE ProfileMap so it stays exactly 24 roles for lint-agents.
  * Written by `/pi-oven:setup --profile` (the user-setup apply path), NOT by the
- * maintainer agent-frontmatter generate path. PROFILE_B reuses only ids that
- * PROFILE_B already declares (B is DEFERRED — no new B ids introduced here).
+ * maintainer agent-frontmatter generate path.
  *
  * PROFILE_A uses provider-qualified `openai-codex/gpt-5.4:high` for the main
  * orchestrator and canonical `gpt-5.4-mini:low` for title generation. Runtime
@@ -254,16 +253,17 @@ export const PROFILE_A_ORCHESTRATOR: OrchestratorModels = {
 };
 
 export const PROFILE_B_ORCHESTRATOR: OrchestratorModels = {
-  default: "openai-codex/gpt-5.5:high",
+  default: "openai-codex/gpt-5.4:high",
   title: "openai-codex/gpt-5.4:medium",
 };
 
 /**
  * Rate-limit failover chains for the orchestrator model roles, keyed by
  * modelRole name. Written to `retry.fallbackChains` by the user-setup apply
- * path so a usage-limited primary fails over to its opencode-zen equivalent
- * instead of fail-fast at retry.maxDelayMs. Lives OUTSIDE ProfileMap (like the
- * orchestrator consts) so ProfileMap stays exactly 24 roles for lint-agents.
+ * path. Empty arrays intentionally disable Profile B runtime fallback so the
+ * OpenAI-subscription profile does not route usage-limit retries through
+ * opencode-zen. Lives OUTSIDE ProfileMap (like the orchestrator consts) so
+ * ProfileMap stays exactly 24 roles for lint-agents.
  *
  * Selectors are provider-qualified and omit thinkingLevel so the fallback
  * candidate inherits the current level (agent-session.ts retry path). omp's
@@ -277,8 +277,8 @@ export const PROFILE_A_FALLBACK_CHAINS: Record<string, string[]> = {
 };
 
 export const PROFILE_B_FALLBACK_CHAINS: Record<string, string[]> = {
-  default: ["opencode-zen/gpt-5.5"],
-  title: ["opencode-zen/gpt-5.4"],
+  default: [],
+  title: [],
 };
 
 export const PROFILE_C_ORCHESTRATOR: OrchestratorModels = {

@@ -17,7 +17,7 @@ import {
 // Shared fixtures
 // ---------------------------------------------------------------------------
 
-/** Minimal `omp --list-models` fixture that includes two resolvable models. */
+/** Minimal `omp models` fixture that includes two resolvable models. */
 const LIST_MODELS_FIXTURE = [
   "Canonical models",
   "  canonical  selected                              provider",
@@ -32,7 +32,7 @@ const LIST_MODELS_FIXTURE = [
  * Build a spawnFn that:
  *  - returns a valid empty-record get response for `omp config get ...`
  *  - captures `omp config set ...` args into `setCalls`
- *  - returns exit 0 for `omp --list-models` (should not be called; spawnFn is NOT used for list-models when listModelsOutput is injected)
+ *  - returns exit 0 for `omp models` (should not be called; spawnFn is NOT used for list-models when listModelsOutput is injected)
  */
 function makeSpawnFn(opts: {
   getRecord?: Record<string, string>;
@@ -365,7 +365,7 @@ describe("runOverride — scope:project", () => {
     expect(overrides["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
     expect(overrides["pi-oven:executor"]).toBe("opencode-zen/gpt-5.3-codex");
 
-    // The validator may spawn `omp --list-models` only when no listModelsOutput is
+    // The validator may spawn `omp models` only when no listModelsOutput is
     // injected; here it is injected, so no `config` spawn must occur at all.
     const configCalls = calls.filter((c) => c.includes("config"));
     expect(configCalls.length).toBe(0);

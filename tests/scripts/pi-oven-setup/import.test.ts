@@ -25,7 +25,7 @@ function writeJson(dir: string, name: string, obj: unknown): string {
 }
 
 /**
- * Build a minimal omp --list-models fixture containing the given model ids
+ * Build a minimal `omp models` fixture containing the given model ids
  * in the "Canonical models" section format expected by parseCanonicalModelIds.
  */
 function makeListModelsFixture(ids: string[]): string {

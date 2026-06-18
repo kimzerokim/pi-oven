@@ -5,7 +5,7 @@ import {
 } from "../../../scripts/pi-oven-setup/model-id-validator";
 
 // ---------------------------------------------------------------------------
-// Fixtures — realistic shape of `omp --list-models` "Canonical models" section
+// Fixtures — realistic shape of `omp models` "Canonical models" section
 // (plan §Task 1.2: column-header row is `canonical  selected  variants ...`;
 //  data rows: col-0 = canonical alias, col-1 = selected provider/model-id)
 // ---------------------------------------------------------------------------
@@ -73,19 +73,19 @@ describe("parseCanonicalModelIds", () => {
 
   it("throws when 'Canonical models' header is absent", () => {
     expect(() => parseCanonicalModelIds(FIXTURE_NO_CANONICAL_HEADER)).toThrow(
-      /unexpected omp --list-models format/i
+      /unexpected omp models format/i
     );
   });
 
   it("throws when column-header row is absent", () => {
     expect(() => parseCanonicalModelIds(FIXTURE_MISSING_COLUMN_HEADER)).toThrow(
-      /unexpected omp --list-models format/i
+      /unexpected omp models format/i
     );
   });
 
   it("throws on empty output", () => {
     expect(() => parseCanonicalModelIds(FIXTURE_EMPTY)).toThrow(
-      /unexpected omp --list-models format/i
+      /unexpected omp models format/i
     );
   });
 });
@@ -128,6 +128,6 @@ describe("isResolvableModelId", () => {
       isResolvableModelId("anthropic/claude-opus-4-8", {
         listModelsOutput: "",
       })
-    ).rejects.toThrow(/unexpected omp --list-models format/i);
+    ).rejects.toThrow(/unexpected omp models format/i);
   });
 });

@@ -89,7 +89,7 @@ Then conduct ALL remaining steps (Steps 1–6 below) IN the chosen language — 
 Run via Bash:
 
 ```
-omp --list-models 2>&1
+omp models
 ```
 
 Parse the "Provider models" section. Look for native provider rows:

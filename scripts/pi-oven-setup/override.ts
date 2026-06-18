@@ -89,7 +89,7 @@ export async function runOverride(
     const resolvable = await isResolvableModelId(model, validatorOpts);
     if (!resolvable) {
       errors.push(
-        `invalid --override '${entry}': model '${model}' is not resolvable — run 'omp --list-models' to see canonical ids`
+        `invalid --override '${entry}': model '${model}' is not resolvable — run 'omp models' to see canonical ids`
       );
       continue;
     }

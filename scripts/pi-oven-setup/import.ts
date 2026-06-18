@@ -30,7 +30,7 @@ export interface ValidateImportOpts {
 export interface RunImportOpts {
   allowAnthropic?: boolean;
   spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
-  /** Injectable omp --list-models output for EXACT-ID-ONLY validation (tests). */
+  /** Injectable `omp models` output for EXACT-ID-ONLY validation (tests). */
   listModelsOutput?: string;
 }
 

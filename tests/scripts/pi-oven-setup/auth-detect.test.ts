@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { detectAuth } from "../../../scripts/pi-oven-setup/auth-detect";
 
 // ---------------------------------------------------------------------------
-// Stub outputs representing typical `omp --list-models` output
+// Stub outputs representing typical `omp models` output
 // ---------------------------------------------------------------------------
 
 const STUB_WITH_ANTHROPIC = `

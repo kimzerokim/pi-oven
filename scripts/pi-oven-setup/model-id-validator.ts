@@ -3,12 +3,12 @@
  * Spec E §3.5: EXACT-ID-ONLY resolver-parity validation of override model ids.
  *
  * Validates that a model id is resolvable by omp by parsing the "Canonical models"
- * section of `omp --list-models` output — same resolution semantics as omp's
+ * section of `omp models` output — same resolution semantics as omp's
  * model-resolver (resolver parity). No glob/prefix/wildcard — EXACT-ID-ONLY.
  */
 
 export interface ModelIdValidatorOpts {
-  /** Injectable `omp --list-models` stdout (tests, highest precedence). */
+  /** Injectable `omp models` stdout (tests, highest precedence). */
   listModelsOutput?: string;
   /** Injectable spawn (tests). */
   spawnFn?: (
@@ -18,7 +18,7 @@ export interface ModelIdValidatorOpts {
 }
 
 /**
- * PURE parser. Input: raw `omp --list-models` text. Output: canonical "provider/model-id" ids.
+ * PURE parser. Input: raw `omp models` text. Output: canonical "provider/model-id" ids.
  * Defensive: THROWS if the "Canonical models" header line or its column header
  * (`canonical  selected ...`) is absent (fail loud on format drift — do not silently return []).
  */
@@ -29,7 +29,7 @@ export function parseCanonicalModelIds(listModelsOutput: string): string[] {
   const headerIdx = lines.findIndex((l) => l.trim() === "Canonical models");
   if (headerIdx === -1) {
     throw new Error(
-      "unexpected omp --list-models format: 'Canonical models' header not found"
+      "unexpected omp models format: 'Canonical models' header not found"
     );
   }
 
@@ -45,7 +45,7 @@ export function parseCanonicalModelIds(listModelsOutput: string): string[] {
   }
   if (colHeaderIdx === -1) {
     throw new Error(
-      "unexpected omp --list-models format: column-header row with 'selected' not found after 'Canonical models'"
+      "unexpected omp models format: column-header row with 'selected' not found after 'Canonical models'"
     );
   }
 
@@ -73,7 +73,7 @@ export function parseCanonicalModelIds(listModelsOutput: string): string[] {
 
 /**
  * Thin wrapper: obtains text via (a) opts.listModelsOutput, else (b) $PI_OVEN_LIST_MODELS_FIXTURE file,
- * else (c) spawn `omp --list-models`. Then parseCanonicalModelIds → Set membership (EXACT-ID-ONLY).
+ * else (c) spawn `omp models`. Then parseCanonicalModelIds → Set membership (EXACT-ID-ONLY).
  * No glob/prefix/wildcard.
  */
 export async function isResolvableModelId(
@@ -102,13 +102,13 @@ async function getListModelsText(opts?: ModelIdValidatorOpts): Promise<string> {
     return await file.text();
   }
 
-  // (c) Spawn `omp --list-models`
+  // (c) Spawn `omp models`
   const spawn =
     opts?.spawnFn ??
     ((cmd: string, args: string[]) =>
       Bun.spawnSync([cmd, ...args], { stdio: ["ignore", "pipe", "pipe"] }));
 
-  const result = spawn("omp", ["--list-models"]);
+  const result = spawn("omp", ["models"]);
   const stdout = result.stdout?.toString() ?? "";
   const stderr = result.stderr?.toString() ?? "";
   return stdout || stderr;

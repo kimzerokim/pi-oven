@@ -1,6 +1,6 @@
 /**
  * Auth detection for the pi-oven setup wizard.
- * Spec B §3.1: Parse `omp --list-models` Provider models section.
+ * Spec B §3.1: Parse `omp models` Provider models section.
  * Spec B §3.2: Optional smoke ping confirmation.
  */
 
@@ -11,7 +11,7 @@ export interface AuthStatus {
 }
 
 /**
- * Detects which providers are authenticated by parsing `omp --list-models` output.
+ * Detects which providers are authenticated by parsing `omp models` output.
  *
  * Primary detection (Spec B §3.1): extract the first token from each data row
  * in the Provider models section. A native `anthropic` provider row matching
@@ -30,8 +30,8 @@ export async function detectAuth(opts?: {
   if (opts?.listModelsOutput !== undefined) {
     output = opts.listModelsOutput;
   } else {
-    // Spawn `omp --list-models` and capture stdout+stderr
-    const proc = Bun.spawnSync(["omp", "--list-models"], {
+    // Spawn `omp models` and capture stdout+stderr
+    const proc = Bun.spawnSync(["omp", "models"], {
       stdio: ["ignore", "pipe", "pipe"],
     });
     output = proc.stdout?.toString() ?? "";
@@ -44,7 +44,7 @@ export async function detectAuth(opts?: {
 }
 
 /**
- * Parses the raw `omp --list-models` output and extracts auth status per provider.
+ * Parses the raw `omp models` output and extracts auth status per provider.
  */
 function parseListModelsOutput(output: string): AuthStatus {
   const status: AuthStatus = {

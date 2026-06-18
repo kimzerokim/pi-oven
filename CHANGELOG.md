@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.15 - 2026-06-18
+
+- fix: use omp models in setup flow
 ## v0.1.14 - 2026-06-18
 
 - fix(runtime): stop `/pi-oven:setup` ask UI from reading the coding-agent global theme singleton; build markdown/select-list themes from the callback-provided UI theme instead

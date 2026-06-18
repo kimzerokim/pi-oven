@@ -46,18 +46,16 @@ export type ProfileMap = Record<Role, ModelEntry>;
 
 /**
  * Profile A — Release default.
- * Benchmark + cost-optimized routing.
- * 4 high-stakes roles (critic, security-reviewer, oracle, planner) use anthropic/ primary.
- * 6 roles use openai-codex/ subscription as primary
- * (executor/debugger/test-engineer/data-runner = gpt-5.4;
- *  architect/metis = gpt-5.4; planner alternate = gpt-5.4).
- * 4 reasoning roles (verifier, code-reviewer, analyst, tracer) use opencode-zen/kimi-k2.6.
- * 4 content/search roles (explorer, writer, document-specialist, deep-researcher) use opencode-zen/minimax-m2.5.
- * 6 utility roles (multimodal-looker, qa-tester, designer, code-simplifier, librarian, git-master) use opencode-zen/qwen3.5-plus.
- * Default fallback policy: opencode-zen/ wrapper of the same model id.
- * Exception: planner falls back to openai-codex/gpt-5.4 for codex-review
- * cross-validation per user policy.
- * Provider mix: anthropic 4, openai-codex 6, opencode-zen 14.
+ * Benchmark + cost-optimized heterogeneous routing.
+ * - anthropic/claude-opus-4-8: critic, planner, security-reviewer, oracle.
+ * - openai-codex/gpt-5.4: executor, debugger, test-engineer, architect, metis, data-runner.
+ * - openai-codex/gpt-5.4-mini: multimodal-looker, qa-tester.
+ * - opencode-zen/minimax-m2.5: explorer, writer, document-specialist,
+ *   deep-researcher, librarian, git-master.
+ * - opencode-zen/glm-5.1: designer, code-simplifier.
+ * - opencode-zen/kimi-k2.6: verifier, code-reviewer, analyst, tracer.
+ * Default fallback policy: opencode-zen/ wrapper of the same model id where
+ * available; Profile A orchestrator fallback chains live outside this map.
  */
 export const PROFILE_A: ProfileMap = {
   executor: {
@@ -240,12 +238,10 @@ export const PROFILE_A: ProfileMap = {
  * maintainer agent-frontmatter generate path. PROFILE_B reuses only ids that
  * PROFILE_B already declares (B is DEFERRED — no new B ids introduced here).
  *
- * PROFILE_A uses CANONICAL model ids (no provider prefix) for the orchestrator:
- * with an empty `modelProviderOrder`, omp resolves canonical `gpt-5.4` /
- * `gpt-5.4-mini` openai-codex-first (registry order) and falls back to
- * opencode-zen — both providers carry these models. The subagent codex roles
- * get the same primary→fallback ordering via their frontmatter model array
- * ([openai-codex/gpt-5.4, opencode-zen/gpt-5.4]).
+ * PROFILE_A uses provider-qualified `openai-codex/gpt-5.4:high` for the main
+ * orchestrator and canonical `gpt-5.4-mini:low` for title generation. Runtime
+ * retry fallback chains route default → opencode-zen/kimi-k2.6 and title →
+ * opencode-zen/gpt-5.4-mini.
  */
 export interface OrchestratorModels {
   default: string;
@@ -259,7 +255,7 @@ export const PROFILE_A_ORCHESTRATOR: OrchestratorModels = {
 
 export const PROFILE_B_ORCHESTRATOR: OrchestratorModels = {
   default: "openai-codex/gpt-5.5:high",
-  title: "openai-codex/gpt-5.4-mini:low",
+  title: "openai-codex/gpt-5.4:medium",
 };
 
 /**
@@ -282,7 +278,7 @@ export const PROFILE_A_FALLBACK_CHAINS: Record<string, string[]> = {
 
 export const PROFILE_B_FALLBACK_CHAINS: Record<string, string[]> = {
   default: ["opencode-zen/gpt-5.5"],
-  title: ["opencode-zen/gpt-5.4-mini"],
+  title: ["opencode-zen/gpt-5.4"],
 };
 
 export const PROFILE_C_ORCHESTRATOR: OrchestratorModels = {
@@ -296,36 +292,36 @@ export const PROFILE_C_FALLBACK_CHAINS: Record<string, string[]> = {
 };
 
 /**
- * Profile B — openai-codex-only.
- * All 24 roles use openai-codex/ primary, tiered by thinkingLevel:
- *   xhigh  → openai-codex/gpt-5.5
- *   high   → openai-codex/gpt-5.4
- *   medium → openai-codex/gpt-5.4-mini
- *   low    → openai-codex/gpt-5.4-nano
- * Vision override: multimodal-looker and qa-tester keep their tier model
- * (all gpt-5.4/5.5/5.4-mini/5.4-nano have vision per survey).
+ * Profile B — openai-codex-only, performance-first.
+ * Model tier and thinking effort are deliberately decoupled:
+ *   - gpt-5.5 for implementation, causal investigation, review, planning,
+ *     architecture, advisory, and deep research roles.
+ *   - gpt-5.4 for fast fan-out, docs/search/vision/git/data-runner roles.
+ *   - xhigh only for high-value review/security/verification/oracle/deep-research
+ *     rollouts where extra latency buys correctness.
+ *   - medium for retrieval, docs, writing, git, and vision fan-out.
  * registry_alternate = opencode-zen/ mirror of the same model id.
  * tools and blocked_tools copied verbatim from PROFILE_A.
  */
 export const PROFILE_B: ProfileMap = {
   executor: {
-    primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "high",
     tools: ["*"],
     blocked_tools: [],
   },
   explorer: {
-    primary: "openai-codex/gpt-5.4-mini",
-    registry_alternate: "opencode-zen/gpt-5.4-mini",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "web_search", "lsp", "ast_grep"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   verifier: {
-    primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4",
-    thinkingLevel: "high",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
+    thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "recall", "task", "report_finding", "lsp"],
     blocked_tools: ["write", "edit", "apply_patch"],
   },
@@ -337,29 +333,29 @@ export const PROFILE_B: ProfileMap = {
     blocked_tools: ["write", "edit", "apply_patch", "bash", "task"],
   },
   planner: {
-    primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4",
-    thinkingLevel: "high",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
+    thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "recall", "task", "lsp", "ast_grep", "web_search"],
     blocked_tools: ["write", "edit", "apply_patch"],
   },
   "code-reviewer": {
-    primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4",
-    thinkingLevel: "high",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
+    thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "lsp", "ast_grep", "recall", "report_finding"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   debugger: {
-    primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4",
-    thinkingLevel: "high",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
+    thinkingLevel: "xhigh",
     tools: ["*"],
     blocked_tools: [],
   },
   "test-engineer": {
-    primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "high",
     tools: ["*"],
     blocked_tools: [],
@@ -372,8 +368,8 @@ export const PROFILE_B: ProfileMap = {
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   writer: {
-    primary: "openai-codex/gpt-5.4-mini",
-    registry_alternate: "opencode-zen/gpt-5.4-mini",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "write", "edit", "web_search"],
     blocked_tools: ["apply_patch", "bash", "task"],
@@ -401,23 +397,23 @@ export const PROFILE_B: ProfileMap = {
     blocked_tools: [],
   },
   "git-master": {
-    primary: "openai-codex/gpt-5.4-mini",
-    registry_alternate: "opencode-zen/gpt-5.4-mini",
-    thinkingLevel: "low",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
+    thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   "document-specialist": {
-    primary: "openai-codex/gpt-5.4-mini",
-    registry_alternate: "opencode-zen/gpt-5.4-mini",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "recall", "web_search"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   tracer: {
-    primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4",
-    thinkingLevel: "high",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
+    thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "bash", "lsp", "ast_grep", "eval", "debug"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
@@ -436,16 +432,16 @@ export const PROFILE_B: ProfileMap = {
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   librarian: {
-    primary: "openai-codex/gpt-5.4-mini",
-    registry_alternate: "opencode-zen/gpt-5.4-mini",
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "lsp", "web_search", "ast_grep", "recall"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
   "multimodal-looker": {
-    // thinkingLevel=medium; gpt-5.4-mini has vision per survey — no vision bump needed
-    primary: "openai-codex/gpt-5.4-mini",
-    registry_alternate: "opencode-zen/gpt-5.4-mini",
+    // thinkingLevel=medium; gpt-5.4 has vision per survey — no vision bump needed
+    primary: "openai-codex/gpt-5.4",
+    registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "medium",
     tools: ["read", "search", "find", "bash", "inspect_image"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
@@ -460,14 +456,14 @@ export const PROFILE_B: ProfileMap = {
   metis: {
     primary: "openai-codex/gpt-5.5",
     registry_alternate: "opencode-zen/gpt-5.5",
-    thinkingLevel: "xhigh",
+    thinkingLevel: "high",
     tools: ["read", "search", "find", "bash", "recall", "task"],
     blocked_tools: ["write", "edit", "apply_patch"],
   },
   "deep-researcher": {
-    primary: "openai-codex/gpt-5.4",
-    registry_alternate: "opencode-zen/gpt-5.4",
-    thinkingLevel: "high",
+    primary: "openai-codex/gpt-5.5",
+    registry_alternate: "opencode-zen/gpt-5.5",
+    thinkingLevel: "xhigh",
     tools: ["read", "search", "find", "web_search", "retain", "recall", "reflect"],
     blocked_tools: ["write", "edit", "apply_patch", "task"],
   },
@@ -485,13 +481,12 @@ export const PROFILE_B: ProfileMap = {
  * Deliberate Spec E relaxation: `--profile C` (user mode) bulk-writes all 24
  * per-role `task.agentModelOverrides` so every subagent uses an Anthropic model.
  * Tier rule (by thinkingLevel from PROFILE_A):
- *   xhigh | high  → anthropic/claude-opus-4-8  (18 roles including qa-tester)
- *   medium         → anthropic/claude-sonnet-4-6 (5 roles)
- *   low            → anthropic/claude-haiku-4-5  (1 role: git-master)
+ *   xhigh | high  → anthropic/claude-opus-4-8
+ *   medium | low   → anthropic/claude-sonnet-4-6 (haiku-4-5 unavailable)
  * registry_alternate is always the opencode-zen/ mirror of the same model.
  * tools and blocked_tools are copied verbatim from PROFILE_A.
- * A/B never write task.agentModelOverrides — that invariant is preserved.
- * Use --reset to clear the 24 written overrides.
+ * In user-global scope, Profile A is orchestrator-only while Profiles B/C/D
+ * write all 24 per-role overrides. Project scope writes all 24 for every profile.
  */
 export const PROFILE_C: ProfileMap = {
   executor: {

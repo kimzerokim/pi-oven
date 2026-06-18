@@ -156,7 +156,7 @@ If only Profile A is possible (no openai-codex, no anthropic), also offer Profil
 ```
 Select profile:
   [A] Profile A — Release default (opencode-zen + openai-codex, anthropic for 4 advisory roles)   (default)
-  [B] Profile B — openai-codex-only (gpt-5.5/5.4/5.4-mini by tier, writes 24 per-role overrides)   ← only if openai-codex authed
+  [B] Profile B — openai-codex-only performance profile (gpt-5.5 high/xhigh, gpt-5.4 medium/high; writes 24 per-role model+effort overrides)   ← only if openai-codex authed
   [C] Profile C — All-Anthropic (opus-4-8 / sonnet-4-6, writes 24 per-role overrides)   ← only if anthropic authed
   [D] Profile D — opencode-zen-only (kimi-k2.6 / minimax-m2.5 / gemini-3-flash, writes 24 per-role overrides)   ← always if opencode-zen authed
 
@@ -178,7 +178,7 @@ Profile D is safe only when opencode-zen auth is active and stable.
 Proceed with Profile <B|C|D>? [y/N]:
 ```
 
-Profiles B, C, and D each write all 24 `task.agentModelOverrides` entries (one per role) into `~/.omp/agent/config.yml`. Profile A only sets the main orchestrator model (`modelRoles`) — it writes no per-role overrides (subagent models come from committed agent frontmatter). Run `--reset` to clear the 24 written overrides and return to profile-defaults-from-frontmatter routing.
+In global scope, Profiles B, C, and D each write all 24 `task.agentModelOverrides` entries (one per role) into `~/.omp/agent/config.yml`; Profile A only sets the main orchestrator model (`modelRoles`). In project scope, every profile writes all 24 per-role overrides plus `modelRoles` and `retry.fallbackChains` into `<project>/.omp/settings.json`. Run `--reset` on the same scope to clear pi-oven routing overrides.
 
 ### Step 4 — Optional per-role override
 
@@ -195,7 +195,7 @@ Apply profile defaults to all 24 roles? [Y/n]:
 - Always allowed: `opencode-zen/`, `openai-codex/`
 - Allowed when Profile C AND anthropic was detected: `anthropic/`
 
-Reject strings that do not match with a clear error and re-ask. When the user specifies at least one override, the profile is treated as `custom`.
+Reject strings that do not match with a clear error and re-ask. When the user specifies at least one override, apply those explicit per-role overrides after profile selection.
 
 ### Step 5 — Confirm and persist
 
@@ -203,11 +203,12 @@ Show a summary in chat:
 
 ```
 Summary:
-  Profile: <A|B|C>
+  Profile: <A|B|C|D>
+  Scope: <global|project>
   Roles with custom override: <N>
-  Provider: <anthropic enabled | anthropic not used>
+  Routing target: <global config.yml modelRoles + B/C/D overrides | project .omp/settings.json all-role overrides>
 
-Ready to persist model overrides to config.yml task.agentModelOverrides. Proceed? [Y/n]:
+Ready to persist pi-oven routing. Proceed? [Y/n]:
 ```
 
 On confirmation, dispatch via Bash (using the resolved `$PI_OVEN_DIR`), threading the `<scope>` chosen in Step 0.5:
@@ -274,16 +275,16 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 | Flag | Behavior |
 |---|---|
 | `--profile A` | Apply Profile A (release default). |
-| `--profile B` | Apply Profile B (openai-codex-only: gpt-5.5 for xhigh roles, gpt-5.4 for high, gpt-5.4-mini for medium and git-master; gpt-5.4-nano is unsupported). Requires openai-codex auth detected. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
+| `--profile B` | Apply Profile B (openai-codex-only performance profile: gpt-5.5 for implementation/review/planning/deep research, gpt-5.4 for fan-out/docs/vision/git/data-runner; writes `:<thinkingLevel>` suffixes; no gpt-5.4-mini/nano). Requires openai-codex auth detected. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
 | `--profile C` | Apply Profile C (all-Anthropic: opus-4-8 for high/xhigh roles, sonnet-4-6 for medium and for git-master + orchestrator title; haiku-4-5 is unavailable). Requires anthropic auth. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
 | `--profile D` | Apply Profile D (opencode-zen-only: kimi-k2.6 for heavy/coding roles, minimax-m2.5 for mid/low, gemini-3-flash for vision). Requires opencode-zen auth. Writes all 24 per-role `task.agentModelOverrides`. Profile A is orchestrator-only (sets modelRoles, no per-role overrides); B, C, and D each write all 24. Reversible via `--reset`. |
 | `--override <role>=<model>` | Override a specific role's model in config.yml task.agentModelOverrides. Repeatable. |
 | `--validate=smoke` | (Default) Ping 7 MUST-tier roles after persist. |
 | `--validate=full` | Ping all 24 roles. |
 | `--validate=none` | Skip validation. |
-| `--status` | Show current profile and resolved model per role (reads config.yml overrides + agent frontmatter). |
-| `--reset` | Remove all `pi-oven:*` keys from config.yml task.agentModelOverrides. Does not touch agent files. |
-| `--reset --full` | Full reset for a clean uninstall: in addition to removing the `pi-oven:*` overrides, reset the other pi-oven-managed keys (`modelRoles`, `disabledProviders`, `setupVersion`) to their omp type-defaults so config.yml returns to the "new user" state. Never touches omp-internal keys (e.g. `lastChangelogVersion`). No-op-safe when those keys are absent. |
+| `--status` | Show effective per-role models across project `.omp/settings.json`, global config.yml overrides, and agent frontmatter; project wins per role. |
+| `--reset` | Clear pi-oven-managed routing overrides in the selected scope. Global scope removes `pi-oven:*` keys from config.yml `task.agentModelOverrides`; project scope removes project `.omp/settings.json` pi-oven routing. Does not touch agent files. |
+| `--reset --full` | Full reset for a clean uninstall: global scope also resets other pi-oven-managed keys (`modelRoles`, `disabledProviders`, `setupVersion`) to omp type-defaults; project scope also clears project `modelRoles` and `retry.fallbackChains`. Never touches omp-internal keys. No-op-safe when keys are absent. |
 | `--import <file>` | Import JSON config file (schema: §7.1). |
 | `--language <ko\|en\|name>` | Persist the default response language. With `--scope global` (default) writes to `~/.pi-oven/config.json` (machine-global); with `--scope project` writes the per-project override `<cwd>/.pi-oven/config.json` (which takes precedence when present). Accepts `ko`/`en` or any plain language name (letters, spaces, `()-.`; ≤ 40 chars). Set in Step 0/0.5. |
 | `--scope global\|project` | WHERE this setup writes (default `global`). `global` = today's behavior: per-role overrides (B/C/D), `modelRoles`, `retry.fallbackChains` → `~/.omp/agent/config.yml`; language + setup-complete marker → `~/.pi-oven/config.json`. `project` = per-project routing: **all 24 per-role overrides for EVERY profile (incl. A)**, `modelRoles`, and `retry.fallbackChains` → `<cwd>/.omp/settings.json` (omp reads it at project level; wins per-role over global); language + marker → `<cwd>/.pi-oven/config.json`. The project file is committable (share with a team) or gitignorable (machine-local). Memory/async infra is global-only (not written under project scope). Set in Step 0.5; thread into `--language`/`--profile`/`--override`/`--reset`. Launch omp from the repo root. |
@@ -294,14 +295,14 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 
 The 7 MUST-tier roles for smoke validation are: executor, explorer, verifier, critic, planner, code-reviewer, debugger.
 
-All `omp plugin config` operations use the plugin name `pi-oven` (bare). Do NOT pass `pi-oven@kzk` to `omp plugin config` calls — that form is only for `omp plugin install` / `omp plugin uninstall`.
+Use the marketplace-qualified id `pi-oven@kzk` only for `omp plugin install` / `omp plugin uninstall`; setup persistence goes through the batch script, not ad-hoc config commands.
 
 ## Important rules
 
 - Do NOT run the `pi-oven-setup.ts` script from inside this prompt template — you (the LLM) dispatch it via the Bash tool based on user input collected in conversation.
 - Do NOT mutate `agents/pi-oven-*.md` manually — only via the script.
 - Do NOT commit. The user reviews before any commit.
-- Do NOT use `omp plugin config` calls directly — the script handles all persistence.
+- Do NOT use ad-hoc config commands directly — the script handles all persistence.
 - Do NOT pipe anything into the `pi-oven-setup.ts` script — it is batch-only and reads no stdin.
 - Always resolve `$PI_OVEN_DIR` (see "Resolve the plugin script dir first") and dispatch `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts"` — never a bare `bun scripts/pi-oven-setup.ts`.
 

@@ -217,7 +217,7 @@ describe("rewriteAllAgents", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("rewrites all 24 agent files to PROFILE_B; subsequent read shows anthropic primary on executor", async () => {
+  it("rewrites all 24 agent files to PROFILE_B; subsequent read shows performance primary on executor", async () => {
     // Start with Profile A files
     populateAgentsDir(
       tempDir,
@@ -234,7 +234,7 @@ describe("rewriteAllAgents", () => {
     // Verify executor now has openai-codex primary (PROFILE_B is openai-codex-only)
     const entries = await readAgentFiles(tempDir);
     const executor = entries.find((e) => e.role === "executor")!;
-    expect(executor.currentModel[0]).toBe("openai-codex/gpt-5.4");
+    expect(executor.currentModel[0]).toBe("openai-codex/gpt-5.5");
   });
 
   it("skips roles whose files do not exist", async () => {

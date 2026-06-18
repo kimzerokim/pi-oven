@@ -148,6 +148,25 @@ describe("runStatus", () => {
     expect(result.output).toMatch(/미해소|fallback|unresolved/i);
   });
 
+  it("status resolves model selectors with reasoning effort suffixes by base model id", async () => {
+    for (const role of ROLES) {
+      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+    }
+    const spawnFn = makeSpawnFn({
+      overrides: { "pi-oven:critic": "openai-codex/gpt-5.5:xhigh" },
+    });
+
+    const result = await runStatus({
+      spawnFn,
+      agentsDir,
+      listModelsOutput: JSON.stringify([{ id: "openai-codex/gpt-5.5" }]),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("openai-codex/gpt-5.5:xhigh");
+    expect(result.output).not.toMatch(/미해소|fallback|unresolved/i);
+  });
+
   it("status shows machine-global scope header", async () => {
     const spawnFn = makeSpawnFn({ overrides: {} });
     const result = await runStatus({ spawnFn, agentsDir });

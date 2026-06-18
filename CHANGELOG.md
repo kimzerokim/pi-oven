@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.11 - 2026-06-18
+
+- fix(runtime): namespaced `skill://pi-oven:<name>` injection so pi-oven skills resolve before sibling plugins
+- feat(setup): add sibling-skill suppression switch for global setup
+- feat(profiles): tune Profile B for Codex Pro/20x with `gpt-5.5`/`gpt-5.4` model selectors and reasoning-effort suffixes
+
 ## v0.1.10 - 2026-06-08
 
 - feat(setup): project-scoped model routing & per-project setup

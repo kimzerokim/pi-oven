@@ -1,8 +1,8 @@
 {
   "name": "pi-oven",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
-  "description": "Curated omp workflow + discipline layer (5-source successor)",
+  "description": "Curated omp workflow + discipline layer (4-source successor)",
   "type": "module",
   "license": "MIT",
   "author": "kimzerokim <ky200223@gmail.com>",

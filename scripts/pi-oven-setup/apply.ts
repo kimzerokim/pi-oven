@@ -8,9 +8,9 @@
  * - WITHOUT agentsDir = user setup: writes the MAIN ORCHESTRATOR model pair
  *   (the `default` + `title` keys of the `modelRoles` record) from
  *   PROFILE_*_ORCHESTRATOR in ONE atomic whole-record merge-write.
- *   It NEVER writes task.agentModelOverrides (the 24 subagent overrides) — that
- *   per-role write is banned by Spec E (frozen). modelRoles.default is the
- *   top-level session/orchestrator model, which is orthogonal and allowed.
+ *   Profiles B/C/D also write 24 task.agentModelOverrides. Profile B writes
+ *   model selectors with `:<thinkingLevel>` suffixes so the installation path
+ *   carries both model and effort routing; C/D keep plain model ids.
  *
  * Personal per-role override is the --override path (Task 2.1).
  */
@@ -38,6 +38,7 @@ import {
   PROFILE_C_FALLBACK_CHAINS,
   PROFILE_D_FALLBACK_CHAINS,
   ROLES,
+  type ModelEntry,
   type ProfileMap,
 } from "./profiles";
 
@@ -61,20 +62,23 @@ export interface ApplyOptions {
   cwd?: string;
 }
 
+function modelOverrideValue(profile: ApplyOptions["profile"], entry: ModelEntry): string {
+  return profile === "B" ? `${entry.primary}:${entry.thinkingLevel}` : entry.primary;
+}
+
 /**
  * Apply a profile:
- * 1. Resolve profileMap = PROFILE_A or PROFILE_B.
- * 2. WITH agentsDir → rewrite agent files (maintainer generate); write NO config.
- *    WITHOUT agentsDir → user setup: write the MAIN ORCHESTRATOR model pair
- *    (the modelRoles record's default + title keys) from PROFILE_*_ORCHESTRATOR
- *    in ONE atomic whole-record merge-write.
- * 3. runValidate per validateMode (default smoke).
- * 4. Return exit 0 if all ok; exit 1 if validation fails.
- *
- * NEVER writes task.agentModelOverrides (the 24 subagent overrides) — Spec E
- * (frozen) bans that per-role write. modelRoles.default is the top-level
- * session/orchestrator model and is orthogonal/allowed. Personal per-role
- * override is the --override path (runOverride, Task 2.1).
+ * 1. Resolve profileMap = PROFILE_A/B/C/D.
+ * 2. WITH agentsDir → maintainer generate path: rewrite agent files
+ *    (model array + thinkingLevel); write NO config.
+ * 3. WITHOUT agentsDir + global scope → write modelRoles + retry.fallbackChains;
+ *    profiles B/C/D also write all 24 `task.agentModelOverrides`.
+ *    Profile A remains orchestrator-only globally.
+ * 4. WITHOUT agentsDir + project scope → write all 24 per-role overrides,
+ *    modelRoles, and retry.fallbackChains to `<cwd>/.omp/settings.json`.
+ *    Profile B per-role values include `:<thinkingLevel>` selector suffixes.
+ * 5. runValidate per validateMode (default smoke).
+ * 6. Return exit 0 if all ok; exit 1 if validation fails.
  */
 export async function runApply(
   opts: ApplyOptions
@@ -129,7 +133,7 @@ export async function runApply(
       const cwd = opts.cwd ?? process.cwd();
       const overrideRecord: Record<string, string> = {};
       for (const role of ROLES) {
-        overrideRecord[`pi-oven:${role}`] = profileMap[role].primary;
+        overrideRecord[`pi-oven:${role}`] = modelOverrideValue(opts.profile, profileMap[role]);
       }
       await setProjectAgentModelOverrides(overrideRecord, { cwd });
       await setProjectModelRoles(
@@ -137,7 +141,7 @@ export async function runApply(
         { cwd }
       );
       await setProjectRetryFallbackChains(fallbackChains, { cwd });
-      scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles + modelRoles + retry.fallbackChains)\n`;
+      scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles + modelRoles + retry.fallbackChains; Profile B includes reasoning-effort suffixes)\n`;
     } else {
       // User setup (global): write the MAIN ORCHESTRATOR model pair (modelRoles
       // default + title) in ONE atomic whole-record merge-write. omp's schema
@@ -151,11 +155,11 @@ export async function runApply(
       await setRetryFallbackChains(fallbackChains, { spawnFn: opts.spawnFn });
 
       // Profile B + C + D: bulk-write all 24 per-role task.agentModelOverrides.
-      // Deliberate Spec E relaxation — profile A writes ZERO per-role overrides.
+      // Profile B values include :<thinkingLevel> model-selector suffixes.
       if (opts.profile === "B" || opts.profile === "C" || opts.profile === "D") {
         const overrideRecord: Record<string, string> = {};
         for (const role of ROLES) {
-          overrideRecord[`pi-oven:${role}`] = profileMap[role].primary;
+          overrideRecord[`pi-oven:${role}`] = modelOverrideValue(opts.profile, profileMap[role]);
         }
         await setAgentModelOverrides(overrideRecord, { spawnFn: opts.spawnFn });
       }

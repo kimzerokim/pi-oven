@@ -161,6 +161,7 @@ async function buildFrontmatterMap(
  * Returns true if found, false if not found or if parsing fails.
  */
 function isModelInList(modelId: string, listModelsOutput: string): boolean {
+  const baseModelId = modelId.replace(/:(minimal|low|medium|high|xhigh)$/, "");
   try {
     const parsed = JSON.parse(listModelsOutput) as unknown;
     if (!Array.isArray(parsed)) return false;
@@ -168,7 +169,8 @@ function isModelInList(modelId: string, listModelsOutput: string): boolean {
       (item) =>
         typeof item === "object" &&
         item !== null &&
-        (item as Record<string, unknown>)["id"] === modelId
+        ((item as Record<string, unknown>)["id"] === modelId ||
+          (item as Record<string, unknown>)["id"] === baseModelId)
     );
   } catch {
     return false;

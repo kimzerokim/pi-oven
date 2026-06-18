@@ -130,7 +130,7 @@ describe("runValidate", () => {
   });
 
   it("primary fails, alternate succeeds → role in alternates list", async () => {
-    // Use Profile B smoke roles: all primaries are anthropic/* (unique, no overlap with alternates).
+    // Use Profile B smoke roles: all primaries are openai-codex/*.
     // Only alternates (opencode-zen/*) succeed.
     const allAlternates = new Set(SMOKE_ROLES.map((r) => PROFILE_B[r].registry_alternate));
     const result = await runValidate(PROFILE_B, {

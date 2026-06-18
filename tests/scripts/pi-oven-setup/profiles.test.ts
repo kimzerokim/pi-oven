@@ -14,6 +14,7 @@ import {
   PROFILE_D,
   PROFILE_D_ORCHESTRATOR,
   PROFILE_D_FALLBACK_CHAINS,
+  type Role,
 } from "../../../scripts/pi-oven-setup/profiles";
 
 /**
@@ -253,44 +254,40 @@ describe("profiles", () => {
       }
     });
 
-    it("all xhigh roles use openai-codex/gpt-5.5", () => {
+    it("routes reasoning-heavy roles to openai-codex/gpt-5.5 and fan-out roles to gpt-5.4", () => {
+      const gpt55Roles = new Set<Role>([
+        "executor",
+        "verifier",
+        "critic",
+        "planner",
+        "code-reviewer",
+        "debugger",
+        "test-engineer",
+        "security-reviewer",
+        "code-simplifier",
+        "tracer",
+        "analyst",
+        "architect",
+        "oracle",
+        "metis",
+        "deep-researcher",
+      ]);
+
       for (const role of ROLES) {
-        if (PROFILE_B[role].thinkingLevel === "xhigh") {
-          expect(PROFILE_B[role].primary).toBe("openai-codex/gpt-5.5");
-        }
+        const expectedPrimary = gpt55Roles.has(role) ? "openai-codex/gpt-5.5" : "openai-codex/gpt-5.4";
+        const expectedAlternate = gpt55Roles.has(role) ? "opencode-zen/gpt-5.5" : "opencode-zen/gpt-5.4";
+        expect(PROFILE_B[role].primary).toBe(expectedPrimary);
+        expect(PROFILE_B[role].registry_alternate).toBe(expectedAlternate);
       }
     });
 
-    it("all high roles use openai-codex/gpt-5.4", () => {
+    it("does not use mini or nano models in Profile B", () => {
       for (const role of ROLES) {
-        if (PROFILE_B[role].thinkingLevel === "high") {
-          expect(PROFILE_B[role].primary).toBe("openai-codex/gpt-5.4");
-        }
+        expect(PROFILE_B[role].primary).not.toContain("mini");
+        expect(PROFILE_B[role].primary).not.toContain("nano");
+        expect(PROFILE_B[role].registry_alternate).not.toContain("mini");
+        expect(PROFILE_B[role].registry_alternate).not.toContain("nano");
       }
-    });
-
-    it("all medium roles use openai-codex/gpt-5.4-mini", () => {
-      for (const role of ROLES) {
-        if (PROFILE_B[role].thinkingLevel === "medium") {
-          expect(PROFILE_B[role].primary).toBe("openai-codex/gpt-5.4-mini");
-        }
-      }
-    });
-
-    it("all low roles use openai-codex/gpt-5.4-mini (gpt-5.4-nano not supported)", () => {
-      for (const role of ROLES) {
-        if (PROFILE_B[role].thinkingLevel === "low") {
-          expect(PROFILE_B[role].primary).toBe("openai-codex/gpt-5.4-mini");
-        }
-      }
-    });
-
-    it("git-master primary is openai-codex/gpt-5.4-mini", () => {
-      expect(PROFILE_B["git-master"].primary).toBe("openai-codex/gpt-5.4-mini");
-    });
-
-    it("git-master registry_alternate is opencode-zen/gpt-5.4-mini", () => {
-      expect(PROFILE_B["git-master"].registry_alternate).toBe("opencode-zen/gpt-5.4-mini");
     });
   });
 
@@ -299,8 +296,8 @@ describe("profiles", () => {
       expect(PROFILE_B_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.5:high");
     });
 
-    it("title is openai-codex/gpt-5.4-mini:low", () => {
-      expect(PROFILE_B_ORCHESTRATOR.title).toBe("openai-codex/gpt-5.4-mini:low");
+    it("title is openai-codex/gpt-5.4:medium", () => {
+      expect(PROFILE_B_ORCHESTRATOR.title).toBe("openai-codex/gpt-5.4:medium");
     });
   });
 
@@ -309,15 +306,19 @@ describe("profiles", () => {
       expect(PROFILE_B_FALLBACK_CHAINS.default).toEqual(["opencode-zen/gpt-5.5"]);
     });
 
-    it("title chain is opencode-zen/gpt-5.4-mini", () => {
-      expect(PROFILE_B_FALLBACK_CHAINS.title).toEqual(["opencode-zen/gpt-5.4-mini"]);
+    it("title chain is opencode-zen/gpt-5.4", () => {
+      expect(PROFILE_B_FALLBACK_CHAINS.title).toEqual(["opencode-zen/gpt-5.4"]);
     });
   });
 
   describe("thinkingLevel invariants", () => {
-    it("PROFILE_A and PROFILE_B share thinkingLevel per role", () => {
+    it("PROFILE_B uses performance-first reasoning efforts by role", () => {
+      const xhighRoles = new Set<Role>(["verifier", "critic", "planner", "code-reviewer", "debugger", "security-reviewer", "code-simplifier", "tracer", "analyst", "architect", "oracle", "deep-researcher"]);
+      const mediumRoles = new Set<Role>(["explorer", "writer", "git-master", "document-specialist", "librarian", "multimodal-looker"]);
+
       for (const role of ROLES) {
-        expect(PROFILE_B[role].thinkingLevel).toBe(PROFILE_A[role].thinkingLevel);
+        const expected = xhighRoles.has(role) ? "xhigh" : mediumRoles.has(role) ? "medium" : "high";
+        expect(PROFILE_B[role].thinkingLevel).toBe(expected);
       }
     });
 
@@ -336,9 +337,9 @@ describe("profiles", () => {
       expect(PROFILE_A_ORCHESTRATOR.title).toBe("gpt-5.4-mini:low");
     });
 
-    it("PROFILE_B_ORCHESTRATOR uses openai-codex/gpt-5.5 as default", () => {
+    it("PROFILE_B_ORCHESTRATOR uses openai-codex/gpt-5.5 high as default and gpt-5.4 medium for title", () => {
       expect(PROFILE_B_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.5:high");
-      expect(PROFILE_B_ORCHESTRATOR.title).toBe("openai-codex/gpt-5.4-mini:low");
+      expect(PROFILE_B_ORCHESTRATOR.title).toBe("openai-codex/gpt-5.4:medium");
     });
   });
 });

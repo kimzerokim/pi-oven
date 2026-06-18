@@ -286,7 +286,7 @@ describe("runApply", () => {
     );
     const merged = JSON.parse(setCall!.args[3]);
     expect(merged.default).toBe("openai-codex/gpt-5.5:high");
-    expect(merged.title).toBe("openai-codex/gpt-5.4-mini:low");
+    expect(merged.title).toBe("openai-codex/gpt-5.4:medium");
   });
 
   it("runApply WITH agentsDir rewrites agent files and writes ZERO modelRoles", async () => {
@@ -591,9 +591,10 @@ describe("runApply", () => {
     // One set call for the bulk write (all 24 roles in one call)
     expect(overrideWrites.length).toBe(1);
     const written = JSON.parse(overrideWrites[0].args[3]);
-    // All 24 pi-oven:* keys must be present with correct PROFILE_B models
+    // All 24 pi-oven:* keys must be present with PROFILE_B model selectors
+    // including reasoning effort suffixes.
     for (const role of ROLES) {
-      expect(written[`pi-oven:${role}`]).toBe(PROFILE_B[role].primary);
+      expect(written[`pi-oven:${role}`]).toBe(`${PROFILE_B[role].primary}:${PROFILE_B[role].thinkingLevel}`);
     }
     // All models must start with "openai-codex/"
     for (const role of ROLES) {
@@ -670,14 +671,16 @@ describe("runApply", () => {
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
     );
     const written = JSON.parse(overrideWrite!.args[3]);
-    // critic (xhigh) → gpt-5.5
-    expect(written["pi-oven:critic"]).toBe("openai-codex/gpt-5.5");
-    // explorer (medium) → gpt-5.4-mini
-    expect(written["pi-oven:explorer"]).toBe("openai-codex/gpt-5.4-mini");
-    // git-master (low) → gpt-5.4-mini (gpt-5.4-nano not supported)
-    expect(written["pi-oven:git-master"]).toBe("openai-codex/gpt-5.4-mini");
-    // executor (high) → gpt-5.4
-    expect(written["pi-oven:executor"]).toBe("openai-codex/gpt-5.4");
+    // critic (xhigh review) → gpt-5.5:xhigh
+    expect(written["pi-oven:critic"]).toBe("openai-codex/gpt-5.5:xhigh");
+    // explorer (medium fan-out) → gpt-5.4:medium
+    expect(written["pi-oven:explorer"]).toBe("openai-codex/gpt-5.4:medium");
+    // git-master (medium mechanical) → gpt-5.4:medium
+    expect(written["pi-oven:git-master"]).toBe("openai-codex/gpt-5.4:medium");
+    // executor (high implementation) → gpt-5.5:high
+    expect(written["pi-oven:executor"]).toBe("openai-codex/gpt-5.5:high");
+    // architect (xhigh architecture) → gpt-5.5:xhigh
+    expect(written["pi-oven:architect"]).toBe("openai-codex/gpt-5.5:xhigh");
   });
 
   // -------------------------------------------------------------------------
@@ -839,6 +842,27 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     }
 
     // ZERO omp config calls — project scope must never touch the global config.yml.
+    const configCalls = spawnCalls.filter((c) => c.args[0] === "config");
+    expect(configCalls.length).toBe(0);
+  });
+
+  it("profile B writes model selectors with thinkingLevel suffixes to the project file", async () => {
+    const { spawnCalls, mockSpawnFn } = makeRecordingSpawn();
+
+    await runApply({
+      profile: "B",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      scope: "project",
+      cwd,
+    });
+
+    const overrides = await readProjectAgentModelOverrides({ cwd });
+    expect(overrides["pi-oven:critic"]).toBe("openai-codex/gpt-5.5:xhigh");
+    expect(overrides["pi-oven:executor"]).toBe("openai-codex/gpt-5.5:high");
+    expect(overrides["pi-oven:architect"]).toBe("openai-codex/gpt-5.5:xhigh");
+    expect(overrides["pi-oven:explorer"]).toBe("openai-codex/gpt-5.4:medium");
+
     const configCalls = spawnCalls.filter((c) => c.args[0] === "config");
     expect(configCalls.length).toBe(0);
   });

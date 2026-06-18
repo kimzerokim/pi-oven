@@ -1,10 +1,12 @@
 import { describe, it, expect } from "bun:test";
+import * as zod from "zod";
 import {
   OTHER_VALUE,
   buildSelectItems,
   clampRecommended,
   formatAskResult,
   foldLabel,
+  registerPiOvenAsk,
 } from "../../../.omp/extensions/pi-oven-runtime/pi-oven-ask";
 
 describe("buildSelectItems", () => {
@@ -90,5 +92,112 @@ describe("foldLabel", () => {
 
   it("returns the bare label when no description", () => {
     expect(foldLabel({ label: "Session cookie" })).toBe("Session cookie");
+  });
+});
+
+function makeTheme() {
+  return {
+    fg: (_key: string, text: string) => text,
+    bold: (text: string) => text,
+    italic: (text: string) => text,
+    underline: (text: string) => text,
+    strikethrough: (text: string) => text,
+    styledSymbol: (_key: string, color: string) => color,
+    getSymbolPreset: () => "unicode",
+    getSpinnerFrames: () => ["."],
+    nav: { cursor: ">", selected: ">", expand: "+", collapse: "-", back: "<" },
+    tree: { branch: "├", last: "└", vertical: "│", horizontal: "─", hook: "┬" },
+    boxRound: {
+      topLeft: "╭",
+      topRight: "╮",
+      bottomLeft: "╰",
+      bottomRight: "╯",
+      horizontal: "─",
+      vertical: "│",
+    },
+    boxSharp: {
+      topLeft: "┌",
+      topRight: "┐",
+      bottomLeft: "└",
+      bottomRight: "┘",
+      horizontal: "─",
+      vertical: "│",
+      cross: "┼",
+      teeDown: "┬",
+      teeUp: "┴",
+      teeRight: "├",
+      teeLeft: "┤",
+    },
+    md: { quoteBorder: "│", hrChar: "─", bullet: "•", colorSwatch: "■" },
+    checkbox: { unchecked: "□", checked: "■" },
+  } as const;
+}
+
+function capturePiOvenAskTool() {
+  let captured: any;
+  registerPiOvenAsk({
+    zod,
+    registerTool(tool: unknown) {
+      captured = tool;
+    },
+    logger: {},
+  } as any);
+  return captured;
+}
+
+describe("registerPiOvenAsk", () => {
+  it("renderCall uses the provided theme instead of the coding-agent global theme singleton", () => {
+    const tool = capturePiOvenAskTool();
+    const theme = makeTheme();
+
+    const component = tool.renderCall(
+      { question: "Q?", options: [{ label: "JWT", description: "stateless" }] },
+      {},
+      theme
+    );
+
+    expect(component.render(80).join("\n")).toContain("Q?");
+  });
+
+  it("execute uses the four-argument ctx.ui.custom extension contract", async () => {
+    const tool = capturePiOvenAskTool();
+    const theme = makeTheme();
+
+    const result = await tool.execute(
+      "tool-call",
+      {
+        question: "Choose auth",
+        options: [{ label: "JWT" }, { label: "Session cookie" }],
+        recommended: 1,
+      },
+      undefined,
+      undefined,
+      {
+        hasUI: true,
+        ui: {
+          async custom(factory: any) {
+            let resolved: string | undefined;
+            const component = await factory({}, theme, {}, (value: string | undefined) => {
+              resolved = value;
+            });
+            const list = component.children?.[1];
+            const selected = list?.getSelectedItem?.();
+            expect(selected?.value).toBe("Session cookie");
+            list?.onSelect?.(selected);
+            return resolved;
+          },
+          async editor() {
+            throw new Error("editor should not be used for direct option selection");
+          },
+        },
+      }
+    );
+
+    expect(result.details).toEqual({
+      mode: "single",
+      question: "Choose auth",
+      selected: "Session cookie",
+    });
+    expect(() => tool.renderResult(result, {}, theme)).not.toThrow();
   });
 });

@@ -1,7 +1,7 @@
 ---
 name: pi-oven-release
 description: Safe release automation for pi-oven version/manifests/changelog/publish gating
-argument-hint: [--bump major|minor|patch | --version X.Y.Z] [--from-tag vX.Y.Z] [--dry-run] [--publish] [--update-changelog] [--sync-label]
+argument-hint: "[--bump major|minor|patch | --version X.Y.Z] [--from-tag vX.Y.Z] [--dry-run] [--publish] [--update-changelog] [--sync-label]"
 ---
 
 # /pi-oven:release

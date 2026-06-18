@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.14 - 2026-06-18
+
+- fix(runtime): stop `/pi-oven:setup` ask UI from reading the coding-agent global theme singleton; build markdown/select-list themes from the callback-provided UI theme instead
+- fix(commands): quote `/pi-oven:setup` and `/pi-oven:release` `argument-hint` frontmatter so interactive command loading reaches the first setup prompt cleanly
+
 ## v0.1.13 - 2026-06-18
 
 - fix(setup): route Profile B main orchestrator to `openai-codex/gpt-5.4:high` for the 1M OpenAI Codex context window

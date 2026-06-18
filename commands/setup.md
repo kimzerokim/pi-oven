@@ -1,7 +1,7 @@
 ---
 name: pi-oven-setup
 description: Configure pi-oven agent model routing — Profile A (release default), Profile B (openai-codex-only), Profile C (all-Anthropic), or Profile D (opencode-zen-only)
-argument-hint: [--status | --reset [--full] | --import <file> | --apply --profile A|B|C|D] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate] [--suppress-sibling-skills | --no-suppress-sibling-skills]
+argument-hint: "[--status | --reset [--full] | --import <file> | --apply --profile A|B|C|D] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate] [--suppress-sibling-skills | --no-suppress-sibling-skills]"
 ---
 
 # /pi-oven:setup

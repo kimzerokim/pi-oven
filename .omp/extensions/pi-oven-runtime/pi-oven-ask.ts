@@ -7,11 +7,13 @@ import {
   Markdown,
   Text,
   type Component,
+  type MarkdownTheme,
   type SelectItem,
+  type SelectListTheme,
   SelectList,
+  type SymbolTheme,
   wrapTextWithAnsi,
 } from "@oh-my-pi/pi-tui";
-import { getMarkdownTheme, getSelectListTheme } from "@oh-my-pi/pi-coding-agent";
 import type {
   AgentToolResult,
   ExtensionAPI,
@@ -36,6 +38,67 @@ export interface PiOvenAskSingleDetails {
 }
 
 export type PiOvenAskDetails = PiOvenAskSingleDetails;
+
+const markdownThemes = new WeakMap<Theme, MarkdownTheme>();
+const selectListThemes = new WeakMap<Theme, SelectListTheme>();
+
+function getSymbolThemeFor(theme: Theme): SymbolTheme {
+  const preset = theme.getSymbolPreset();
+  return {
+    cursor: theme.nav.cursor,
+    inputCursor: preset === "ascii" ? "|" : "▏",
+    boxRound: theme.boxRound,
+    boxSharp: theme.boxSharp,
+    table: theme.boxSharp,
+    quoteBorder: theme.md.quoteBorder,
+    hrChar: theme.md.hrChar,
+    colorSwatch: theme.md.colorSwatch,
+    spinnerFrames: theme.getSpinnerFrames("activity"),
+  };
+}
+
+
+function getMarkdownThemeFor(theme: Theme): MarkdownTheme {
+  const cached = markdownThemes.get(theme);
+  if (cached !== undefined) return cached;
+
+  const symbolTheme = getSymbolThemeFor(theme);
+  const markdownTheme: MarkdownTheme = {
+    heading: (text: string) => theme.fg("mdHeading", text),
+    link: (text: string) => theme.fg("mdLink", text),
+    linkUrl: (text: string) => theme.fg("mdLinkUrl", text),
+    code: (text: string) => theme.fg("mdCode", text),
+    codeBlock: (text: string) => theme.fg("mdCodeBlock", text),
+    codeBlockBorder: (text: string) => theme.fg("mdCodeBlockBorder", text),
+    quote: (text: string) => theme.fg("mdQuote", text),
+    quoteBorder: (text: string) => theme.fg("mdQuoteBorder", text),
+    hr: (text: string) => theme.fg("mdHr", text),
+    listBullet: (text: string) => theme.fg("mdListBullet", text),
+    bold: (text: string) => theme.bold(text),
+    italic: (text: string) => theme.italic(text),
+    underline: (text: string) => theme.underline(text),
+    strikethrough: (text: string) => theme.strikethrough(text),
+    symbols: symbolTheme,
+  };
+  markdownThemes.set(theme, markdownTheme);
+  return markdownTheme;
+}
+
+function getSelectListThemeFor(theme: Theme): SelectListTheme {
+  const cached = selectListThemes.get(theme);
+  if (cached !== undefined) return cached;
+
+  const selectListTheme: SelectListTheme = {
+    selectedPrefix: (text: string) => theme.fg("accent", text),
+    selectedText: (text: string) => theme.fg("accent", text),
+    description: (text: string) => theme.fg("muted", text),
+    scrollInfo: (text: string) => theme.fg("muted", text),
+    noMatch: (text: string) => theme.fg("muted", text),
+    symbols: getSymbolThemeFor(theme),
+  };
+  selectListThemes.set(theme, selectListTheme);
+  return selectListTheme;
+}
 
 export function buildSelectItems(options: PiOvenAskOption[]): SelectItem[] {
   const seen = new Set<string>();
@@ -101,11 +164,16 @@ export function foldLabel(opt: PiOvenAskOption): string {
 class PiOvenAskContainer extends Container {
   readonly #list: SelectList;
   readonly #dim: (s: string) => string;
-  constructor(question: string, list: SelectList, dim: (s: string) => string = (s) => s) {
+  constructor(
+    question: string,
+    list: SelectList,
+    mdTheme: MarkdownTheme,
+    dim: (s: string) => string = (s) => s
+  ) {
     super();
     this.#list = list;
     this.#dim = dim;
-    this.addChild(new Markdown(question, 1, 0, getMarkdownTheme()));
+    this.addChild(new Markdown(question, 1, 0, mdTheme));
     this.addChild(list);
   }
   handleInput(data: string): void {
@@ -140,9 +208,10 @@ function renderCall(
   theme: Theme
 ): Component {
   const container = new Container();
+  const mdTheme = getMarkdownThemeFor(theme);
   container.addChild(new Text(theme.fg("toolTitle", "Ask (pi-oven)"), 0, 0));
 
-  container.addChild(new Markdown(args.question ?? "", 1, 0, getMarkdownTheme()));
+  container.addChild(new Markdown(args.question ?? "", 1, 0, mdTheme));
   const opts = args.options ?? [];
   for (let i = 0; i < opts.length; i++) {
     const opt = opts[i]!;
@@ -169,6 +238,7 @@ function renderResult(
   theme: Theme
 ): Component {
   const details = result.details;
+  const mdTheme = getMarkdownThemeFor(theme);
   const container = new Container();
   container.addChild(new Text(theme.fg("toolTitle", "Ask (pi-oven)"), 0, 0));
 
@@ -179,7 +249,7 @@ function renderResult(
     return container;
   }
 
-  container.addChild(new Markdown(details.question, 1, 0, getMarkdownTheme()));
+  container.addChild(new Markdown(details.question, 1, 0, mdTheme));
 
   if (details.selected !== undefined) {
     container.addChild(
@@ -249,14 +319,15 @@ async function askSingle(
   const rec = clampRecommended(params.recommended, options.length);
 
   const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _keybindings, done) => {
-    const list = new SelectList(items, items.length, getSelectListTheme(), {
+    const mdTheme = getMarkdownThemeFor(theme);
+    const list = new SelectList(items, items.length, getSelectListThemeFor(theme), {
       minPrimaryColumnWidth: 24,
       maxPrimaryColumnWidth: 48,
     });
     if (rec !== undefined) list.setSelectedIndex(rec);
     list.onSelect = (item) => done(item.value);
     list.onCancel = () => done(undefined);
-    return new PiOvenAskContainer(question, list, (s) => theme.fg("dim", s));
+    return new PiOvenAskContainer(question, list, mdTheme, (s) => theme.fg("dim", s));
   });
 
   if (choice === undefined) return formatAskResult(question, undefined, undefined);

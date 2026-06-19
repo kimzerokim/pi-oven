@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>최종 결정 기록 — Standalone Runtime Reliability</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --text: #171923;
+    --muted: #5b6475;
+    --line: #d9deea;
+    --accent: #315efb;
+    --ok: #0f9d58;
+    --warn: #b26a00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 20px 72px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 10px 30px rgba(23, 25, 35, 0.05);
+    margin-bottom: 20px;
+  }
+  .meta, .pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--muted);
+    background: #fff;
+  }
+  .pill.ok {
+    color: var(--ok);
+    border-color: rgba(15, 157, 88, 0.25);
+    background: rgba(15, 157, 88, 0.08);
+  }
+  .pill.warn {
+    color: var(--warn);
+    border-color: rgba(178, 106, 0, 0.25);
+    background: rgba(178, 106, 0, 0.08);
+  }
+  h1, h2, h3 { line-height: 1.25; }
+  h1 { margin: 0; font-size: 2rem; }
+  h2 { margin-top: 0; font-size: 1.25rem; }
+  p { margin: 0 0 12px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+  }
+  .stat {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    background: #fbfcff;
+  }
+  .stat strong {
+    display: block;
+    font-size: 1.5rem;
+    margin-bottom: 4px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+  }
+  th, td {
+    border-top: 1px solid var(--line);
+    padding: 14px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .callout {
+    border-left: 4px solid var(--accent);
+    padding: 14px 16px;
+    background: rgba(49, 94, 251, 0.06);
+    border-radius: 10px;
+  }
+  ul { margin: 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <section class="card">
+    <p><code>docs/decisions/2026-06-18-standalone-runtime-reliability.html</code></p>
+    <h1>최종 결정 기록 — Standalone Runtime Reliability</h1>
+    <p>이 문서는 <code>docs/pre-decisions/2026-06-18-standalone-runtime-reliability-v1.html</code>에서 수집된 승인 결과를 사람이 읽는 최종 결정 기록으로 승격한 아티팩트다.</p>
+    <div class="meta">
+      <span class="pill ok">상태 · approved</span>
+      <span class="pill ok">spec freeze · complete</span>
+      <span class="pill ok">planning · authorized</span>
+      <span class="pill">날짜 · 2026-06-18</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>요약</h2>
+    <div class="stats">
+      <div class="stat">
+        <strong>6</strong>
+        <span>승인된 결정</span>
+      </div>
+      <div class="stat">
+        <strong>D1–D6</strong>
+        <span>모든 열린 결정 닫힘</span>
+      </div>
+      <div class="stat">
+        <strong>Frozen</strong>
+        <span>spec는 decision-pending 상태를 종료</span>
+      </div>
+      <div class="stat">
+        <strong>Plan valid</strong>
+        <span>첫 유효 구현 계획 작성 권한 부여</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>승격 기록</h2>
+    <div class="callout">
+      <p><strong>승격 경로.</strong> survey 근거 → pre-decision worksheet → 사용자 승인 → 이 최종 결정 기록 → frozen spec → implementation plan.</p>
+      <p><strong>의미.</strong> 워크시트는 이제 historical input이다. 현재 authoritative decision record는 이 문서와 frozen spec이다.</p>
+    </div>
+    <div class="pill-row">
+      <span class="pill">입력 워크시트 · <code>docs/pre-decisions/2026-06-18-standalone-runtime-reliability-v1.html</code></span>
+      <span class="pill">frozen spec · <code>docs/specs/2026-06-18-standalone-runtime-reliability.md</code></span>
+      <span class="pill">implementation plan · <code>docs/plans/2026-06-18-standalone-runtime-reliability-plan.md</code></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>승인된 결정</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>승인안</th>
+          <th>최종 결정</th>
+          <th>근거 / 이유</th>
+          <th>즉시 구현 영향</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>D1</strong></td>
+          <td>A</td>
+          <td><code>pluginRoot</code>, <code>projectRoot</code>, <code>home</code> 경계를 명시적으로 분리한다.</td>
+          <td>survey들은 runtime keyword loader와 doctor 일부가 아직 <code>process.cwd()</code>에 기대어 plugin-owned 자산을 잘못 해석할 수 있음을 공통으로 지적했다.</td>
+          <td>runtime/doctor/path resolution은 plugin-owned 자산을 project root에서 찾지 않도록 정리해야 한다.</td>
+        </tr>
+        <tr>
+          <td><strong>D2</strong></td>
+          <td>A</td>
+          <td>keyword-index / plugin-integrity 문제는 visible warning으로 올리고, doctor/status가 같은 신호를 보여준다.</td>
+          <td>clean install 리스크는 debug log에만 남기면 사용자가 늦게 발견한다. standalone 계약 위반은 operator-visible signal이 필요하다.</td>
+          <td>runtime warning, <code>/pi-oven:doctor</code>, <code>/pi-oven:setup --status</code>의 truth surface를 맞춰야 한다.</td>
+        </tr>
+        <tr>
+          <td><strong>D3</strong></td>
+          <td>A</td>
+          <td>pi-oven gate와 pi-oven-dispatched identity에서는 namespaced form만 정식 경로로 취급한다.</td>
+          <td>namespaced guidance는 이미 강하지만, bare form이 gate credit나 dispatch 통과 경로로 남아 있으면 auditability와 sibling collision 방지가 약하다.</td>
+          <td><code>skill://pi-oven:&lt;name&gt;</code>, <code>pi-oven:&lt;role&gt;</code>만 pi-oven 성공 경로로 인정하도록 gate/runtime validation을 맞춘다.</td>
+        </tr>
+        <tr>
+          <td><strong>D4</strong></td>
+          <td>A</td>
+          <td>project scope는 순수하게 유지하고, setup/status/doctor는 필요한 global remediation만 명시한다.</td>
+          <td>project-scope routing이 숨은 global write로 확장되면 현재 경계 모델과 setup semantics가 무너진다.</td>
+          <td>project-only 사용자는 부족한 global prerequisite를 명시적으로 안내받아야 하며, 자동 global write는 추가하지 않는다.</td>
+        </tr>
+        <tr>
+          <td><strong>D5</strong></td>
+          <td>A</td>
+          <td>문서 드리프트는 docs-tightening으로 해결한다. 현재 없는 CLI/runtime surface는 이번 사이클에서 약속하지 않는다.</td>
+          <td>survey들은 setup/doctor/README 일부가 현재 실제 CLI와 충돌함을 지적했다. 이번 주제는 truthfulness 복구이지 CLI 확장 자체가 아니다.</td>
+          <td>지원하지 않는 명령 조합, validate path, 복구 경로는 문서에서 제거하거나 correction note로 정리한다.</td>
+        </tr>
+        <tr>
+          <td><strong>D6</strong></td>
+          <td>A</td>
+          <td>installed-topology 테스트와 doctor/status evidence를 최소 완료 기준으로 채택한다.</td>
+          <td>repo-root 단위테스트만으로는 standalone 설치 토폴로지 신뢰성을 증명할 수 없다는 점이 모든 조사에서 반복되었다.</td>
+          <td>pluginRoot와 projectRoot가 분리된 시뮬레이션에서 테스트와 operator-facing evidence를 수집해야 완료를 주장할 수 있다.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>근거 집합</h2>
+    <ul>
+      <li><code>agent://ProjectSurvey</code></li>
+      <li><code>agent://SkillLoadingSurvey</code></li>
+      <li><code>agent://ProfileRoutingSurvey</code></li>
+      <li><code>agent://StandaloneRiskSurvey</code></li>
+      <li><code>agent://GajaeSourceSurvey</code></li>
+      <li><code>agent://GajaeContextSurvey</code></li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>이 결정 집합이 구현에 강제하는 것</h2>
+    <ul>
+      <li>root-boundary 수리와 installed-topology proof가 구현 우선순위의 맨 앞에 온다.</li>
+      <li>visible warning, doctor, status는 같은 계약을 다른 표면에서 반복해 보여줘야 한다.</li>
+      <li>pi-oven 전용 gate/dispatch identity는 namespaced form으로 닫힌다.</li>
+      <li>project-scope purity를 깨는 편의성 확장은 이번 계획 범위에서 제외된다.</li>
+      <li>문서는 현재 실제 제품을 따라가야 하며, 문서에 맞추려고 새 CLI 동작을 약속하지 않는다.</li>
+    </ul>
+  </section>
+</div>
+</body>
+</html>

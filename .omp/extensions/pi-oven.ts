@@ -53,6 +53,53 @@ export interface SetupChecklistNotice {
   level: "info" | "warning";
 }
 
+const INSTALLED_TOPOLOGY_SIGNAL_NAME = "installed topology";
+const RUNTIME_GLOBAL_CONFIG_PATH = "~/.omp/agent/config.yml";
+const RUNTIME_INSTALLED_TOPOLOGY_FIX =
+  "Restore the plugin assets at that path or reinstall pi-oven@kzk.";
+
+const PLUGIN_ROOT_MARKERS = [
+  ".claude-plugin",
+  "agents",
+  "skills",
+  "package.json",
+] as const;
+
+function scorePluginRootCandidate(root: string): number {
+  let score = 0;
+  for (const marker of PLUGIN_ROOT_MARKERS) {
+    if (existsSync(path.resolve(root, marker))) score++;
+  }
+  return score;
+}
+
+function formatRuntimeInstalledTopologyCause(reason: unknown): string {
+  const message =
+    reason instanceof Error
+      ? reason.message
+      : typeof reason === "string"
+        ? reason
+        : String(reason);
+  const normalized = message.replace(/\s+/g, " ").trim();
+  return normalized.length > 0 ? normalized : "unknown asset read failure";
+}
+
+function buildRuntimeInstalledTopologyNotice(
+  pluginRoot: string,
+  projectRoot: string,
+  reason: unknown
+): SetupChecklistNotice {
+  const cause = formatRuntimeInstalledTopologyCause(reason);
+  return {
+    level: "warning",
+    message: [
+      "Standalone truth surface:",
+      `  [WARN] ${INSTALLED_TOPOLOGY_SIGNAL_NAME}: pi-oven shipped assets could not be read from ${pluginRoot} for the runtime keyword index (${cause}); project state read from ${projectRoot}; machine-global config remains ${RUNTIME_GLOBAL_CONFIG_PATH}. Runtime keyword-matched skills are unavailable.`,
+      `         fix: ${RUNTIME_INSTALLED_TOPOLOGY_FIX}`,
+    ].join("\n"),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Setup onboarding checklist (Spec project-scoped-model-routing §4)
 // ---------------------------------------------------------------------------
@@ -324,6 +371,26 @@ export function readProjectInstructions(
   }
 }
 
+export function resolvePluginRoot(importMetaUrl: string): string {
+  const baseDir = path.dirname(fileURLToPath(importMetaUrl));
+  const candidates = [
+    baseDir,
+    path.resolve(baseDir, ".."),
+    path.resolve(baseDir, "..", ".."),
+  ];
+
+  let best = candidates[0];
+  let bestScore = -1;
+  for (const candidate of candidates) {
+    const score = scorePluginRootCandidate(candidate);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 /**
  * Inject the parent-only orchestrator-conduct block. Pure helper, called AFTER
  * `injector.applyToSystemPrompt(...)` (which APPENDS): for the parent session it
@@ -350,13 +417,12 @@ export function applyOrchestratorConduct(
 // Extension entrypoint
 // ---------------------------------------------------------------------------
 
-export default function piOvenPi(pi: ExtensionAPI): void {
-  const agentsDir = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "..",
-    "agents"
-  );
+export default function piOvenPi(
+  pi: ExtensionAPI,
+  opts?: { pluginRoot?: string }
+): void {
+  const pluginRoot = opts?.pluginRoot ?? resolvePluginRoot(import.meta.url);
+  const agentsDir = path.resolve(pluginRoot, "agents");
 
   validateAgentRegistry(agentsDir, pi.logger);
 
@@ -428,11 +494,22 @@ export default function piOvenPi(pi: ExtensionAPI): void {
   const isParentSession = !process.env.PI_BLOCKED_AGENT;
   let skillKeywordState = createSkillKeywordLoaderState();
   let skillKeywordIndex = [] as ReturnType<typeof loadSkillKeywordIndex>;
+  let installedTopologyNotice: SetupChecklistNotice | null = null;
   try {
-    skillKeywordIndex = loadSkillKeywordIndex(repoRoot);
-    pi.logger.debug(`pi-oven: loaded skill keyword index (${skillKeywordIndex.length} skills)`);
+    skillKeywordIndex = loadSkillKeywordIndex(pluginRoot);
+    if (skillKeywordIndex.length === 0) {
+      installedTopologyNotice = buildRuntimeInstalledTopologyNotice(
+        pluginRoot,
+        repoRoot,
+        "plugin.json skills[] did not yield any shipped skills"
+      );
+      pi.logger.warn(installedTopologyNotice.message);
+    } else {
+      pi.logger.debug(`pi-oven: loaded skill keyword index (${skillKeywordIndex.length} skills)`);
+    }
   } catch (err) {
-    pi.logger.debug(`pi-oven: skill keyword index not loaded: ${err}`);
+    installedTopologyNotice = buildRuntimeInstalledTopologyNotice(pluginRoot, repoRoot, err);
+    pi.logger.warn(installedTopologyNotice.message);
   }
   let stopGuardState = createStopGuardState();
 
@@ -516,6 +593,12 @@ export default function piOvenPi(pi: ExtensionAPI): void {
         ) {
           systemPrompt = [...systemPrompt, keywordPrompt];
         }
+        if (
+          installedTopologyNotice &&
+          !systemPrompt.some((entry) => entry.includes("[WARN] installed topology:"))
+        ) {
+          systemPrompt = [...systemPrompt, installedTopologyNotice.message];
+        }
       }
       return { systemPrompt };
     } catch (err) {
@@ -558,6 +641,9 @@ export default function piOvenPi(pi: ExtensionAPI): void {
           projectRoutingRoleCount
         );
         uiCtx.ui.notify(notice.message, notice.level);
+        if (installedTopologyNotice) {
+          uiCtx.ui.notify(installedTopologyNotice.message, installedTopologyNotice.level);
+        }
       }
     } catch (err) {
       pi.logger.debug(`pi-oven: setup-state notice skipped: ${err}`);

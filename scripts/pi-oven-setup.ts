@@ -86,9 +86,15 @@ const spawnFn = mockSpawn
         const payload = JSON.stringify({ key: args[2], value: {}, type: "record", description: "" });
         return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") } as any;
       }
-      // Return a minimal list-models fixture for model-id validation
-      if (args[0] === "--list-models") {
+      // Return a minimal `omp models` fixture for model-id validation / auth detection
+      if (args[0] === "models") {
         const fixture = [
+          "Provider models",
+          "provider      model                                 aliases",
+          "opencode-zen  opencode-zen/gpt-5.3-codex            -",
+          "openai-codex  openai-codex/gpt-5.3-codex            -",
+          "anthropic     claude-opus-4-8                       -",
+          "",
           "Canonical models",
           "  canonical  selected                              provider",
           "  1          opencode-zen/gpt-5.3-codex            opencode-zen",
@@ -168,7 +174,8 @@ if (hasOverride) {
 
 // --isolate / --no-isolate toggle omp's ~/.claude isolation (disabledProviders).
 // They are mutually exclusive with each other but MAY combine with any primary
-// action (runs after it). Standalone is also valid.
+// action (runs after it). Standalone is also valid. GLOBAL-ONLY: rejected under
+// --scope project because they write ~/.omp/agent/config.yml.
 const wantIsolate = Boolean(values.isolate);
 const wantNoIsolate = Boolean(values["no-isolate"]);
 if (wantIsolate && wantNoIsolate) {
@@ -178,6 +185,12 @@ if (wantIsolate && wantNoIsolate) {
   process.exit(1);
 }
 const hasIsolate = wantIsolate || wantNoIsolate;
+if (hasIsolate && scope === "project") {
+  process.stderr.write(
+    "--isolate and --no-isolate are global-only: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+  );
+  process.exit(1);
+}
 
 // --suppress-sibling-skills / --no-suppress-sibling-skills toggle omp's
 // skills.ignoredSkills (sibling marketplace skill suppression, §3.4).
@@ -191,13 +204,13 @@ if (wantSuppressSibling && wantNoSuppressSibling) {
   );
   process.exit(1);
 }
-if (wantSuppressSibling && scope === "project") {
+const hasSuppressSibling = wantSuppressSibling || wantNoSuppressSibling;
+if (hasSuppressSibling && scope === "project") {
   process.stderr.write(
-    "--suppress-sibling-skills is global-only: it writes ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+    "--suppress-sibling-skills and --no-suppress-sibling-skills are global-only: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
   );
   process.exit(1);
 }
-const hasSuppressSibling = wantSuppressSibling || wantNoSuppressSibling;
 
 // ---------------------------------------------------------------------------
 // Dispatch — precedence per §3.3/§3.4:

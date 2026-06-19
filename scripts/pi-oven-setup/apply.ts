@@ -25,6 +25,10 @@ import {
   projectSettingsPath,
 } from "./project-settings";
 import {
+  PROJECT_SCOPE_GLOBAL_REMEDIATION_FIX,
+  SIBLING_SUPPRESSION_FIX,
+} from "./standalone-truth-surface";
+import {
   PROFILE_A,
   PROFILE_B,
   PROFILE_C,
@@ -95,6 +99,7 @@ export async function runApply(
   let memoryConfigLine = "";
   let toolsEnabledLine = "";
   let scopeLine = "";
+  let projectRemediationLine = "";
 
   const scope = opts.scope ?? "global";
 
@@ -142,6 +147,10 @@ export async function runApply(
       );
       await setProjectRetryFallbackChains(fallbackChains, { cwd });
       scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles + modelRoles + retry.fallbackChains; Profile B includes reasoning-effort suffixes)\n`;
+      projectRemediationLine =
+        "Project scope kept ~/.omp/agent/config.yml untouched.\n" +
+        `  project-scope remediation: ${PROJECT_SCOPE_GLOBAL_REMEDIATION_FIX}\n` +
+        `  sibling-skill suppression: ${SIBLING_SUPPRESSION_FIX}\n`;
     } else {
       // User setup (global): write the MAIN ORCHESTRATOR model pair (modelRoles
       // default + title) in ONE atomic whole-record merge-write. omp's schema
@@ -209,6 +218,7 @@ export async function runApply(
     output:
       `Profile ${opts.profile} active. ${summaryParts.join(", ")}.\n` +
       scopeLine +
+      projectRemediationLine +
       memoryConfigLine +
       toolsEnabledLine +
       `Setup complete.\n`,

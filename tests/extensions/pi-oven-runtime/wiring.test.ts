@@ -179,7 +179,10 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect((queued.options as { deliverAs?: string; triggerTurn?: boolean }).triggerTurn).toBe(true);
   });
 
-  it("before_agent_start injects a must-read skill block when user keywords match shipped skills", async () => {
+  it("before_agent_start loads shipped skills from pluginRoot even when cwd is a separate project root", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+
     const pi = makeFakePi();
     piOvenPi(pi as never);
 
@@ -215,25 +218,76 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain("skill://pi-oven:spec-and-review");
   });
 
+  it("session_start surfaces an installed-topology warning when plugin assets cannot build the keyword index", async () => {
+    tempDir = makeTempDir();
+    const pluginRoot = tempDir;
+    const projectRoot = join(tempDir, "separate-project");
+    mkdirSync(projectRoot, { recursive: true });
+    process.chdir(projectRoot);
+    const expectedProjectRoot = process.cwd();
+
+    const pi = makeFakePi();
+    piOvenPi(pi as never, { pluginRoot });
+
+    const onSessionStart = pi.handlers["session_start"];
+    const notices: Array<{ message: string; level: string }> = [];
+    await onSessionStart(
+      { type: "session_start" },
+      {
+        hasUI: true,
+        ui: {
+          notify(message: string, level: string) {
+            notices.push({ message, level });
+          },
+        },
+      }
+    );
+
+    expect(notices.some((notice) => notice.level === "warning")).toBe(true);
+    const installedTopology = notices.find((notice) =>
+      notice.message.includes("Standalone truth surface:") &&
+      notice.message.includes("[WARN] installed topology:")
+    );
+    expect(installedTopology).toBeDefined();
+    expect(installedTopology?.message).toContain(`pi-oven shipped assets could not be read from ${pluginRoot}`);
+    expect(installedTopology?.message).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(installedTopology?.message).toContain("machine-global config remains ~/.omp/agent/config.yml");
+    expect(installedTopology?.message).toContain("Runtime keyword-matched skills are unavailable");
+    expect(installedTopology?.message).toContain("reinstall pi-oven@kzk");
+    expect(pi.logs.some((entry) => entry.level === "warn" && entry.msg.includes("installed topology"))).toBe(true);
+  });
+
+  it("before_agent_start injects the same installed-topology warning into systemPrompt when plugin assets are broken", async () => {
+    tempDir = makeTempDir();
+    const pluginRoot = tempDir;
+    const projectRoot = join(tempDir, "separate-project");
+    mkdirSync(projectRoot, { recursive: true });
+    process.chdir(projectRoot);
+    const expectedProjectRoot = process.cwd();
+
+    const pi = makeFakePi();
+    piOvenPi(pi as never, { pluginRoot });
+
+    const onBeforeAgentStart = pi.handlers["before_agent_start"];
+    const res = (await onBeforeAgentStart({
+      type: "before_agent_start",
+      prompt: "",
+      systemPrompt: ["base"],
+    })) as { systemPrompt: string[] };
+    const joined = res.systemPrompt.join("\n");
+
+    expect(joined).toContain("Standalone truth surface:");
+    expect(joined).toContain("[WARN] installed topology:");
+    expect(joined).toContain(`pi-oven shipped assets could not be read from ${pluginRoot}`);
+    expect(joined).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(joined).toContain("machine-global config remains ~/.omp/agent/config.yml");
+    expect(joined).toContain("Runtime keyword-matched skills are unavailable");
+  });
+
 
   it("before_agent_start can inject first-turn autonomous reminders before turn_start persists state", async () => {
     tempDir = makeTempDir();
     process.chdir(tempDir);
-    mkdirSync(join(tempDir, "skills", "autonomous-loop"), { recursive: true });
-    writeFileSync(
-      join(tempDir, "skills", "autonomous-loop", "SKILL.md"),
-      "---\nname: autonomous-loop\ndescription: test\n---\n"
-    );
-    mkdirSync(join(tempDir, "skills", "large-task-delegation"), { recursive: true });
-    writeFileSync(
-      join(tempDir, "skills", "large-task-delegation", "SKILL.md"),
-      "---\nname: large-task-delegation\ndescription: test\n---\n"
-    );
-    mkdirSync(join(tempDir, "skills", "spec-and-review"), { recursive: true });
-    writeFileSync(
-      join(tempDir, "skills", "spec-and-review", "SKILL.md"),
-      "---\nname: spec-and-review\ndescription: test\n---\n"
-    );
 
     const pi = makeFakePi();
     piOvenPi(pi as never);
@@ -253,21 +307,6 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
   it("turn_start syncs autonomous active state and matched skills into the gate store", async () => {
     tempDir = makeTempDir();
     process.chdir(tempDir);
-    mkdirSync(join(tempDir, "skills", "autonomous-loop"), { recursive: true });
-    mkdirSync(join(tempDir, "skills", "large-task-delegation"), { recursive: true });
-    mkdirSync(join(tempDir, "skills", "spec-and-review"), { recursive: true });
-    writeFileSync(
-      join(tempDir, "skills", "autonomous-loop", "SKILL.md"),
-      "---\nname: autonomous-loop\ndescription: test\n---\n"
-    );
-    writeFileSync(
-      join(tempDir, "skills", "large-task-delegation", "SKILL.md"),
-      "---\nname: large-task-delegation\ndescription: test\n---\n"
-    );
-    writeFileSync(
-      join(tempDir, "skills", "spec-and-review", "SKILL.md"),
-      "---\nname: spec-and-review\ndescription: test\n---\n"
-    );
 
     const pi = makeFakePi();
     piOvenPi(pi as never);
@@ -297,11 +336,14 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       skillReads?: string[];
     };
     expect(persisted.active).toBe(true);
-    expect(persisted.requiredSkills).toEqual([
-      "autonomous-loop",
-      "large-task-delegation",
-      "spec-and-review",
-    ]);
+    expect(persisted.requiredSkills).toHaveLength(3);
+    expect(persisted.requiredSkills).toEqual(
+      expect.arrayContaining([
+        "autonomous-loop",
+        "large-task-delegation",
+        "spec-and-review",
+      ])
+    );
     expect(persisted.skillReads).toEqual([]);
     const onBeforeAgentStart = pi.handlers["before_agent_start"];
     const res = (await onBeforeAgentStart({

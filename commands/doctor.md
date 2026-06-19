@@ -48,10 +48,11 @@ Exit code: `0` when there are no FAILs (WARNs are acceptable), `1` when any chec
 
 ### Step 2 — Interpret the report
 
-Relay the report to the user, then walk each non-PASS line:
+Relay the report to the user, then walk each non-PASS line. The script still prints the 11-check matrix first, but now also appends a **Standalone truth surface** section. Treat that section as part of the diagnostic output — it carries the same operator-facing warnings status shows.
 
 - **FAIL** — a hard blocker. Surface the `fix:` hint from that line and tell the user this must be resolved before pi-oven works correctly. If multiple checks FAIL, list them in priority order (binaries/git first, then skills/agents, then eval).
-- **WARN** — non-blocking, but worth noting. Explain what is degraded (e.g. eval cannot run live, MCP not configured) and the optional remediation.
+- **WARN** — non-blocking, but worth noting. Explain what is degraded (e.g. eval cannot run live, project-scope routing still needs a separate global setup step) and the optional remediation.
+- **INFO** in the standalone section — state you should surface, not ignore (for example installed-topology evidence or sibling-skill suppression state). It does not affect the exit code, but it is still part of the truth surface.
 - **PASS** — no action; only mention in the summary count.
 
 If `overall PASS` or `overall WARN`, tell the user the install is healthy (or healthy-with-warnings). If `overall FAIL`, tell them the install needs attention and summarize the failing checks.
@@ -73,10 +74,10 @@ This is the onboarding bridge to the gated real-eval pipeline.
 
 Check #11 probes `omp config get` for memory and killer-tool readiness. Walk each non-PASS sub-result:
 
-- **memory.backend != "mnemopi" (WARN)** — native memory is off. Tell the user: run `/pi-oven:setup` to enable the mnemopi backend; the `retain`, `recall`, and `reflect` killer tools will not work without it.
-- **mnemopi config incomplete (WARN)** — `mnemopi.noEmbeddings` or `mnemopi.llmMode` is absent. Both keys must be present for the backend to initialise correctly; point the user to `/pi-oven:setup --memory` to repopulate them.
-- **async.enabled != true (WARN)** — background task dispatch is off, which degrades throughput for autonomous flows; point the user to `/pi-oven:setup` to enable it.
-- **killer-tool note (INFO)** — the debug, eval, browser, lsp, ast_grep, and irc killer tools are omp defaults and are always on; no action is needed. Only `retain`, `recall`, and `reflect` require `memory.backend=mnemopi` (covered above).
+- **memory.backend != "mnemopi" (WARN)** — native memory is off. Tell the user: run `/pi-oven:setup --scope global` to enable the mnemopi backend; the `retain`, `recall`, and `reflect` killer tools will not work without it.
+- **mnemopi config incomplete (WARN)** — `mnemopi.noEmbeddings` or `mnemopi.llmMode` is absent. Both keys must be present for the backend to initialise correctly; point the user to `/pi-oven:setup --scope global` to repopulate them.
+- **async.enabled != true (WARN)** — background task dispatch is off, which degrades throughput for autonomous flows; point the user to `/pi-oven:setup --scope global` to enable it.
+- **killer-tool note (INFO)** — the debug, eval, browser, lsp, ast_grep, and irc killer tools are omp defaults and are always on after a global pi-oven setup run; no separate doctor action is needed. Only `retain`, `recall`, and `reflect` require `memory.backend=mnemopi` (covered above).
 
 ## The 11-check reference
 
@@ -94,7 +95,7 @@ Check #11 probes `omp config get` for memory and killer-tool readiness. Walk eac
 | 10 | UC5 ops connector | `skills/aws`, `skills/bitbucket-pipeline`, `skills/cloudflare` present + credential file (`.external-credentials` or `.external_certificate`; legacy `.external_cerficate` alias also accepted) detected | skill files present but no credential file | any connector skill file missing |
 | 11 | memory / killer-tools | `memory.backend == "mnemopi"` AND `mnemopi.noEmbeddings` + `mnemopi.llmMode` present AND `async.enabled == true` | any of: backend not mnemopi, mnemopi config keys absent, or async disabled | — |
 
-Checks 4 and 5 can only WARN (never FAIL) — auth and MCP are environmental, not install-integrity, defects. Check 10 WARN is also environmental (credential file not yet onboarded). Check 11 can only WARN — memory/async are configuration choices, not install-integrity defects. Checks 6, 7, 9-runner-absent, and 10-missing-skills are install-integrity FAILs. The script's exit code reflects only FAILs.
+Checks 4 and 5 can only WARN (never FAIL) — auth and MCP are environmental, not install-integrity defects. Check 10 WARN is also environmental (credential file not yet onboarded). Check 11 can only WARN — memory/async are configuration choices, not install-integrity defects. The standalone truth-surface section may add WARN/INFO lines for installed-topology evidence, project-scope remediation, and sibling-skill suppression state, but those lines do NOT change the exit code. Checks 6, 7, 9-runner-absent, and 10-missing-skills are install-integrity FAILs. The script's exit code reflects only FAILs.
 
 ## Important rules
 

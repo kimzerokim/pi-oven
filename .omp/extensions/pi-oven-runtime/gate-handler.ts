@@ -10,8 +10,8 @@
 //     a Promise.race against a self-deadline (default 1500 ms). On overrun the
 //     handler THROWS → omp converts to {block:true} = fail-CLOSED (SAFE).
 //   - Bash calls are inspected for commit/push/forbidden gating. Task calls are
-//     inspected for agent-namespace compatibility (allow `pi-oven:*` and bare names;
-//     block only foreign namespaced refs). Any other tool, or any
+//     inspected for strict pi-oven identity (allow exact `pi-oven:<role>` only;
+//     block bare aliases and foreign namespaces). Any other tool, or any
 //   - Subagent sessions (isParentSession=false) are still GATED (read-only
 //     lookup) but NEVER mutate the FSM (single-writer rule, B4).
 //   - File push-consent is consumed (single-use) inside the mutex before the
@@ -82,12 +82,13 @@ export function getTargetPath(input: ToolCallEventLike["input"]): string | null 
 
 export function getSkillReadName(event: ToolCallEventLike): string | null {
   if (event.toolName !== "read") return null;
-  const path = event.input?.path;
-  if (typeof path !== "string") return null;
-  const match = /^skill:\/\/([^/?#]+)/.exec(path);
-  if (!match) return null;
-  const host = match[1].replace(/^pi-oven:/, ""); // strip the pi-oven: namespace (one prefix)
-  const name = host.split(":")[0];                // drop any :line-range suffix
+  const targetPath = event.input?.path;
+  if (typeof targetPath !== "string") return null;
+  const prefix = "skill://pi-oven:";
+  if (!targetPath.startsWith(prefix)) return null;
+  const remainder = targetPath.slice(prefix.length);
+  const end = remainder.search(/[:/?#]/);
+  const name = (end === -1 ? remainder : remainder.slice(0, end)).trim();
   return name.length > 0 ? name : null;
 }
 
@@ -180,18 +181,18 @@ export function createGateHandler(
   return async function handler(
     event: ToolCallEventLike
   ): Promise<ToolCallResultLike | void> {
-    // Task dispatch compatibility guard:
-    // - allow `pi-oven:*` when the runtime registry provides it
-    // - allow bare names (`executor`, `planner`, ...) for harness-fixed registries
-    // - block foreign namespaced refs (`oh-my-claudecode:*`, `omo:*`, ...)
+    // Task dispatch strict identity guard:
+    // - allow exact `pi-oven:<role>`
+    // - block bare aliases (`executor`, `task`, ...)
+    // - block foreign namespaces (`oh-my-claudecode:*`, `omo:*`, ...)
     if (event.toolName === "task") {
       const agent = event.input?.agent;
       if (typeof agent !== "string" || agent.length === 0) return { block: false };
-      if (!agent.includes(":") || agent.startsWith("pi-oven:")) return { block: false };
+      if (/^pi-oven:[^:]+$/.test(agent)) return { block: false };
       return {
         block: true,
         reason:
-          'pi-oven: task dispatch blocked — unsupported namespaced agent. Use bare built-in names (e.g. "executor") or `pi-oven:*` aliases when registered.',
+          `pi-oven: task dispatch blocked — agent must use the exact registered pi-oven name \`pi-oven:<role>\`. Bare aliases and foreign namespaces are not allowed (received \`${agent}\`).`,
       };
     }
     // Wrap ALL work in a self-deadline. On overrun → THROW → omp fail-closes.

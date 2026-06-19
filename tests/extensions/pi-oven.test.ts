@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { fileURLToPath } from "url";
 import * as ext from "../../.omp/extensions/pi-oven";
 import {
   validateAgentRegistry,
@@ -41,10 +42,32 @@ function writeAgent(dir: string, filename: string, model: string | string[]): vo
 // ---------------------------------------------------------------------------
 
 describe("extension install detection", () => {
-  it("detects effectiveSetupComplete if agentsDir has pi-oven files", () => {
-    // This is handled by the mock fs or real fs in the entrypoint test
-    // Since we can't easily unit test the exported default function here
-    // without more boilerplate, we rely on the logic check in the source.
+  it("resolves pluginRoot from the extension file URL, not from cwd", () => {
+    const originalCwd = process.cwd();
+    const isolatedProjectRoot = makeTempDir();
+    const extensionUrl = new URL("../../.omp/extensions/pi-oven.ts", import.meta.url).href;
+    const expectedPluginRoot = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
+    try {
+      process.chdir(isolatedProjectRoot);
+      expect(ext.resolvePluginRoot(extensionUrl)).toBe(expectedPluginRoot);
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(isolatedProjectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves pluginRoot from the bundled dist file URL", () => {
+    const originalCwd = process.cwd();
+    const isolatedProjectRoot = makeTempDir();
+    const extensionUrl = new URL("../../dist/pi-oven.js", import.meta.url).href;
+    const expectedPluginRoot = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
+    try {
+      process.chdir(isolatedProjectRoot);
+      expect(ext.resolvePluginRoot(extensionUrl)).toBe(expectedPluginRoot);
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(isolatedProjectRoot, { recursive: true, force: true });
+    }
   });
 });
 

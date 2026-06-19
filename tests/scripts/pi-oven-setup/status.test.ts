@@ -46,6 +46,8 @@ function makeSpawnFn(opts: {
   overrides?: Record<string, string>;
   listModelsOutput?: string;
   getExitCode?: number;
+  scalarValues?: Record<string, unknown>;
+  ignoredSkills?: string[] | null;
 }): (cmd: string, args: string[]) => { exitCode: number | null; stdout: Buffer; stderr: Buffer } {
   return (cmd, args) => {
     const argStr = args.join(" ");
@@ -61,6 +63,25 @@ function makeSpawnFn(opts: {
       const record = opts.overrides ?? {};
       const payload = JSON.stringify({ key: "task.agentModelOverrides", value: record, type: "record" });
       return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
+    }
+    if (cmd === "omp" && args[0] === "config" && args[1] === "get" && args[2] === "skills.ignoredSkills") {
+      if (opts.ignoredSkills === null) {
+        return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("missing key") };
+      }
+      const payload = JSON.stringify({
+        key: "skills.ignoredSkills",
+        value: opts.ignoredSkills ?? [],
+        type: "array",
+      });
+      return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
+    }
+    if (cmd === "omp" && args[0] === "config" && args[1] === "get") {
+      const key = args[2];
+      if (key && opts.scalarValues && Object.prototype.hasOwnProperty.call(opts.scalarValues, key)) {
+        const payload = JSON.stringify({ key, value: opts.scalarValues[key], type: typeof opts.scalarValues[key] });
+        return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
+      }
+      return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("missing key") };
     }
     // omp list-models --json (or similar)
     if (cmd === "omp" && argStr.includes("list-models")) {
@@ -281,6 +302,17 @@ describe("runStatus — project layer", () => {
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toMatch(/absent/i);
   });
+  it("header reports the project file as unreadable/corrupt when settings.json cannot be parsed", async () => {
+    mkdirSync(join(cwd, ".omp"), { recursive: true });
+    writeFileSync(join(cwd, ".omp", "settings.json"), "{ not json", "utf-8");
+    const spawnFn = makeSpawnFn({ overrides: {}, ignoredSkills: [] });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("present but unreadable/corrupt");
+    expect(result.output).toContain("project routing state is unknown");
+    expect(result.output).not.toContain("no pi-oven project routing detected");
+  });
+
 
   it("a project-layer role is labelled project(.omp/settings.json)", async () => {
     seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
@@ -321,5 +353,92 @@ describe("runStatus — project layer", () => {
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     const plannerLine = result.output.split("\n").find((l) => /^\s*planner\s/.test(l))!;
     expect(plannerLine).toContain("default(frontmatter)");
+  });
+
+  it("surfaces missing machine-global tool remediation when project routing is active", async () => {
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    const spawnFn = makeSpawnFn({
+      overrides: {},
+      scalarValues: {
+        "inspect_image.enabled": false,
+        "web_search.enabled": false,
+        "lsp.enabled": false,
+        "astGrep.enabled": false,
+        "browser.enabled": false,
+        "debug.enabled": false,
+      },
+    });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("Standalone truth surface:");
+    expect(result.output).toContain("project-scope remediation");
+    expect(result.output).toContain("inspect_image.enabled");
+    expect(result.output).toContain("/pi-oven:setup --scope global");
+    expect(result.output).toContain("Project scope does not write ~/.omp/agent/config.yml");
+  });
+
+  it("surfaces unreadable tool-flag state as unknown instead of claiming the flag is missing", async () => {
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    const baseSpawn = makeSpawnFn({ overrides: {}, ignoredSkills: [] });
+    const spawnFn = (cmd: string, args: string[]) => {
+      if (cmd === "omp" && args[0] === "config" && args[1] === "get" && args[2] === "inspect_image.enabled") {
+        return { exitCode: 0, stdout: Buffer.from("{ not json"), stderr: Buffer.from("") };
+      }
+      return baseSpawn(cmd, args);
+    };
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("project-scope remediation");
+    expect(result.output).toContain("could not be verified");
+    expect(result.output).toContain("inspect_image.enabled");
+    expect(result.output).not.toContain("tool flags are not enabled: inspect_image.enabled");
+  });
+
+  it("surfaces sibling-skill suppression as disabled with the global-only remediation", async () => {
+    const spawnFn = makeSpawnFn({ overrides: {}, ignoredSkills: [] });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("sibling-skill suppression");
+    expect(result.output).toContain("not enabled in ~/.omp/agent/config.yml");
+    expect(result.output).toContain("--suppress-sibling-skills");
+  });
+  it("surfaces unreadable sibling-skill suppression state as unknown instead of disabled", async () => {
+    const baseSpawn = makeSpawnFn({ overrides: {} });
+    const spawnFn = (cmd: string, args: string[]) => {
+      if (cmd === "omp" && args[0] === "config" && args[1] === "get" && args[2] === "skills.ignoredSkills") {
+        return { exitCode: 0, stdout: Buffer.from("{ not json"), stderr: Buffer.from("") };
+      }
+      return baseSpawn(cmd, args);
+    };
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("sibling-skill suppression");
+    expect(result.output).toContain("state unknown");
+    expect(result.output).toContain("unreadable");
+    expect(result.output).not.toContain("not enabled in ~/.omp/agent/config.yml");
+  });
+
+
+  it("shows sibling-skill suppression as enabled when the managed globs are present", async () => {
+    const spawnFn = makeSpawnFn({
+      overrides: {},
+      ignoredSkills: ["superpowers:*", "oh-my-claudecode:*"],
+    });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("sibling-skill suppression");
+    expect(result.output).toContain("enabled in ~/.omp/agent/config.yml");
+    expect(result.output).toContain("superpowers:*");
+    expect(result.output).toContain("oh-my-claudecode:*");
+  });
+
+  it("makes the installed topology explicit by naming the plugin root separately from project state", async () => {
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("installed topology");
+    expect(result.output).toContain(tempDir);
+    expect(result.output).toContain(cwd);
+    expect(result.output).not.toContain(`pi-oven shipped assets read from ${agentsDir};`);
   });
 });

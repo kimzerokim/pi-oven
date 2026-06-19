@@ -59,6 +59,28 @@ interface OmpGetShape {
   type?: unknown;
   description?: unknown;
 }
+export type DisplayReadResult<T> =
+  | { state: "present"; value: T }
+  | { state: "absent" }
+  | { state: "unknown"; error: string };
+
+function isMissingConfigKeyError(stderr: string): boolean {
+  return /missing key|not found|not set|no such key|does not exist/i.test(stderr);
+}
+
+function classifyDisplayReadFailure(result: {
+  exitCode: number | null;
+  stderr?: Buffer;
+}): { state: "absent" } | { state: "unknown"; error: string } {
+  const stderr = result.stderr?.toString().trim() ?? "";
+  if (isMissingConfigKeyError(stderr)) {
+    return { state: "absent" };
+  }
+  return {
+    state: "unknown",
+    error: stderr || `omp config get exited ${String(result.exitCode)}`,
+  };
+}
 
 /**
  * Parse the raw stdout of `omp config get task.agentModelOverrides --json`.
@@ -143,6 +165,72 @@ export async function readAgentModelOverrides(
     return {};
   }
   return result.record;
+}
+
+/**
+ * GRACEFUL scalar read for DISPLAY / diagnostic paths only. Returns the raw
+ * `value` from `omp config get <key> --json`, distinguishing:
+ *   - `{ state:"present", value }`
+ *   - `{ state:"absent" }` for a genuinely missing key
+ *   - `{ state:"unknown" }` for unreadable / malformed output
+ * MUST NOT be used by write paths.
+ */
+export async function readConfigValueDisplayState(
+  key: string,
+  opts?: ConfigYmlOpts
+): Promise<DisplayReadResult<unknown>> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "get", key, "--json"]);
+  if (result.exitCode !== 0) return classifyDisplayReadFailure(result);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout?.toString() ?? "");
+  } catch {
+    return { state: "unknown", error: "JSON.parse failed" };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { state: "unknown", error: "top-level is not an object" };
+  }
+
+  const obj = parsed as OmpGetShape;
+  if (!Object.prototype.hasOwnProperty.call(obj, "value")) {
+    return { state: "absent" };
+  }
+  return { state: "present", value: obj.value };
+}
+
+export async function readConfigValueDisplay(
+  key: string,
+  opts?: ConfigYmlOpts
+): Promise<unknown | null> {
+  const result = await readConfigValueDisplayState(key, opts);
+  return result.state === "present" ? (result.value ?? null) : null;
+}
+
+/**
+ * GRACEFUL boolean read for DISPLAY / diagnostic paths only. Returns:
+ *   - `{ state:"present", value:true|false }` for a boolean-like scalar
+ *   - `{ state:"absent" }` when the key is genuinely absent
+ *   - `{ state:"unknown" }` on unreadable / malformed / non-boolean output
+ */
+export async function readBooleanSettingDisplayState(
+  key: string,
+  opts?: ConfigYmlOpts
+): Promise<DisplayReadResult<boolean>> {
+  const value = await readConfigValueDisplayState(key, opts);
+  if (value.state !== "present") return value;
+  if (value.value === true || value.value === "true") return { state: "present", value: true };
+  if (value.value === false || value.value === "false") return { state: "present", value: false };
+  return { state: "unknown", error: "value is not boolean-like" };
+}
+
+export async function readBooleanSettingDisplay(
+  key: string,
+  opts?: ConfigYmlOpts
+): Promise<boolean | null> {
+  const result = await readBooleanSettingDisplayState(key, opts);
+  return result.state === "present" ? result.value : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -364,33 +452,25 @@ export async function setModelRoles(
 
 // ---------------------------------------------------------------------------
 // retryFallbackChains (RECORD of string[]) — rate-limit failover chains for the
-// orchestrator modelRoles, keyed by modelRole name (default, title). Same record
-// transport as modelRoles: omp config get retry.fallbackChains --json → merge →
-// omp config set retry.fallbackChains '<json>'. The READ is fail-SOFT to {}: the
-// key legitimately may not exist on first setup, and real omp returns an
-// existing record as a parseable `{type:"record"}` shape, so a merge never wipes
-// hand-added siblings in practice.
+// orchestrator modelRoles, keyed by modelRole name (default, title). WRITE paths
+// read STRICT: a malformed `omp config get retry.fallbackChains --json` aborts
+// rather than merge-into-{} and wiping sibling chains. A genuinely absent key is
+// represented by an empty record on success.
 // ---------------------------------------------------------------------------
 
-/**
- * Read retry.fallbackChains as a record of selector arrays. Fail-soft: returns
- * {} when the key is absent or the output is not a parseable `{type:"record"}`
- * shape, so a first-time write does not error.
- */
-export async function readRetryFallbackChains(
-  opts?: ConfigYmlOpts
-): Promise<Record<string, string[]>> {
-  const spawn = opts?.spawnFn ?? defaultSpawn;
-  const result = spawn("omp", ["config", "get", "retry.fallbackChains", "--json"]);
-  if (result.exitCode !== 0) return {};
-
+function parseRetryFallbackChainsOutput(
+  stdout: string
+): { ok: true; record: Record<string, string[]> } | { ok: false; error: string } {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(result.stdout?.toString() ?? "");
+    parsed = JSON.parse(stdout);
   } catch {
-    return {};
+    return { ok: false, error: "JSON.parse failed" };
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, error: "top-level is not an object" };
+  }
+
   const obj = parsed as OmpGetShape;
   if (
     obj.type !== "record" ||
@@ -398,26 +478,51 @@ export async function readRetryFallbackChains(
     obj.value === null ||
     Array.isArray(obj.value)
   ) {
-    return {};
+    return { ok: false, error: `type is not "record": ${String(obj.type)}` };
   }
+
   const record: Record<string, string[]> = {};
   for (const [k, v] of Object.entries(obj.value as Record<string, unknown>)) {
     record[k] = Array.isArray(v) ? v.map(String) : [String(v)];
   }
-  return record;
+  return { ok: true, record };
 }
 
 /**
- * SET the retry fallback chains: read existing (fail-soft) → merge the provided
- * chains (overwriting same-named roles, preserving others) → ONE
- * `omp config set retry.fallbackChains '<json>'` write. Throws on non-zero set.
+ * STRICT read of retry.fallbackChains for the WRITE path. Returns:
+ *   - `{ ok:true, record:{} }` when the key is genuinely absent
+ *   - `{ ok:true, record:<parsed> }` on valid record output
+ *   - `{ ok:false, error }` on unreadable / malformed output
+ */
+export async function readRetryFallbackChains(
+  opts?: ConfigYmlOpts
+): Promise<{ ok: true; record: Record<string, string[]> } | { ok: false; error: string }> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "get", "retry.fallbackChains", "--json"]);
+  if (result.exitCode !== 0) {
+    return classifyDisplayReadFailure(result).state === "absent"
+      ? { ok: true, record: {} }
+      : { ok: false, error: `omp config get exited ${String(result.exitCode)}` };
+  }
+
+  return parseRetryFallbackChainsOutput(result.stdout?.toString() ?? "");
+}
+
+/**
+ * SET the retry fallback chains: strict-read → merge the provided chains
+ * (overwriting same-named roles, preserving others) → ONE
+ * `omp config set retry.fallbackChains '<json>'` write. Throws on read or set
+ * failure.
  */
 export async function setRetryFallbackChains(
   chains: Record<string, string[]>,
   opts?: ConfigYmlOpts
 ): Promise<void> {
   const existing = await readRetryFallbackChains(opts);
-  const merged = { ...existing, ...chains };
+  if (!existing.ok) {
+    throw new Error(`setRetryFallbackChains: readRetryFallbackChains failed — ${existing.error}`);
+  }
+  const merged = { ...existing.record, ...chains };
 
   const spawn = opts?.spawnFn ?? defaultSpawn;
   const setResult = spawn("omp", ["config", "set", "retry.fallbackChains", JSON.stringify(merged)]);
@@ -556,6 +661,28 @@ export async function readIgnoredSkillsStrict(
   opts?: ConfigYmlOpts
 ): Promise<{ ok: true; list: string[] } | { ok: false; error: string }> {
   return readStringArraySettingStrict("skills.ignoredSkills", opts);
+}
+
+/**
+ * GRACEFUL read of `skills.ignoredSkills` for DISPLAY / diagnostic paths only.
+ * Distinguishes a genuinely absent key from unreadable / malformed output.
+ */
+export async function readIgnoredSkillsDisplayState(
+  opts?: ConfigYmlOpts
+): Promise<DisplayReadResult<string[]>> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "get", "skills.ignoredSkills", "--json"]);
+  if (result.exitCode !== 0) return classifyDisplayReadFailure(result);
+
+  const parsed = parseGetArrayOutput(result.stdout?.toString() ?? "");
+  return parsed.ok ? { state: "present", value: parsed.list } : { state: "unknown", error: parsed.error };
+}
+
+export async function readIgnoredSkillsDisplay(
+  opts?: ConfigYmlOpts
+): Promise<string[] | null> {
+  const result = await readIgnoredSkillsDisplayState(opts);
+  return result.state === "present" ? result.value : null;
 }
 
 /**

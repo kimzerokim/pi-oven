@@ -1,4 +1,7 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { dirname, join } from "path";
 import {
   evalOmpVersion,
   evalBinaryPresent,
@@ -13,6 +16,8 @@ import {
   evalMemory,
   rollup,
   exitCodeFor,
+  gather,
+  renderReport,
   type CheckResult,
   type DoctorFacts,
 } from "../../scripts/pi-oven-doctor";
@@ -333,6 +338,111 @@ describe("exitCodeFor", () => {
 
   it("exit 1 when any FAIL", () => {
     expect(exitCodeFor([mk("PASS"), mk("FAIL")])).toBe(1);
+  });
+});
+
+describe("renderReport", () => {
+  it("appends standalone truth-surface signals with the shared remediation wording", () => {
+    const report = renderReport(
+      [mk("PASS")],
+      [
+        {
+          level: "WARN",
+          name: "project-scope remediation",
+          detail:
+            "project routing is active in /tmp/project/.omp/settings.json (24 roles), but the machine-global tool flags are missing: inspect_image.enabled, web_search.enabled.",
+          fix:
+            "Run /pi-oven:setup --scope global once on this machine to enable those tool flags. Project scope does not write ~/.omp/agent/config.yml.",
+        },
+        {
+          level: "INFO",
+          name: "sibling-skill suppression",
+          detail:
+            "not enabled in ~/.omp/agent/config.yml; sibling marketplace skills remain visible.",
+          fix:
+            "Optional global-only step: /pi-oven:setup --suppress-sibling-skills",
+        },
+      ]
+    );
+
+    expect(report).toContain("Standalone truth surface:");
+    expect(report).toContain("[WARN] project-scope remediation:");
+    expect(report).toContain("/pi-oven:setup --scope global");
+    expect(report).toContain("[INFO] sibling-skill suppression:");
+    expect(report).toContain("--suppress-sibling-skills");
+  });
+});
+
+describe("gather", () => {
+  let tempDir: string;
+  let pluginRoot: string;
+  let projectRoot: string;
+
+  beforeEach(() => {
+    tempDir = join(
+      tmpdir(),
+      `pi-oven-doctor-topology-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    pluginRoot = join(tempDir, "plugin-root");
+    projectRoot = join(tempDir, "project-root");
+    mkdirSync(pluginRoot, { recursive: true });
+    mkdirSync(projectRoot, { recursive: true });
+
+    mkdirSync(join(pluginRoot, "skills", "foo"), { recursive: true });
+    writeFileSync(join(pluginRoot, "skills", "foo", "SKILL.md"), "# skill\n", "utf-8");
+    mkdirSync(join(pluginRoot, ".claude-plugin"), { recursive: true });
+    writeFileSync(
+      join(pluginRoot, ".claude-plugin", "plugin.json"),
+      JSON.stringify({ skills: ["./skills/foo/SKILL.md"] }, null, 2) + "\n",
+      "utf-8"
+    );
+    mkdirSync(join(pluginRoot, "agents"), { recursive: true });
+    writeFileSync(join(pluginRoot, "agents", "pi-oven-executor.md"), "---\nname: pi-oven:executor\n", "utf-8");
+    mkdirSync(join(pluginRoot, "scripts"), { recursive: true });
+    writeFileSync(join(pluginRoot, "scripts", "run-eval.ts"), "// runner\n", "utf-8");
+    mkdirSync(join(pluginRoot, "evals", "foo", "scenarios"), { recursive: true });
+    writeFileSync(
+      join(pluginRoot, "package.json"),
+      JSON.stringify({ name: "doctor-topology-fixture", scripts: { "lint:agents": "true" } }, null, 2) + "\n",
+      "utf-8"
+    );
+    writeFileSync(
+      join(pluginRoot, "evals", "foo", "scenarios", "smoke.yaml"),
+      "name: smoke\ntag: smoke\n",
+      "utf-8"
+    );
+    for (const rel of [
+      "skills/aws/SKILL.md",
+      "skills/bitbucket-pipeline/SKILL.md",
+      "skills/cloudflare/SKILL.md",
+    ]) {
+      mkdirSync(join(pluginRoot, dirname(rel)), { recursive: true });
+      writeFileSync(join(pluginRoot, rel), "# connector\n", "utf-8");
+    }
+
+    mkdirSync(join(projectRoot, ".pi"), { recursive: true });
+    writeFileSync(
+      join(projectRoot, ".pi", "mcp.json"),
+      JSON.stringify({ mcpServers: { local: {} } }, null, 2) + "\n",
+      "utf-8"
+    );
+    writeFileSync(join(projectRoot, ".external-credentials"), "token\n", "utf-8");
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("separates plugin assets from project-local state in an installed topology", async () => {
+    const facts = await gather(pluginRoot, projectRoot);
+
+    expect(facts.skills.skillMdCount).toBe(4);
+    expect(facts.skills.pluginSkillsCount).toBe(1);
+    expect(facts.agents.agentCount).toBe(1);
+    expect(facts.evalRunner.runnerPresent).toBe(true);
+    expect(facts.evalRunner.smokeScenarioCount).toBe(1);
+    expect(facts.opsConnector.credentialFile).toBe(".external-credentials");
+    expect(facts.stateDir.path).toBe(join(projectRoot, ".pi-oven"));
   });
 });
 

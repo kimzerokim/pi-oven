@@ -178,8 +178,9 @@ describe("runApply", () => {
   // -------------------------------------------------------------------------
 
   // Mock that serves `omp config get modelRoles --json` as a record (with a
-  // sibling key to assert preservation), `omp config get task.agentModelOverrides --json`
-  // as an empty record, and exit-0 for every other call.
+  // sibling key to assert preservation), `omp config get retry.fallbackChains --json`
+  // as an empty record, `omp config get task.agentModelOverrides --json` as an
+  // empty record, and exit-0 for every other call.
   function makeUserPathSpawn(siblings: Record<string, string> = { someSibling: "keep" }) {
     const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
     const mockSpawnFn = (cmd: string, args: string[]) => {
@@ -189,6 +190,15 @@ describe("runApply", () => {
           exitCode: 0,
           stdout: Buffer.from(
             JSON.stringify({ key: "modelRoles", value: siblings, type: "record", description: "" })
+          ),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "retry.fallbackChains") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(
+            JSON.stringify({ key: "retry.fallbackChains", value: {}, type: "record", description: "" })
           ),
           stderr: Buffer.from(""),
         } as any;
@@ -486,6 +496,13 @@ describe("runApply", () => {
           stderr: Buffer.from(""),
         } as any;
       }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "retry.fallbackChains") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "retry.fallbackChains", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
       if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
         return {
           exitCode: 0,
@@ -518,6 +535,13 @@ describe("runApply", () => {
         return {
           exitCode: 0,
           stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "retry.fallbackChains") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "retry.fallbackChains", value: {}, type: "record", description: "" })),
           stderr: Buffer.from(""),
         } as any;
       }
@@ -573,6 +597,13 @@ describe("runApply", () => {
           stderr: Buffer.from(""),
         } as any;
       }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "retry.fallbackChains") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "retry.fallbackChains", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
       if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
         return {
           exitCode: 0,
@@ -610,6 +641,13 @@ describe("runApply", () => {
         return {
           exitCode: 0,
           stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "retry.fallbackChains") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "retry.fallbackChains", value: {}, type: "record", description: "" })),
           stderr: Buffer.from(""),
         } as any;
       }
@@ -655,6 +693,13 @@ describe("runApply", () => {
           stderr: Buffer.from(""),
         } as any;
       }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "retry.fallbackChains") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "retry.fallbackChains", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
       if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
         return {
           exitCode: 0,
@@ -695,6 +740,13 @@ describe("runApply", () => {
         return {
           exitCode: 0,
           stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "retry.fallbackChains") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "retry.fallbackChains", value: {}, type: "record", description: "" })),
           stderr: Buffer.from(""),
         } as any;
       }
@@ -957,6 +1009,21 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
       cwd,
     });
     expect(result.output).toContain(projectSettingsPath(cwd));
+  });
+
+  it("project-scope output tells the user that tool enablement and sibling suppression still need a separate global step", async () => {
+    const { mockSpawnFn } = makeRecordingSpawn();
+    const result = await runApply({
+      profile: "A",
+      validateMode: "none",
+      spawnFn: mockSpawnFn,
+      scope: "project",
+      cwd,
+    });
+
+    expect(result.output).toContain("Project scope kept ~/.omp/agent/config.yml untouched.");
+    expect(result.output).toContain("/pi-oven:setup --scope global");
+    expect(result.output).toContain("--suppress-sibling-skills");
   });
 
   it("scope:global (default) still writes via omp config and does NOT create a project file", async () => {

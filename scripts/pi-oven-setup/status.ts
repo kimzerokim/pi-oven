@@ -11,14 +11,20 @@ import { readAgentModelOverrides, type ConfigYmlOpts } from "./config-yml";
 import { readAgentFiles } from "./agent-rewriter";
 import { ROLES } from "./profiles";
 import {
-  readProjectAgentModelOverrides,
-  projectSettingsPath,
+  readProjectSettingsDisplayState,
+  type ProjectSettingsDisplayState,
 } from "./project-settings";
-import { existsSync } from "fs";
+import {
+  collectStandaloneTruthSignals,
+  formatStandaloneTruthSignals,
+} from "./standalone-truth-surface";
+import * as path from "path";
 
 export interface StatusOptions extends ConfigYmlOpts {
   /** Override agents directory (for tests). */
   agentsDir?: string;
+  /** Override plugin asset root path in the truth surface (for tests). */
+  pluginAssetPath?: string;
   /** list-models fixture output (for unresolved-override warning in tests). */
   listModelsOutput?: string;
   /** Project root whose `.omp/settings.json` layer is shown (default cwd). */
@@ -30,41 +36,36 @@ export async function runStatus(
 ): Promise<{ exitCode: number; output: string }> {
   const lines: string[] = [];
 
-  // Resolve the project layer path + existence for the header.
   const cwd = opts?.cwd ?? process.cwd();
-  const projectFile = projectSettingsPath(cwd);
-  const projectFileExists = existsSync(projectFile);
+  const projectState = await readProjectSettingsDisplayState({ cwd });
+  const projectFileLabel =
+    projectState.state === "present"
+      ? "present"
+      : projectState.state === "absent"
+      ? "absent"
+      : "present but unreadable/corrupt";
 
-  // Header: both layers + precedence note + project-file presence.
   lines.push("Effective model overrides — two layers, project wins per role:");
-  lines.push(`  project: ${projectFile} (${projectFileExists ? "present" : "absent"})`);
+  lines.push(`  project: ${projectState.file} (${projectFileLabel})`);
   lines.push("  override: machine-global (~/.omp/agent/config.yml)");
   lines.push("  default:  agent-file frontmatter");
   lines.push("");
 
-  // Read configured overrides (graceful: returns {} on any failure)
   const overrides = await readAgentModelOverrides(opts);
-
-  // Read the PROJECT layer (authoritative for project routing; soft read → {}).
-  const projectOverrides = await readProjectAgentModelOverrides({ cwd });
-
-  // Read frontmatter model[0] per role from agent files
+  const projectOverrides = extractProjectOverrides(projectState);
   const frontmatterMap = await buildFrontmatterMap(opts?.agentsDir);
 
-  // Collect stray override keys (pi-oven:* keys not in ROLES) from BOTH layers.
   const strayWarnings: string[] = [];
   const seenStray = new Set<string>();
   for (const key of [...Object.keys(overrides), ...Object.keys(projectOverrides)]) {
-    if (key.startsWith("pi-oven:") && !seenStray.has(key)) {
-      const role = key.slice("pi-oven:".length);
-      if (!(ROLES as readonly string[]).includes(role)) {
-        seenStray.add(key);
-        strayWarnings.push(`  WARNING: unknown role override key "${key}" (not in ROLES)`);
-      }
+    if (!key.startsWith("pi-oven:") || seenStray.has(key)) continue;
+    const role = key.slice("pi-oven:".length);
+    if (!(ROLES as readonly string[]).includes(role)) {
+      seenStray.add(key);
+      strayWarnings.push(`  WARNING: unknown role override key "${key}" (not in ROLES)`);
     }
   }
 
-  // Build per-role rows
   lines.push("Role model summary:");
   const unresolvedWarnings: string[] = [];
 
@@ -78,31 +79,22 @@ export async function runStatus(
     let source: string;
 
     if (projectModel !== undefined) {
-      // PROJECT layer wins per role (deep-merges OVER global at omp load time).
       effectiveModel = projectModel;
       source = "project(.omp/settings.json)";
 
-      // Check resolvability if listModelsOutput provided
-      if (opts?.listModelsOutput !== undefined) {
-        const resolvable = isModelInList(projectModel, opts.listModelsOutput);
-        if (!resolvable) {
-          unresolvedWarnings.push(
-            `  WARNING: project override ${role}=${projectModel} 미해소 — session default 로 fallback 중`
-          );
-        }
+      if (opts?.listModelsOutput !== undefined && !isModelInList(projectModel, opts.listModelsOutput)) {
+        unresolvedWarnings.push(
+          `  WARNING: project override ${role}=${projectModel} 미해소 — session default 로 fallback 중`
+        );
       }
     } else if (overrideModel !== undefined) {
       effectiveModel = overrideModel;
       source = "override(config.yml)";
 
-      // Check resolvability if listModelsOutput provided
-      if (opts?.listModelsOutput !== undefined) {
-        const resolvable = isModelInList(overrideModel, opts.listModelsOutput);
-        if (!resolvable) {
-          unresolvedWarnings.push(
-            `  WARNING: override ${role}=${overrideModel} 미해소 — session default 로 fallback 중`
-          );
-        }
+      if (opts?.listModelsOutput !== undefined && !isModelInList(overrideModel, opts.listModelsOutput)) {
+        unresolvedWarnings.push(
+          `  WARNING: override ${role}=${overrideModel} 미해소 — session default 로 fallback 중`
+        );
       }
     } else if (frontmatterModel !== undefined) {
       effectiveModel = frontmatterModel;
@@ -115,17 +107,28 @@ export async function runStatus(
     lines.push(`  ${role.padEnd(24)} ${effectiveModel.padEnd(46)} [${source}]`);
   }
 
-  // Append stray key warnings
   if (strayWarnings.length > 0) {
     lines.push("");
     lines.push(...strayWarnings);
   }
 
-  // Append unresolved override warnings
   if (unresolvedWarnings.length > 0) {
     lines.push("");
     lines.push(...unresolvedWarnings);
   }
+
+  lines.push("");
+  lines.push(
+    ...formatStandaloneTruthSignals(
+      await collectStandaloneTruthSignals({
+        ...opts,
+        pluginAssetPath:
+          opts?.pluginAssetPath ??
+          (opts?.agentsDir ? path.resolve(opts.agentsDir, "..") : "(plugin root unavailable)"),
+        projectRoot: cwd,
+      })
+    )
+  );
 
   return {
     exitCode: 0,
@@ -155,6 +158,23 @@ async function buildFrontmatterMap(
   return map;
 }
 
+function extractProjectOverrides(
+  projectState: ProjectSettingsDisplayState
+): Record<string, string> {
+  if (projectState.state !== "present") return {};
+
+  const task = projectState.data["task"];
+  if (typeof task !== "object" || task === null || Array.isArray(task)) return {};
+  const overrides = (task as Record<string, unknown>)["agentModelOverrides"];
+  if (typeof overrides !== "object" || overrides === null || Array.isArray(overrides)) return {};
+
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(overrides as Record<string, unknown>)) {
+    out[key] = String(value);
+  }
+  return out;
+}
+
 /**
  * Check if a model id appears in a JSON list-models output.
  * list-models output is expected to be an array of objects with an "id" field.
@@ -169,7 +189,7 @@ function isModelInList(modelId: string, listModelsOutput: string): boolean {
       (item) =>
         typeof item === "object" &&
         item !== null &&
-        ((item as Record<string, unknown>)["id"] === modelId ||
+        (((item as Record<string, unknown>)["id"] === modelId) ||
           (item as Record<string, unknown>)["id"] === baseModelId)
     );
   } catch {

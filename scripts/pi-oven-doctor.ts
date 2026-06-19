@@ -24,7 +24,11 @@ import * as path from "node:path";
 import { compareSemver } from "./pi-oven-setup/cache-resolver";
 import { detectAuth, type AuthStatus } from "./pi-oven-setup/auth-detect";
 import { EXPECTED_AGENT_COUNT } from "./pi-oven-setup/profiles";
-
+import {
+  collectStandaloneTruthSignals,
+  formatStandaloneTruthSignals,
+  type StandaloneTruthSignal,
+} from "./pi-oven-setup/standalone-truth-surface";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -585,11 +589,14 @@ const CREDENTIAL_CANDIDATES = [
   ".external_cerficate",
 ] as const;
 
-async function probeOpsConnector(root: string): Promise<OpsConnectorFact> {
+async function probeOpsConnector(
+  pluginRoot: string,
+  projectRoot: string
+): Promise<OpsConnectorFact> {
   const missingSkills: string[] = [];
   for (const rel of CONNECTOR_SKILLS) {
     const exists = await fs
-      .access(path.join(root, rel))
+      .access(path.join(pluginRoot, rel))
       .then(() => true)
       .catch(() => false);
     if (!exists) missingSkills.push(rel);
@@ -598,7 +605,7 @@ async function probeOpsConnector(root: string): Promise<OpsConnectorFact> {
   let credentialFile: string | null = null;
   for (const rel of CREDENTIAL_CANDIDATES) {
     const exists = await fs
-      .access(path.join(root, rel))
+      .access(path.join(projectRoot, rel))
       .then(() => true)
       .catch(() => false);
     if (exists) {
@@ -652,16 +659,19 @@ async function probeMemory(): Promise<MemoryFact> {
 }
 
 /** Gather all real-world facts. Isolated so unit tests inject facts directly. */
-export async function gather(root: string): Promise<DoctorFacts> {
+export async function gather(
+  pluginRoot: string,
+  projectRoot: string = pluginRoot
+): Promise<DoctorFacts> {
   const [mcp, skillMdCount, pluginSkills, agentCount, stateDir, evalRunner, opsConnector, auth] =
     await Promise.all([
-      probeMcp(root),
-      countSkillMd(root),
-      readPluginSkills(root),
-      countAgents(root),
-      probeStateDir(root),
-      probeEvalRunner(root),
-      probeOpsConnector(root),
+      probeMcp(projectRoot),
+      countSkillMd(pluginRoot),
+      readPluginSkills(pluginRoot),
+      countAgents(pluginRoot),
+      probeStateDir(projectRoot),
+      probeEvalRunner(pluginRoot),
+      probeOpsConnector(pluginRoot, projectRoot),
       detectAuth().catch(
         () => ({ opencode_zen: false, openai_codex: false, anthropic: false }) as AuthStatus
       ),
@@ -687,7 +697,7 @@ export async function gather(root: string): Promise<DoctorFacts> {
     agents: {
       agentCount,
       expectedCount: EXPECTED_AGENT_COUNT,
-      lintClean: probeLintAgents(root),
+      lintClean: probeLintAgents(pluginRoot),
     },
     stateDir,
     evalRunner,
@@ -716,7 +726,10 @@ export function runChecks(facts: DoctorFacts): CheckResult[] {
   ];
 }
 
-export function renderReport(checks: CheckResult[]): string {
+export function renderReport(
+  checks: CheckResult[],
+  standaloneSignals: StandaloneTruthSignal[] = []
+): string {
   const icon: Record<CheckStatus, string> = { PASS: "PASS", WARN: "WARN", FAIL: "FAIL" };
   const lines: string[] = [];
   lines.push("pi-oven doctor — install health");
@@ -724,6 +737,10 @@ export function renderReport(checks: CheckResult[]): string {
   for (const c of checks) {
     lines.push(`[${icon[c.status]}] ${c.name}: ${c.detail}`);
     if (c.fix && c.status !== "PASS") lines.push(`       fix: ${c.fix}`);
+  }
+  if (standaloneSignals.length > 0) {
+    lines.push("");
+    lines.push(...formatStandaloneTruthSignals(standaloneSignals));
   }
   const r = rollup(checks);
   lines.push("");
@@ -736,9 +753,14 @@ export function renderReport(checks: CheckResult[]): string {
 // ---------------------------------------------------------------------------
 
 if (import.meta.main) {
-  const root = process.env.PI_OVEN_DOCTOR_ROOT ?? process.cwd();
-  const facts = await gather(root);
+  const pluginRoot = path.resolve(import.meta.dir, "..");
+  const projectRoot = process.env.PI_OVEN_DOCTOR_PROJECT_ROOT ?? process.cwd();
+  const facts = await gather(pluginRoot, projectRoot);
   const checks = runChecks(facts);
-  process.stdout.write(renderReport(checks) + "\n");
+  const standaloneSignals = await collectStandaloneTruthSignals({
+    pluginAssetPath: pluginRoot,
+    projectRoot,
+  });
+  process.stdout.write(renderReport(checks, standaloneSignals) + "\n");
   process.exit(exitCodeFor(checks));
 }

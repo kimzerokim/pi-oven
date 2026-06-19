@@ -864,18 +864,20 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  // A spawnFn that records EVERY call so we can assert ZERO omp config set/get.
+  // A spawnFn that records EVERY call so we can assert project scope does not
+  // mutate the global config even if it performs read-only truth-surface probes.
   function makeRecordingSpawn() {
     const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
     const mockSpawnFn = (cmd: string, args: string[]) => {
       spawnCalls.push({ cmd, args });
-      // Validation pings (-p) succeed; nothing else should be called in this path.
+      // Validation pings (-p) succeed; read-only display probes may call
+      // `omp config get`, but project scope must never call `omp config set`.
       return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
     };
     return { spawnCalls, mockSpawnFn };
   }
 
-  it("profile A writes all 24 overrides to the project file (NOT global), with NO omp config set/get", async () => {
+  it("profile A writes all 24 overrides to the project file (NOT global), with NO omp config set", async () => {
     const { spawnCalls, mockSpawnFn } = makeRecordingSpawn();
 
     const result = await runApply({
@@ -893,9 +895,8 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
       expect(overrides[`pi-oven:${role}`]).toBe(PROFILE_A[role].primary);
     }
 
-    // ZERO omp config calls — project scope must never touch the global config.yml.
-    const configCalls = spawnCalls.filter((c) => c.args[0] === "config");
-    expect(configCalls.length).toBe(0);
+    const configSetCalls = spawnCalls.filter((c) => c.args[0] === "config" && c.args[1] === "set");
+    expect(configSetCalls.length).toBe(0);
   });
 
   it("profile B writes model selectors with thinkingLevel suffixes to the project file", async () => {
@@ -915,8 +916,8 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     expect(overrides["pi-oven:architect"]).toBe("openai-codex/gpt-5.5:xhigh");
     expect(overrides["pi-oven:explorer"]).toBe("openai-codex/gpt-5.4:medium");
 
-    const configCalls = spawnCalls.filter((c) => c.args[0] === "config");
-    expect(configCalls.length).toBe(0);
+    const configSetCalls = spawnCalls.filter((c) => c.args[0] === "config" && c.args[1] === "set");
+    expect(configSetCalls.length).toBe(0);
   });
 
   it("profile A writes modelRoles + retry.fallbackChains to the project file", async () => {
@@ -937,7 +938,7 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     expect(data.retry.fallbackChains.title).toEqual(PROFILE_A_FALLBACK_CHAINS.title);
   });
 
-  it("profile D writes all 24 overrides + modelRoles + retry to the project file, ZERO omp config calls", async () => {
+  it("profile D writes all 24 overrides + modelRoles + retry to the project file, ZERO omp config set", async () => {
     const { spawnCalls, mockSpawnFn } = makeRecordingSpawn();
 
     await runApply({
@@ -957,8 +958,8 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     expect(data.modelRoles.default).toBe(PROFILE_D_ORCHESTRATOR.default);
     expect(data.retry.fallbackChains.default).toEqual(PROFILE_D_FALLBACK_CHAINS.default);
 
-    const configCalls = spawnCalls.filter((c) => c.args[0] === "config");
-    expect(configCalls.length).toBe(0);
+    const configSetCalls = spawnCalls.filter((c) => c.args[0] === "config" && c.args[1] === "set");
+    expect(configSetCalls.length).toBe(0);
   });
 
   it("project scope does NOT write the memory/async infra (no config set memory.backend)", async () => {
@@ -1022,6 +1023,8 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     });
 
     expect(result.output).toContain("Project scope kept ~/.omp/agent/config.yml untouched.");
+    expect(result.output).toContain("Standalone truth surface:");
+    expect(result.output).toContain("project-scope remediation");
     expect(result.output).toContain("/pi-oven:setup --scope global");
     expect(result.output).toContain("--suppress-sibling-skills");
   });

@@ -15,9 +15,16 @@
  * Personal per-role override is the --override path (Task 2.1).
  */
 
+import path from "node:path";
 import { rewriteAllAgents } from "./agent-rewriter";
 import { runValidate } from "./validate";
-import { setModelRoles, setMemoryAndAsyncConfig, setRetryFallbackChains, setAgentModelOverrides, setToolEnablementConfig } from "./config-yml";
+import {
+  setModelRoles,
+  setMemoryAndAsyncConfig,
+  setRetryFallbackChains,
+  setAgentModelOverrides,
+  setToolEnablementConfig,
+} from "./config-yml";
 import {
   setProjectAgentModelOverrides,
   setProjectModelRoles,
@@ -25,8 +32,8 @@ import {
   projectSettingsPath,
 } from "./project-settings";
 import {
-  PROJECT_SCOPE_GLOBAL_REMEDIATION_FIX,
-  SIBLING_SUPPRESSION_FIX,
+  collectStandaloneTruthSignals,
+  formatStandaloneTruthSignals,
 } from "./standalone-truth-surface";
 import {
   PROFILE_A,
@@ -146,11 +153,16 @@ export async function runApply(
         { cwd }
       );
       await setProjectRetryFallbackChains(fallbackChains, { cwd });
+      const standaloneSignals = await collectStandaloneTruthSignals({
+        pluginAssetPath: path.resolve(import.meta.dir, "..", ".."),
+        projectRoot: cwd,
+        spawnFn: opts.spawnFn,
+      });
       scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles + modelRoles + retry.fallbackChains; Profile B includes reasoning-effort suffixes)\n`;
       projectRemediationLine =
         "Project scope kept ~/.omp/agent/config.yml untouched.\n" +
-        `  project-scope remediation: ${PROJECT_SCOPE_GLOBAL_REMEDIATION_FIX}\n` +
-        `  sibling-skill suppression: ${SIBLING_SUPPRESSION_FIX}\n`;
+        formatStandaloneTruthSignals(standaloneSignals).join("\n") +
+        "\n";
     } else {
       // User setup (global): write the MAIN ORCHESTRATOR model pair (modelRoles
       // default + title) in ONE atomic whole-record merge-write. omp's schema

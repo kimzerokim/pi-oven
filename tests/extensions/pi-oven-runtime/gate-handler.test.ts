@@ -247,7 +247,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(r?.block ?? false).toBe(false);
   });
 
-  it("records read skill://... calls and unblocks code-write once every required skill is read", async () => {
+  it("credits only namespaced pi-oven skill reads before unblocking code-write", async () => {
     writeState(dir, {
       active: true,
       gateCache: { commit: "PASS", regression: "PASS" },
@@ -264,11 +264,18 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     );
     const h = createGateHandler(await deps(dir));
 
-    const blocked = await h(writeEvent("src/example.ts"));
-    expect(blocked?.block).toBe(true);
-    expect(blocked?.reason).toMatch(/skill:\/\/pi-oven:autonomous-loop/i);
+    const initiallyBlocked = await h(writeEvent("src/example.ts"));
+    expect(initiallyBlocked?.block).toBe(true);
+    expect(initiallyBlocked?.reason).toMatch(/skill:\/\/pi-oven:autonomous-loop/i);
 
-    const readRes = await h(readEvent("skill://autonomous-loop"));
+    const bareRead = await h(readEvent("skill://autonomous-loop"));
+    expect(bareRead?.block ?? false).toBe(false);
+
+    const stillBlocked = await h(writeEvent("src/example.ts", "tc-write-bare"));
+    expect(stillBlocked?.block).toBe(true);
+    expect(stillBlocked?.reason).toMatch(/skill:\/\/pi-oven:autonomous-loop/i);
+
+    const readRes = await h(readEvent("skill://pi-oven:autonomous-loop"));
     expect(readRes?.block ?? false).toBe(false);
 
     const allowed = await h(writeEvent("src/example.ts", "tc-write-2"));
@@ -357,39 +364,33 @@ describe("gateHandler — subagent read-only (AC8b)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Task dispatch guard — compatibility mode:
-// allow bare names + pi-oven:* aliases, block foreign namespaced refs.
+// Strict task identity guard:
+// allow only `pi-oven:<role>`; block bare aliases and foreign namespaces.
 // ---------------------------------------------------------------------------
 
-describe("gateHandler — task dispatch compatibility guard", () => {
+describe("gateHandler — task dispatch strict identity guard", () => {
   let dir: string;
   beforeEach(() => { dir = makeTempDir(); });
   afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
-  it("allows task dispatch with built-in agent name executor", async () => {
+  it("blocks task dispatch with bare built-in agent names", async () => {
     const h = createGateHandler(await deps(dir));
     const r = await h(taskEvent("executor"));
-    expect(r?.block ?? false).toBe(false);
+    expect(r?.block).toBe(true);
+    expect(r?.reason).toMatch(/pi-oven:executor|exact registered name|bare/i);
   });
 
-  it("allows task dispatch with built-in agent name task", async () => {
-    const h = createGateHandler(await deps(dir));
-    const r = await h(taskEvent("task"));
-    expect(r?.block ?? false).toBe(false);
-  });
-
-  it("allows task dispatch when agent uses pi-oven namespace", async () => {
+  it("allows task dispatch when agent uses the pi-oven namespace", async () => {
     const h = createGateHandler(await deps(dir));
     const r = await h(taskEvent("pi-oven:executor"));
     expect(r?.block ?? false).toBe(false);
   });
 
-  it("blocks task dispatch when agent uses foreign namespace", async () => {
+  it("blocks task dispatch when agent uses a foreign namespace", async () => {
     const h = createGateHandler(await deps(dir));
     const r = await h(taskEvent("oh-my-claudecode:executor"));
     expect(r?.block).toBe(true);
-    expect(r?.reason).toMatch(/unsupported namespaced agent|built-in names|pi-oven/i);
+    expect(r?.reason).toMatch(/pi-oven:executor|foreign namespace|exact registered name/i);
   });
 });
 
@@ -461,32 +462,42 @@ describe("gateHandler — pure helpers", () => {
     expect(getTargetPath(undefined as any)).toBe(null);
   });
 
-  it("getSkillReadName: identifies skill name from skill:// URI only on 'read'", () => {
-    // valid skill read
-    expect(getSkillReadName({ toolName: "read", input: { path: "skill://autonomous-loop" } } as any)).toBe("autonomous-loop");
-    // valid skill read with sub-path
-    expect(getSkillReadName({ toolName: "read", input: { path: "skill://autonomous-loop/SKILL.md" } } as any)).toBe("autonomous-loop");
-    // non-skill path
+  it("getSkillReadName: identifies only namespaced pi-oven skill:// URIs on read", () => {
+    expect(
+      getSkillReadName({
+        toolName: "read",
+        input: { path: "skill://pi-oven:autonomous-loop" },
+      } as any)
+    ).toBe("autonomous-loop");
+    expect(
+      getSkillReadName({
+        toolName: "read",
+        input: { path: "skill://pi-oven:autonomous-loop/references/x.md" },
+      } as any)
+    ).toBe("autonomous-loop");
+    expect(
+      getSkillReadName({
+        toolName: "read",
+        input: { path: "skill://pi-oven:autonomous-loop:1-5" },
+      } as any)
+    ).toBe("autonomous-loop");
+    expect(
+      getSkillReadName({ toolName: "read", input: { path: "skill://autonomous-loop" } } as any)
+    ).toBe(null);
+    expect(
+      getSkillReadName({
+        toolName: "read",
+        input: { path: "skill://superpowers:autonomous-loop" },
+      } as any)
+    ).toBe(null);
     expect(getSkillReadName({ toolName: "read", input: { path: "/etc/passwd" } } as any)).toBe(null);
-    // non-read tool
-    expect(getSkillReadName({ toolName: "write", input: { path: "skill://autonomous-loop" } } as any)).toBe(null);
-    // malformed URI
+    expect(
+      getSkillReadName({
+        toolName: "write",
+        input: { path: "skill://pi-oven:autonomous-loop" },
+      } as any)
+    ).toBe(null);
     expect(getSkillReadName({ toolName: "read", input: { path: "skill://" } } as any)).toBe(null);
-  });
-
-  it("getSkillReadName: maps all 4 namespaced URI forms to the bare skill key", () => {
-    // form 1: namespaced — skill://pi-oven:brainstorming
-    expect(getSkillReadName({ toolName: "read", input: { path: "skill://pi-oven:brainstorming" } } as any)).toBe("brainstorming");
-    // form 2: legacy bare — skill://brainstorming (must still work)
-    expect(getSkillReadName({ toolName: "read", input: { path: "skill://brainstorming" } } as any)).toBe("brainstorming");
-    // form 3: namespaced with sub-path — skill://pi-oven:brainstorming/references/x.md
-    expect(getSkillReadName({ toolName: "read", input: { path: "skill://pi-oven:brainstorming/references/x.md" } } as any)).toBe("brainstorming");
-    // form 4: namespaced with line-range suffix — skill://pi-oven:brainstorming:1-5
-    expect(getSkillReadName({ toolName: "read", input: { path: "skill://pi-oven:brainstorming:1-5" } } as any)).toBe("brainstorming");
-    // non-read tool → always null
-    expect(getSkillReadName({ toolName: "write", input: { path: "skill://pi-oven:brainstorming" } } as any)).toBe(null);
-    // non-skill path → null
-    expect(getSkillReadName({ toolName: "read", input: { path: "/etc/passwd" } } as any)).toBe(null);
   });
 
   it("toGateFsmView: maps state views correctly", () => {

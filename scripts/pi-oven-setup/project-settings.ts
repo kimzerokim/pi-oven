@@ -131,6 +131,45 @@ export async function readProjectSettingsSoft(opts?: {
   const result = await readProjectSettingsStrict(opts);
   return result.ok ? result.data : {};
 }
+export type ProjectSettingsDisplayState =
+  | { state: "absent"; file: string }
+  | { state: "present"; file: string; data: Record<string, unknown> }
+  | { state: "unknown"; file: string; error: string };
+
+/**
+ * DISPLAY-oriented read of `<cwd>/.omp/settings.json` that preserves the
+ * distinction between an ABSENT file and a PRESENT-but-unreadable/corrupt one.
+ * Status / truth-surface paths use this to avoid calling a broken file
+ * "missing".
+ */
+export async function readProjectSettingsDisplayState(opts?: {
+  cwd?: string;
+}): Promise<ProjectSettingsDisplayState> {
+  const cwd = opts?.cwd ?? process.cwd();
+  const file = projectSettingsPath(cwd);
+
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf-8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === "ENOENT") {
+      return { state: "absent", file };
+    }
+    return { state: "unknown", file, error: `unreadable file: ${file}` };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { state: "unknown", file, error: `present but unparsable JSON: ${file}` };
+  }
+  if (!isPlainObject(parsed)) {
+    return { state: "unknown", file, error: `present but not a plain object: ${file}` };
+  }
+  return { state: "present", file, data: parsed };
+}
 
 // ---------------------------------------------------------------------------
 // Atomic write

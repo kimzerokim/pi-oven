@@ -77,12 +77,18 @@ export async function resolveDefaultAgentsDir(
   _scriptDir: string,
   cacheRoot?: string
 ): Promise<string> {
-  // Global-only: resolve from cache first. Project-local lookup is unsupported.
+  const scriptRelativeAgentsDir = path.resolve(_scriptDir, "..", "agents");
+  const scriptRelativeEntries = await fs.readdir(scriptRelativeAgentsDir).catch(() => [] as string[]);
+  if (scriptRelativeEntries.some((entry) => entry.startsWith("pi-oven-") && entry.endsWith(".md"))) {
+    return scriptRelativeAgentsDir;
+  }
+
   const cache = await resolveCacheAgentsDir(cacheRoot);
   if (cache) return cache;
-  // Fallback to relative path ONLY for local development / testing scenarios
-  // where the plugin is run directly from its source tree.
-  return path.resolve(_scriptDir, "..", "agents");
+
+  // Last resort for local development / testing scenarios where the sibling
+  // directory exists but has not been populated yet.
+  return scriptRelativeAgentsDir;
 }
 
 /**

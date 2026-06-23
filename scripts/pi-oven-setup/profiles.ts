@@ -43,6 +43,55 @@ export interface ModelEntry {
 }
 
 export type ProfileMap = Record<Role, ModelEntry>;
+const EXECUTOR_DEBUGGER_TOOLS = [
+  "read",
+  "search",
+  "find",
+  "write",
+  "edit",
+  "lsp",
+  "ast_grep",
+  "debug",
+  "eval",
+  "bash",
+] as const;
+
+const TEST_ENGINEER_TOOLS = [...EXECUTOR_DEBUGGER_TOOLS, "browser"] as const;
+
+const DESIGNER_TOOLS = [
+  "read",
+  "search",
+  "find",
+  "write",
+  "edit",
+  "bash",
+  "browser",
+  "inspect_image",
+  "task",
+  "web_search",
+] as const;
+
+const CODE_SIMPLIFIER_TOOLS = [
+  "read",
+  "search",
+  "find",
+  "write",
+  "edit",
+  "lsp",
+  "ast_grep",
+  "eval",
+  "bash",
+] as const;
+
+const QA_TESTER_TOOLS = [
+  "read",
+  "search",
+  "find",
+  "bash",
+  "browser",
+  "inspect_image",
+  "task",
+] as const;
 
 /**
  * Profile A — Release default.
@@ -62,7 +111,7 @@ export const PROFILE_A: ProfileMap = {
     primary: "openai-codex/gpt-5.4",
     registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...EXECUTOR_DEBUGGER_TOOLS],
     blocked_tools: [],
   },
   explorer: {
@@ -104,14 +153,14 @@ export const PROFILE_A: ProfileMap = {
     primary: "openai-codex/gpt-5.4",
     registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...EXECUTOR_DEBUGGER_TOOLS],
     blocked_tools: [],
   },
   "test-engineer": {
     primary: "openai-codex/gpt-5.4",
     registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...TEST_ENGINEER_TOOLS],
     blocked_tools: [],
   },
   "security-reviewer": {
@@ -132,21 +181,21 @@ export const PROFILE_A: ProfileMap = {
     primary: "opencode-zen/glm-5.1",
     registry_alternate: "opencode-zen/minimax-m2.5",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...DESIGNER_TOOLS],
     blocked_tools: [],
   },
   "code-simplifier": {
     primary: "opencode-zen/glm-5.1",
     registry_alternate: "opencode-zen/minimax-m2.5",
     thinkingLevel: "xhigh",
-    tools: ["*"],
+    tools: [...CODE_SIMPLIFIER_TOOLS],
     blocked_tools: [],
   },
   "qa-tester": {
     primary: "openai-codex/gpt-5.4-mini",
     registry_alternate: "anthropic/claude-sonnet-4-6",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...QA_TESTER_TOOLS],
     blocked_tools: [],
   },
   "git-master": {
@@ -308,7 +357,7 @@ export const PROFILE_B: ProfileMap = {
     primary: "openai-codex/gpt-5.5",
     registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...EXECUTOR_DEBUGGER_TOOLS],
     blocked_tools: [],
   },
   explorer: {
@@ -350,14 +399,14 @@ export const PROFILE_B: ProfileMap = {
     primary: "openai-codex/gpt-5.5",
     registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "xhigh",
-    tools: ["*"],
+    tools: [...EXECUTOR_DEBUGGER_TOOLS],
     blocked_tools: [],
   },
   "test-engineer": {
     primary: "openai-codex/gpt-5.5",
     registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...TEST_ENGINEER_TOOLS],
     blocked_tools: [],
   },
   "security-reviewer": {
@@ -378,14 +427,14 @@ export const PROFILE_B: ProfileMap = {
     primary: "openai-codex/gpt-5.4",
     registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...DESIGNER_TOOLS],
     blocked_tools: [],
   },
   "code-simplifier": {
     primary: "openai-codex/gpt-5.5",
     registry_alternate: "opencode-zen/gpt-5.5",
     thinkingLevel: "xhigh",
-    tools: ["*"],
+    tools: [...CODE_SIMPLIFIER_TOOLS],
     blocked_tools: [],
   },
   "qa-tester": {
@@ -393,7 +442,7 @@ export const PROFILE_B: ProfileMap = {
     primary: "openai-codex/gpt-5.4",
     registry_alternate: "opencode-zen/gpt-5.4",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...QA_TESTER_TOOLS],
     blocked_tools: [],
   },
   "git-master": {
@@ -493,7 +542,7 @@ export const PROFILE_C: ProfileMap = {
     primary: "anthropic/claude-opus-4-8",
     registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...EXECUTOR_DEBUGGER_TOOLS],
     blocked_tools: [],
   },
   explorer: {
@@ -535,14 +584,14 @@ export const PROFILE_C: ProfileMap = {
     primary: "anthropic/claude-opus-4-8",
     registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...EXECUTOR_DEBUGGER_TOOLS],
     blocked_tools: [],
   },
   "test-engineer": {
     primary: "anthropic/claude-opus-4-8",
     registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...TEST_ENGINEER_TOOLS],
     blocked_tools: [],
   },
   "security-reviewer": {
@@ -563,21 +612,21 @@ export const PROFILE_C: ProfileMap = {
     primary: "anthropic/claude-opus-4-8",
     registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...DESIGNER_TOOLS],
     blocked_tools: [],
   },
   "code-simplifier": {
     primary: "anthropic/claude-opus-4-8",
     registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "xhigh",
-    tools: ["*"],
+    tools: [...CODE_SIMPLIFIER_TOOLS],
     blocked_tools: [],
   },
   "qa-tester": {
     primary: "anthropic/claude-opus-4-8",
     registry_alternate: "opencode-zen/claude-opus-4-8",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...QA_TESTER_TOOLS],
     blocked_tools: [],
   },
   "git-master": {
@@ -674,7 +723,7 @@ export const PROFILE_D: ProfileMap = {
     primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/glm-5.1",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...EXECUTOR_DEBUGGER_TOOLS],
     blocked_tools: [],
   },
   explorer: {
@@ -716,14 +765,14 @@ export const PROFILE_D: ProfileMap = {
     primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/glm-5.1",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...EXECUTOR_DEBUGGER_TOOLS],
     blocked_tools: [],
   },
   "test-engineer": {
     primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/glm-5.1",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...TEST_ENGINEER_TOOLS],
     blocked_tools: [],
   },
   "security-reviewer": {
@@ -744,21 +793,21 @@ export const PROFILE_D: ProfileMap = {
     primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/glm-5.1",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...DESIGNER_TOOLS],
     blocked_tools: [],
   },
   "code-simplifier": {
     primary: "opencode-zen/kimi-k2.6",
     registry_alternate: "opencode-zen/glm-5.1",
     thinkingLevel: "xhigh",
-    tools: ["*"],
+    tools: [...CODE_SIMPLIFIER_TOOLS],
     blocked_tools: [],
   },
   "qa-tester": {
     primary: "opencode-zen/gemini-3-flash",
     registry_alternate: "opencode-zen/minimax-m2.5",
     thinkingLevel: "high",
-    tools: ["*"],
+    tools: [...QA_TESTER_TOOLS],
     blocked_tools: [],
   },
   "git-master": {

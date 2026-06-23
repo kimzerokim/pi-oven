@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>사전결정 워크시트 — Standalone Runtime Reliability v1</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #f9fafb;
+    --panel-strong: #f3f4f6;
+    --text: #111827;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --line-strong: #d1d5db;
+    --blue: #2563eb;
+    --blue-soft: #eff6ff;
+    --green: #059669;
+    --green-soft: #ecfdf5;
+    --amber: #d97706;
+    --amber-soft: #fffbeb;
+    --red: #dc2626;
+    --red-soft: #fef2f2;
+    --shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+    font-size: 15px;
+    line-height: 1.68;
+    color: var(--text);
+    background: var(--bg);
+  }
+  code, pre, .mono {
+    font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .page-wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 0 32px 88px;
+  }
+  .page-header {
+    padding: 40px 0 28px;
+    border-bottom: 2px solid var(--line);
+    margin-bottom: 28px;
+  }
+  h1 {
+    margin: 0 0 6px;
+    font-size: 30px;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+  .subtitle {
+    margin: 0;
+    color: var(--muted);
+    font-size: 15px;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .meta-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .toc-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: rgba(255,255,255,0.94);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+    margin: 0 -32px 30px;
+  }
+  .toc-inner {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 10px 32px;
+    display: flex;
+    gap: 8px 18px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .toc-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9ca3af;
+  }
+  .toc-link {
+    font-size: 12px;
+    color: #4b5563;
+    white-space: nowrap;
+  }
+  section { margin-bottom: 44px; }
+  h2 {
+    margin: 0 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--line);
+    font-size: 21px;
+    line-height: 1.3;
+  }
+  h3 {
+    margin: 0 0 10px;
+    font-size: 17px;
+    line-height: 1.35;
+  }
+  p { margin: 0 0 10px; }
+  ul, ol { margin: 0 0 12px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .stat-card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    padding: 14px 16px;
+  }
+  .stat-card.amber { background: var(--amber-soft); border-color: #fcd34d; }
+  .stat-card.green { background: var(--green-soft); border-color: #86efac; }
+  .stat-card.red { background: var(--red-soft); border-color: #fca5a5; }
+  .stat-number {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .stat-label {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .callout {
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .callout strong { color: var(--text); }
+  .callout.info { background: var(--blue-soft); border-color: #bfdbfe; }
+  .callout.warn { background: var(--amber-soft); border-color: #fcd34d; }
+  .callout.danger { background: var(--red-soft); border-color: #fca5a5; }
+  .callout.success { background: var(--green-soft); border-color: #86efac; }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .mini-card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+  }
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead tr { background: var(--panel-strong); }
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) { background: #fcfcfd; }
+  .decision-card {
+    border-left: 4px solid var(--amber);
+    padding-left: 20px;
+    margin-bottom: 34px;
+  }
+  .decision-shell {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    padding: 18px 18px 16px;
+    box-shadow: var(--shadow);
+  }
+  .decision-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .pill.id { background: var(--amber-soft); color: var(--amber); border: 1px solid #fcd34d; }
+  .pill.rec { background: var(--green-soft); color: var(--green); border: 1px solid #86efac; }
+  .pill.pending { background: var(--blue-soft); color: var(--blue); border: 1px solid #bfdbfe; }
+  .why, .evidence-list {
+    color: #374151;
+    font-size: 14px;
+  }
+  .evidence-list { margin-top: 10px; }
+  .option-grid {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .option-card {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 13px 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    cursor: pointer;
+    background: #fff;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  }
+  .option-card:hover {
+    border-color: var(--line-strong);
+    background: #fbfcff;
+  }
+  .option-card.selected {
+    border-color: #93c5fd;
+    background: var(--blue-soft);
+    box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.08);
+  }
+  .option-card input {
+    margin-top: 3px;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--blue);
+    flex: none;
+  }
+  .option-body { flex: 1; }
+  .option-title {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .option-desc {
+    color: #4b5563;
+    font-size: 13px;
+  }
+  .option-tradeoff {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  textarea.note {
+    width: 100%;
+    min-height: 76px;
+    margin-top: 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font: inherit;
+    color: var(--text);
+    resize: vertical;
+    background: #fcfcfd;
+  }
+  textarea.note::placeholder { color: #9ca3af; }
+  .controls {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    background: linear-gradient(to top, rgba(255,255,255,0.98) 72%, rgba(255,255,255,0));
+    padding: 20px 0 8px;
+    margin-top: 26px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  button {
+    border: 1px solid var(--blue);
+    background: var(--blue);
+    color: #fff;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button.secondary {
+    background: #fff;
+    color: var(--blue);
+  }
+  button:hover { filter: brightness(1.03); }
+  .hint {
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  #output {
+    display: none;
+    width: 100%;
+    min-height: 290px;
+    margin-top: 14px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fbfcfd;
+    color: var(--text);
+    white-space: pre;
+    line-height: 1.55;
+  }
+  footer {
+    margin-top: 48px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+  @media (max-width: 720px) {
+    .page-wrap { padding: 0 18px 72px; }
+    .toc-sticky { margin: 0 -18px 24px; }
+    .toc-inner { padding: 10px 18px; }
+    h1 { font-size: 24px; }
+  }
+  @media print {
+    .toc-sticky, .controls { display: none; }
+    .page-wrap { padding: 0 12px 24px; }
+    .mini-card, .decision-shell { box-shadow: none; }
+    #output { display: block !important; }
+  }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <header class="page-header" id="top">
+    <p class="mono">Artifact · <code>docs/pre-decisions/2026-06-18-standalone-runtime-reliability-v1.html</code></p>
+    <h1>사전결정 워크시트 — Standalone Runtime Reliability v1</h1>
+    <p class="subtitle">설문/근거 정리 다음 단계에서, 사용자 결정이 spec freeze보다 먼저 일어나도록 만든 저장소 추적형 HTML 워크시트입니다.</p>
+    <div class="meta-row">
+      <span class="meta-tag"><strong>상태</strong> 보관됨 · decision capture complete</span>
+      <span class="meta-tag"><strong>순서</strong> survey → pre-decision HTML → user decision → spec freeze → plan</span>
+      <span class="meta-tag"><strong>언어</strong> resolved pi-oven 기본 언어 = <code>ko</code></span>
+      <span class="meta-tag"><strong>보관</strong> repo-tracked review artifact</span>
+    </div>
+    <div class="callout success">
+      <strong>보관 메모.</strong> 이 워크시트 단계는 종료되었습니다. 승인 결과는 <code>docs/decisions/2026-06-18-standalone-runtime-reliability.html</code>로 승격되었고, frozen spec는 <code>docs/specs/2026-06-18-standalone-runtime-reliability.md</code>, 첫 유효 구현 계획은 <code>docs/plans/2026-06-18-standalone-runtime-reliability-plan.md</code>에 기록되었습니다.
+    </div>
+  </header>
+
+  <div class="toc-sticky">
+    <div class="toc-inner">
+      <span class="toc-label">이동</span>
+      <a class="toc-link" href="#summary">§0 개요</a>
+      <a class="toc-link" href="#evidence">§1 근거</a>
+      <a class="toc-link" href="#decisions">§2 결정 카드</a>
+      <a class="toc-link" href="#next">§3 다음 단계</a>
+      <a class="toc-link" href="#reply">§4 회신 생성</a>
+    </div>
+  </div>
+
+  <section id="summary">
+    <h2>§0. 개요</h2>
+    <div class="stat-grid">
+      <div class="stat-card amber">
+        <div class="stat-number">6</div>
+        <div class="stat-label">이번 사이클에서 사용자 승인이 필요한 핵심 결정 수</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-number">6</div>
+        <div class="stat-label">이미 spec가 인용하는 조사 아티팩트 수</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-number">1*</div>
+        <div class="stat-label">현재 유효한 구현 계획 수. 워크시트 작성 당시에는 0이었고, spec freeze 뒤 final plan이 생성됨</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">ko</div>
+        <div class="stat-label">현재 resolved pi-oven 기본 언어. 이번 워크시트도 같은 언어를 따름</div>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <strong>이번 문서의 역할.</strong> 이 HTML은 구현 계획이 아닙니다. 조사 결과를 바탕으로, 어떤 제품/워크플로우 결정을 확정해야 spec를 얼릴 수 있는지 빠르게 고르는 리뷰 입력물입니다.
+    </div>
+
+    <div class="callout success">
+      <strong>언어 규칙.</strong> 사전결정 HTML은 resolved pi-oven 기본 언어를 따릅니다. 현재 <code>~/.pi-oven/config.json</code>에 <code>"language": "ko"</code>가 있으므로, 이번 사이클 워크시트는 한국어가 기본입니다.
+    </div>
+
+    <div class="card-grid">
+      <div class="mini-card">
+        <h3>무엇을 지금 결정하나</h3>
+        <p>루트 소유권, 실패 가시화, 네임스페이스 엄격도, project-scope remediation, 문서-CLI 정합성, 완료 증거 기준.</p>
+      </div>
+      <div class="mini-card">
+        <h3>왜 지금 필요한가</h3>
+        <p>이 결정들이 바뀌면 plan의 작업 순서, acceptance, 테스트 토폴로지가 함께 바뀝니다.</p>
+      </div>
+      <div class="mini-card">
+        <h3>사용 방법</h3>
+        <p>각 카드에서 옵션을 고르고, 필요하면 메모를 남긴 뒤, 맨 아래 요약 생성 버튼으로 복사 가능한 결정문을 만드세요.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="evidence">
+    <h2>§1. 이번 결정이 기대는 근거</h2>
+    <div class="callout warn">
+      <strong>주의.</strong> 아래 내용은 이미 조사에서 확인된 사실과 아직 사용자가 선택해야 하는 정책 결정을 분리해서 보여줍니다. 사실 확인과 정책 승인 단계를 섞지 않습니다.
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>근거 영역</th>
+            <th>현재 확인된 사실</th>
+            <th>왜 결정이 필요한가</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>설치 토폴로지</td>
+            <td>runtime keyword loader와 doctor 일부가 여전히 <code>process.cwd()</code>를 plugin-owned 파일 탐색 기준으로 사용합니다.</td>
+            <td>marketplace standalone 설치에서 <code>pluginRoot</code>와 <code>projectRoot</code>를 분리할지 먼저 정해야 합니다.</td>
+          </tr>
+          <tr>
+            <td>네임스페이스 계약</td>
+            <td>프롬프트/문서/런타임 가이드는 <code>skill://pi-oven:&lt;name&gt;</code>, <code>pi-oven:&lt;role&gt;</code>를 정식 경로로 밀고 있습니다.</td>
+            <td>bare form을 계속 허용할지, pi-oven gate 기준에서는 차단할지 사용자가 정해야 합니다.</td>
+          </tr>
+          <tr>
+            <td>설정 라우팅</td>
+            <td>setup writer 자체는 대체로 명시적이며 file-write 레이어 테스트도 있습니다.</td>
+            <td>문제는 writer 의도보다 installed behavior 증명 범위입니다.</td>
+          </tr>
+          <tr>
+            <td>문서 정합성</td>
+            <td>setup/doctor 설명 중 현재 CLI와 깔끔하게 맞지 않는 흐름이 남아 있습니다.</td>
+            <td>이번 사이클이 docs-tightening인지 CLI expansion인지 먼저 정해야 spec가 흔들리지 않습니다.</td>
+          </tr>
+          <tr>
+            <td>워크플로우 규율</td>
+            <td>조사 결과는 이미 “evidence first, decision review second”가 맞다고 가리킵니다.</td>
+            <td>plan을 spec freeze 전에 다시 만들지 않기 위한 저장소 규칙이 필요합니다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <strong>조사 아티팩트.</strong>
+      <ul class="evidence-list">
+        <li><code>agent://ProjectSurvey</code></li>
+        <li><code>agent://SkillLoadingSurvey</code></li>
+        <li><code>agent://ProfileRoutingSurvey</code></li>
+        <li><code>agent://StandaloneRiskSurvey</code></li>
+        <li><code>agent://GajaeSourceSurvey</code></li>
+        <li><code>agent://GajaeContextSurvey</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="decisions">
+    <h2>§2. 사용자 결정 카드</h2>
+    <div class="callout info">
+      <strong>입력 방법.</strong> 각 카드에는 현재 권장안이 미리 선택되어 있습니다. 동의하면 그대로 두고, 바꾸고 싶은 카드만 다른 옵션을 고르세요. 메모는 최종 요약에 함께 포함됩니다.
+    </div>
+
+    <div class="decision-card" id="d1" data-id="D1" data-title="pluginRoot / projectRoot 계약">
+      <div class="decision-shell">
+        <div class="decision-meta">
+          <span class="pill id">D1</span>
+          <span class="pill rec">권장안 있음</span>
+          <span class="pill pending">결정 필요</span>
+        </div>
+        <h3>루트 소유권을 어디까지 명시적으로 나눌까</h3>
+        <p class="why">Standalone reliability의 핵심은 plugin-owned 자산과 user project 자산이 서로를 가장하지 않게 만드는 것입니다.</p>
+        <div class="callout warn">
+          <strong>핵심 근거.</strong> 조사 결과, 일부 runtime/doctor 경로는 아직 <code>process.cwd()</code>를 plugin 파일 탐색 기준으로 사용합니다. 이 상태에선 깨끗한 사용자 프로젝트가 plugin 저장소처럼 취급될 수 있습니다.
+        </div>
+        <div class="option-grid">
+          <label class="option-card selected">
+            <input type="radio" name="d1" value="A" checked data-summary="A · pluginRoot / projectRoot / home 경계를 명시적으로 분리">
+            <span class="option-body">
+              <span class="option-title">A · pluginRoot / projectRoot / home 경계를 명시적으로 분리 <span class="pill rec">권장</span></span>
+              <span class="option-desc">plugin-owned 자산은 installed plugin root, project state는 project root, machine-global config는 home/config layer에서만 읽습니다.</span>
+              <span class="option-tradeoff">trade-off · runtime/doctor 경로 정리가 필요하지만 standalone 계약이 가장 분명합니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d1" value="B" data-summary="B · 현재처럼 cwd/project-root 기반 해석을 계속 허용">
+            <span class="option-body">
+              <span class="option-title">B · 현재처럼 cwd/project-root 기반 해석을 계속 허용</span>
+              <span class="option-desc">지금 동작하는 경로를 최대한 유지합니다.</span>
+              <span class="option-tradeoff">trade-off · 즉시 변경은 적지만 standalone 신뢰성 주장은 가장 약합니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d1" value="C" data-summary="C · plugin 자산을 더 많이 번들링해서 경로 의존을 줄임">
+            <span class="option-body">
+              <span class="option-title">C · plugin 자산을 더 많이 번들링해서 경로 의존을 줄임</span>
+              <span class="option-desc">일부 파일을 런타임 패키지 쪽으로 더 밀어넣어 경로 탐색 자체를 줄입니다.</span>
+              <span class="option-tradeoff">trade-off · 경로 모호성은 줄지만 패키징 복잡도가 늘어납니다.</span>
+            </span>
+          </label>
+        </div>
+        <textarea class="note" placeholder="메모 (예: doctor까지 반드시 같은 root 계약을 따르게)" aria-label="D1 메모"></textarea>
+      </div>
+    </div>
+
+    <div class="decision-card" id="d2" data-id="D2" data-title="실패 가시화 수준">
+      <div class="decision-shell">
+        <div class="decision-meta">
+          <span class="pill id">D2</span>
+          <span class="pill rec">권장안 있음</span>
+          <span class="pill pending">결정 필요</span>
+        </div>
+        <h3>Standalone 실패를 사용자에게 얼마나 드러낼까</h3>
+        <p class="why">keyword loading이나 plugin integrity 문제를 debug log에만 남기면 설치 신뢰성 문제를 사용자가 늦게 발견합니다.</p>
+        <div class="callout info">
+          <strong>핵심 근거.</strong> 현재 위험은 writer intent보다 end-to-end installed behavior에서 드러납니다. 따라서 실패 표면을 제품 신호로 올릴지 결정이 필요합니다.
+        </div>
+        <div class="option-grid">
+          <label class="option-card selected">
+            <input type="radio" name="d2" value="A" checked data-summary="A · visible warning + doctor/status 동일 신호 제공">
+            <span class="option-body">
+              <span class="option-title">A · visible warning + doctor/status 동일 신호 제공 <span class="pill rec">권장</span></span>
+              <span class="option-desc">세션을 바로 죽이지는 않되, 사용자가 놓치지 않도록 경고와 remediation 경로를 함께 노출합니다.</span>
+              <span class="option-tradeoff">trade-off · 노이즈는 약간 늘지만 운영자 관점에서 가장 실용적입니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d2" value="B" data-summary="B · debug-only 로깅 유지">
+            <span class="option-body">
+              <span class="option-title">B · debug-only 로깅 유지</span>
+              <span class="option-desc">지금처럼 조용히 흘려보내고 필요할 때만 로그를 봅니다.</span>
+              <span class="option-tradeoff">trade-off · 제품 신호가 약해서 standalone 계약 위반을 늦게 찾습니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d2" value="C" data-summary="C · keyword index / plugin root 문제는 세션 hard-fail">
+            <span class="option-body">
+              <span class="option-title">C · keyword index / plugin root 문제는 세션 hard-fail</span>
+              <span class="option-desc">핵심 무결성 문제는 즉시 실패로 처리합니다.</span>
+              <span class="option-tradeoff">trade-off · 계약은 가장 엄격하지만 사용성 충격이 큽니다.</span>
+            </span>
+          </label>
+        </div>
+        <textarea class="note" placeholder="메모 (예: 어떤 실패까지 hard-fail인지 범위를 적기)" aria-label="D2 메모"></textarea>
+      </div>
+    </div>
+
+    <div class="decision-card" id="d3" data-id="D3" data-title="pi-oven 네임스페이스 엄격도">
+      <div class="decision-shell">
+        <div class="decision-meta">
+          <span class="pill id">D3</span>
+          <span class="pill rec">권장안 있음</span>
+          <span class="pill pending">결정 필요</span>
+        </div>
+        <h3>bare skill / bare role 허용을 계속 둘까</h3>
+        <p class="why">문서와 conduct는 이미 namespaced form을 정식 경로로 취급합니다. 남은 질문은 gate와 dispatch도 같은 기준으로 맞출지입니다.</p>
+        <div class="callout warn">
+          <strong>핵심 근거.</strong> 이름이 느슨하면 sibling surface와 충돌할 수 있고, auditability가 약해집니다. 반대로 전체 플랫폼 bare form을 전부 금지하는 건 범위가 큽니다.
+        </div>
+        <div class="option-grid">
+          <label class="option-card selected">
+            <input type="radio" name="d3" value="A" checked data-summary="A · pi-oven gate 기준에서는 namespaced form만 정식 경로로 강제">
+            <span class="option-body">
+              <span class="option-title">A · pi-oven gate 기준에서는 namespaced form만 정식 경로로 강제 <span class="pill rec">권장</span></span>
+              <span class="option-desc">pi-oven이 요구하는 skill read와 role dispatch는 <code>skill://pi-oven:&lt;name&gt;</code>, <code>pi-oven:&lt;role&gt;</code>로 고정합니다.</span>
+              <span class="option-tradeoff">trade-off · stricter 하지만 현재 제품 정체성과 가장 잘 맞습니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d3" value="B" data-summary="B · bare form과 namespaced form을 둘 다 허용">
+            <span class="option-body">
+              <span class="option-title">B · bare form과 namespaced form을 둘 다 허용</span>
+              <span class="option-desc">사용 편의성을 위해 기존 느슨한 허용을 유지합니다.</span>
+              <span class="option-tradeoff">trade-off · auditability와 wrong-surface 위험이 계속 남습니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d3" value="C" data-summary="C · 플랫폼 전체에서 bare skill / bare agent를 모두 금지">
+            <span class="option-body">
+              <span class="option-title">C · 플랫폼 전체에서 bare skill / bare agent를 모두 금지</span>
+              <span class="option-desc">pi-oven 범위를 넘어, 모든 bare form을 일괄 차단합니다.</span>
+              <span class="option-tradeoff">trade-off · 가장 엄격하지만 이번 사이클 범위를 쉽게 넘깁니다.</span>
+            </span>
+          </label>
+        </div>
+        <textarea class="note" placeholder="메모 (예: eval, lint, docs도 같은 규칙으로 맞추기)" aria-label="D3 메모"></textarea>
+      </div>
+    </div>
+
+    <div class="decision-card" id="d4" data-id="D4" data-title="project-scope remediation 방식">
+      <div class="decision-shell">
+        <div class="decision-meta">
+          <span class="pill id">D4</span>
+          <span class="pill rec">권장안 있음</span>
+          <span class="pill pending">결정 필요</span>
+        </div>
+        <h3>project-scope 설정만 했는데 global tool flag가 빠져 있으면 어떻게 할까</h3>
+        <p class="why">project scope를 순수하게 유지할지, 편의상 global을 몰래 건드릴지에 따라 setup/status/doctor 메시지가 완전히 달라집니다.</p>
+        <div class="callout info">
+          <strong>핵심 근거.</strong> 현재 전역 tool enablement는 global setup에서만 강제됩니다. project-scope-only 사용자는 라우팅은 맞아도 필요한 도구 플래그가 비어 있을 수 있습니다.</div>
+        <div class="option-grid">
+          <label class="option-card selected">
+            <input type="radio" name="d4" value="A" checked data-summary="A · project scope는 순수 유지, setup/status/doctor가 remediation만 명시">
+            <span class="option-body">
+              <span class="option-title">A · project scope는 순수 유지, setup/status/doctor가 remediation만 명시 <span class="pill rec">권장</span></span>
+              <span class="option-desc">project write 경계는 지키고, 필요한 global step을 명확히 안내합니다.</span>
+              <span class="option-tradeoff">trade-off · 사용자 한 단계가 늘지만 제품 경계가 정직합니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d4" value="B" data-summary="B · 필요한 global tool flag를 자동으로 함께 기록">
+            <span class="option-body">
+              <span class="option-title">B · 필요한 global tool flag를 자동으로 함께 기록</span>
+              <span class="option-desc">사용자는 한 번에 끝나지만 project scope 순수성이 깨집니다.</span>
+              <span class="option-tradeoff">trade-off · 편의성은 좋지만 문서 계약과 경계 모델이 흐려집니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d4" value="C" data-summary="C · 별도 처리 없이 후속 실패에 맡김">
+            <span class="option-body">
+              <span class="option-title">C · 별도 처리 없이 후속 실패에 맡김</span>
+              <span class="option-desc">지금처럼 later failure에서 사용자가 알아서 찾게 둡니다.</span>
+              <span class="option-tradeoff">trade-off · 작업량은 적지만 operator experience가 가장 나쁩니다.</span>
+            </span>
+          </label>
+        </div>
+        <textarea class="note" placeholder="메모 (예: 어떤 명령이 remediation를 보여줘야 하는지)" aria-label="D4 메모"></textarea>
+      </div>
+    </div>
+
+    <div class="decision-card" id="d5" data-id="D5" data-title="문서와 CLI 정합성 복구 방법">
+      <div class="decision-shell">
+        <div class="decision-meta">
+          <span class="pill id">D5</span>
+          <span class="pill rec">분기 결정</span>
+          <span class="pill pending">결정 필요</span>
+        </div>
+        <h3>setup/doctor 문서 드리프트를 docs로 맞출까, CLI를 넓힐까</h3>
+        <p class="why">이 결정이 이번 사이클의 구현 범위를 가장 크게 바꿉니다. 그래서 spec freeze 전에 반드시 골라야 합니다.</p>
+        <div class="callout danger">
+          <strong>핵심 근거.</strong> 조사 결과 일부 문서 흐름은 현재 CLI와 충돌합니다. 둘을 동시에 사실이라고 둘 수는 없습니다.</div>
+        <div class="option-grid">
+          <label class="option-card selected">
+            <input type="radio" name="d5" value="A" checked data-summary="A · docs-tightening: 문서를 현재 실제 CLI에 맞춤">
+            <span class="option-body">
+              <span class="option-title">A · docs-tightening: 문서를 현재 실제 CLI에 맞춤 <span class="pill rec">최소 변경 권장</span></span>
+              <span class="option-desc">지금 없는 조합이나 복구 경로는 문서에서 걷어내고, 현재 지원 동작만 남깁니다.</span>
+              <span class="option-tradeoff">trade-off · 코드 churn이 작고 정직하지만 CLI 사용성 개선은 다음 사이클로 미룹니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d5" value="B" data-summary="B · CLI expansion: 현재 문서가 말하는 흐름까지 CLI를 확장">
+            <span class="option-body">
+              <span class="option-title">B · CLI expansion: 현재 문서가 말하는 흐름까지 CLI를 확장</span>
+              <span class="option-desc">문서가 약속한 조합과 진단 경로를 제품이 실제로 지원하게 만듭니다.</span>
+              <span class="option-tradeoff">trade-off · operator ergonomics는 좋아지지만 이번 사이클 scope가 커집니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d5" value="C" data-summary="C · 이번 사이클에서는 둘 다 손대지 않음">
+            <span class="option-body">
+              <span class="option-title">C · 이번 사이클에서는 둘 다 손대지 않음</span>
+              <span class="option-desc">드리프트를 인지한 채 보류합니다.</span>
+              <span class="option-tradeoff">trade-off · 현재 모순을 남겨 standalone 신뢰성 사이클 목적과 맞지 않습니다.</span>
+            </span>
+          </label>
+        </div>
+        <textarea class="note" placeholder="메모 (예: docs-tightening이면 어떤 문서를 우선 truth로 볼지)" aria-label="D5 메모"></textarea>
+      </div>
+    </div>
+
+    <div class="decision-card" id="d6" data-id="D6" data-title="완료 증거 기준">
+      <div class="decision-shell">
+        <div class="decision-meta">
+          <span class="pill id">D6</span>
+          <span class="pill rec">권장안 있음</span>
+          <span class="pill pending">결정 필요</span>
+        </div>
+        <h3>Standalone reliability를 완료라고 부르기 위한 최소 증거는 무엇인가</h3>
+        <p class="why">file-write 테스트만으로는 설치 토폴로지 신뢰성을 증명하지 못합니다. 완료 기준을 먼저 고정해야 plan이 얇아지지 않습니다.</p>
+        <div class="callout success">
+          <strong>핵심 근거.</strong> 조사 결과 가장 약한 부분은 installed-topology end-to-end proof입니다. 즉, repo-root 단위테스트보다 실제 설치 구조 검증이 더 중요합니다.
+        </div>
+        <div class="option-grid">
+          <label class="option-card selected">
+            <input type="radio" name="d6" value="A" checked data-summary="A · installed-topology 테스트 + doctor/status 증거를 최소 기준으로 채택">
+            <span class="option-body">
+              <span class="option-title">A · installed-topology 테스트 + doctor/status 증거를 최소 기준으로 채택 <span class="pill rec">권장</span></span>
+              <span class="option-desc">pluginRoot/projectRoot 분리, keyword loading, pi-oven dispatch, doctor/status truthfulness를 설치 토폴로지에서 증명합니다.</span>
+              <span class="option-tradeoff">trade-off · 가장 현실적인 완료 기준이며 standalone 주장과 직접 연결됩니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d6" value="B" data-summary="B · repo-root 단위 테스트만으로 완료 판단">
+            <span class="option-body">
+              <span class="option-title">B · repo-root 단위 테스트만으로 완료 판단</span>
+              <span class="option-desc">현재 테스트 자산을 주로 활용합니다.</span>
+              <span class="option-tradeoff">trade-off · 빠르지만 standalone reliability 주장과 증거가 어긋납니다.</span>
+            </span>
+          </label>
+          <label class="option-card">
+            <input type="radio" name="d6" value="C" data-summary="C · A + sibling plugin matrix + release gate까지 포함한 강화 기준">
+            <span class="option-body">
+              <span class="option-title">C · A + sibling plugin matrix + release gate까지 포함한 강화 기준</span>
+              <span class="option-desc">이번에 더 강한 운영 증거까지 한 번에 잠급니다.</span>
+              <span class="option-tradeoff">trade-off · 증명력은 최강이지만 cycle이 커집니다.</span>
+            </span>
+          </label>
+        </div>
+        <textarea class="note" placeholder="메모 (예: Option C를 고르면 어떤 matrix까지 포함할지)" aria-label="D6 메모"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <section id="next">
+    <h2>§3. 결정 후 바로 이어지는 저장소 순서</h2>
+    <div class="callout">
+      <ol>
+        <li>이 워크시트에서 사용자 결정 수집</li>
+        <li>승인된 결정만 <code>docs/specs/2026-06-18-standalone-runtime-reliability.md</code>에 동결</li>
+        <li>spec 상태를 implementation-ready 또는 계속 decision-pending 중 하나로 명확히 표기</li>
+        <li>spec freeze가 끝난 뒤에만 새 plan 작성</li>
+      </ol>
+    </div>
+    <div class="callout warn">
+      <strong>중요.</strong> 이번 사이클에서는 plan을 다시 만들지 않습니다. 이 워크시트와 spec가 먼저이며, 그 전 단계에서 나온 plan은 현재 권한이 없습니다.
+    </div>
+  </section>
+
+  <section id="reply">
+    <h2>§4. 회신 생성</h2>
+    <p>아래 버튼은 선택한 옵션과 메모를 모아, 그대로 붙여넣을 수 있는 결정 요약문을 만듭니다.</p>
+    <div class="controls">
+      <button id="generate">결정 요약 생성</button>
+      <button id="copy" class="secondary">클립보드 복사</button>
+      <span class="hint">생성된 텍스트를 그대로 보내면 spec freeze 입력으로 사용할 수 있습니다.</span>
+    </div>
+    <textarea id="output" readonly aria-label="결정 요약 출력"></textarea>
+  </section>
+
+  <footer>
+    <p><strong>근거 출처.</strong> 이 워크시트는 <code>agent://ProjectSurvey</code>, <code>agent://SkillLoadingSurvey</code>, <code>agent://ProfileRoutingSurvey</code>, <code>agent://StandaloneRiskSurvey</code>, <code>agent://GajaeSourceSurvey</code>, <code>agent://GajaeContextSurvey</code>를 요약한 decision-first 리뷰 입력물입니다.</p>
+    <p><strong>워크플로우 규칙.</strong> repo 제품/워크플로우 결정을 위한 사전결정 HTML은 <code>docs/pre-decisions/YYYY-MM-DD-&lt;topic&gt;-vN.html</code>에 버전 관리하며, 임시 산출물이 아니라 저장소 추적 아티팩트로 남깁니다.</p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  function updateSelectionState() {
+    var groups = document.querySelectorAll('.option-card input[type="radio"]');
+    groups.forEach(function (input) {
+      var card = input.closest('.option-card');
+      if (!card) return;
+      card.classList.toggle('selected', input.checked);
+    });
+  }
+
+  function summarize() {
+    var cards = document.querySelectorAll('.decision-card');
+    var lines = [];
+    lines.push('Standalone Runtime Reliability — 사용자 결정 요약 (2026-06-18)');
+    lines.push('====================================================');
+    lines.push('워크플로우: survey -> pre-decision HTML -> user decision -> spec freeze -> plan');
+    lines.push('워크시트 언어: resolved pi-oven 기본 언어 = ko');
+    lines.push('');
+
+    cards.forEach(function (card) {
+      var id = card.dataset.id || '(ID 없음)';
+      var title = card.dataset.title || '(제목 없음)';
+      var checked = card.querySelector('input[type="radio"]:checked');
+      var choice = '(미선택)';
+      if (checked) {
+        choice = checked.dataset.summary || checked.value;
+      }
+      var noteEl = card.querySelector('textarea.note');
+      var note = noteEl ? noteEl.value.trim() : '';
+
+      lines.push('[' + id + '] ' + title);
+      lines.push('  선택: ' + choice);
+      if (note) {
+        lines.push('  메모: ' + note.replace(/\n+/g, ' / '));
+      }
+      lines.push('');
+    });
+
+    lines.push('다음 단계 요청: 위 선택만 spec에 동결하고, 그 뒤에만 plan을 작성해 주세요.');
+    return lines.join('\n');
+  }
+
+  var out = document.getElementById('output');
+  document.querySelectorAll('.option-card input[type="radio"]').forEach(function (input) {
+    input.addEventListener('change', updateSelectionState);
+  });
+  updateSelectionState();
+
+  document.getElementById('generate').addEventListener('click', function () {
+    out.value = summarize();
+    out.style.display = 'block';
+    out.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  document.getElementById('copy').addEventListener('click', function () {
+    if (!out.value) {
+      out.value = summarize();
+    }
+    out.style.display = 'block';
+    out.focus();
+    out.select();
+    var button = this;
+    function markCopied() {
+      button.textContent = '복사됨 ✓';
+      window.setTimeout(function () {
+        button.textContent = '클립보드 복사';
+      }, 1500);
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(out.value).then(markCopied, function () {
+          document.execCommand('copy');
+          markCopied();
+        });
+      } else {
+        document.execCommand('copy');
+        markCopied();
+      }
+    } catch (error) {
+      document.execCommand('copy');
+      markCopied();
+    }
+  });
+})();
+</script>
+</body>
+</html>

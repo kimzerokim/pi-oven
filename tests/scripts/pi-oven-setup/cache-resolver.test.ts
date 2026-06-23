@@ -112,6 +112,19 @@ describe("resolveDefaultAgentsDir (self-locate, cwd-independent)", () => {
     const result = await resolveDefaultAgentsDir(scriptDir, makeTempDir());
     expect(result).toBe(agentsDir);
   });
+  it("prefers the script-relative agents dir over a stale install cache when both exist", async () => {
+    const scriptDir = join(tempDir, "scripts");
+    const agentsDir = join(tempDir, "agents");
+    const cacheRoot = makeTempDir();
+    mkdirSync(scriptDir, { recursive: true });
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(join(agentsDir, "pi-oven-executor.md"), "# executor\n");
+    makeFakeCacheEntry(cacheRoot, "9.9.9", 1);
+
+    const result = await resolveDefaultAgentsDir(scriptDir, cacheRoot);
+    expect(result).toBe(agentsDir);
+    rmSync(cacheRoot, { recursive: true, force: true });
+  });
 
   it("falls back to the install cache when the script-relative agents dir is absent", async () => {
     const scriptDir = join(tempDir, "scripts"); // no sibling agents/ created

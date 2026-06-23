@@ -117,6 +117,7 @@ for (const file of files) {
     violations++;
   }
 
+  const role = file.replace(/^pi-oven-/, "").replace(/\.md$/, "");
   // Instructed-but-not-granted: every first-class tool named in the body must
   // be callable — i.e. in frontmatter tools: (or ["*"]), accounting for the
   // auto-injected irc, spawns→task, exec→eval/bash, minus blocked_tools.
@@ -140,7 +141,12 @@ for (const file of files) {
   // 1. tools: ["*"] and non-empty blocked_tools is a contradiction (block is ignored).
   const rawTools = extractStringList(frontmatter, "tools");
   const rawBlocked = extractStringList(frontmatter, "blocked_tools");
-  if (rawTools.includes("*") && rawBlocked.length > 0) {
+  if (rawTools.includes("*") && roleSet.has(role)) {
+    console.error(
+      `lint-agents: ERROR: ${file} uses \`tools: ["*"]\`, but shipped pi-oven agents must declare an explicit allowlist. Update profiles.ts and the agent frontmatter in lockstep.`
+    );
+    violations++;
+  } else if (rawTools.includes("*") && rawBlocked.length > 0) {
     console.error(
       `lint-agents: ERROR: ${file} contains \`tools: ["*"]\` AND non-empty \`blocked_tools: ${JSON.stringify(rawBlocked)}\`. ` +
         `The \`*\` grant ignores blocks, making the block list misleading. Remove the blocks or use an explicit allowlist.`
@@ -160,7 +166,6 @@ for (const file of files) {
 
   // SoT alignment: agent file model + thinkingLevel must match PROFILE_A.
   // profiles.ts is the source of truth; agent files are derived artifacts.
-  const role = file.replace(/^pi-oven-/, "").replace(/\.md$/, "");
   if (!roleSet.has(role)) continue;
 
   // Colon-name invariant: frontmatter `name` must equal "pi-oven:" + role.

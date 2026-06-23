@@ -15,15 +15,26 @@
  * Personal per-role override is the --override path (Task 2.1).
  */
 
+import path from "node:path";
 import { rewriteAllAgents } from "./agent-rewriter";
 import { runValidate } from "./validate";
-import { setModelRoles, setMemoryAndAsyncConfig, setRetryFallbackChains, setAgentModelOverrides, setToolEnablementConfig } from "./config-yml";
+import {
+  setModelRoles,
+  setMemoryAndAsyncConfig,
+  setRetryFallbackChains,
+  setAgentModelOverrides,
+  setToolEnablementConfig,
+} from "./config-yml";
 import {
   setProjectAgentModelOverrides,
   setProjectModelRoles,
   setProjectRetryFallbackChains,
   projectSettingsPath,
 } from "./project-settings";
+import {
+  collectStandaloneTruthSignals,
+  formatStandaloneTruthSignals,
+} from "./standalone-truth-surface";
 import {
   PROFILE_A,
   PROFILE_B,
@@ -95,6 +106,7 @@ export async function runApply(
   let memoryConfigLine = "";
   let toolsEnabledLine = "";
   let scopeLine = "";
+  let projectRemediationLine = "";
 
   const scope = opts.scope ?? "global";
 
@@ -141,7 +153,16 @@ export async function runApply(
         { cwd }
       );
       await setProjectRetryFallbackChains(fallbackChains, { cwd });
+      const standaloneSignals = await collectStandaloneTruthSignals({
+        pluginAssetPath: path.resolve(import.meta.dir, "..", ".."),
+        projectRoot: cwd,
+        spawnFn: opts.spawnFn,
+      });
       scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles + modelRoles + retry.fallbackChains; Profile B includes reasoning-effort suffixes)\n`;
+      projectRemediationLine =
+        "Project scope kept ~/.omp/agent/config.yml untouched.\n" +
+        formatStandaloneTruthSignals(standaloneSignals).join("\n") +
+        "\n";
     } else {
       // User setup (global): write the MAIN ORCHESTRATOR model pair (modelRoles
       // default + title) in ONE atomic whole-record merge-write. omp's schema
@@ -209,8 +230,25 @@ export async function runApply(
     output:
       `Profile ${opts.profile} active. ${summaryParts.join(", ")}.\n` +
       scopeLine +
+      projectRemediationLine +
       memoryConfigLine +
       toolsEnabledLine +
       `Setup complete.\n`,
+  };
+}
+
+export async function runRepairPrereqs(opts: {
+  spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
+} = {}): Promise<{ exitCode: number; output: string }> {
+  await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });
+  await setToolEnablementConfig({ spawnFn: opts.spawnFn });
+
+  return {
+    exitCode: 0,
+    output:
+      "Machine-global prerequisites repaired.\n" +
+      "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled\n" +
+      "✓ tools enabled: inspect_image, web_search, lsp, ast_grep, browser, debug\n" +
+      "Repair complete.\n",
   };
 }

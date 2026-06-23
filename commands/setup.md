@@ -1,7 +1,7 @@
 ---
 name: pi-oven-setup
 description: Configure pi-oven agent model routing — Profile A (release default), Profile B (openai-codex-only), Profile C (all-Anthropic), or Profile D (opencode-zen-only)
-argument-hint: "[--status | --reset [--full] | --import <file> | --apply --profile A|B|C|D] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate] [--suppress-sibling-skills | --no-suppress-sibling-skills]"
+argument-hint: "[--status | --reset [--full] | --repair-prereqs | --import <file> | --apply --profile A|B|C|D] [--validate smoke|full|none] [--override <role>=<model>] [--isolate | --no-isolate] [--suppress-sibling-skills | --no-suppress-sibling-skills]"
 ---
 
 # /pi-oven:setup
@@ -14,17 +14,43 @@ Never use another skill to proceed setup. Use only setup.md command to finish.
 
 ## Resolve the plugin script dir first
 
-pi-oven may be installed globally, so the script does NOT live under the user's project cwd. Before dispatching any `bun` command, resolve the plugin script dir once and reuse `$PI_OVEN_DIR` for every dispatch (dev cwd → `installed_plugins.json` `installPath` → cache glob):
+pi-oven may be installed globally, so the script does NOT live under the user's project cwd. Before dispatching any `bun` command, resolve the plugin script dir once and reuse `$PI_OVEN_DIR` for every dispatch (dev cwd → `installed_plugins.json` `installPath` → cache scan via `bun -e`):
 
 ```bash
 PI_OVEN_DIR="$PWD"
 if [ ! -f "$PI_OVEN_DIR/scripts/pi-oven-setup.ts" ]; then
-  PI_OVEN_DIR="$(jq -r '.plugins["pi-oven@kzk"][0].installPath // empty' "$HOME/.omp/plugins/installed_plugins.json" 2>/dev/null)"
-  [ -z "$PI_OVEN_DIR" ] && PI_OVEN_DIR="$(ls -d "$HOME"/.omp/plugins/cache/plugins/kzk___pi-oven___*/ 2>/dev/null | sort -V | tail -1)"
+  PI_OVEN_DIR="$(bun -e '
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const manifestPath = path.join(os.homedir(), ".omp/plugins/installed_plugins.json");
+const cacheRoot = path.join(os.homedir(), ".omp/plugins/cache/plugins");
+let resolved = "";
+
+try {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  resolved = manifest?.plugins?.["pi-oven@kzk"]?.[0]?.installPath ?? "";
+} catch {}
+
+if (!resolved) {
+  try {
+    const entries = fs
+      .readdirSync(cacheRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith("kzk___pi-oven___"))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    resolved = entries.length ? path.join(cacheRoot, entries[entries.length - 1]) : "";
+  } catch {}
+}
+
+process.stdout.write(resolved);
+')"
 fi
+[ -n "$PI_OVEN_DIR" ] || { echo "pi-oven install not found" >&2; exit 1; }
 ```
 
-Every dispatch below uses `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" <args>` — never a bare `bun scripts/pi-oven-setup.ts` (that breaks on global installs where cwd ≠ plugin dir).
+Every dispatch below uses `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" <args>` — never a cwd-relative `bun` call against `scripts/pi-oven-setup.ts` (that breaks on global installs where cwd ≠ plugin dir).
 
 ## What to do
 
@@ -32,6 +58,7 @@ Parse the user's intent from their initial request:
 
 - If they say "status" or "show config" → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --status` and relay the output.
 - If they say "reset" or "clear" → confirm with the user first, then run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset`. If they ask for a complete reset before uninstall (a clean "new user" state), add `--full` to also reset `modelRoles`, `disabledProviders`, and `setupVersion` to omp defaults.
+- If they say "repair prerequisites", "fix memory", or they only need the global mnemopi/LSP/tool prerequisites restored without touching routing → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --repair-prereqs`. This path is **global-only**; if they explicitly ask for project scope, explain that repair writes `~/.omp/agent/config.yml` only and cannot run under `--scope project`.
 - If they say "import" with a file path → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --import <file>`.
 - Otherwise (first-time setup or profile change) → walk through the apply flow below.
 
@@ -67,8 +94,8 @@ Map the choice to `<scope>`: Option 1 → `global` (today's behavior), Option 2 
 
 **What scope changes:**
 
-- **`global` (default)** — exactly today's behavior. Per-role overrides (profiles B/C/D) and `modelRoles`/`retry.fallbackChains` go to the user-global `~/.omp/agent/config.yml`; language + the setup-complete marker go to `~/.pi-oven/config.json`.
-- **`project`** — per-role overrides for **EVERY profile (A, B, C, and D — all 24 roles)**, plus `modelRoles` and `retry.fallbackChains`, are written to `<cwd>/.omp/settings.json` (omp reads this at project level and it wins per-role over global). Language + the setup-complete marker go to `<cwd>/.pi-oven/config.json`. Memory/async infra is global-only and is NOT written under project scope (configure it once via a global-scope run).
+- **`global` (default)** — exactly today's behavior. Per-role overrides (profiles B/C/D) and `modelRoles`/`retry.fallbackChains` go to the user-global `~/.omp/agent/config.yml`; language + the setup-complete marker go to `~/.pi-oven/config.json`. A global-scope run is also the only path that writes the machine-global tool flags plus the memory/async/LSP prerequisites.
+- **`project`** — per-role overrides for **EVERY profile (A, B, C, and D — all 24 roles)**, plus `modelRoles` and `retry.fallbackChains`, are written to `<cwd>/.omp/settings.json` (omp reads this at project level and it wins per-role over global). Language + the setup-complete marker go to `<cwd>/.pi-oven/config.json`. Memory/async/LSP infra, tool enablement, and sibling-skill suppression stay global-only and are NOT written under project scope.
 
 `.omp/settings.json` is **NOT auto-committed and NOT auto-gitignored**: commit it to share per-project routing with a team, or gitignore it for machine-local use. Tell the user both options. Launch omp from the **repo root** — project settings load from `<cwd>/.omp/` (no git-root ancestor walk).
 
@@ -225,9 +252,9 @@ bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile A --scope <global|proj
 
 Do not add `--validate=none` unless the user explicitly asked to skip validation.
 
-Under `--scope global` (default) the script writes model overrides to `~/.omp/agent/config.yml` (`task.agentModelOverrides`, keyed by colon name `pi-oven:<role>`) — user-global, machine-local, NOT committed. It also **force-enables the 6 omp tool flags** (`inspect_image.enabled`, `web_search.enabled`, `lsp.enabled`, `astGrep.enabled`, `browser.enabled`, `debug.enabled`) so the agent body mandates have teeth. These flags are re-enabled on every global-scope run with no opt-out — this is intentional so a user toggle cannot silently neuter a mandated tool. `--reset --full` leaves these flags alone (they are omp-global infra, not pi-oven routing). **Project-scope-only users** (those who never ran a global-scope setup) keep `inspect_image.enabled=false` — vision agents (multimodal-looker, qa-tester) are toothless for them; vision requires at least one global-scope setup run.
+Under `--scope global` (default) the script writes model overrides to `~/.omp/agent/config.yml` (`task.agentModelOverrides`, keyed by colon name `pi-oven:<role>`) — user-global, machine-local, NOT committed. It also **force-enables the 6 omp tool flags** (`inspect_image.enabled`, `web_search.enabled`, `lsp.enabled`, `astGrep.enabled`, `browser.enabled`, `debug.enabled`) so the agent body mandates have teeth. These flags are re-enabled on every global-scope run with no opt-out — this is intentional so a user toggle cannot silently neuter a mandated tool. `--reset --full` leaves these flags alone (they are omp-global infra, not pi-oven routing). Global scope is also where `/pi-oven:setup` writes the mnemopi + async + `task.enableLsp=true` prerequisites, and `/pi-oven:setup --repair-prereqs` is the narrow path that rewrites only those prerequisites plus the 6 tool flags without touching routing.
 
-Under `--scope project` it writes overrides to `<cwd>/.omp/settings.json` instead — and under project scope **every profile (A/B/C/D) writes all 24 per-role overrides** there (so a project can fully diverge from the committed Profile-A frontmatter), plus `modelRoles` and `retry.fallbackChains`. That project file is committable (share routing with a team) or gitignorable (machine-local). Project scope does NOT write the 6 tool flags — configure those once via a global-scope run. In both scopes the wizard MUST NOT modify `agents/pi-oven-*.md` files; those are committed PROFILE_A baseline artifacts and are read-only from the wizard's perspective.
+Under `--scope project` it writes overrides to `<cwd>/.omp/settings.json` instead — and under project scope **every profile (A/B/C/D) writes all 24 per-role overrides** there (so a project can fully diverge from the committed Profile-A frontmatter), plus `modelRoles` and `retry.fallbackChains`. That project file is committable (share routing with a team) or gitignorable (machine-local). Project scope does NOT write the 6 tool flags, memory/async/LSP prerequisites, or `skills.ignoredSkills`; the script now reports that separation explicitly (`Project scope kept ~/.omp/agent/config.yml untouched.` + `Run /pi-oven:setup --repair-prereqs on this machine…` + optional `--suppress-sibling-skills`). In both scopes the wizard MUST NOT modify `agents/pi-oven-*.md` files; those are committed PROFILE_A baseline artifacts and are read-only from the wizard's perspective.
 
 The script handles persist (config.yml write) and smoke validation in a single batch call. Do not invoke it more than once for the same flow.
 
@@ -282,12 +309,13 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 | `--validate=smoke` | (Default) Ping 7 MUST-tier roles after persist. |
 | `--validate=full` | Ping all 24 roles. |
 | `--validate=none` | Skip validation. |
-| `--status` | Show effective per-role models across project `.omp/settings.json`, global config.yml overrides, and agent frontmatter; project wins per role. |
+| `--status` | Show effective per-role models across project `.omp/settings.json`, global config.yml overrides, and agent frontmatter; project wins per role. Also appends the shared standalone truth surface: installed-topology evidence, project-scope remediation status, and sibling-skill suppression state. |
 | `--reset` | Clear pi-oven-managed routing overrides in the selected scope. Global scope removes `pi-oven:*` keys from config.yml `task.agentModelOverrides`; project scope removes project `.omp/settings.json` pi-oven routing. Does not touch agent files. |
 | `--reset --full` | Full reset for a clean uninstall: global scope also resets other pi-oven-managed keys (`modelRoles`, `disabledProviders`, `setupVersion`) to omp type-defaults; project scope also clears project `modelRoles` and `retry.fallbackChains`. Never touches omp-internal keys. No-op-safe when keys are absent. |
 | `--import <file>` | Import JSON config file (schema: §7.1). |
+| `--repair-prereqs` | GLOBAL-only repair path: write only `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true`, `task.enableLsp=true`, and the 6 gated tool flags in `~/.omp/agent/config.yml`. It does **not** write `modelRoles`, `task.agentModelOverrides`, `retry.fallbackChains`, project settings, or setup markers. Rejected under `--scope project`. |
 | `--language <ko\|en\|name>` | Persist the default response language. With `--scope global` (default) writes to `~/.pi-oven/config.json` (machine-global); with `--scope project` writes the per-project override `<cwd>/.pi-oven/config.json` (which takes precedence when present). Accepts `ko`/`en` or any plain language name (letters, spaces, `()-.`; ≤ 40 chars). Set in Step 0/0.5. |
-| `--scope global\|project` | WHERE this setup writes (default `global`). `global` = today's behavior: per-role overrides (B/C/D), `modelRoles`, `retry.fallbackChains` → `~/.omp/agent/config.yml`; language + setup-complete marker → `~/.pi-oven/config.json`. `project` = per-project routing: **all 24 per-role overrides for EVERY profile (incl. A)**, `modelRoles`, and `retry.fallbackChains` → `<cwd>/.omp/settings.json` (omp reads it at project level; wins per-role over global); language + marker → `<cwd>/.pi-oven/config.json`. The project file is committable (share with a team) or gitignorable (machine-local). Memory/async infra is global-only (not written under project scope). Set in Step 0.5; thread into `--language`/`--profile`/`--override`/`--reset`. Launch omp from the repo root. |
+| `--scope global\|project` | WHERE this setup writes (default `global`). `global` = today's behavior: per-role overrides (B/C/D), `modelRoles`, `retry.fallbackChains` → `~/.omp/agent/config.yml`; language + setup-complete marker → `~/.pi-oven/config.json`; machine-global tool flags + memory/async/`task.enableLsp` prerequisites are written here; sibling-skill suppression is also global-only. Use `--repair-prereqs` when you only need to restore those prerequisites without touching routing. `project` = per-project routing: **all 24 per-role overrides for EVERY profile (incl. A)**, `modelRoles`, and `retry.fallbackChains` → `<cwd>/.omp/settings.json` (omp reads it at project level; wins per-role over global); language + marker → `<cwd>/.pi-oven/config.json`. The project file is committable or gitignorable. Project scope does NOT write the tool flags, memory/async/`task.enableLsp` prerequisites, or `skills.ignoredSkills`. |
 | `--isolate` | Make omp IGNORE the `~/.claude` Claude-Code context layer (omc CLAUDE.md + pi-oven): writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (user-global, machine-local, preserves sibling providers) and purges any legacy `claude-plugins` entry. It does NOT disable `claude-plugins` — pi-oven's own `/pi-oven:*` commands load through that provider, so disabling it would remove them. omc/agentmemory marketplace plugin commands remain visible. pi-oven keeps loading and injects the repo-root `CLAUDE.md`. omp-only — never touches `~/.claude` on disk. Restart omp to apply. Combinable with `--profile`/`--apply` (runs after). |
 | `--no-isolate` | Undo `--isolate`: remove `claude` + any legacy `claude-plugins` from `disabledProviders` (preserves any other providers). |
 | `--suppress-sibling-skills` | Opt-in (GLOBAL-only): hide sibling marketplace plugin SKILLS from omp by writing `skills.ignoredSkills` globs (`superpowers:*`, `oh-my-claudecode:*`; SoT `PI_OVEN_SIBLING_SKILL_GLOBS`) to `~/.omp/agent/config.yml` (union-merge, preserves user-set globs). Complements `--isolate` (which hides the `~/.claude` CONTEXT layer; this hides sibling SKILLS so they can't shadow pi-oven's same-named skills). pi-oven's own `pi-oven:*` skills are unaffected. Rejected under `--scope project`. Restart omp to apply. Note: clearing later also removes identical user-set globs (no provenance tracking). |
@@ -304,7 +332,7 @@ Use the marketplace-qualified id `pi-oven@kzk` only for `omp plugin install` / `
 - Do NOT commit. The user reviews before any commit.
 - Do NOT use ad-hoc config commands directly — the script handles all persistence.
 - Do NOT pipe anything into the `pi-oven-setup.ts` script — it is batch-only and reads no stdin.
-- Always resolve `$PI_OVEN_DIR` (see "Resolve the plugin script dir first") and dispatch `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts"` — never a bare `bun scripts/pi-oven-setup.ts`.
+- Always resolve `$PI_OVEN_DIR` (see "Resolve the plugin script dir first") and dispatch `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts"` — never a cwd-relative `bun` call against `scripts/pi-oven-setup.ts`.
 
 ## Known limitations (surface if relevant)
 

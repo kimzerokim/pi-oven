@@ -782,7 +782,7 @@ describe("setModelRoles", () => {
 });
 
 // ---------------------------------------------------------------------------
-// readRetryFallbackChains (fail-soft)
+// readRetryFallbackChains (strict; write-path safety)
 // ---------------------------------------------------------------------------
 
 describe("readRetryFallbackChains", () => {
@@ -790,22 +790,31 @@ describe("readRetryFallbackChains", () => {
     const { fn } = makeSpawnFn([
       okGetFallbackChainsResult({ default: ["fallback-1"] }),
     ]);
-    const record = await readRetryFallbackChains({ spawnFn: fn });
-    expect(record.default).toEqual(["fallback-1"]);
+    const result = await readRetryFallbackChains({ spawnFn: fn });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.record.default).toEqual(["fallback-1"]);
+    }
   });
 
-  it("fail-soft returns {} on non-zero exit", async () => {
+  it("returns an error on non-zero exit", async () => {
     const { fn } = makeSpawnFn([{ exitCode: 1, stderr: Buffer.from("fail") }]);
-    const record = await readRetryFallbackChains({ spawnFn: fn });
-    expect(record).toEqual({});
+    const result = await readRetryFallbackChains({ spawnFn: fn });
+    expect(result).toEqual({
+      ok: false,
+      error: "omp config get exited 1",
+    });
   });
 
-  it("fail-soft returns {} on a non-record shape", async () => {
+  it("returns an error on a malformed payload", async () => {
     const { fn } = makeSpawnFn([
       { exitCode: 0, stdout: Buffer.from("not json"), stderr: Buffer.from("") },
     ]);
-    const record = await readRetryFallbackChains({ spawnFn: fn });
-    expect(record).toEqual({});
+    const result = await readRetryFallbackChains({ spawnFn: fn });
+    expect(result).toEqual({
+      ok: false,
+      error: "JSON.parse failed",
+    });
   });
 });
 
@@ -832,20 +841,26 @@ describe("setRetryFallbackChains", () => {
     ]);
   });
 
-  it("tolerates a read failure (fail-soft) and still writes the provided chains", async () => {
+  it("ABORTS on read failure — set NOT called", async () => {
     const { fn, calls } = makeSpawnFn([
       { exitCode: 1, stderr: Buffer.from("fail") },
-      okSetResult(),
     ]);
-    await setRetryFallbackChains({ default: ["x"] }, { spawnFn: fn });
-    expect(calls).toHaveLength(2);
-    expect(calls[1]).toEqual([
-      "omp",
-      "config",
-      "set",
-      "retry.fallbackChains",
-      JSON.stringify({ default: ["x"] }),
+
+    await expect(setRetryFallbackChains({ default: ["x"] }, { spawnFn: fn })).rejects.toThrow(
+      /readRetryFallbackChains failed/
+    );
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
+  });
+
+  it("ABORTS on corrupt get — set NOT called", async () => {
+    const { fn, calls } = makeSpawnFn([
+      { exitCode: 0, stdout: Buffer.from("not json{{{"), stderr: Buffer.from("") },
     ]);
+
+    await expect(setRetryFallbackChains({ default: ["x"] }, { spawnFn: fn })).rejects.toThrow(
+      /readRetryFallbackChains failed/
+    );
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
   });
 
   it("throws if set fails", async () => {

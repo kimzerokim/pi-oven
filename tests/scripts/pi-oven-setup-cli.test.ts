@@ -107,6 +107,29 @@ describe("pi-oven-setup CLI dispatcher", () => {
     expect(stdout).toContain("machine-global");
     expect(stdout).toContain("no agent file");
   });
+  it("--status prefers the running install tree over a stale HOME cache entry", async () => {
+    const homeDir = makeTempDir();
+    const staleAgentsDir = join(
+      homeDir,
+      ".omp",
+      "plugins",
+      "cache",
+      "plugins",
+      "kzk___pi-oven___9.9.9",
+      "agents"
+    );
+    mkdirSync(staleAgentsDir, { recursive: true });
+    writeFileSync(join(staleAgentsDir, "pi-oven-executor.md"), "# stale executor\n", "utf-8");
+
+    const { exitCode, stdout } = await runCLI(["--status"], {
+      PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).not.toContain("no agent file");
+    rmSync(homeDir, { recursive: true, force: true });
+  });
 
   it("--reset: exits 0 and outputs cleared/no-overrides message", async () => {
     // Use PI_OVEN_MOCK_SPAWN=1: mock omp returns empty overrides record, so no keys to clear
@@ -542,6 +565,30 @@ describe("pi-oven-setup CLI --scope", () => {
     expect(exitCode).toBe(0);
   });
 
+  it("--repair-prereqs succeeds without writing project routing or setup markers", async () => {
+    const { exitCode, stdout } = await runCLIInCwd(["--repair-prereqs"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Machine-global prerequisites repaired.");
+    expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
+    expect(markerExists(tempDir)).toBe(false);
+    expect(globalMarkerExists(homeDir)).toBe(false);
+  });
+
+  it("--repair-prereqs --scope project is rejected with a global-only error", async () => {
+    const { exitCode, stderr } = await runCLIInCwd(["--repair-prereqs", "--scope", "project"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/--repair-prereqs.*global-only|scope.*project/i);
+    expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
+    expect(markerExists(tempDir)).toBe(false);
+    expect(globalMarkerExists(homeDir)).toBe(false);
+  });
+
   it("--scope bogus exits 1 with the Allowed message", async () => {
     const { exitCode, stderr } = await runCLIInCwd(["--apply", "--scope", "bogus"], tempDir, {
       PI_OVEN_MOCK_SPAWN: "1",
@@ -664,6 +711,38 @@ describe("pi-oven-setup CLI --suppress-sibling-skills", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toMatch(/global.only|scope.*project|project.*scope/i);
     // Must NOT write .omp/settings.json
+    expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
+  });
+  it("--no-suppress-sibling-skills + --scope project is rejected (no global write leak)", async () => {
+    const { exitCode, stderr } = await runCLIInCwd(
+      ["--no-suppress-sibling-skills", "--scope", "project"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/global.only|scope.*project|project.*scope/i);
+    expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
+  });
+
+  it("--isolate + --scope project is rejected (no global write leak)", async () => {
+    const { exitCode, stderr } = await runCLIInCwd(
+      ["--isolate", "--scope", "project"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/global.only|scope.*project|project.*scope/i);
+    expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
+  });
+
+  it("--no-isolate + --scope project is rejected (no global write leak)", async () => {
+    const { exitCode, stderr } = await runCLIInCwd(
+      ["--no-isolate", "--scope", "project"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/global.only|scope.*project|project.*scope/i);
     expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
   });
 

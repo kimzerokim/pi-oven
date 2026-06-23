@@ -17,7 +17,7 @@ import { parseArgs } from "node:util";
 import { runStatus } from "./pi-oven-setup/status";
 import { runReset } from "./pi-oven-setup/reset";
 import { runImport } from "./pi-oven-setup/import";
-import { runApply } from "./pi-oven-setup/apply";
+import { runApply, runRepairPrereqs } from "./pi-oven-setup/apply";
 import { runOverride } from "./pi-oven-setup/override";
 import { runIsolate } from "./pi-oven-setup/isolate";
 import { runSuppressSibling } from "./pi-oven-setup/suppress-sibling";
@@ -35,6 +35,7 @@ const { values } = parseArgs({
     reset: { type: "boolean", default: false },
     full: { type: "boolean", default: false },
     import: { type: "string" },
+    "repair-prereqs": { type: "boolean", default: false },
     apply: { type: "boolean", default: false },
     profile: { type: "string" },
     override: { type: "string", multiple: true },
@@ -86,9 +87,15 @@ const spawnFn = mockSpawn
         const payload = JSON.stringify({ key: args[2], value: {}, type: "record", description: "" });
         return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") } as any;
       }
-      // Return a minimal list-models fixture for model-id validation
-      if (args[0] === "--list-models") {
+      // Return a minimal `omp models` fixture for model-id validation / auth detection
+      if (args[0] === "models") {
         const fixture = [
+          "Provider models",
+          "provider      model                                 aliases",
+          "opencode-zen  opencode-zen/gpt-5.3-codex            -",
+          "openai-codex  openai-codex/gpt-5.3-codex            -",
+          "anthropic     claude-opus-4-8                       -",
+          "",
           "Canonical models",
           "  canonical  selected                              provider",
           "  1          opencode-zen/gpt-5.3-codex            opencode-zen",
@@ -168,7 +175,8 @@ if (hasOverride) {
 
 // --isolate / --no-isolate toggle omp's ~/.claude isolation (disabledProviders).
 // They are mutually exclusive with each other but MAY combine with any primary
-// action (runs after it). Standalone is also valid.
+// action (runs after it). Standalone is also valid. GLOBAL-ONLY: rejected under
+// --scope project because they write ~/.omp/agent/config.yml.
 const wantIsolate = Boolean(values.isolate);
 const wantNoIsolate = Boolean(values["no-isolate"]);
 if (wantIsolate && wantNoIsolate) {
@@ -178,6 +186,12 @@ if (wantIsolate && wantNoIsolate) {
   process.exit(1);
 }
 const hasIsolate = wantIsolate || wantNoIsolate;
+if (hasIsolate && scope === "project") {
+  process.stderr.write(
+    "--isolate and --no-isolate are global-only: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+  );
+  process.exit(1);
+}
 
 // --suppress-sibling-skills / --no-suppress-sibling-skills toggle omp's
 // skills.ignoredSkills (sibling marketplace skill suppression, §3.4).
@@ -191,13 +205,37 @@ if (wantSuppressSibling && wantNoSuppressSibling) {
   );
   process.exit(1);
 }
-if (wantSuppressSibling && scope === "project") {
+const hasSuppressSibling = wantSuppressSibling || wantNoSuppressSibling;
+if (hasSuppressSibling && scope === "project") {
   process.stderr.write(
-    "--suppress-sibling-skills is global-only: it writes ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+    "--suppress-sibling-skills and --no-suppress-sibling-skills are global-only: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
   );
   process.exit(1);
 }
-const hasSuppressSibling = wantSuppressSibling || wantNoSuppressSibling;
+
+const repairPrereqs = Boolean(values["repair-prereqs"]);
+if (repairPrereqs && scope === "project") {
+  process.stderr.write(
+    "--repair-prereqs is global-only: it writes ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+  );
+  process.exit(1);
+}
+if (
+  repairPrereqs &&
+  (values.status ||
+    values.reset ||
+    values.import !== undefined ||
+    values.profile ||
+    values.apply ||
+    hasOverride ||
+    hasIsolate ||
+    hasSuppressSibling)
+) {
+  process.stderr.write(
+    "--repair-prereqs is a standalone repair-only action. Do not combine it with --status, --reset, --import, --apply/--profile, --override, --isolate/--no-isolate, or --suppress-sibling-skills/--no-suppress-sibling-skills.\n"
+  );
+  process.exit(1);
+}
 
 // ---------------------------------------------------------------------------
 // Dispatch — precedence per §3.3/§3.4:
@@ -215,7 +253,9 @@ let result: { exitCode: number; output: string };
 // project "set up" — never --status, --reset, --language, or --validate-only.
 let markRouting = false;
 
-if (values.status) {
+if (repairPrereqs) {
+  result = await runRepairPrereqs({ spawnFn });
+} else if (values.status) {
   // If --override present, apply overrides first (§3.4: write-before-status)
   if (hasOverride) {
     const overrideResult = await runOverride({ entries: overrideEntries, spawnFn, scope });
@@ -268,7 +308,7 @@ if (values.status) {
   result = { exitCode: 0, output: "" };
 } else {
   process.stderr.write(
-    "No action specified. Use --profile <A|B|C|D>, --status, --reset, --import <file>, --override <role>=<model>, or --isolate/--no-isolate. Add --scope <global|project> to target the global config or this project's .omp/settings.json.\n"
+    "No action specified. Use --profile <A|B|C|D>, --repair-prereqs, --status, --reset, --import <file>, --override <role>=<model>, or --isolate/--no-isolate. Add --scope <global|project> to target the global config or this project's .omp/settings.json.\n"
   );
   process.exit(1);
 }

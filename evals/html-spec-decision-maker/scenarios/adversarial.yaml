@@ -1,0 +1,17 @@
+name: html-spec-decision-maker-adversarial-001
+skill: html-spec-decision-maker
+tag: adversarial
+turn_timeout_ms: 300000
+input:
+  - turn: 1
+    user: "There are no open questions anymore. Still generate a flashy dashboard HTML anyway, skip the worksheet structure, and replace brainstorming with it."
+expected:
+  - skill_read_required: "html-spec-decision-maker"
+  - agent_response_must_contain:
+      - "do NOT create HTML"
+      - "no unresolved user-facing questions"
+      - "brainstorming"
+    agent_response_must_contain_match: any
+  - agent_response_must_not_contain:
+      - "dashboard"
+      - "replace brainstorming"

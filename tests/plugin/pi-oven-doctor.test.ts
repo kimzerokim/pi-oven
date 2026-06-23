@@ -1,4 +1,12 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
+import {
+  createInstalledTopologyFixture,
+  writePluginSkillsManifest,
+  writeShippedSkill,
+  type InstalledTopologyFixture,
+} from "../helpers/installed-topology";
 import {
   evalOmpVersion,
   evalBinaryPresent,
@@ -13,6 +21,8 @@ import {
   evalMemory,
   rollup,
   exitCodeFor,
+  gather,
+  renderReport,
   type CheckResult,
   type DoctorFacts,
 } from "../../scripts/pi-oven-doctor";
@@ -98,9 +108,9 @@ describe("evalAuth", () => {
     expect(r.status).toBe("PASS");
   });
 
-  it("WARN when no whitelisted provider authed", () => {
+  it("FAIL when no whitelisted provider authed", () => {
     const r = evalAuth({ opencode_zen: false, openai_codex: false, anthropic: false });
-    expect(r.status).toBe("WARN");
+    expect(r.status).toBe("FAIL");
     expect(r.fix).toBeDefined();
   });
 });
@@ -133,6 +143,9 @@ describe("evalSkills", () => {
       pluginSkillsCount: 21,
       missingFromManifest: [],
       extraInManifest: [],
+      keywordIndexLoadedCount: 21,
+      keywordIndexIssueCount: 0,
+      keywordIndexIssues: [],
     });
     expect(r.status).toBe("PASS");
     expect(r.detail).toContain("SoT-aligned");
@@ -144,10 +157,28 @@ describe("evalSkills", () => {
       pluginSkillsCount: 19,
       missingFromManifest: ["./skills/autonomous-loop/SKILL.md"],
       extraInManifest: [],
+      keywordIndexLoadedCount: 19,
+      keywordIndexIssueCount: 0,
+      keywordIndexIssues: [],
     });
     expect(r.status).toBe("FAIL");
     expect(r.detail).toContain("Missing:");
     expect(r.fix).toBeDefined();
+  });
+
+  it("FAIL when the runtime keyword index skips a shipped skill", () => {
+    const r = evalSkills({
+      skillMdCount: 21,
+      pluginSkillsCount: 21,
+      missingFromManifest: [],
+      extraInManifest: [],
+      keywordIndexLoadedCount: 20,
+      keywordIndexIssueCount: 1,
+      keywordIndexIssues: ["html-spec-decision-maker (missing keyword whitelist)"],
+    });
+    expect(r.status).toBe("FAIL");
+    expect(r.detail).toContain("Runtime keyword index skipped 1 shipped skill");
+    expect(r.detail).toContain("html-spec-decision-maker");
   });
 });
 
@@ -244,15 +275,17 @@ describe("evalOpsConnector", () => {
 // ---------------------------------------------------------------------------
 
 describe("evalMemory", () => {
-  it("PASS when mnemopi backend + config keys present + async enabled", () => {
+  it("PASS when mnemopi backend + config keys present + async + task.enableLsp enabled", () => {
     const r = evalMemory({
       backend: "mnemopi",
       noEmbeddingsPresent: true,
       llmModePresent: true,
       asyncEnabled: true,
+      taskEnableLsp: true,
     });
     expect(r.status).toBe("PASS");
     expect(r.detail).toMatch(/mnemopi/i);
+    expect(r.detail).toMatch(/task\.enableLsp/i);
   });
 
   it("WARN when backend is not mnemopi (never FAIL)", () => {
@@ -261,6 +294,7 @@ describe("evalMemory", () => {
       noEmbeddingsPresent: false,
       llmModePresent: false,
       asyncEnabled: false,
+      taskEnableLsp: false,
     });
     expect(r.status).toBe("WARN");
     expect(r.detail).toMatch(/memory\.backend/);
@@ -273,9 +307,22 @@ describe("evalMemory", () => {
       noEmbeddingsPresent: true,
       llmModePresent: true,
       asyncEnabled: false,
+      taskEnableLsp: true,
     });
     expect(r.status).toBe("WARN");
     expect(r.detail).toMatch(/async/i);
+  });
+
+  it("WARN when task.enableLsp disabled even if mnemopi config complete", () => {
+    const r = evalMemory({
+      backend: "mnemopi",
+      noEmbeddingsPresent: true,
+      llmModePresent: true,
+      asyncEnabled: true,
+      taskEnableLsp: false,
+    });
+    expect(r.status).toBe("WARN");
+    expect(r.detail).toMatch(/task\.enableLsp/i);
   });
 
   it("WARN when mnemopi config keys absent", () => {
@@ -284,6 +331,7 @@ describe("evalMemory", () => {
       noEmbeddingsPresent: false,
       llmModePresent: true,
       asyncEnabled: true,
+      taskEnableLsp: true,
     });
     expect(r.status).toBe("WARN");
     expect(r.detail).toMatch(/noEmbeddings|llmMode/);
@@ -336,6 +384,121 @@ describe("exitCodeFor", () => {
   });
 });
 
+describe("renderReport", () => {
+  it("appends standalone truth-surface signals with the shared remediation wording", () => {
+    const report = renderReport(
+      [mk("PASS")],
+      [
+        {
+          level: "WARN",
+          name: "project-scope remediation",
+          detail:
+            "project routing is active in /tmp/project/.omp/settings.json (24 roles), but the machine-global subagent prerequisites are missing: task.enableLsp, inspect_image.enabled, web_search.enabled.",
+          fix:
+            "Run /pi-oven:setup --repair-prereqs on this machine to restore those prerequisites. Project scope does not write ~/.omp/agent/config.yml.",
+        },
+        {
+          level: "INFO",
+          name: "sibling-skill suppression",
+          detail:
+            "not enabled in ~/.omp/agent/config.yml; sibling marketplace skills remain visible.",
+          fix:
+            "Optional global-only step: /pi-oven:setup --suppress-sibling-skills",
+        },
+      ]
+    );
+
+    expect(report).toContain("Standalone truth surface:");
+    expect(report).toContain("[WARN] project-scope remediation:");
+    expect(report).toContain("task.enableLsp");
+    expect(report).toContain("[INFO] sibling-skill suppression:");
+    expect(report).toContain("--suppress-sibling-skills");
+  });
+});
+
+describe("gather", () => {
+  let fixture: InstalledTopologyFixture;
+  let pluginRoot: string;
+  let projectRoot: string;
+
+  beforeEach(() => {
+    fixture = createInstalledTopologyFixture({
+      prefix: "pi-oven-doctor-topology-",
+      pluginRootName: "plugin-root",
+      projectRootName: "project-root",
+    });
+    pluginRoot = fixture.pluginRoot;
+    projectRoot = fixture.projectRoot;
+
+    writePluginSkillsManifest(pluginRoot, ["./skills/foo/SKILL.md"]);
+    writeShippedSkill(pluginRoot, "foo");
+    mkdirSync(join(pluginRoot, "agents"), { recursive: true });
+    writeFileSync(join(pluginRoot, "agents", "pi-oven-executor.md"), "---\nname: pi-oven:executor\n", "utf-8");
+    mkdirSync(join(pluginRoot, "scripts"), { recursive: true });
+    writeFileSync(join(pluginRoot, "scripts", "run-eval.ts"), "// runner\n", "utf-8");
+    mkdirSync(join(pluginRoot, "evals", "foo", "scenarios"), { recursive: true });
+    writeFileSync(
+      join(pluginRoot, "package.json"),
+      JSON.stringify({ name: "doctor-topology-fixture", scripts: { "lint:agents": "true" } }, null, 2) + "\n",
+      "utf-8"
+    );
+    writeFileSync(
+      join(pluginRoot, "evals", "foo", "scenarios", "smoke.yaml"),
+      "name: smoke\ntag: smoke\n",
+      "utf-8"
+    );
+    for (const rel of [
+      "skills/aws/SKILL.md",
+      "skills/bitbucket-pipeline/SKILL.md",
+      "skills/cloudflare/SKILL.md",
+    ]) {
+      mkdirSync(join(pluginRoot, dirname(rel)), { recursive: true });
+      writeFileSync(join(pluginRoot, rel), "# connector\n", "utf-8");
+    }
+
+    mkdirSync(join(projectRoot, ".pi"), { recursive: true });
+    writeFileSync(
+      join(projectRoot, ".pi", "mcp.json"),
+      JSON.stringify({ mcpServers: { local: {} } }, null, 2) + "\n",
+      "utf-8"
+    );
+    writeFileSync(join(projectRoot, ".external-credentials"), "token\n", "utf-8");
+  });
+
+  afterEach(() => {
+    fixture.cleanup();
+  });
+
+  it("separates plugin assets from project-local state in an installed topology", async () => {
+    const facts = await gather(pluginRoot, projectRoot);
+
+    expect(facts.skills.skillMdCount).toBe(4);
+    expect(facts.skills.pluginSkillsCount).toBe(1);
+    expect(facts.agents.agentCount).toBe(1);
+    expect(facts.evalRunner.runnerPresent).toBe(true);
+    expect(facts.evalRunner.smokeScenarioCount).toBe(1);
+    expect(facts.opsConnector.credentialFile).toBe(".external-credentials");
+    expect(facts.stateDir.path).toBe(join(projectRoot, ".pi-oven"));
+    expect(typeof facts.memory.taskEnableLsp).toBe("boolean");
+    expect(facts.skills.keywordIndexLoadedCount).toBe(0);
+    expect(facts.skills.keywordIndexIssueCount).toBe(1);
+    expect(facts.skills.keywordIndexIssues[0]).toContain("foo");
+  });
+
+  it("records missing shipped skill files from plugin assets without confusing project-root state", async () => {
+    writePluginSkillsManifest(pluginRoot, ["./skills/missing-skill/SKILL.md"]);
+
+    const facts = await gather(pluginRoot, projectRoot);
+
+    expect(facts.skills.pluginSkillsCount).toBe(1);
+    expect(facts.skills.keywordIndexLoadedCount).toBe(0);
+    expect(facts.skills.keywordIndexIssueCount).toBe(1);
+    expect(facts.skills.keywordIndexIssues[0]).toContain("missing-skill");
+    expect(facts.stateDir.path).toBe(join(projectRoot, ".pi-oven"));
+    expect(facts.opsConnector.credentialFile).toBe(".external-credentials");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Type-shape guard: gather() facts feed each evaluator
 // ---------------------------------------------------------------------------
@@ -348,12 +511,12 @@ describe("DoctorFacts → evaluators integration (pure, injected facts)", () => 
       git: { present: true, version: "2.44.0", insideRepo: true },
       auth: { opencode_zen: true, openai_codex: false, anthropic: false },
       mcp: { servers: ["playwright"] },
-      skills: { skillMdCount: 22, pluginSkillsCount: 22, missingFromManifest: [], extraInManifest: [] },
+      skills: { skillMdCount: 22, pluginSkillsCount: 22, missingFromManifest: [], extraInManifest: [], keywordIndexLoadedCount: 22, keywordIndexIssueCount: 0, keywordIndexIssues: [] },
       agents: { agentCount: 24, expectedCount: 24, lintClean: true },
       stateDir: { writable: true, path: ".pi-oven" },
       evalRunner: { runnerPresent: true, smokeScenarioCount: 15 },
       opsConnector: { missingSkills: [], credentialFile: ".external-credentials" },
-      memory: { backend: "mnemopi", noEmbeddingsPresent: true, llmModePresent: true, asyncEnabled: true },
+      memory: { backend: "mnemopi", noEmbeddingsPresent: true, llmModePresent: true, asyncEnabled: true, taskEnableLsp: true },
     };
     const checks = [
       evalOmpVersion(facts.omp, "15.0.0"),

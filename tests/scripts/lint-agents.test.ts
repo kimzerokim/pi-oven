@@ -90,3 +90,23 @@ describe("lint-agents tool contradiction checks", () => {
     expect(code).toBe(0);
   });
 });
+
+describe("lint-agents shipped wildcard regression", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lint-agents-shipped-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("fails when a shipped pi-oven role uses tools wildcard", () => {
+    writeFileSync(
+      join(dir, "pi-oven-executor.md"),
+      `---\nname: pi-oven:executor\nmodel: ["openai-codex/gpt-5.4", "opencode-zen/gpt-5.4"]\nthinkingLevel: high\nmode: subagent\ntools: ["*"]\nblocked_tools: []\n---\n\n## Role\n\nUse \`bash\`.\n`
+    );
+    const { code, stderr } = runLint(dir);
+    expect(code).toBe(1);
+    expect(stderr).toContain("explicit allowlist");
+  });
+});

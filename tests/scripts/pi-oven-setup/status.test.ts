@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import {
+  writePluginSkillsManifest,
+  writeShippedSkill,
+} from "../../helpers/installed-topology";
 import { runStatus } from "../../../scripts/pi-oven-setup/status";
 import { ROLES, PROFILE_A } from "../../../scripts/pi-oven-setup/profiles";
 
@@ -25,10 +29,10 @@ description: Test agent for ${role}
 model:
   - ${primary}
   - opencode-zen/${primary.split("/").pop()}
-thinkingLevel: high
+thinkingLevel: ${PROFILE_A[role as keyof typeof PROFILE_A].thinkingLevel}
 mode: subagent
-tools: ["*"]
-blocked_tools: []
+tools: ${JSON.stringify(PROFILE_A[role as keyof typeof PROFILE_A].tools)}
+blocked_tools: ${JSON.stringify(PROFILE_A[role as keyof typeof PROFILE_A].blocked_tools)}
 ---
 
 ## Role
@@ -355,11 +359,12 @@ describe("runStatus — project layer", () => {
     expect(plannerLine).toContain("default(frontmatter)");
   });
 
-  it("surfaces missing machine-global tool remediation when project routing is active", async () => {
+  it("surfaces missing machine-global prerequisites when project routing is active", async () => {
     seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({
       overrides: {},
       scalarValues: {
+        "task.enableLsp": false,
         "inspect_image.enabled": false,
         "web_search.enabled": false,
         "lsp.enabled": false,
@@ -372,16 +377,35 @@ describe("runStatus — project layer", () => {
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toContain("Standalone truth surface:");
     expect(result.output).toContain("project-scope remediation");
+    expect(result.output).toContain("memory.backend");
+    expect(result.output).toContain("async.enabled");
+    expect(result.output).toContain("task.enableLsp");
     expect(result.output).toContain("inspect_image.enabled");
-    expect(result.output).toContain("/pi-oven:setup --scope global");
+    expect(result.output).toContain("missing or mismatched");
+    expect(result.output).toContain("/pi-oven:setup --repair-prereqs");
     expect(result.output).toContain("Project scope does not write ~/.omp/agent/config.yml");
   });
 
-  it("surfaces unreadable tool-flag state as unknown instead of claiming the flag is missing", async () => {
+  it("surfaces unreadable prerequisite state as unknown instead of claiming the prerequisite is missing", async () => {
     seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
-    const baseSpawn = makeSpawnFn({ overrides: {}, ignoredSkills: [] });
+    const baseSpawn = makeSpawnFn({
+      overrides: {},
+      ignoredSkills: [],
+      scalarValues: {
+        "mnemopi.noEmbeddings": true,
+        "mnemopi.llmMode": "none",
+        "async.enabled": true,
+        "task.enableLsp": true,
+        "inspect_image.enabled": true,
+        "web_search.enabled": true,
+        "lsp.enabled": true,
+        "astGrep.enabled": true,
+        "browser.enabled": true,
+        "debug.enabled": true,
+      },
+    });
     const spawnFn = (cmd: string, args: string[]) => {
-      if (cmd === "omp" && args[0] === "config" && args[1] === "get" && args[2] === "inspect_image.enabled") {
+      if (cmd === "omp" && args[0] === "config" && args[1] === "get" && args[2] === "memory.backend") {
         return { exitCode: 0, stdout: Buffer.from("{ not json"), stderr: Buffer.from("") };
       }
       return baseSpawn(cmd, args);
@@ -390,8 +414,8 @@ describe("runStatus — project layer", () => {
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toContain("project-scope remediation");
     expect(result.output).toContain("could not be verified");
-    expect(result.output).toContain("inspect_image.enabled");
-    expect(result.output).not.toContain("tool flags are not enabled: inspect_image.enabled");
+    expect(result.output).toContain("memory.backend");
+    expect(result.output).not.toContain("missing or mismatched: memory.backend");
   });
 
   it("surfaces sibling-skill suppression as disabled with the global-only remediation", async () => {
@@ -440,5 +464,60 @@ describe("runStatus — project layer", () => {
     expect(result.output).toContain(tempDir);
     expect(result.output).toContain(cwd);
     expect(result.output).not.toContain(`pi-oven shipped assets read from ${agentsDir};`);
+  });
+
+  it("surfaces keyword-skill integrity drift when plugin assets reference a missing shipped skill file", async () => {
+    writePluginSkillsManifest(tempDir, ["./skills/missing-skill/SKILL.md"]);
+
+    const spawnFn = makeSpawnFn({ overrides: {} });
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+
+    expect(result.output).toContain("keyword-skill integrity");
+    expect(result.output).toContain("missing-skill");
+    expect(result.output).toContain(tempDir);
+    expect(result.output).toContain(cwd);
+    expect(result.output).toContain("Runtime keyword-matched skills are unavailable");
+  });
+
+  it("surfaces keyword-skill integrity drift when plugin assets contain a shipped skill without whitelist coverage", async () => {
+    writePluginSkillsManifest(tempDir, ["./skills/keyword-gap/SKILL.md"]);
+    writeShippedSkill(tempDir, "keyword-gap");
+
+    const spawnFn = makeSpawnFn({ overrides: {} });
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+
+    expect(result.output).toContain("keyword-skill integrity");
+    expect(result.output).toContain("keyword-gap");
+    expect(result.output).toContain(tempDir);
+    expect(result.output).toContain(cwd);
+    expect(result.output).toContain("Runtime keyword-matched skills are unavailable");
+  });
+
+  it("surfaces keyword-skill integrity when the installed keyword index is only partially available", async () => {
+    writePluginSkillsManifest(tempDir, [
+      "./skills/brainstorming/SKILL.md",
+      "./skills/keyword-gap/SKILL.md",
+    ]);
+    writeShippedSkill(tempDir, "brainstorming");
+    writeShippedSkill(tempDir, "keyword-gap");
+
+    const spawnFn = makeSpawnFn({ overrides: {} });
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+
+    expect(result.output).toContain("keyword-skill integrity");
+    expect(result.output).toContain("loaded 1/2 shipped skills");
+    expect(result.output).toContain("keyword-gap");
+    expect(result.output).toContain("Runtime keyword-matched skills are partially available");
+  });
+
+  it("surfaces keyword-skill integrity when plugin manifest has no shipped skills", async () => {
+    writePluginSkillsManifest(tempDir, []);
+
+    const spawnFn = makeSpawnFn({ overrides: {} });
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+
+    expect(result.output).toContain("keyword-skill integrity");
+    expect(result.output).toContain("did not yield any shipped skills");
+    expect(result.output).toContain("Runtime keyword-matched skills are unavailable");
   });
 });

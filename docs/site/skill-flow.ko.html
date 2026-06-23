@@ -6,7 +6,7 @@
 <title>pi-oven — omp 플러그인 스킬 &amp; 워크플로우 지도</title>
 <!--
   Single-page reference for the pi-oven omp plugin (oh-my-pi harness layer):
-  24 file-based agents, 22 skills, 3 commands, 1 omp extension.
+  24 file-based agents, 23 skills, 3 commands, 1 omp extension.
   Authoritative source: CLAUDE.md + agents/pi-oven-*.md + skills/*/SKILL.md + .omp/extensions/pi-oven.ts.
   This HTML is a read-only navigable index derived from those sources.
 -->
@@ -218,7 +218,7 @@
         <li><a href="#flow-refactor">5.5 리팩토링</a></li>
       </ul>
     </li>
-    <li><a href="#skills">6. 22개 스킬 카드</a>
+    <li><a href="#skills">6. 23개 스킬 카드</a>
       <ul>
         <li><a href="#s-spec-and-review">spec-and-review</a></li>
         <li><a href="#s-writing-plans">writing-plans</a></li>
@@ -242,6 +242,7 @@
         <li><a href="#s-bitbucket-pipeline">bitbucket-pipeline</a></li>
         <li><a href="#s-cloudflare">cloudflare</a></li>
         <li><a href="#s-html-research-orchestrator">html-research-orchestrator</a></li>
+        <li><a href="#s-html-spec-decision-maker">html-spec-decision-maker</a></li>
       </ul>
     </li>
     <li><a href="#commands">7. 3개 커맨드</a></li>
@@ -254,10 +255,10 @@
 
 <section id="intro" class="hero">
   <h1>pi-oven — omp 플러그인 스킬 &amp; 워크플로우 지도</h1>
-  <div class="sub">oh-my-pi (omp) 위에서 네이티브로 도는 큐레이티드 워크플로우 + 규율 레이어의 단일 페이지 레퍼런스: 24개 에이전트, 22개 스킬, 3개 커맨드, 그리고 omp extension 을 한 곳에서.</div>
+  <div class="sub">oh-my-pi (omp) 위에서 네이티브로 도는 큐레이티드 워크플로우 + 규율 레이어의 단일 페이지 레퍼런스: 24개 에이전트, 23개 스킬, 3개 커맨드, 그리고 omp extension 을 한 곳에서.</div>
   <div class="meta">
     <span><span class="dot"></span> 24개 file-based agents</span>
-    <span><span class="dot"></span> 22개 skills (3개 UC5 ops 포함)</span>
+    <span><span class="dot"></span> 23개 skills (3개 UC5 ops 포함)</span>
     <span><span class="dot"></span> 3개 commands · 1개 omp extension</span>
     <span><span class="dot amber"></span> 7개 model family heterogeneous</span>
   </div>
@@ -283,7 +284,7 @@
   <h2>2. 멘탈 모델</h2>
   <p>
     omp 는 4가지 구성 요소로 작동합니다: <strong>에이전트</strong>(file-based subagent), <strong>스킬</strong>(markdown), <strong>커맨드</strong>(LLM prompt template), <strong>extension</strong>(TS, load-time/이벤트 훅).
-    pi-oven 는 이 기본 요소 위에 <strong>24개 에이전트 + 22개 스킬 + 3개 커맨드 + 1개 extension</strong> 을 추가합니다.
+    pi-oven 는 이 기본 요소 위에 <strong>24개 에이전트 + 23개 스킬 + 3개 커맨드 + 1개 extension</strong> 을 추가합니다.
     새로운 런타임 기능을 만드는 것이 아니라 <em>규율</em>을 추가합니다 — 기존 기능의 일관되고 안전한 호출 패턴.
   </p>
   <div class="grid2">
@@ -395,7 +396,7 @@ flowchart LR
     <li>PROFILE_A 는 <strong>릴리스 기본값</strong>(frontmatter 에 baked-in) + override 메커니즘입니다.</li>
     <li><strong>개인 override (git dirt 없음)</strong>: <code>/pi-oven:setup --override &lt;role&gt;=&lt;model&gt;</code> → <code>~/.omp/agent/config.yml</code> 에 <code>task.agentModelOverrides["pi-oven:&lt;role&gt;"]</code> 기록 (machine-global, uncommitted). 에이전트 파일은 건드리지 않음.</li>
     <li><strong>메인 오케스트레이터 모델</strong>: <code>/pi-oven:setup --profile</code> 는 24개 서브에이전트 외에 <strong>최상위 세션(오케스트레이터) 모델</strong>도 설정합니다 — omp <code>modelRoles.default</code> = canonical <code>gpt-5.4:high</code>, <code>modelRoles.title</code> = <code>gpt-5.4-mini:low</code> (provider prefix 없음 → openai-codex-first, opencode-zen fallback).</li>
-    <li>22개 스킬은 <strong>서브에이전트 디스패치 + right-agent 라우팅을 강제</strong>합니다 — 메인 레인에서의 직접 구현 대신 적합한 <code>pi-oven:&lt;role&gt;</code> 에이전트로 위임.</li>
+    <li>23개 스킬은 <strong>서브에이전트 디스패치 + right-agent 라우팅을 강제</strong>합니다 — 메인 레인에서의 직접 구현 대신 적합한 <code>pi-oven:&lt;role&gt;</code> 에이전트로 위임.</li>
     <li>구 <code>settings.pi-oven</code> plugin-config 네임스페이스는 <strong>DEAD + 제거됨</strong> (Spec E / Option C) — per-role 모델 쓰기를 재도입하지 말 것.</li>
   </ul>
   <div class="note">
@@ -691,7 +692,7 @@ flowchart TD
 </section>
 
 <section id="skills">
-  <h2>6. 22개 스킬 카드</h2>
+  <h2>6. 23개 스킬 카드</h2>
   <p>각 카드는 스킬 <strong>이름</strong>, <strong>badge</strong>, <strong>blurb</strong>, <strong>트리거 chip</strong>, 디스패치되는 <strong><code>pi-oven:&lt;role&gt;</code> 에이전트</strong> 링크를 요약합니다. badge 의미:</p>
   <div class="keys">
     <span class="chip"><span class="badge entry">entry</span> 사용자 프롬프트 키워드가 주 진입점</span>
@@ -949,6 +950,16 @@ flowchart TD
     <h4>디스패치 에이전트</h4>
     <div class="triggers">
       <a href="#agents"><span class="chip a">pi-oven:document-specialist</span></a><a href="#agents"><span class="chip a">pi-oven:librarian</span></a><a href="#agents"><span class="chip a">pi-oven:writer</span></a>
+    </div>
+  </div>
+  <div class="card" id="s-html-spec-decision-maker">
+    <div class="head"><span class="name">html-spec-decision-maker</span><span class="badge entry">entry</span></div>
+    <div class="blurb">구현 전 미결 질문·옵션·트레이드오프를 repo-local HTML 워크시트로 고정하는 decision-capture 스킬 — unresolved user question 이 있으면 <code>docs/pre-decisions/</code> 에 self-contained worksheet 를 만들고, 질문이 없으면 HTML 을 만들지 않습니다. <code>brainstorming</code> 의 질문/승인 ownership 은 유지하고, canonical reference example 스타일을 따릅니다.</div>
+    <h4>트리거</h4>
+    <div class="triggers"><span class="chip k">html spec</span><span class="chip k">html스펙</span><span class="chip k">html 스펙</span><span class="chip k">의사결정 html</span><span class="chip k">결정사항 html</span><span class="chip k">결정 워크시트</span><span class="chip k">pre-decision html</span><span class="chip k">decision worksheet</span></div>
+    <h4>디스패치 에이전트</h4>
+    <div class="triggers">
+      <a href="#agents"><span class="chip a">pi-oven:explorer</span></a><a href="#agents"><span class="chip a">pi-oven:document-specialist</span></a><a href="#agents"><span class="chip a">pi-oven:writer</span></a><a href="#agents"><span class="chip a">pi-oven:designer</span></a>
     </div>
   </div>
 

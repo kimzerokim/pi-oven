@@ -20,6 +20,7 @@ RIGHT-AGENT ROUTING (model-fit + role-fit is first-class): external research →
 2. Synthesis dispatch producing a self-contained HTML file in OS temp dir.
 3. Strict no-commit rule for generated HTML.
 4. Deterministic report sections and recommendation format.
+5. If the user needs a pre-decision worksheet, clickable option cards, or `docs/pre-decisions/` output, use `html-spec-decision-maker` instead of this skill.
 
 ## Stage 1 — External research dispatch (evidence collection)
 

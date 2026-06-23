@@ -575,20 +575,20 @@ export async function setMemoryAndAsyncConfig(opts?: ConfigYmlOpts): Promise<voi
 }
 
 // ---------------------------------------------------------------------------
-// setToolEnablementConfig — writes the gated-tool enablement flags so the
-// agents' tool mandates are not toothless. Scalar dotted keys → individual
-// `omp config set <dotted.key> <value>` (same scalar-write transport as
-// setMemoryAndAsyncConfig; no read-merge needed, these are not record-typed).
+// setToolEnablementConfig — writes the subagent runtime prerequisites so the
+// agents' tool mandates are not toothless and subagent LSP is actually enabled.
+// Scalar dotted keys → individual `omp config set <dotted.key> <value>` (same
+// scalar-write transport as setMemoryAndAsyncConfig; no read-merge needed,
+// these are not record-typed).
 // ---------------------------------------------------------------------------
 
 /**
- * Tool-enablement flags written on global-scope setup so the agents' tool
- * mandates are not toothless. inspect_image defaults FALSE in omp (blocks vision
- * agents); the rest default true but are written defensively so a user toggle
- * can't silently neuter a mandated tool. Scalar keys → individual `omp config
- * set <dotted.key> <value>` (no read-merge needed; not record-typed). The EXACT
- * casing is the omp setting key (astGrep camelCase, inspect_image snake) — do
- * not normalize it.
+ * Subagent runtime prerequisites written on global-scope setup. The gated tool
+ * flags ensure the mandated tools stay callable, and `task.enableLsp=true`
+ * removes omp's default subagent LSP gate. Scalar keys → individual
+ * `omp config set <dotted.key> <value>` (no read-merge needed; not
+ * record-typed). The EXACT casing is the omp setting key (astGrep camelCase,
+ * inspect_image snake) — do not normalize it.
  */
 export const TOOL_ENABLEMENT: Record<string, boolean> = {
   "inspect_image.enabled": true,
@@ -599,15 +599,21 @@ export const TOOL_ENABLEMENT: Record<string, boolean> = {
   "debug.enabled": true,
 };
 
+export const SUBAGENT_RUNTIME_PREREQUISITES: Record<string, boolean> = {
+  "task.enableLsp": true,
+  ...TOOL_ENABLEMENT,
+};
+
 /**
- * Write every TOOL_ENABLEMENT flag via individual `omp config set <key> <value>`
- * calls (one per key, scalar values). Mirrors setMemoryAndAsyncConfig. Throws
- * (including stderr) on any non-zero exit. Called from apply.ts on global-scope
- * user setup only — project scope writes routing files, never `omp config set`.
+ * Write every subagent runtime prerequisite via individual
+ * `omp config set <key> <value>` calls (one per scalar key). Mirrors
+ * setMemoryAndAsyncConfig. Throws (including stderr) on any non-zero exit.
+ * Called from apply.ts on global-scope user setup only — project scope writes
+ * routing files, never `omp config set`.
  */
 export async function setToolEnablementConfig(opts?: ConfigYmlOpts): Promise<void> {
   const spawn = opts?.spawnFn ?? defaultSpawn;
-  for (const [key, value] of Object.entries(TOOL_ENABLEMENT)) {
+  for (const [key, value] of Object.entries(SUBAGENT_RUNTIME_PREREQUISITES)) {
     const result = spawn("omp", ["config", "set", key, String(value)]);
     if (result.exitCode !== 0) {
       throw new Error(

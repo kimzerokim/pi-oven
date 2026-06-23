@@ -236,3 +236,19 @@ export async function runApply(
       `Setup complete.\n`,
   };
 }
+
+export async function runRepairPrereqs(opts: {
+  spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
+} = {}): Promise<{ exitCode: number; output: string }> {
+  await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });
+  await setToolEnablementConfig({ spawnFn: opts.spawnFn });
+
+  return {
+    exitCode: 0,
+    output:
+      "Machine-global prerequisites repaired.\n" +
+      "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled\n" +
+      "✓ tools enabled: inspect_image, web_search, lsp, ast_grep, browser, debug\n" +
+      "Repair complete.\n",
+  };
+}

@@ -1,14 +1,18 @@
+import { existsSync } from "node:fs";
+import * as path from "node:path";
+import {
+  formatSkillKeywordIndexIssues,
+  loadSkillKeywordIndexReport,
+} from "../../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
 import {
   PI_OVEN_SIBLING_SKILL_GLOBS,
-  TOOL_ENABLEMENT,
-  readBooleanSettingDisplayState,
+  SUBAGENT_RUNTIME_PREREQUISITES,
+  readConfigValueDisplayState,
   readIgnoredSkillsDisplayState,
   type ConfigYmlOpts,
   type DisplayReadResult,
 } from "./config-yml";
-import {
-  readProjectSettingsDisplayState,
-} from "./project-settings";
+import { readProjectSettingsDisplayState } from "./project-settings";
 
 export type StandaloneTruthLevel = "INFO" | "WARN";
 
@@ -19,7 +23,13 @@ export interface StandaloneTruthSignal {
   fix?: string;
 }
 
-type ToolFlagTruthState = "enabled" | "not-enabled" | "unknown";
+type GlobalPrerequisiteTruthState = "configured" | "not-configured" | "unknown";
+type KeywordIndexTruthState = "ok" | "partial" | "unavailable" | "unknown";
+
+type GlobalPrerequisiteExpectation = {
+  key: string;
+  expected: boolean | string;
+};
 
 export interface StandaloneTruthFacts {
   pluginAssetPath: string;
@@ -27,17 +37,34 @@ export interface StandaloneTruthFacts {
   projectSettingsFile: string;
   projectRoutingRoleCount: number | null;
   projectRoutingState: "present" | "absent" | "unknown";
-  toolFlagStates: Array<{ key: string; state: ToolFlagTruthState }>;
+  globalPrerequisiteStates: Array<{ key: string; state: GlobalPrerequisiteTruthState }>;
   ignoredSkillsState: DisplayReadResult<string[]>;
+  keywordIndexTruth?: {
+    state: KeywordIndexTruthState;
+    loadedCount: number;
+    shippedSkillCount: number;
+    issues: string[];
+    error?: string;
+  };
 }
 
 export const GLOBAL_CONFIG_PATH = "~/.omp/agent/config.yml";
 export const PROJECT_SCOPE_GLOBAL_REMEDIATION_FIX =
-  "Run /pi-oven:setup --scope global once on this machine to enable those tool flags. Project scope does not write ~/.omp/agent/config.yml.";
+  "Run /pi-oven:setup --repair-prereqs on this machine to restore those prerequisites. Project scope does not write ~/.omp/agent/config.yml.";
 export const PROJECT_SCOPE_FILE_REPAIR_FIX =
   "Repair or remove the project's .omp/settings.json, then rerun /pi-oven:setup --status.";
 export const SIBLING_SUPPRESSION_FIX =
   "Optional global-only step: /pi-oven:setup --suppress-sibling-skills";
+export const KEYWORD_SKILL_INTEGRITY_FIX =
+  "Sync .claude-plugin/plugin.json skills[], shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries. Reinstall pi-oven@kzk if installed assets are stale.";
+
+const PROJECT_SCOPE_GLOBAL_PREREQUISITES: GlobalPrerequisiteExpectation[] = [
+  { key: "memory.backend", expected: "mnemopi" },
+  { key: "mnemopi.noEmbeddings", expected: true },
+  { key: "mnemopi.llmMode", expected: "none" },
+  { key: "async.enabled", expected: true },
+  ...Object.keys(SUBAGENT_RUNTIME_PREREQUISITES).map((key) => ({ key, expected: true })),
+];
 
 function countProjectRoutingRoles(data: Record<string, unknown>): number {
   const task = data["task"];
@@ -45,6 +72,20 @@ function countProjectRoutingRoles(data: Record<string, unknown>): number {
   const overrides = (task as Record<string, unknown>)["agentModelOverrides"];
   if (typeof overrides !== "object" || overrides === null || Array.isArray(overrides)) return 0;
   return Object.keys(overrides as Record<string, unknown>).filter((key) => key.startsWith("pi-oven:")).length;
+}
+
+function classifyGlobalPrerequisiteState(
+  value: DisplayReadResult<unknown>,
+  expected: boolean | string
+): GlobalPrerequisiteTruthState {
+  if (value.state === "unknown") return "unknown";
+  if (value.state === "absent") return "not-configured";
+  if (typeof expected === "boolean") {
+    return value.value === expected || value.value === String(expected)
+      ? "configured"
+      : "not-configured";
+  }
+  return value.value === expected ? "configured" : "not-configured";
 }
 
 export function buildStandaloneTruthSignals(
@@ -61,6 +102,38 @@ export function buildStandaloneTruthSignals(
     },
   ];
 
+  const keywordIndexTruth = facts.keywordIndexTruth;
+  if (keywordIndexTruth?.state === "partial") {
+    signals.push({
+      level: "WARN",
+      name: "keyword-skill integrity",
+      detail:
+        `runtime keyword index loaded ${keywordIndexTruth.loadedCount}/${keywordIndexTruth.shippedSkillCount} shipped skills from ${facts.pluginAssetPath}, ` +
+        `but skipped ${keywordIndexTruth.issues.length}: ${keywordIndexTruth.issues.join("; ")}. ` +
+        "Runtime keyword-matched skills are partially available.",
+      fix: KEYWORD_SKILL_INTEGRITY_FIX,
+    });
+  } else if (keywordIndexTruth?.state === "unavailable") {
+    signals.push({
+      level: "WARN",
+      name: "keyword-skill integrity",
+      detail:
+        `runtime keyword index could not load any shipped skills from ${facts.pluginAssetPath}; ` +
+        `skipped ${keywordIndexTruth.issues.length}: ${keywordIndexTruth.issues.join("; ")}. ` +
+        "Runtime keyword-matched skills are unavailable.",
+      fix: KEYWORD_SKILL_INTEGRITY_FIX,
+    });
+  } else if (keywordIndexTruth?.state === "unknown") {
+    signals.push({
+      level: "WARN",
+      name: "keyword-skill integrity",
+      detail:
+        `runtime keyword index could not be probed from ${facts.pluginAssetPath}` +
+        (keywordIndexTruth.error ? ` (${keywordIndexTruth.error})` : "."),
+      fix: KEYWORD_SKILL_INTEGRITY_FIX,
+    });
+  }
+
   if (facts.projectRoutingState === "unknown") {
     signals.push({
       level: "WARN",
@@ -75,33 +148,33 @@ export function buildStandaloneTruthSignals(
       detail: `no pi-oven project routing detected in ${facts.projectSettingsFile}.`,
     });
   } else {
-    const unknownToolFlags = facts.toolFlagStates
+    const unknownPrerequisites = facts.globalPrerequisiteStates
       .filter(({ state }) => state === "unknown")
       .map(({ key }) => key);
-    const notEnabledToolFlags = facts.toolFlagStates
-      .filter(({ state }) => state === "not-enabled")
+    const notConfiguredPrerequisites = facts.globalPrerequisiteStates
+      .filter(({ state }) => state === "not-configured")
       .map(({ key }) => key);
 
-    if (unknownToolFlags.length > 0) {
+    if (unknownPrerequisites.length > 0) {
       signals.push({
         level: "WARN",
         name: "project-scope remediation",
         detail:
           `project routing is active in ${facts.projectSettingsFile} ` +
-          `(${facts.projectRoutingRoleCount} roles), but the machine-global tool-flag state could not be verified for: ` +
-          `${unknownToolFlags.join(", ")}.` +
-          (notEnabledToolFlags.length > 0
-            ? ` Confirmed not enabled: ${notEnabledToolFlags.join(", ")}.`
+          `(${facts.projectRoutingRoleCount} roles), but the machine-global prerequisite state could not be verified for: ` +
+          `${unknownPrerequisites.join(", ")}.` +
+          (notConfiguredPrerequisites.length > 0
+            ? ` Confirmed missing or mismatched: ${notConfiguredPrerequisites.join(", ")}.`
             : ""),
         fix: PROJECT_SCOPE_GLOBAL_REMEDIATION_FIX,
       });
-    } else if (notEnabledToolFlags.length === 0) {
+    } else if (notConfiguredPrerequisites.length === 0) {
       signals.push({
         level: "INFO",
         name: "project-scope remediation",
         detail:
           `project routing is active in ${facts.projectSettingsFile} ` +
-          `(${facts.projectRoutingRoleCount} roles); required machine-global tool flags are already present.`,
+          `(${facts.projectRoutingRoleCount} roles); required machine-global prerequisites are already present.`,
       });
     } else {
       signals.push({
@@ -109,8 +182,8 @@ export function buildStandaloneTruthSignals(
         name: "project-scope remediation",
         detail:
           `project routing is active in ${facts.projectSettingsFile} ` +
-          `(${facts.projectRoutingRoleCount} roles), but the required machine-global tool flags are not enabled: ` +
-          `${notEnabledToolFlags.join(", ")}.`,
+          `(${facts.projectRoutingRoleCount} roles), but the required machine-global prerequisites are missing or mismatched: ` +
+          `${notConfiguredPrerequisites.join(", ")}.`,
         fix: PROJECT_SCOPE_GLOBAL_REMEDIATION_FIX,
       });
     }
@@ -168,20 +241,55 @@ export async function collectStandaloneTruthSignals(
   } & ConfigYmlOpts
 ): Promise<StandaloneTruthSignal[]> {
   const projectSettings = await readProjectSettingsDisplayState({ cwd: opts.projectRoot });
-  const toolFlagStates: StandaloneTruthFacts["toolFlagStates"] = await Promise.all(
-    Object.keys(TOOL_ENABLEMENT).map(async (key) => {
-      const value = await readBooleanSettingDisplayState(key, opts);
-      const state: ToolFlagTruthState =
-        value.state === "present"
-          ? value.value
-            ? "enabled"
-            : "not-enabled"
-          : value.state === "absent"
-          ? "not-enabled"
-          : "unknown";
-      return { key, state };
+  const globalPrerequisiteStates: StandaloneTruthFacts["globalPrerequisiteStates"] = await Promise.all(
+    PROJECT_SCOPE_GLOBAL_PREREQUISITES.map(async ({ key, expected }) => {
+      const value = await readConfigValueDisplayState(key, opts);
+      return {
+        key,
+        state: classifyGlobalPrerequisiteState(value, expected),
+      };
     })
   );
+
+  let keywordIndexTruth: StandaloneTruthFacts["keywordIndexTruth"];
+  const pluginManifestPath = path.join(opts.pluginAssetPath, ".claude-plugin", "plugin.json");
+  if (existsSync(pluginManifestPath)) {
+    try {
+      const report = loadSkillKeywordIndexReport(opts.pluginAssetPath);
+      if (report.issues.length > 0) {
+        keywordIndexTruth = {
+          state: report.index.length === 0 ? "unavailable" : "partial",
+          loadedCount: report.index.length,
+          shippedSkillCount: report.shippedSkillCount,
+          issues: formatSkillKeywordIndexIssues(report.issues, report.issues.length)
+            .split("; ")
+            .filter((entry) => entry.length > 0),
+        };
+      } else if (report.index.length === 0 || report.shippedSkillCount === 0) {
+        keywordIndexTruth = {
+          state: "unavailable",
+          loadedCount: report.index.length,
+          shippedSkillCount: report.shippedSkillCount,
+          issues: ["plugin.json skills[] did not yield any shipped skills"],
+        };
+      } else {
+        keywordIndexTruth = {
+          state: "ok",
+          loadedCount: report.index.length,
+          shippedSkillCount: report.shippedSkillCount,
+          issues: [],
+        };
+      }
+    } catch (err) {
+      keywordIndexTruth = {
+        state: "unknown",
+        loadedCount: 0,
+        shippedSkillCount: 0,
+        issues: [],
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
 
   return buildStandaloneTruthSignals({
     pluginAssetPath: opts.pluginAssetPath,
@@ -191,11 +299,12 @@ export async function collectStandaloneTruthSignals(
       projectSettings.state === "present"
         ? countProjectRoutingRoles(projectSettings.data)
         : projectSettings.state === "absent"
-        ? 0
-        : null,
+          ? 0
+          : null,
     projectRoutingState: projectSettings.state,
-    toolFlagStates,
+    globalPrerequisiteStates,
     ignoredSkillsState: await readIgnoredSkillsDisplayState(opts),
+    keywordIndexTruth,
   });
 }
 

@@ -1,11 +1,22 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, afterEach } from "bun:test";
 import path from "node:path";
+import {
+  createInstalledTopologyFixture,
+  writePluginSkillsManifest,
+  writeShippedSkill,
+  type InstalledTopologyFixture,
+} from "../../helpers/installed-topology";
+import {
+  SHIPPED_SKILL_COUNT,
+  SHIPPED_SKILL_NAMES,
+} from "../../../scripts/pi-oven-setup/shipped-skill-registry";
 import {
   KEYWORD_SKILL_DEDUP_KEY,
   SKILL_KEYWORD_WHITELIST,
   buildKeywordMatchedSkillsPrompt,
   createSkillKeywordLoaderState,
   loadSkillKeywordIndex,
+  loadSkillKeywordIndexReport,
   matchSkillsForText,
   updateSkillKeywordLoaderOnTurnStart,
 } from "../../../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
@@ -18,8 +29,22 @@ function userEntry(id: string, text: string) {
   };
 }
 
+const fixtures: InstalledTopologyFixture[] = [];
+
+function makeTempRepo(): string {
+  const fixture = createInstalledTopologyFixture({ prefix: "pi-oven-skill-keyword-" });
+  fixtures.push(fixture);
+  return fixture.pluginRoot;
+}
+
+afterEach(() => {
+  while (fixtures.length > 0) fixtures.pop()!.cleanup();
+});
+
+
 describe("skill-keyword-loader", () => {
-  it("defines a curated whitelist for every shipped skill", () => {
+  it("keeps the curated whitelist in exact parity with shipped skills", () => {
+    expect(Object.keys(SKILL_KEYWORD_WHITELIST).sort()).toEqual([...SHIPPED_SKILL_NAMES].sort());
     expect(SKILL_KEYWORD_WHITELIST["autonomous-loop"]).toEqual(
       expect.arrayContaining(["자율 실행", "autopilot", "ralph로 돌려"])
     );
@@ -33,10 +58,12 @@ describe("skill-keyword-loader", () => {
 
   it("loads keyword index entries from shipped skills", () => {
     const index = loadSkillKeywordIndex(path.resolve(__dirname, "../../.."));
-    expect(index).toHaveLength(22);
+    expect(index).toHaveLength(SHIPPED_SKILL_COUNT);
+    expect(index.map((entry) => entry.name).sort()).toEqual([...SHIPPED_SKILL_NAMES].sort());
 
     const autonomous = index.find((entry) => entry.name === "autonomous-loop");
     const delegation = index.find((entry) => entry.name === "large-task-delegation");
+    const htmlDecision = index.find((entry) => entry.name === "html-spec-decision-maker");
 
     expect(autonomous).toBeDefined();
     expect(autonomous?.phrases).toEqual(
@@ -45,6 +72,44 @@ describe("skill-keyword-loader", () => {
     expect(delegation?.phrases).toEqual(
       expect.arrayContaining(["큰 작업", "large task", "multi-file refactor"])
     );
+    expect(htmlDecision?.phrases).toEqual(
+      expect.arrayContaining(["html spec", "의사결정 html", "decision worksheet"])
+    );
+  });
+
+  it("loads valid shipped skills and reports missing whitelist coverage without aborting the whole index", () => {
+    const repoRoot = makeTempRepo();
+    writePluginSkillsManifest(repoRoot, [
+      "./skills/brainstorming/SKILL.md",
+      "./skills/keyword-gap/SKILL.md",
+    ]);
+    writeShippedSkill(repoRoot, "brainstorming");
+    writeShippedSkill(repoRoot, "keyword-gap");
+
+    const report = loadSkillKeywordIndexReport(repoRoot);
+
+    expect(report.shippedSkillCount).toBe(2);
+    expect(report.index.map((entry) => entry.name)).toEqual(["brainstorming"]);
+    expect(report.issues).toHaveLength(1);
+    expect(report.issues[0]?.skillName).toBe("keyword-gap");
+    expect(report.issues[0]?.reason).toContain("missing keyword whitelist");
+  });
+
+  it("reports missing shipped skill files without aborting the installed keyword index", () => {
+    const repoRoot = makeTempRepo();
+    writePluginSkillsManifest(repoRoot, [
+      "./skills/brainstorming/SKILL.md",
+      "./skills/missing-skill/SKILL.md",
+    ]);
+    writeShippedSkill(repoRoot, "brainstorming");
+
+    const report = loadSkillKeywordIndexReport(repoRoot);
+
+    expect(report.shippedSkillCount).toBe(2);
+    expect(report.index.map((entry) => entry.name)).toEqual(["brainstorming"]);
+    expect(report.issues).toHaveLength(1);
+    expect(report.issues[0]?.skillName).toBe("missing-skill");
+    expect(report.issues[0]?.reason).toContain("ENOENT");
   });
 
   it("matches user text to multiple skills and builds a must-read prompt", () => {
@@ -102,6 +167,8 @@ describe("skill-keyword-loader", () => {
       // research
       { text: "research this topic", expect: "deep-dive" },
       { text: "I need a research report", expect: "html-research-orchestrator" },
+      { text: "의사결정 html로 정리해줘", expect: "html-spec-decision-maker" },
+      { text: "Create a pre-decision html worksheet", expect: "html-spec-decision-maker" },
       // spec
       { text: "write a spec for this", expect: "spec-and-review" },
       { text: "let's write a design doc", expect: "spec-and-review" },

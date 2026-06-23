@@ -17,7 +17,7 @@ import { parseArgs } from "node:util";
 import { runStatus } from "./pi-oven-setup/status";
 import { runReset } from "./pi-oven-setup/reset";
 import { runImport } from "./pi-oven-setup/import";
-import { runApply } from "./pi-oven-setup/apply";
+import { runApply, runRepairPrereqs } from "./pi-oven-setup/apply";
 import { runOverride } from "./pi-oven-setup/override";
 import { runIsolate } from "./pi-oven-setup/isolate";
 import { runSuppressSibling } from "./pi-oven-setup/suppress-sibling";
@@ -35,6 +35,7 @@ const { values } = parseArgs({
     reset: { type: "boolean", default: false },
     full: { type: "boolean", default: false },
     import: { type: "string" },
+    "repair-prereqs": { type: "boolean", default: false },
     apply: { type: "boolean", default: false },
     profile: { type: "string" },
     override: { type: "string", multiple: true },
@@ -212,6 +213,30 @@ if (hasSuppressSibling && scope === "project") {
   process.exit(1);
 }
 
+const repairPrereqs = Boolean(values["repair-prereqs"]);
+if (repairPrereqs && scope === "project") {
+  process.stderr.write(
+    "--repair-prereqs is global-only: it writes ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+  );
+  process.exit(1);
+}
+if (
+  repairPrereqs &&
+  (values.status ||
+    values.reset ||
+    values.import !== undefined ||
+    values.profile ||
+    values.apply ||
+    hasOverride ||
+    hasIsolate ||
+    hasSuppressSibling)
+) {
+  process.stderr.write(
+    "--repair-prereqs is a standalone repair-only action. Do not combine it with --status, --reset, --import, --apply/--profile, --override, --isolate/--no-isolate, or --suppress-sibling-skills/--no-suppress-sibling-skills.\n"
+  );
+  process.exit(1);
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch — precedence per §3.3/§3.4:
 //   --override + --status → override-write first, then status
@@ -228,7 +253,9 @@ let result: { exitCode: number; output: string };
 // project "set up" — never --status, --reset, --language, or --validate-only.
 let markRouting = false;
 
-if (values.status) {
+if (repairPrereqs) {
+  result = await runRepairPrereqs({ spawnFn });
+} else if (values.status) {
   // If --override present, apply overrides first (§3.4: write-before-status)
   if (hasOverride) {
     const overrideResult = await runOverride({ entries: overrideEntries, spawnFn, scope });
@@ -281,7 +308,7 @@ if (values.status) {
   result = { exitCode: 0, output: "" };
 } else {
   process.stderr.write(
-    "No action specified. Use --profile <A|B|C|D>, --status, --reset, --import <file>, --override <role>=<model>, or --isolate/--no-isolate. Add --scope <global|project> to target the global config or this project's .omp/settings.json.\n"
+    "No action specified. Use --profile <A|B|C|D>, --repair-prereqs, --status, --reset, --import <file>, --override <role>=<model>, or --isolate/--no-isolate. Add --scope <global|project> to target the global config or this project's .omp/settings.json.\n"
   );
   process.exit(1);
 }

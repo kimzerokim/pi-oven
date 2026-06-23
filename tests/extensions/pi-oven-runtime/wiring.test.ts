@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
+import { readFileSync, rmSync } from "fs";
 import { join } from "path";
+import {
+  createInstalledTopologyFixture,
+  writePluginSkillsManifest,
+  writeShippedSkill,
+} from "../../helpers/installed-topology";
 import piOvenPi from "../../../.omp/extensions/pi-oven";
 
 // ---------------------------------------------------------------------------
@@ -57,19 +61,7 @@ function makeFakePi(): FakePi {
 }
 
 function makeTempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "pi-oven-wiring-"));
-  mkdirSync(join(dir, ".claude-plugin"), { recursive: true });
-  writeFileSync(
-    join(dir, ".claude-plugin", "plugin.json"),
-    JSON.stringify({
-      skills: [
-        "skills/autonomous-loop/SKILL.md",
-        "skills/large-task-delegation/SKILL.md",
-        "skills/spec-and-review/SKILL.md",
-      ],
-    })
-  );
-  return dir;
+  return createInstalledTopologyFixture({ prefix: "pi-oven-wiring-" }).root;
 }
 
 
@@ -218,11 +210,12 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain("skill://pi-oven:spec-and-review");
   });
 
-  it("session_start surfaces an installed-topology warning when plugin assets cannot build the keyword index", async () => {
+  it("session_start surfaces a keyword-integrity warning when plugin assets reference a missing shipped skill file", async () => {
     tempDir = makeTempDir();
+    writePluginSkillsManifest(tempDir, ["./skills/missing-skill/SKILL.md"]);
+
     const pluginRoot = tempDir;
     const projectRoot = join(tempDir, "separate-project");
-    mkdirSync(projectRoot, { recursive: true });
     process.chdir(projectRoot);
     const expectedProjectRoot = process.cwd();
 
@@ -243,25 +236,56 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       }
     );
 
-    expect(notices.some((notice) => notice.level === "warning")).toBe(true);
-    const installedTopology = notices.find((notice) =>
+    const integrity = notices.find((notice) =>
       notice.message.includes("Standalone truth surface:") &&
-      notice.message.includes("[WARN] installed topology:")
+      notice.message.includes("[WARN] keyword-skill integrity:")
     );
-    expect(installedTopology).toBeDefined();
-    expect(installedTopology?.message).toContain(`pi-oven shipped assets could not be read from ${pluginRoot}`);
-    expect(installedTopology?.message).toContain(`project state read from ${expectedProjectRoot}`);
-    expect(installedTopology?.message).toContain("machine-global config remains ~/.omp/agent/config.yml");
-    expect(installedTopology?.message).toContain("Runtime keyword-matched skills are unavailable");
-    expect(installedTopology?.message).toContain("reinstall pi-oven@kzk");
-    expect(pi.logs.some((entry) => entry.level === "warn" && entry.msg.includes("installed topology"))).toBe(true);
+    expect(integrity).toBeDefined();
+    expect(integrity?.message).toContain("missing-skill");
+    expect(integrity?.message).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(integrity?.message).toContain("Runtime keyword-matched skills are unavailable");
   });
 
-  it("before_agent_start injects the same installed-topology warning into systemPrompt when plugin assets are broken", async () => {
+  it("session_start surfaces keyword-skill integrity when plugin manifest yields zero shipped skills", async () => {
     tempDir = makeTempDir();
+    writePluginSkillsManifest(tempDir, []);
+
     const pluginRoot = tempDir;
     const projectRoot = join(tempDir, "separate-project");
-    mkdirSync(projectRoot, { recursive: true });
+    process.chdir(projectRoot);
+    const expectedProjectRoot = process.cwd();
+
+    const pi = makeFakePi();
+    piOvenPi(pi as never, { pluginRoot });
+
+    const onSessionStart = pi.handlers["session_start"];
+    const notices: Array<{ message: string; level: string }> = [];
+    await onSessionStart(
+      { type: "session_start" },
+      {
+        hasUI: true,
+        ui: {
+          notify(message: string, level: string) {
+            notices.push({ message, level });
+          },
+        },
+      }
+    );
+
+    const integrity = notices.find((notice) =>
+      notice.message.includes("[WARN] keyword-skill integrity:")
+    );
+    expect(integrity).toBeDefined();
+    expect(integrity?.message).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(integrity?.message).toContain("did not yield any shipped skills");
+    expect(integrity?.message).toContain("Runtime keyword-matched skills are unavailable");
+  });
+  it("before_agent_start injects keyword-skill integrity when plugin manifest yields zero shipped skills", async () => {
+    tempDir = makeTempDir();
+    writePluginSkillsManifest(tempDir, []);
+
+    const pluginRoot = tempDir;
+    const projectRoot = join(tempDir, "separate-project");
     process.chdir(projectRoot);
     const expectedProjectRoot = process.cwd();
 
@@ -277,11 +301,78 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     const joined = res.systemPrompt.join("\n");
 
     expect(joined).toContain("Standalone truth surface:");
-    expect(joined).toContain("[WARN] installed topology:");
-    expect(joined).toContain(`pi-oven shipped assets could not be read from ${pluginRoot}`);
+    expect(joined).toContain("[WARN] keyword-skill integrity:");
+    expect(joined).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(joined).toContain("did not yield any shipped skills");
+    expect(joined).toContain("Runtime keyword-matched skills are unavailable");
+  });
+
+  it("session_start surfaces a keyword-integrity warning when some shipped skills are skipped", async () => {
+    tempDir = makeTempDir();
+    writePluginSkillsManifest(tempDir, [
+      "./skills/brainstorming/SKILL.md",
+      "./skills/keyword-gap/SKILL.md",
+    ]);
+    writeShippedSkill(tempDir, "brainstorming");
+    writeShippedSkill(tempDir, "keyword-gap");
+
+    const projectRoot = join(tempDir, "separate-project");
+    process.chdir(projectRoot);
+    const expectedProjectRoot = process.cwd();
+
+    const pi = makeFakePi();
+    piOvenPi(pi as never, { pluginRoot: tempDir });
+
+    const onSessionStart = pi.handlers["session_start"];
+    const notices: Array<{ message: string; level: string }> = [];
+    await onSessionStart(
+      { type: "session_start" },
+      {
+        hasUI: true,
+        ui: {
+          notify(message: string, level: string) {
+            notices.push({ message, level });
+          },
+        },
+      }
+    );
+
+    const integrity = notices.find((notice) =>
+      notice.message.includes("[WARN] keyword-skill integrity:")
+    );
+    expect(integrity).toBeDefined();
+    expect(integrity?.message).toContain("keyword-gap");
+    expect(integrity?.message).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(integrity?.message).toContain("loaded 1/2 shipped skills");
+    expect(integrity?.message).toContain("partially available");
+    expect(pi.logs.some((entry) => entry.level === "warn" && entry.msg.includes("keyword-skill integrity"))).toBe(true);
+  });
+
+  it("before_agent_start injects the same keyword-integrity warning into systemPrompt when plugin assets are broken", async () => {
+    tempDir = makeTempDir();
+    writePluginSkillsManifest(tempDir, ["./skills/autonomous-loop/SKILL.md"]);
+    const pluginRoot = tempDir;
+    const projectRoot = join(tempDir, "separate-project");
+    process.chdir(projectRoot);
+    const expectedProjectRoot = process.cwd();
+
+    const pi = makeFakePi();
+    piOvenPi(pi as never, { pluginRoot });
+
+    const onBeforeAgentStart = pi.handlers["before_agent_start"];
+    const res = (await onBeforeAgentStart({
+      type: "before_agent_start",
+      prompt: "",
+      systemPrompt: ["base"],
+    })) as { systemPrompt: string[] };
+    const joined = res.systemPrompt.join("\n");
+
+    expect(joined).toContain("Standalone truth surface:");
+    expect(joined).toContain("[WARN] keyword-skill integrity:");
     expect(joined).toContain(`project state read from ${expectedProjectRoot}`);
     expect(joined).toContain("machine-global config remains ~/.omp/agent/config.yml");
     expect(joined).toContain("Runtime keyword-matched skills are unavailable");
+    expect(joined).toContain("autonomous-loop");
   });
 
 

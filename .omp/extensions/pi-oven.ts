@@ -15,9 +15,11 @@ import {
   KEYWORD_SKILL_DEDUP_KEY,
   buildKeywordMatchedSkillsPrompt,
   createSkillKeywordLoaderState,
-  loadSkillKeywordIndex,
+  formatSkillKeywordIndexIssues,
+  loadSkillKeywordIndexReport,
   matchSkillsForText,
   updateSkillKeywordLoaderOnTurnStart,
+  type SkillKeywordIndexIssue,
 } from "./pi-oven-runtime/skill-keyword-loader";
 import {
   STOP_GUARD_MESSAGE,
@@ -96,6 +98,34 @@ function buildRuntimeInstalledTopologyNotice(
       "Standalone truth surface:",
       `  [WARN] ${INSTALLED_TOPOLOGY_SIGNAL_NAME}: pi-oven shipped assets could not be read from ${pluginRoot} for the runtime keyword index (${cause}); project state read from ${projectRoot}; machine-global config remains ${RUNTIME_GLOBAL_CONFIG_PATH}. Runtime keyword-matched skills are unavailable.`,
       `         fix: ${RUNTIME_INSTALLED_TOPOLOGY_FIX}`,
+    ].join("\n"),
+  };
+}
+
+const RUNTIME_KEYWORD_INTEGRITY_FIX =
+  "Sync .claude-plugin/plugin.json, shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries; reinstall pi-oven@kzk if installed assets are stale.";
+
+function buildRuntimeKeywordIntegrityNotice(
+  pluginRoot: string,
+  projectRoot: string,
+  issues: SkillKeywordIndexIssue[],
+  loadedCount: number,
+  shippedSkillCount: number
+): SetupChecklistNotice {
+  const availability =
+    loadedCount === 0
+      ? "Runtime keyword-matched skills are unavailable."
+      : "Runtime keyword-matched skills are partially available.";
+  const driftDetail =
+    shippedSkillCount === 0 && issues.length === 0
+      ? "plugin.json skills[] did not yield any shipped skills."
+      : `skipped ${issues.length}: ${formatSkillKeywordIndexIssues(issues)}.`;
+  return {
+    level: "warning",
+    message: [
+      "Standalone truth surface:",
+      `  [WARN] keyword-skill integrity: runtime keyword index loaded ${loadedCount}/${shippedSkillCount} shipped skills from ${pluginRoot}; project state read from ${projectRoot}; machine-global config remains ${RUNTIME_GLOBAL_CONFIG_PATH}; ${driftDetail} ${availability}`,
+      `         fix: ${RUNTIME_KEYWORD_INTEGRITY_FIX}`,
     ].join("\n"),
   };
 }
@@ -493,17 +523,30 @@ export default function piOvenPi(
 
   const isParentSession = !process.env.PI_BLOCKED_AGENT;
   let skillKeywordState = createSkillKeywordLoaderState();
-  let skillKeywordIndex = [] as ReturnType<typeof loadSkillKeywordIndex>;
+  let skillKeywordIndex = [] as ReturnType<typeof loadSkillKeywordIndexReport>["index"];
   let installedTopologyNotice: SetupChecklistNotice | null = null;
+  let keywordIntegrityNotice: SetupChecklistNotice | null = null;
   try {
-    skillKeywordIndex = loadSkillKeywordIndex(pluginRoot);
-    if (skillKeywordIndex.length === 0) {
-      installedTopologyNotice = buildRuntimeInstalledTopologyNotice(
+    const keywordIndexReport = loadSkillKeywordIndexReport(pluginRoot);
+    skillKeywordIndex = keywordIndexReport.index;
+    if (keywordIndexReport.issues.length > 0) {
+      keywordIntegrityNotice = buildRuntimeKeywordIntegrityNotice(
         pluginRoot,
         repoRoot,
-        "plugin.json skills[] did not yield any shipped skills"
+        keywordIndexReport.issues,
+        skillKeywordIndex.length,
+        keywordIndexReport.shippedSkillCount
       );
-      pi.logger.warn(installedTopologyNotice.message);
+      pi.logger.warn(keywordIntegrityNotice.message);
+    } else if (skillKeywordIndex.length === 0) {
+      keywordIntegrityNotice = buildRuntimeKeywordIntegrityNotice(
+        pluginRoot,
+        repoRoot,
+        [],
+        skillKeywordIndex.length,
+        keywordIndexReport.shippedSkillCount
+      );
+      pi.logger.warn(keywordIntegrityNotice.message);
     } else {
       pi.logger.debug(`pi-oven: loaded skill keyword index (${skillKeywordIndex.length} skills)`);
     }
@@ -599,6 +642,12 @@ export default function piOvenPi(
         ) {
           systemPrompt = [...systemPrompt, installedTopologyNotice.message];
         }
+        if (
+          keywordIntegrityNotice &&
+          !systemPrompt.some((entry) => entry.includes("[WARN] keyword-skill integrity:"))
+        ) {
+          systemPrompt = [...systemPrompt, keywordIntegrityNotice.message];
+        }
       }
       return { systemPrompt };
     } catch (err) {
@@ -643,6 +692,9 @@ export default function piOvenPi(
         uiCtx.ui.notify(notice.message, notice.level);
         if (installedTopologyNotice) {
           uiCtx.ui.notify(installedTopologyNotice.message, installedTopologyNotice.level);
+        }
+        if (keywordIntegrityNotice) {
+          uiCtx.ui.notify(keywordIntegrityNotice.message, keywordIntegrityNotice.level);
         }
       }
     } catch (err) {

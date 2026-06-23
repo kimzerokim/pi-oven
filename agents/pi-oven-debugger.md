@@ -6,7 +6,7 @@ model:
   - opencode-zen/gpt-5.4
 thinkingLevel: high
 mode: subagent
-tools: ["*"]
+tools: ["read", "search", "find", "write", "edit", "lsp", "ast_grep", "debug", "eval", "bash"]
 blocked_tools: []
 ---
 

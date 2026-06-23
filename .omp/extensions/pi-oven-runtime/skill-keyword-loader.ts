@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import * as path from "path";
+import { shippedSkillNameFromPath } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
 
 export const PI_OVEN_SKILL_NS = "pi-oven";
 export const KEYWORD_SKILL_DEDUP_KEY = "pi-oven:keyword-skills@v1";
@@ -118,6 +119,20 @@ export const SKILL_KEYWORD_WHITELIST: Record<string, readonly string[]> = {
     "조사 보고서 html",
     "리서치 html",
   ],
+  "html-spec-decision-maker": [
+    "html spec",
+    "html스펙",
+    "html 스펙",
+    "스펙을 html로",
+    "의사결정 html",
+    "결정사항 html",
+    "결정 워크시트",
+    "사전결정 html",
+    "decision worksheet",
+    "pre-decision html",
+    "옵션 비교 html",
+    "요구사항 명확화 html",
+  ],
   "improve-codebase-architecture": [
     "improve architecture",
     "architecture refactor",
@@ -227,6 +242,37 @@ export interface SkillKeywordLoaderState {
   matchedSkills: MatchedSkill[];
 }
 
+export interface SkillKeywordIndexIssue {
+  skillPath: string;
+  skillName: string;
+  reason: string;
+}
+
+export interface SkillKeywordIndexLoadResult {
+  index: SkillKeywordIndexEntry[];
+  issues: SkillKeywordIndexIssue[];
+  shippedSkillCount: number;
+}
+
+function normalizeIssueReason(reason: unknown): string {
+  const message =
+    reason instanceof Error ? reason.message : typeof reason === "string" ? reason : String(reason);
+  const normalized = message.replace(/\s+/g, " ").trim();
+  return normalized.length > 0 ? normalized : "unknown keyword-index failure";
+}
+
+export function formatSkillKeywordIndexIssues(
+  issues: SkillKeywordIndexIssue[],
+  limit = 3
+): string {
+  const shown = issues
+    .slice(0, limit)
+    .map((issue) => `${issue.skillName} (${issue.reason})`);
+  const remaining = issues.length - shown.length;
+  return remaining > 0 ? `${shown.join("; ")}; +${remaining} more` : shown.join("; ");
+}
+
+
 interface BranchEntryLike {
   id?: unknown;
   type?: unknown;
@@ -264,36 +310,55 @@ export function matchSkillsForText(
 }
 
 
-export function loadSkillKeywordIndex(repoRoot: string): SkillKeywordIndexEntry[] {
+export function loadSkillKeywordIndexReport(repoRoot: string): SkillKeywordIndexLoadResult {
   const pluginPath = path.resolve(repoRoot, ".claude-plugin", "plugin.json");
   const plugin = JSON.parse(readFileSync(pluginPath, "utf-8")) as { skills?: unknown };
   const skillPaths = Array.isArray(plugin.skills)
     ? plugin.skills.filter((value): value is string => typeof value === "string")
     : [];
 
-  return skillPaths.map((skillPath) => {
+  const index: SkillKeywordIndexEntry[] = [];
+  const issues: SkillKeywordIndexIssue[] = [];
+
+  for (const skillPath of skillPaths) {
     const absolute = path.resolve(repoRoot, skillPath);
-    const content = readFileSync(absolute, "utf-8");
-    const frontmatter = parseFrontmatter(content);
-    const name =
-      typeof frontmatter.name === "string" ? frontmatter.name : path.basename(path.dirname(absolute));
-    const description = typeof frontmatter.description === "string" ? frontmatter.description : "";
-    const whitelist = SKILL_KEYWORD_WHITELIST[name];
-    if (!whitelist || whitelist.length === 0) {
-      throw new Error(`Missing keyword whitelist for shipped skill: ${name}`);
-    }
+    let name = skillPath;
+    try {
+      name = shippedSkillNameFromPath(skillPath);
+      const content = readFileSync(absolute, "utf-8");
+      const frontmatter = parseFrontmatter(content);
+      name = typeof frontmatter.name === "string" ? frontmatter.name : name;
+      const description = typeof frontmatter.description === "string" ? frontmatter.description : "";
+      const whitelist = SKILL_KEYWORD_WHITELIST[name];
+      if (!whitelist || whitelist.length === 0) {
+        issues.push({ skillPath, skillName: name, reason: "missing keyword whitelist" });
+        continue;
+      }
 
-    const seen = new Set<string>();
-    const phrases: string[] = [];
-    for (const phrase of whitelist) {
-      const normalized = normalizeText(phrase);
-      if (!normalized || seen.has(normalized)) continue;
-      seen.add(normalized);
-      phrases.push(phrase);
-    }
+      const seen = new Set<string>();
+      const phrases: string[] = [];
+      for (const phrase of whitelist) {
+        const normalized = normalizeText(phrase);
+        if (!normalized || seen.has(normalized)) continue;
+        seen.add(normalized);
+        phrases.push(phrase);
+      }
 
-    return { name, description, phrases };
-  });
+      index.push({ name, description, phrases });
+    } catch (err) {
+      issues.push({
+        skillPath,
+        skillName: name,
+        reason: normalizeIssueReason(err),
+      });
+    }
+  }
+
+  return { index, issues, shippedSkillCount: skillPaths.length };
+}
+
+export function loadSkillKeywordIndex(repoRoot: string): SkillKeywordIndexEntry[] {
+  return loadSkillKeywordIndexReport(repoRoot).index;
 }
 
 export function createSkillKeywordLoaderState(): SkillKeywordLoaderState {

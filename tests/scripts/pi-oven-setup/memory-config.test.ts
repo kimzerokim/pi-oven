@@ -172,12 +172,13 @@ describe("runApply user path — memory + async keys written", () => {
     const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
     const mockSpawnFn = (cmd: string, args: string[]) => {
       spawnCalls.push({ cmd, args });
-      // serve modelRoles get
-      if (args[0] === "config" && args[1] === "get" && args[2] === "modelRoles") {
+      // serve record-typed config gets used by runApply
+      if (args[0] === "config" && args[1] === "get") {
+        const key = args[2];
         return {
           exitCode: 0,
           stdout: Buffer.from(
-            JSON.stringify({ key: "modelRoles", value: {}, type: "record", description: "" })
+            JSON.stringify({ key, value: {}, type: "record", description: "" })
           ),
           stderr: Buffer.from(""),
         } as any;

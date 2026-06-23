@@ -6,7 +6,7 @@ model:
   - opencode-zen/minimax-m2.5
 thinkingLevel: high
 mode: subagent
-tools: ["*"]
+tools: ["read", "search", "find", "write", "edit", "bash", "browser", "inspect_image", "task", "web_search"]
 blocked_tools: []
 ---
 

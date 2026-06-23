@@ -21,9 +21,11 @@
 import { promises as fs } from "node:fs";
 import { existsSync } from "node:fs";
 import * as path from "node:path";
-import { compareSemver } from "./pi-oven-setup/cache-resolver";
+import { loadSkillKeywordIndexReport } from "../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
 import { detectAuth, type AuthStatus } from "./pi-oven-setup/auth-detect";
+import { compareSemver } from "./pi-oven-setup/cache-resolver";
 import { EXPECTED_AGENT_COUNT } from "./pi-oven-setup/profiles";
+import { SHIPPED_SKILL_PATHS } from "./pi-oven-setup/shipped-skill-registry";
 import {
   collectStandaloneTruthSignals,
   formatStandaloneTruthSignals,
@@ -62,6 +64,9 @@ export interface SkillsFact {
   pluginSkillsCount: number;
   missingFromManifest: string[];
   extraInManifest: string[];
+  keywordIndexLoadedCount: number;
+  keywordIndexIssueCount: number;
+  keywordIndexIssues: string[];
 }
 
 export interface AgentsFact {
@@ -95,6 +100,8 @@ export interface MemoryFact {
   llmModePresent: boolean;
   /** `async.enabled === true`. */
   asyncEnabled: boolean;
+  /** `task.enableLsp === true`. */
+  taskEnableLsp: boolean;
 }
 
 export interface DoctorFacts {
@@ -179,7 +186,7 @@ export function evalGit(fact: GitFact): CheckResult {
   return { name, status: "PASS", detail: `git ${fact.version ?? ""} present, inside repo`.trim() };
 }
 
-/** (4) provider auth: PASS if >=1 whitelisted provider authed, else WARN. */
+/** (4) provider auth: PASS if >=1 whitelisted provider authed, else FAIL. */
 export function evalAuth(fact: AuthStatus): CheckResult {
   const name = "provider auth";
   const authed: string[] = [];
@@ -195,7 +202,7 @@ export function evalAuth(fact: AuthStatus): CheckResult {
   }
   return {
     name,
-    status: "WARN",
+    status: "FAIL",
     detail:
       "No whitelisted provider authed (opencode-zen / openai-codex / anthropic). Live eval and subagent dispatch will fail.",
     fix: "Authenticate at least one provider in omp (e.g. opencode-zen), then re-run /pi-oven:doctor.",
@@ -219,24 +226,38 @@ export function evalMcp(fact: McpFact): CheckResult {
   };
 }
 
-/** (6) skills: plugin.json skills[] must match SoT-required skill set. */
+/** (6) skills: plugin.json skills[] must match SoT-required skill set and the runtime keyword index must load cleanly. */
 export function evalSkills(fact: SkillsFact): CheckResult {
   const name = "skills";
-  if (fact.missingFromManifest.length === 0 && fact.extraInManifest.length === 0) {
+  const manifestAligned =
+    fact.missingFromManifest.length === 0 && fact.extraInManifest.length === 0;
+  const keywordClean = fact.keywordIndexIssueCount === 0;
+  if (manifestAligned && keywordClean) {
     return {
       name,
       status: "PASS",
-      detail: `plugin.json skills[] is SoT-aligned (${fact.pluginSkillsCount} loaded, ${fact.skillMdCount} SKILL.md files present).`,
+      detail:
+        `plugin.json skills[] is SoT-aligned (${fact.pluginSkillsCount} loaded, ${fact.skillMdCount} SKILL.md files present) ` +
+        `and the runtime keyword index loaded ${fact.keywordIndexLoadedCount}/${fact.pluginSkillsCount} shipped skills cleanly.`,
     };
+  }
+  const details: string[] = [];
+  if (!manifestAligned) {
+    details.push(
+      `plugin.json skills[] diverges from SoT. Missing: ${fact.missingFromManifest.length ? fact.missingFromManifest.join(", ") : "none"}. Extra: ${fact.extraInManifest.length ? fact.extraInManifest.join(", ") : "none"}.`
+    );
+  }
+  if (!keywordClean) {
+    details.push(
+      `Runtime keyword index skipped ${fact.keywordIndexIssueCount} shipped skill(s): ${fact.keywordIndexIssues.join("; ")}.`
+    );
   }
   return {
     name,
     status: "FAIL",
-    detail:
-      `plugin.json skills[] diverges from SoT. ` +
-      `Missing: ${fact.missingFromManifest.length ? fact.missingFromManifest.join(", ") : "none"}. ` +
-      `Extra: ${fact.extraInManifest.length ? fact.extraInManifest.join(", ") : "none"}.`,
-    fix: `Sync .claude-plugin/plugin.json skills[] to the ${SOT_SKILL_PATHS.length} SoT skill paths.`,
+    detail: details.join(" "),
+    fix:
+      "Sync .claude-plugin/plugin.json skills[], shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries.",
   };
 }
 
@@ -333,11 +354,12 @@ export function evalOpsConnector(fact: OpsConnectorFact): CheckResult {
 }
 
 /**
- * (11) memory / killer-tools: native mnemopi memory + async readiness.
- * WARN-only (never FAIL) — memory/async are configuration choices, not
+ * (11) memory / killer-tools: native mnemopi memory + async + subagent-LSP readiness.
+ * WARN-only (never FAIL) — these are configuration choices, not
  * install-integrity defects (doctor.md §"The 11-check reference", check 11).
  * PASS requires backend=="mnemopi" AND mnemopi.noEmbeddings + mnemopi.llmMode
- * present AND async.enabled==true; anything short of that WARNs.
+ * present AND async.enabled==true AND task.enableLsp==true; anything short of
+ * that WARNs.
  */
 export function evalMemory(fact: MemoryFact): CheckResult {
   const name = "memory / killer-tools";
@@ -351,19 +373,22 @@ export function evalMemory(fact: MemoryFact): CheckResult {
   if (!fact.asyncEnabled) {
     issues.push("async.enabled not true");
   }
+  if (!fact.taskEnableLsp) {
+    issues.push("task.enableLsp not true");
+  }
   if (issues.length === 0) {
     return {
       name,
       status: "PASS",
       detail:
-        "mnemopi backend active (noEmbeddings + llmMode set) + async.enabled — native retain/recall/reflect + irc ready.",
+        "mnemopi backend active (noEmbeddings + llmMode set) + async.enabled + task.enableLsp — native retain/recall/reflect + irc + subagent LSP ready.",
     };
   }
   return {
     name,
     status: "WARN",
-    detail: `Native memory/async not fully configured: ${issues.join("; ")}.`,
-    fix: "Run /pi-oven:setup to enable the mnemopi backend + async (retain/recall/reflect + irc).",
+    detail: `Native memory/async/LSP not fully configured: ${issues.join("; ")}.`,
+    fix: "Run /pi-oven:setup to enable the mnemopi backend + async + task.enableLsp (retain/recall/reflect + irc + subagent LSP).",
   };
 }
 
@@ -479,30 +504,6 @@ async function readPluginSkills(root: string): Promise<string[]> {
   }
 }
 
-const SOT_SKILL_PATHS = [
-  "./skills/memory-discipline/SKILL.md",
-  "./skills/code-quality-discipline/SKILL.md",
-  "./skills/tdd-strict/SKILL.md",
-  "./skills/brainstorming/SKILL.md",
-  "./skills/codebase-survey/SKILL.md",
-  "./skills/fresh-verifier/SKILL.md",
-  "./skills/writing-plans/SKILL.md",
-  "./skills/spec-and-review/SKILL.md",
-  "./skills/pre-commit-gate/SKILL.md",
-  "./skills/large-task-delegation/SKILL.md",
-  "./skills/subagent-driven-development/SKILL.md",
-  "./skills/autonomous-loop/SKILL.md",
-  "./skills/deep-init/SKILL.md",
-  "./skills/deep-dive/SKILL.md",
-  "./skills/systematic-debugging/SKILL.md",
-  "./skills/improve-codebase-architecture/SKILL.md",
-  "./skills/receiving-code-review/SKILL.md",
-  "./skills/html-research-orchestrator/SKILL.md",
-  "./skills/git-workflow/SKILL.md",
-  "./skills/aws/SKILL.md",
-  "./skills/bitbucket-pipeline/SKILL.md",
-  "./skills/cloudflare/SKILL.md",
-] as const;
 
 async function countAgents(root: string): Promise<number> {
   const agentsDir = path.join(root, "agents");
@@ -645,6 +646,7 @@ async function probeMemory(): Promise<MemoryFact> {
   const noEmbeddings = probeOmpConfigValue("mnemopi.noEmbeddings");
   const llmMode = probeOmpConfigValue("mnemopi.llmMode");
   const asyncEnabled = probeOmpConfigValue("async.enabled");
+  const taskEnableLsp = probeOmpConfigValue("task.enableLsp");
   return {
     backend:
       typeof backend.value === "string"
@@ -655,6 +657,7 @@ async function probeMemory(): Promise<MemoryFact> {
     noEmbeddingsPresent: noEmbeddings.present,
     llmModePresent: llmMode.present,
     asyncEnabled: asyncEnabled.value === true || asyncEnabled.value === "true",
+    taskEnableLsp: taskEnableLsp.value === true || taskEnableLsp.value === "true",
   };
 }
 
@@ -678,9 +681,22 @@ export async function gather(
     ]);
 
   const pluginSkillSet = new Set(pluginSkills);
-  const sotSkillSet = new Set<string>(SOT_SKILL_PATHS);
-  const missingFromManifest = SOT_SKILL_PATHS.filter((skill) => !pluginSkillSet.has(skill));
+  const sotSkillSet = new Set<string>(SHIPPED_SKILL_PATHS);
+  const missingFromManifest = SHIPPED_SKILL_PATHS.filter((skill) => !pluginSkillSet.has(skill));
   const extraInManifest = pluginSkills.filter((skill) => !sotSkillSet.has(skill));
+  let keywordIndexLoadedCount = 0;
+  let keywordIndexIssues: string[] = [];
+  try {
+    const keywordIndexReport = loadSkillKeywordIndexReport(pluginRoot);
+    keywordIndexLoadedCount = keywordIndexReport.index.length;
+    keywordIndexIssues = keywordIndexReport.issues.map(
+      (issue) => `${issue.skillName} (${issue.reason})`
+    );
+  } catch (err) {
+    keywordIndexIssues = [
+      `keyword-index probe failed (${err instanceof Error ? err.message : String(err)})`,
+    ];
+  }
 
   return {
     omp: probeBinary("omp", "--version"),
@@ -693,6 +709,9 @@ export async function gather(
       pluginSkillsCount: pluginSkills.length,
       missingFromManifest,
       extraInManifest,
+      keywordIndexLoadedCount,
+      keywordIndexIssueCount: keywordIndexIssues.length,
+      keywordIndexIssues,
     },
     agents: {
       agentCount,

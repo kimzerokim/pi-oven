@@ -6,7 +6,7 @@ model:
   - anthropic/claude-sonnet-4-6
 thinkingLevel: high
 mode: subagent
-tools: ["*"]
+tools: ["read", "search", "find", "bash", "browser", "inspect_image", "task"]
 blocked_tools: []
 ---
 

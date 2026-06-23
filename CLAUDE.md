@@ -15,7 +15,7 @@
 | Dir | What | SoT? |
 |---|---|---|
 | `agents/pi-oven-*.md` | 24 subagent definitions. Frontmatter `name: pi-oven:<role>` (colon), `model:` array, `thinkingLevel`, body = system prompt. | body hand-authored; `model`/`thinkingLevel` derived from profiles.ts |
-| `skills/<name>/SKILL.md` | 22 authored skills; runtime loads the 22-skill SoT set from `.claude-plugin/plugin.json`, exposes them via description discovery, and supplements them with a curated runtime keyword whitelist in the extension. Bodies **English-only**. | hand-authored |
+| `skills/<name>/SKILL.md` | 23 authored skills; runtime loads the 23-skill SoT set from `.claude-plugin/plugin.json`, exposes them via description discovery, and supplements them with a curated runtime keyword whitelist in the extension. Bodies **English-only**. | hand-authored |
 | `commands/*.md` | 3 command templates (setup, doctor, release). omp registers each as `/pi-oven:<basename>` via the Claude Code Marketplace provider, which namespaces marketplace commands as `<plugin>:<file-basename>` — command files MUST NOT carry a `pi-oven-` prefix. Autonomous mode is entered by matching the `autonomous-loop` runtime keyword whitelist (no command required). | hand-authored |
 | `scripts/pi-oven-setup/` | Setup-wizard CLI modules (TS, bun). | code |
 | `scripts/pi-oven-release/` | Release automation modules (version bump, SoT sync, changelog, publish gate). | code |
@@ -27,7 +27,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 895 pass currently
+bun test             # 933 pass currently
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -97,7 +97,7 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 
 ## Status
 
-**Current: v0.1.15** — makes Profile B use `openai-codex/gpt-5.4:high` for the main orchestrator so OpenAI-subscription users get the 1M context window, and leaves Profile B runtime fallback chains empty so setup does not route through OpenCode Zen. Profile B remains performance-first for Codex Pro/20x subagents: no `gpt-5.4-mini`/nano, per-role overrides include reasoning-effort suffixes, and xhigh is reserved for planner/debugger/review/security/architecture/oracle/deep-research roles.
+**Current: v0.1.16** — makes Profile B use `openai-codex/gpt-5.4:high` for the main orchestrator so OpenAI-subscription users get the 1M context window, and leaves Profile B runtime fallback chains empty so setup does not route through OpenCode Zen. Profile B remains performance-first for Codex Pro/20x subagents: no `gpt-5.4-mini`/nano, per-role overrides include reasoning-effort suffixes, and xhigh is reserved for planner/debugger/review/security/architecture/oracle/deep-research roles.
 
 **Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@kzk (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 

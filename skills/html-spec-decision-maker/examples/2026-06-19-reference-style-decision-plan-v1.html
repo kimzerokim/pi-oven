@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>가상 프로젝트 API 재정렬 — 결정 플랜 #2</title>
+<style>
+  /* ── 폰트 & 기본 ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    color: #1f2937;
+    background: #fff;
+  }
+  code, pre, .mono {
+    font-family: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", "Fira Code", monospace;
+    font-size: 13px;
+  }
+
+  /* ── 레이아웃 ── */
+  .page-wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 32px 80px;
+  }
+  section { margin-bottom: 52px; }
+  h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 4px; }
+  .subtitle { font-size: 14px; color: #6b7280; margin-bottom: 0; }
+  h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb; }
+  h3 { font-size: 16px; font-weight: 700; margin: 24px 0 10px; }
+  h4 { font-size: 14px; font-weight: 700; margin: 18px 0 8px; color: #374151; }
+  p { margin-bottom: 10px; }
+  ul, ol { padding-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 4px; }
+  a { color: #2563eb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
+
+  /* ── Sticky TOC ── */
+  .toc-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 8px 0;
+    margin-bottom: 14px;
+  }
+  .toc-inner {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 32px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    align-items: center;
+  }
+  .toc-label { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+  .toc-link {
+    font-size: 12px; color: #4b5563; white-space: nowrap;
+    padding: 2px 0;
+  }
+  .toc-link:hover { color: #2563eb; text-decoration: none; }
+
+  /* ── 헤더 영역 ── */
+  .page-header {
+    padding: 22px 0 24px;
+    border-bottom: 2px solid #e5e7eb;
+    margin-bottom: 32px;
+  }
+  .meta-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+  .meta-tag {
+    font-size: 12px; color: #6b7280; background: #f3f4f6;
+    padding: 2px 8px; border-radius: 4px;
+  }
+  .source-links { margin-top: 10px; }
+  .source-link { font-size: 12px; color: #2563eb; }
+
+  /* ── Stat 카드 ── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .stat-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: #f9fafb;
+  }
+  .stat-number { font-size: 28px; font-weight: 700; line-height: 1.1; color: #111827; }
+  .stat-label { font-size: 12px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
+  .stat-card.red { border-color: #fca5a5; background: #fef2f2; }
+  .stat-card.red .stat-number { color: #dc2626; }
+  .stat-card.amber { border-color: #fcd34d; background: #fffbeb; }
+  .stat-card.amber .stat-number { color: #d97706; }
+
+  /* ── 배지 ── */
+  .badge {
+    display: inline-block;
+    font-size: 11px; font-weight: 600; padding: 1px 7px;
+    border-radius: 4px; vertical-align: middle;
+  }
+  .badge-rec { background: #ecfdf5; color: #059669; border: 1px solid #6ee7b7; }
+  .badge-done { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+  /* ── 결정 포인트 섹션 ── */
+  .dp-section {
+    border-left: 4px solid #d97706;
+    padding-left: 20px;
+    margin-bottom: 32px;
+  }
+  .dp-title {
+    font-size: 18px; font-weight: 700; color: #d97706;
+    margin-bottom: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .dp-tag {
+    display: inline-block;
+    background: #fffbeb; color: #d97706;
+    border: 1px solid #fcd34d;
+    font-size: 12px; font-weight: 700; padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  /* ── 옵션 카드 ── */
+  .option-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 14px 0; }
+  .option-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 14px 16px;
+    position: relative;
+    background: #fff;
+    cursor: pointer;
+  }
+  .option-card.recommended,
+  .option-card.selected {
+    border: 2px solid #059669;
+    background: #f0fdf4;
+  }
+  .option-card input[type="radio"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .option-card .opt-label {
+    font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .option-card p { font-size: 13px; color: #374151; margin-bottom: 0; }
+  .option-card:focus-within { outline: 2px solid #bfdbfe; outline-offset: 2px; }
+
+  /* ── 테이블 ── */
+  .table-wrap { overflow-x: auto; margin: 12px 0 20px; border-radius: 6px; border: 1px solid #e5e7eb; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: #f3f4f6; }
+  th { padding: 9px 12px; text-align: left; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+  td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) { background: #f9fafb; }
+
+  /* ── 정보 박스 ── */
+  .info-box {
+    background: #eff6ff;
+    border-left: 4px solid #2563eb;
+    border-radius: 0 6px 6px 0;
+    padding: 14px 18px;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  .info-box strong { color: #1d4ed8; }
+  .warning-box {
+    background: #fffbeb;
+    border-left: 4px solid #d97706;
+    border-radius: 0 6px 6px 0;
+    padding: 14px 18px;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  .warning-box strong { color: #b45309; }
+  .evidence { font-size: 12px; color: #6b7280; font-family: "Geist Mono", ui-monospace, "SF Mono", monospace; }
+
+  /* ── 접이식 ── */
+  details { border: 1px solid #e5e7eb; border-radius: 6px; margin: 10px 0; }
+  summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+    color: #374151;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "▶"; font-size: 10px; color: #9ca3af; transition: transform 0.15s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  details .details-body { padding: 14px 16px; border-top: 1px solid #e5e7eb; font-size: 13px; }
+
+  /* ── 대안제시 + 결정 회신 템플릿 ── */
+  .alt-field { margin-top: 12px; }
+  .alt-field label { display: block; font-size: 13px; font-weight: 700; color: #374151; margin-bottom: 6px; }
+  .alt-field textarea {
+    width: 100%; min-height: 78px; resize: vertical;
+    border: 1px solid #d1d5db; border-radius: 6px;
+    padding: 10px 12px; font: inherit; font-size: 13px; line-height: 1.55;
+  }
+  .reply-template {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin-top: 14px;
+  }
+  .reply-template pre {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font-size: 14px;
+    line-height: 2;
+    white-space: pre-wrap;
+  }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  button {
+    border: 1px solid #d1d5db; background: #fff; color: #374151;
+    border-radius: 6px; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  button.primary { border-color: #2563eb; background: #2563eb; color: #fff; }
+
+  /* ── 로드맵 ── */
+  .roadmap-table th { min-width: 90px; }
+  .cycle-badge {
+    display: inline-block;
+    background: #2563eb; color: #fff;
+    font-size: 11px; font-weight: 700; padding: 2px 7px;
+    border-radius: 4px;
+  }
+
+  @media (max-width: 720px) {
+    .page-wrap { padding: 0 16px 40px; }
+    .stat-card, .option-card { box-shadow: none; }
+    .toc-inner { padding: 0 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toc-sticky">
+  <div class="toc-inner">
+    <span class="toc-label">이동</span>
+    <a href="#sec-0" class="toc-link">§0 확정 기록</a>
+    <a href="#sec-1" class="toc-link">§1 근거</a>
+    <a href="#dp-d7" class="toc-link">D7 주석 정책</a>
+    <a href="#dp-d9" class="toc-link">D9 브랜치전략</a>
+    <a href="#sec-5" class="toc-link">§5 로드맵</a>
+    <a href="#sec-6" class="toc-link">§6 Snapshot</a>
+    <a href="#sec-7" class="toc-link">§7 회신</a>
+  </div>
+</div>
+
+<div class="page-wrap">
+
+  <header class="page-header">
+    <h1>가상 프로젝트 API 재정렬 — 결정 플랜 #2</h1>
+    <p class="subtitle">코드 주석 정책 × API 스펙 정리 × 브랜치/머지 전략 × 실행 로드맵 (reference-style skill example)</p>
+    <div class="meta-row">
+      <span class="meta-tag">작성일: 2026-06-19</span>
+      <span class="meta-tag">예시: pi-oven bundled reference output</span>
+      <span class="meta-tag">상태: 결정 입력 대기</span>
+      <span class="meta-tag">프로젝트: generic product workspace</span>
+      <span class="meta-tag">개정 v1: 클릭 가능한 옵션 + 대안제시 + 회신 생성기 추가</span>
+    </div>
+  </header>
+
+  <section id="sec-0">
+    <h2>§0 — 1차 결정 기록 (가상 회신 원문 기반)</h2>
+    <div class="stat-grid">
+      <div class="stat-card amber">
+        <div class="stat-number">8</div>
+        <div class="stat-label">DP-D1~D8 — 대부분 확정<br>일부 세부 선택 대기</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">11</div>
+        <div class="stat-label">확정 기록 항목<br>아래 표 — 결정 아님, 기록</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">9</div>
+        <div class="stat-label">API 표면 확인 항목<br>라우트·DTO·클라이언트 영향</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">4,812 <span style="font-size:16px;color:#6b7280;">라인</span></div>
+        <div class="stat-label">주석 census 전수<br>stale 확인 <strong>5건</strong> (§3 DP-D7)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">6</div>
+        <div class="stat-label">구형 spec 참조 파일<br>(§3 DP-D8 폐지 후보)</div>
+      </div>
+    </div>
+
+    <p>아래 표는 가상 프로젝트의 기존 API 정렬 논의에서 나온 1차 회신을 요약한 것입니다. 이 섹션은 새 결정 대상이 아니라, 이후 DP 선택지의 근거입니다.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>항목</th><th>현재 기록</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr><td><strong>DP-0</strong></td><td><span class="badge badge-done">승인</span></td><td>권한 체크는 workspace 단위로 단순화. 세부 라우트는 후속 DP에서 정리.</td></tr>
+          <tr><td><strong>WS-A Phase 0</strong></td><td><span class="badge badge-done">유지</span></td><td>기존 클라이언트 호환성 확인 후 staged cutover.</td></tr>
+          <tr><td><strong>Spec SoT</strong></td><td><span class="badge badge-done">OpenAPI JSON 중심</span></td><td>별도 hand-written api-spec는 폐지 후보.</td></tr>
+          <tr><td><strong>Branch UX</strong></td><td><span class="badge badge-done">가벼운 브랜치 모델</span></td><td>동시 사용자 규모가 작아 lock 전략은 단순화 가능.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="sec-1">
+    <h2>§1 — 일반화된 근거 요약</h2>
+    <div class="info-box"><strong>가정:</strong> 이 예시는 특정 실제 저장소가 아니라, 제품형 SaaS 워크스페이스의 API/문서/브랜치 전략을 재정렬하는 가상 코드베이스를 대상으로 합니다.</div>
+    <ul>
+      <li>API surface가 resource 중심에서 view/workspace 중심으로 이동 중입니다.</li>
+      <li>문서 SoT가 hand-written spec에서 live OpenAPI로 이동 중입니다.</li>
+      <li>주석은 많지만 실제 stale 비율은 낮고, 일부 주석은 테스트/빌드/스펙 산출에 영향을 줍니다.</li>
+      <li>브랜치 기능은 이미 존재하지만 merge 기준과 신규 행 전파 정책이 불완전합니다.</li>
+    </ul>
+  </section>
+
+  <section id="sec-3">
+    <h2>§3 — 추가 결정 포인트</h2>
+
+    <div class="dp-section" id="dp-d7" data-decision="DP-D7">
+      <div class="dp-title">
+        <span class="dp-tag">DP-D7</span>
+        주석 정책 (사용자 질문에 대한 데이터 기반 답)
+        <span class="badge badge-done">현재 선택: a</span>
+      </div>
+
+      <p>사용자: <em>“주석 지금 stale 된거 너무 많아서 우리 주석 다 모든 코드에서 삭제하는건 어떨까?”</em> — 에 대한 comments-audit 성격의 census 결과입니다.</p>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-number">4,812</div>
+          <div class="stat-label">pure <code>//</code> 라인 전수<br>+ JSDoc 510블록 (api+web, prod+test)</div>
+        </div>
+        <div class="stat-card amber">
+          <div class="stat-number">5</div>
+          <div class="stat-label">stale(C급) 확인<br>전체의 ~1-2% 수준</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">~58-62%</div>
+          <div class="stat-label">A급 (제약/이유)<br>회귀 방지 가드레일</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-number">14</div>
+          <div class="stat-label">기계 지시어 — 삭제 시<br>빌드/린트/테스트 파손</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-number">72</div>
+          <div class="stat-label">DTO JSDoc 블록<br>live spec description 으로 컴파일</div>
+        </div>
+      </div>
+
+      <details>
+        <summary>census 상세 표 (분류별 실측 + 근거)</summary>
+        <div class="details-body">
+          <div class="table-wrap" style="margin-top:0;">
+            <table>
+              <thead><tr><th>분류</th><th>실측</th><th>비고</th></tr></thead>
+              <tbody>
+                <tr><td><strong>stale (C급)</strong></td><td><strong>5건</strong> (~1-2%)</td><td>파일명 헤더 drift, 이미 삭제된 TODO, 오래된 payload 설명 등. 체감과 달리 실측은 극소.</td></tr>
+                <tr><td><strong>A급 (제약/이유)</strong></td><td>~58-62%</td><td>락 순서, 캐시 무효화 이유, 테스트 hand-shake 설명 등 회귀 방지선.</td></tr>
+                <tr><td><strong>기계 지시어</strong></td><td>14건</td><td>eslint-disable, @ts-expect-error, test-environment pragma. 삭제 시 검증 실패.</td></tr>
+                <tr><td><strong>DTO JSDoc</strong></td><td>42/68 파일, 72블록</td><td>OpenAPI description 으로 컴파일되므로 spec 소스에 해당.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <div class="option-grid" data-question="DP-D7">
+        <label class="option-card recommended selected">
+          <input type="radio" name="DP-D7" value="a — 선별 정리 + 규칙 신설" checked>
+          <div class="opt-label">a (권장) — 선별 정리 + 규칙 신설 <span class="badge badge-rec">권장</span></div>
+          <p>① stale 5건 정정/삭제 ② 코드 재진술 주석 제거 ③ 파일명 헤더 제거 ④ 프로젝트 규칙에 “주석은 코드로 표현 불가한 제약/이유만” 추가. A급·DTO JSDoc·기계 지시어는 유지.</p>
+        </label>
+        <label class="option-card">
+          <input type="radio" name="DP-D7" value="b — 전량 삭제 + 예외 화이트리스트">
+          <div class="opt-label">b — 전량 삭제 + 예외 화이트리스트</div>
+          <p>기계 지시어와 DTO JSDoc 을 제외하고 전부 삭제. 화이트리스트 관리 비용 + 회귀 방지 가드레일 손실. 비권장 — 문제는 “주석이 많다”가 아니라 “stale 5건”입니다.</p>
+        </label>
+        <label class="option-card">
+          <input type="radio" name="DP-D7" value="c — 최소">
+          <div class="opt-label">c — 최소</div>
+          <p>stale 5건만 정정합니다. 단기 비용은 낮지만 재발 방지 규칙이 남지 않습니다.</p>
+        </label>
+      </div>
+
+      <div class="alt-field">
+        <label for="alt-DP-D7">대안제시</label>
+        <textarea id="alt-DP-D7" data-alt-for="DP-D7" placeholder="예: A급 주석은 유지하되 파일명 헤더만 일괄 삭제"></textarea>
+      </div>
+    </div>
+
+    <div class="dp-section" id="dp-d9" data-decision="DP-D9">
+      <div class="dp-title">
+        <span class="dp-tag">DP-D9</span>
+        브랜치 전략 (fork·merge·lock 스코프)
+        <span class="badge badge-done">현재 선택: a=i · b=i · c=i</span>
+      </div>
+
+      <p>브랜치 관련 전략을 결정 가능한 형태로 정리합니다. view×branch, recordId 보존, merge 기준이 모두 연결되어 있으므로 세 축을 한 묶음으로 봅니다.</p>
+
+      <details open>
+        <summary>배경 사실 6건 (evidence 포함)</summary>
+        <div class="details-body">
+          <ul style="margin-bottom:0;">
+            <li>fork = background worker 의 rows+cells eager copy. 현재 public id 는 일부 재생성됨. <br><span class="evidence">evidence: branch-copy.worker.ts:148-204</span></li>
+            <li>merge = cell-level apply. parent branch 대상 매핑이 있는 행에만 브랜치 셀을 적용. <br><span class="evidence">evidence: merge.service.ts:61,69,183-208</span></li>
+            <li>매핑 없는 신규 행은 apply 루프에서 skip — 브랜치에서 만든 신규 리소스가 parent 로 전파되지 않음.</li>
+            <li>main 브랜치 보호는 존재. archive 불가.</li>
+            <li>lock 은 workspace 전역으로 적용됨.</li>
+            <li>WS room 은 workspace:{workspaceId}:{branchId} 로 브랜치별 채널은 이미 분리.</li>
+          </ul>
+        </div>
+      </details>
+
+      <h4>D9-a — lock × branch 스코프</h4>
+      <div class="option-grid" data-question="DP-D9-a">
+        <label class="option-card recommended selected">
+          <input type="radio" name="DP-D9-a" value="i — workspace 전역 유지" checked>
+          <div class="opt-label">i (권장) — workspace 전역 유지 <span class="badge badge-rec">권장</span></div>
+          <p>“독점 편집 모드” 시맨틱 명확, 소규모 사용자에 충분, 변경 0. 비용: 누군가 lock 보유 중엔 다른 브랜치 병렬 편집도 차단.</p>
+        </label>
+        <label class="option-card">
+          <input type="radio" name="DP-D9-a" value="ii — branch 단위 세분화">
+          <div class="opt-label">ii — branch 단위 세분화</div>
+          <p>브랜치 병렬 워크플로 허용. 비용: lock 컬럼 이동 + sweeper·FE·WS payload 분기 + force-release UX 복잡화. 수요 미입증(YAGNI).</p>
+        </label>
+      </div>
+      <div class="alt-field">
+        <label for="alt-DP-D9-a">대안제시</label>
+        <textarea id="alt-DP-D9-a" data-alt-for="DP-D9-a"></textarea>
+      </div>
+
+      <h4>D9-b — merge row 매칭 기준</h4>
+      <div class="option-grid" data-question="DP-D9-b">
+        <label class="option-card recommended selected">
+          <input type="radio" name="DP-D9-b" value="i — record_id 기반 전환" checked>
+          <div class="opt-label">i (권장) — record_id 기반 전환 <span class="badge badge-rec">권장</span></div>
+          <p>fork-lineage 대신 (merge target branch, record_id) 기반으로 부모-브랜치 행을 대조. 신규 행 전파 수리의 기반.</p>
+        </label>
+        <label class="option-card">
+          <input type="radio" name="DP-D9-b" value="ii — 현행 lineage 유지">
+          <div class="opt-label">ii — 현행 lineage 유지</div>
+          <p>변경 0. 비용: 공개 키와 merge 키의 정체성 이원화, 브랜치 신규 행 전파 한계 지속.</p>
+        </label>
+      </div>
+      <div class="alt-field">
+        <label for="alt-DP-D9-b">대안제시</label>
+        <textarea id="alt-DP-D9-b" data-alt-for="DP-D9-b"></textarea>
+      </div>
+
+      <h4>D9-c — 브랜치 신규 행의 merge 전파</h4>
+      <div class="option-grid" data-question="DP-D9-c">
+        <label class="option-card recommended selected">
+          <input type="radio" name="DP-D9-c" value="i — 전파하도록 수리" checked>
+          <div class="opt-label">i (권장) — 전파하도록 수리 <span class="badge badge-rec">권장</span></div>
+          <p>브랜치에서 추가한 리소스를 merge 시 부모에 INSERT. record_id 충돌 검사로 자연 구현. 충돌 시 merge_conflicts 플로우 편입.</p>
+        </label>
+        <label class="option-card">
+          <input type="radio" name="DP-D9-c" value="ii — 의도된 제약으로 문서화">
+          <div class="opt-label">ii — 의도된 제약으로 문서화</div>
+          <p>“브랜치에서 키 추가 → merge”가 안 되는 반쪽 브랜치 기능으로 남음.</p>
+        </label>
+      </div>
+      <div class="alt-field">
+        <label for="alt-DP-D9-c">대안제시</label>
+        <textarea id="alt-DP-D9-c" data-alt-for="DP-D9-c"></textarea>
+      </div>
+
+      <div class="info-box">
+        <strong>D9-c parent INSERT 필드 시맨틱 (확정 후보):</strong>
+        브랜치 신규 행을 merge 시 target(parent) branch 에 INSERT 할 때 record_id 는 branch 행 값 보존, position 은 branch 행의 fractional position 값을 복사, version 은 parent 기준 신규 행으로 1 발급합니다.
+      </div>
+      <div class="info-box">
+        <strong>결합 관계 (D6·D9-b·D9-c):</strong>
+        public id 보존 + record_id merge 매칭 + 신규 행 전파는 한 묶음이 자연스럽습니다. 반대로 id 재생성을 유지하면 D9-b 는 자동으로 lineage 유지가 됩니다.
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-5">
+    <h2>§5 — 통합 로드맵 재편</h2>
+    <div class="info-box">
+      <strong>DP-D7 + DP-D9 확정값 기준</strong> — 아래 로드맵은 현재 선택 상태를 기준으로 작성되었습니다. 실제 실행 스펙은 이 로드맵을 사이클별 TDD 시나리오로 구체화합니다.
+    </div>
+    <div class="table-wrap roadmap-table">
+      <table>
+        <thead><tr><th>사이클</th><th>작업</th><th>결정 의존</th><th>게이트</th></tr></thead>
+        <tbody>
+          <tr><td><span class="cycle-badge">R1</span> 즉시</td><td><ul style="margin:0;padding-left:16px;"><li>stale 주석 5건 정정/삭제</li><li>구형 spec 참조 제거 후보 인벤토리</li><li>OpenAPI description 거짓 서술 교정</li></ul></td><td>DP-D7</td><td>doc-only + targeted lint</td></tr>
+          <tr><td><span class="cycle-badge">R2</span> 읽기 표면</td><td><ul style="margin:0;padding-left:16px;"><li>default view/read filter 정비</li><li>cursor 기반 list API 통일</li></ul></td><td>D2·D3 계열</td><td>service TDD + API contract test</td></tr>
+          <tr><td><span class="cycle-badge">R3</span> 브랜치/머지</td><td><ul style="margin:0;padding-left:16px;"><li>public id 보존</li><li>record_id 기반 merge 매칭</li><li>브랜치 신규 행 parent INSERT</li></ul></td><td>DP-D9-b·c</td><td>fork/merge 통합 테스트</td></tr>
+          <tr><td><span class="cycle-badge">R4</span> 클라이언트 전환</td><td><ul style="margin:0;padding-left:16px;"><li>query key 재설계</li><li>optimistic/cache/WS payload 정합</li></ul></td><td>R2·R3 완료</td><td>browser E2E + multi-tab regression</td></tr>
+          <tr><td><span class="cycle-badge">R5</span> 제거·정리</td><td><ul style="margin:0;padding-left:16px;"><li>deprecated route 제거</li><li>주석 규칙 문서화</li><li>legacy audit/spec 잔재 purge</li></ul></td><td>DP-D7 + D8 계열</td><td>1 cycle soak 후 제거</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="info-box"><strong>의존성 노트:</strong> D9-b와 D9-c는 같은 merge 로직 영역이므로 R3에서 함께 처리합니다. 주석 정책은 R1에서 빠르게 적용하되 DTO JSDoc 과 기계 지시어는 유지합니다.</div>
+  </section>
+
+  <section id="sec-6">
+    <h2>§6 — 확정값 Snapshot (예시)</h2>
+    <p>현재 선택 상태 기준. 사용자가 옵션을 클릭하면 아래 회신 생성기의 값이 바뀝니다.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>DP</th><th>확정값</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr><td><strong>D7</strong></td><td>선별 정리 + 규칙 신설</td><td>stale만 제거, spec/기계 지시어/제약 주석 유지</td></tr>
+          <tr><td><strong>D9-a</strong></td><td>workspace 전역 lock 유지</td><td>소규모 사용자 기준 단순성 우선</td></tr>
+          <tr><td><strong>D9-b</strong></td><td>record_id 기반 merge 매칭</td><td>public id 보존과 결합</td></tr>
+          <tr><td><strong>D9-c</strong></td><td>브랜치 신규 행 merge 전파</td><td>parent INSERT 경로 신설</td></tr>
+          <tr><td><strong>로드맵</strong></td><td>R1~R5</td><td>주석 정리 → read 표면 → branch/merge → FE 전환 → 제거</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="sec-7">
+    <h2>§7 — 복붙 텍스트 생성기</h2>
+    <p>현재 선택한 옵션과 대안제시를 모아 Claude Code CLI에 붙여넣을 결정사항 텍스트를 생성합니다.</p>
+    <div class="reply-template">
+      <div class="actions">
+        <button class="primary" id="generateReply">복붙 텍스트 생성</button>
+        <button id="copyReply">클립보드 복사</button>
+      </div>
+      <pre id="replyOutput">아직 생성되지 않음</pre>
+    </div>
+  </section>
+
+</div><!-- .page-wrap -->
+
+<script>
+  function refreshOptionGroup(name) {
+    document.querySelectorAll(`input[name="${name}"]`).forEach(input => {
+      const card = input.closest('.option-card');
+      if (!card) return;
+      card.classList.toggle('selected', input.checked);
+      card.classList.toggle('recommended', input.checked);
+    });
+  }
+
+  document.querySelectorAll('.option-card input[type="radio"]').forEach(input => {
+    input.addEventListener('change', () => refreshOptionGroup(input.name));
+    refreshOptionGroup(input.name);
+  });
+
+  document.querySelectorAll('.option-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const input = card.querySelector('input[type="radio"]');
+      if (!input) return;
+      input.checked = true;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
+
+  const labels = {
+    'DP-D7': '주석 정책',
+    'DP-D9-a': 'lock × branch 스코프',
+    'DP-D9-b': 'merge row 매칭 기준',
+    'DP-D9-c': '브랜치 신규 행 merge 전파'
+  };
+
+  function selected(name) {
+    const input = document.querySelector(`input[name="${name}"]:checked`);
+    return input ? input.value : '미결정';
+  }
+
+  function alt(name) {
+    const el = document.querySelector(`[data-alt-for="${name}"]`);
+    return el && el.value.trim() ? el.value.trim() : '없음';
+  }
+
+  function buildReply() {
+    const names = ['DP-D7', 'DP-D9-a', 'DP-D9-b', 'DP-D9-c'];
+    const lines = [];
+    lines.push('Worksheet');
+    lines.push('- path: skills/html-spec-decision-maker/examples/2026-06-19-reference-style-decision-plan-v1.html');
+    lines.push('- title: 가상 프로젝트 API 재정렬 — 결정 플랜 #2');
+    lines.push('- date: 2026-06-19');
+    lines.push('- version: v1');
+    lines.push('');
+    lines.push('Status');
+    lines.push(`- answered cards: ${names.length}, unanswered cards: 0, deferred cards: 0`);
+    lines.push('');
+    lines.push('Recommended direction');
+    lines.push('- 주석은 전량 삭제가 아니라 선별 정리 + 규칙 신설로 처리한다.');
+    lines.push('- branch/merge 전략은 public id 보존, record_id 매칭, 신규 행 전파를 한 묶음으로 확정한다.');
+    lines.push('- 로드맵은 R1 주석·spec 정리 → R2 read 표면 → R3 branch/merge → R4 FE → R5 제거 순서로 진행한다.');
+    lines.push('');
+    lines.push('Decision log');
+    names.forEach(name => {
+      lines.push(`- ${name} — ${labels[name]}`);
+      lines.push(`  - 선택: ${selected(name)}`);
+      lines.push(`  - 대안제시: ${alt(name)}`);
+    });
+    lines.push('');
+    lines.push('Open follow-ups');
+    lines.push('- R3 fork/merge 통합 테스트에서 신규 행 전파와 충돌 시맨틱을 확정한다.');
+    lines.push('- DTO JSDoc 이 live spec description 으로 쓰이는 경로는 삭제 전 재검증한다.');
+    return lines.join('\n');
+  }
+
+  const output = document.getElementById('replyOutput');
+  document.getElementById('generateReply').addEventListener('click', () => {
+    output.textContent = buildReply();
+  });
+  document.getElementById('copyReply').addEventListener('click', async () => {
+    const text = output.textContent === '아직 생성되지 않음' ? buildReply() : output.textContent;
+    output.textContent = text;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      const range = document.createRange();
+      range.selectNodeContents(output);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.execCommand('copy');
+      sel.removeAllRanges();
+    }
+  });
+</script>
+</body>
+</html>

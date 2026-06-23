@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { runApply } from "../../../scripts/pi-oven-setup/apply";
+import { runApply, runRepairPrereqs } from "../../../scripts/pi-oven-setup/apply";
 import { ROLES, PROFILE_A, PROFILE_B, PROFILE_C, PROFILE_D, PROFILE_A_ORCHESTRATOR, PROFILE_A_FALLBACK_CHAINS, PROFILE_B_ORCHESTRATOR, PROFILE_B_FALLBACK_CHAINS, PROFILE_C_ORCHESTRATOR, PROFILE_C_FALLBACK_CHAINS, PROFILE_D_ORCHESTRATOR, PROFILE_D_FALLBACK_CHAINS } from "../../../scripts/pi-oven-setup/profiles";
 import { readAgentFiles } from "../../../scripts/pi-oven-setup/agent-rewriter";
 import {
@@ -27,6 +27,7 @@ function makeTempDir(): string {
 function makeAgentFile(
   agentsDir: string,
   role: string,
+  profile: typeof PROFILE_A,
   primary: string,
   alternate: string,
   thinkingLevel: string
@@ -39,8 +40,8 @@ model:
   - ${alternate}
 thinkingLevel: ${thinkingLevel}
 mode: subagent
-tools: ["*"]
-blocked_tools: []
+tools: ${JSON.stringify(profile[role as keyof typeof profile].tools)}
+blocked_tools: ${JSON.stringify(profile[role as keyof typeof profile].blocked_tools)}
 ---
 
 ## Role
@@ -55,6 +56,7 @@ function populateAgents(agentsDir: string, profile: typeof PROFILE_A): void {
     makeAgentFile(
       agentsDir,
       role,
+      profile,
       profile[role].primary,
       profile[role].registry_alternate,
       profile[role].thinkingLevel
@@ -831,7 +833,7 @@ describe("runApply", () => {
       return { exitCode: 0, stdout: Buffer.from("") };
     };
     const result = await runApply({ profile: "A", validateMode: "none", spawnFn }); // global default
-    expect(calls).toContainEqual(["config", "set", "inspect_image.enabled", "true"]);
+    expect(calls).toContainEqual(["config", "set", "task.enableLsp", "true"]);
     expect(result.output).toContain("✓ tools enabled:");
 
     const projectCwd = makeTempDir();
@@ -842,6 +844,40 @@ describe("runApply", () => {
     };
     await runApply({ profile: "A", validateMode: "none", scope: "project", cwd: projectCwd, spawnFn: spawnFn2 });
     expect(calls2.some((a) => a[0] === "config" && a[1] === "set")).toBe(false);
+  });
+});
+
+describe("runRepairPrereqs", () => {
+  it("writes only machine-global prerequisites and no routing keys", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const spawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    const result = await runRepairPrereqs({ spawnFn });
+
+    expect(result.exitCode).toBe(0);
+    const configSetKeys = spawnCalls
+      .filter((call) => call.args[0] === "config" && call.args[1] === "set")
+      .map((call) => call.args[2])
+      .sort();
+    expect(configSetKeys).toEqual([
+      "astGrep.enabled",
+      "async.enabled",
+      "browser.enabled",
+      "debug.enabled",
+      "inspect_image.enabled",
+      "lsp.enabled",
+      "memory.backend",
+      "mnemopi.llmMode",
+      "mnemopi.noEmbeddings",
+      "task.enableLsp",
+      "web_search.enabled",
+    ]);
+    expect(configSetKeys).not.toContain("modelRoles");
+    expect(configSetKeys).not.toContain("retry.fallbackChains");
+    expect(configSetKeys).not.toContain("task.agentModelOverrides");
   });
 });
 
@@ -1012,7 +1048,7 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     expect(result.output).toContain(projectSettingsPath(cwd));
   });
 
-  it("project-scope output tells the user that tool enablement and sibling suppression still need a separate global step", async () => {
+  it("project-scope output tells the user that global prerequisites and sibling suppression still need a separate global step", async () => {
     const { mockSpawnFn } = makeRecordingSpawn();
     const result = await runApply({
       profile: "A",
@@ -1025,7 +1061,9 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     expect(result.output).toContain("Project scope kept ~/.omp/agent/config.yml untouched.");
     expect(result.output).toContain("Standalone truth surface:");
     expect(result.output).toContain("project-scope remediation");
-    expect(result.output).toContain("/pi-oven:setup --scope global");
+    expect(result.output).toContain("memory.backend");
+    expect(result.output).toContain("async.enabled");
+    expect(result.output).toContain("/pi-oven:setup --repair-prereqs");
     expect(result.output).toContain("--suppress-sibling-skills");
   });
 

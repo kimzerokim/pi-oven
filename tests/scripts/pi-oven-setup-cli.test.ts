@@ -565,6 +565,30 @@ describe("pi-oven-setup CLI --scope", () => {
     expect(exitCode).toBe(0);
   });
 
+  it("--repair-prereqs succeeds without writing project routing or setup markers", async () => {
+    const { exitCode, stdout } = await runCLIInCwd(["--repair-prereqs"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Machine-global prerequisites repaired.");
+    expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
+    expect(markerExists(tempDir)).toBe(false);
+    expect(globalMarkerExists(homeDir)).toBe(false);
+  });
+
+  it("--repair-prereqs --scope project is rejected with a global-only error", async () => {
+    const { exitCode, stderr } = await runCLIInCwd(["--repair-prereqs", "--scope", "project"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/--repair-prereqs.*global-only|scope.*project/i);
+    expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
+    expect(markerExists(tempDir)).toBe(false);
+    expect(globalMarkerExists(homeDir)).toBe(false);
+  });
+
   it("--scope bogus exits 1 with the Allowed message", async () => {
     const { exitCode, stderr } = await runCLIInCwd(["--apply", "--scope", "bogus"], tempDir, {
       PI_OVEN_MOCK_SPAWN: "1",

@@ -2,14 +2,14 @@
 
 > A curated omp marketplace plugin distilled from four frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.15-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-895%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.16-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-933%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
 ## What you get
 
 - **24 self-contained agents** under the `pi-oven:` namespace — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis, deep-researcher, data-runner. All 24 are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier use `report_finding` for structured findings. Each is a markdown file in `agents/` with locked model + tool whitelist.
-- **22 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, git-workflow, aws, bitbucket-pipeline, cloudflare, memory-discipline (mnemopi-backed retain/recall/reflect discipline with curated runtime keyword matching).
+- **23 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, html-spec-decision-maker, git-workflow, aws, bitbucket-pipeline, cloudflare, memory-discipline (mnemopi-backed retain/recall/reflect discipline with curated runtime keyword matching).
 - **`/pi-oven:setup` wizard** — Profile A (release default, heterogeneous cost-optimized), Profile B (openai-codex-only), Profile C (all-Anthropic), or Profile D (opencode-zen-only), with explicit global/project routing layers and `--status` visibility.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
 - **Project `CLAUDE.md` injection + omp isolation** — the runtime extension reads your repo-root `CLAUDE.md` and injects it into the main + sub agent system prompt (omp does not read repo-root `CLAUDE.md` natively). `/pi-oven:setup --isolate` then makes omp ignore the global `~/.claude` context layer (`~/.claude/CLAUDE.md` + pi-oven skills/hooks), so omp runs as a pi-oven-first environment. It keeps the `claude-plugins` provider enabled (that is how pi-oven's own `/pi-oven:*` commands load), so omc/agentmemory marketplace plugin commands remain visible — the trade-off for not killing pi-oven's own commands. See [omp isolation & project CLAUDE.md](#omp-isolation--project-claudemd).
@@ -37,7 +37,7 @@ omp plugin install pi-oven@kzk --force
 
 # 3. Verify
 omp plugin list | grep pi-oven
-# Expected: pi-oven@kzk (0.1.15)
+# Expected: pi-oven@kzk (0.1.16)
 ```
 
 ### One-shot (install automatic, setup interactive)
@@ -65,7 +65,7 @@ omp plugin install pi-oven@kzk --force
 
 ### 1. Configure model routing
 
-After installation, run `/pi-oven:setup` inside an omp session. The wizard is **LLM-driven** — it asks you questions in the chat and dispatches `bun scripts/pi-oven-setup.ts` in batch mode behind the scenes.
+After installation, run `/pi-oven:setup` inside an omp session. The wizard is **LLM-driven** — it asks you questions in the chat and resolves `PI_OVEN_DIR` first (dev checkout → `installed_plugins.json` `installPath` → install-cache scan) before dispatching `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts"` in batch mode behind the scenes.
 
 ```
 > /pi-oven:setup
@@ -104,27 +104,23 @@ See `skills/*/SKILL.md` for each skill's `description:` activation condition.
 
 ### 3.1 Verify UC5 ops connectors after install
 
-Run:
+Run inside omp:
 
 ```sh
-bun scripts/pi-oven-doctor.ts
+/pi-oven:doctor
 ```
 
-Expected check:
-
-- `[PASS] uc5 ops connector` when connector skills exist and one credential file is present (`.external-credentials` or `.external_certificate`; legacy alias `.external_cerficate` is also accepted)
-- `[WARN] uc5 ops connector` when skills are installed but no credential file exists yet (non-blocking onboarding state)
-- `[FAIL] uc5 ops connector` only when required skill files are missing
+If the provider-auth check FAILs, authenticate `opencode-zen`, `openai-codex`, or `anthropic` in omp first, then rerun the command.
 
 ### 3.2 Dry-run release automation
 
-Run:
+Run inside omp:
 
 ```sh
-bun run release:pi-oven -- --bump patch --dry-run --update-changelog --sync-label
+/pi-oven:release --bump patch --dry-run --update-changelog --sync-label
 ```
 
-Default behavior is safe (`--dry-run` unless `--publish` is explicitly set without dry-run). The release script enforces version SoT sync across `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json`.
+The command resolves `PI_OVEN_DIR` before dispatching the release script, so it works from a global marketplace install as well as a development checkout. Default behavior is safe (`--dry-run` unless `--publish` is explicitly set without dry-run). The release script enforces version SoT sync across `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json`.
 ### 4. Verify before claiming done
 
 The `fresh-verifier` skill enforces a hard rule: **the main agent cannot verify its own work**. When you finish a task and want to confirm completion, the skill auto-dispatches `pi-oven:verifier` (a fresh agent with no memory of the implementation) to run a 4-check audit:
@@ -204,11 +200,12 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 | `improve-codebase-architecture` | extended | deepening-focused architecture refactor discovery |
 | `receiving-code-review` | extended | challenge/validate review comments before applying |
 | `html-research-orchestrator` | extended | fan-out research → cited HTML report assembly |
+| `html-spec-decision-maker` | extended | pre-decision HTML worksheet for unresolved user-facing questions |
 | `git-workflow` | extended | worktree-first branch start/finish lifecycle |
 | `aws` | ops (UC5) | AWS production read inspection and infra diagnostics |
 | `bitbucket-pipeline` | ops (UC5) | Bitbucket pipeline status/log/variables connector |
 | `cloudflare` | ops (UC5) | Cloudflare DNS/zone read connector |
-| `memory-discipline` | core | mnemopi-backed recall / retain / reflect discipline; setup writes `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true` |
+| `memory-discipline` | core | mnemopi-backed recall / retain / reflect discipline; setup writes `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true`, `task.enableLsp=true` |
 
 See `skills/<name>/SKILL.md` for the complete body and `evals/<skill>/scenarios/*.yaml` for behavioral test fixtures.
 
@@ -223,6 +220,7 @@ The wizard accepts subcommands:
 | `/pi-oven:setup` | Interactive first-run flow (default) |
 | `/pi-oven:setup --status` | Show effective per-role models across project, global override, and frontmatter layers |
 | `/pi-oven:setup --reset` | Clear pi-oven-managed routing overrides; with `--scope project`, clear project `.omp/settings.json` routing |
+| `/pi-oven:setup --repair-prereqs` | Repair only the machine-global prerequisites: `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true`, `task.enableLsp=true`, and the 6 gated tool flags. Does not touch routing, project settings, or setup markers. |
 | `/pi-oven:setup --import <file>` | Apply a JSON config (validated against the 24-role schema + provider whitelist) |
 | `/pi-oven:setup --apply --profile A\|B\|C\|D` | Non-interactive apply with explicit profile |
 | `/pi-oven:setup --apply --profile B --validate full` | Full 24-role smoke ping (default is 7 MUST-tier); same flag works for `--profile C`, `--profile D` |
@@ -230,7 +228,6 @@ The wizard accepts subcommands:
 | `/pi-oven:setup --apply --profile A --scope project` | Write per-project routing (default scope is `global`). See [Per-project routing](#per-project-routing---scope-project) |
 | `/pi-oven:setup --isolate` | Make omp ignore the `~/.claude` context layer (writes `disabledProviders: [claude]`; keeps `claude-plugins` so pi-oven's own `/pi-oven:*` commands survive). Combinable, e.g. `--apply --profile A --isolate` |
 | `/pi-oven:setup --no-isolate` | Re-enable the `~/.claude` layer in omp (removes `claude` + any legacy `claude-plugins`) |
-
 ### Profile A (release default)
 
 Heterogeneous cost-optimized. Requires **OpenCode Zen + OpenAI Codex subscriptions** — no hard Anthropic dependency.
@@ -242,7 +239,7 @@ Heterogeneous cost-optimized. Requires **OpenCode Zen + OpenAI Codex subscriptio
 - Reasoning-heavy (critic, planner, security-reviewer, oracle): `anthropic/claude-opus-4-8` (advisory; no hard Anthropic auth required — falls back to `opencode-zen/kimi-k2.6` if unavailable)
 - Structured review (code-reviewer, verifier, analyst, tracer): `opencode-zen/kimi-k2.6`
 
-Beyond the 24 subagent roles, `/pi-oven:setup --profile` also sets the **main orchestrator** model — omp `modelRoles.default` = `openai-codex/gpt-5.4:high` with retry fallback to `opencode-zen/kimi-k2.6`. The 22 skills enforce subagent dispatch so the orchestrator routes work to the right agent instead of doing it inline.
+Beyond the 24 subagent roles, `/pi-oven:setup --profile` also sets the **main orchestrator** model — omp `modelRoles.default` = `openai-codex/gpt-5.4:high` with retry fallback to `opencode-zen/kimi-k2.6`. The 23 skills enforce subagent dispatch so the orchestrator routes work to the right agent instead of doing it inline.
 
 ### Profile B (openai-codex-only)
 
@@ -289,7 +286,7 @@ By default, setup applies **globally** — model routing, language, and the setu
 | Per-role overrides | global `config.yml` — profiles B/C/D only (A stays orchestrator-only) | `<repoRoot>/.omp/settings.json` — **all 24 roles for EVERY profile, including A** |
 | `modelRoles` + `retry.fallbackChains` | global `config.yml` | `<repoRoot>/.omp/settings.json` |
 | language + setup marker | global `~/.pi-oven/config.json` | `<repoRoot>/.pi-oven/config.json` |
-| memory/async infra | global `config.yml` | global-only (not written under project scope) |
+| memory/async infra | global `config.yml` (`/pi-oven:setup --repair-prereqs` repairs just this layer) | global-only (not written under project scope) |
 
 omp reads `<repoRoot>/.omp/settings.json` at project level and **deep-merges it over** your global config (record settings merge key-by-key; arrays replace), so a project override wins per-role over global — even over a Profile-A frontmatter default. That means a single project can pin *different* models from your global default. The file is **committable** (share routing with a team) or **gitignorable** (machine-local) — your choice. Launch omp from the **repo root** so the project settings are discovered. The setup notice at session start shows a `↳ project model routing active (N roles)` line whenever this file carries `pi-oven:*` overrides.
 
@@ -360,20 +357,13 @@ When a pi-oven agent's primary model is unauthenticated (e.g., you select Profil
 
 ### Install cache must be populated
 
-After installing pi-oven@kzk from the marketplace, ensure the install cache has the 24 agent files:
-
-```sh
-ls ~/.omp/plugins/cache/plugins/kzk___pi-oven___*/agents/ | wc -l
-# Expected: 24
-```
-
-If empty (`0`), force a reinstall:
+After installing pi-oven@kzk from the marketplace, run `/pi-oven:doctor` and inspect the installed-topology line in the standalone truth surface. It should report the shipped assets path cleanly; if it reports missing shipped assets, force a reinstall:
 
 ```sh
 omp plugin install pi-oven@kzk --force
 ```
 
-This is required because the marketplace install copies the repo tree recursively (`fs.cp recursive`); a stale cache from a pre-agent-registry version will show empty.
+This is required because the marketplace install copies the repo tree recursively (`fs.cp recursive`); a stale cache from a pre-agent-registry version can leave the shipped assets unavailable.
 
 ---
 
@@ -396,7 +386,7 @@ The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pi-oven-*.md` a
 ### Test suite
 
 ```sh
-bun test       # 895 tests across 51 files
+bun test       # 933 tests across 51 files
 bun check      # tsc --noEmit typecheck
 bun run build  # extension bundle (pi-oven.js)
 bun run lint:agents  # CI-grade agent file lint
@@ -439,13 +429,13 @@ In dev mode, agent file edits are picked up immediately (no `omp plugin install 
 ```
 pi-oven/
 ├── .claude-plugin/
-│   ├── plugin.json          # plugin manifest (22 skills, version, commands)
+│   ├── plugin.json          # plugin manifest (23 skills, version, commands)
 │   └── marketplace.json     # marketplace catalog (plugins[0].version)
 ├── .omp/extensions/
 │   └── pi-oven.ts               # load-time validator + setup notice + conduct injection
 ├── agents/                  # 24 pi-oven-prefixed agent files (file-based registry)
 │   └── pi-oven-*.md
-├── skills/                  # 22 authored skills (all runtime-loaded)
+├── skills/                  # 23 authored skills (all runtime-loaded)
 │   └── <skill-name>/
 │       ├── SKILL.md
 │       └── references/      # progressive disclosure docs
@@ -457,7 +447,7 @@ pi-oven/
 │   ├── pi-oven-setup.ts         # /pi-oven:setup batch CLI
 │   ├── pi-oven-release/         # release automation modules (bump/sync/changelog/publish)
 │   ├── pi-oven-setup/           # 13 submodules (profiles, persist, apply, ...)
-├── tests/                   # bun test suite (895 tests, 51 files)
+├── tests/                   # bun test suite (933 tests, 51 files)
 │   ├── extensions/
 │   ├── plugin/
 │   └── scripts/

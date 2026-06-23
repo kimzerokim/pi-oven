@@ -6,7 +6,7 @@ model:
   - opencode-zen/minimax-m2.5
 thinkingLevel: xhigh
 mode: subagent
-tools: ["*"]
+tools: ["read", "search", "find", "write", "edit", "lsp", "ast_grep", "eval", "bash"]
 blocked_tools: []
 ---
 

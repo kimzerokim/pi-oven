@@ -1,33 +1,12 @@
 import { describe, it, expect } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  SHIPPED_SKILL_COUNT,
+  SHIPPED_SKILL_PATHS,
+} from "../../scripts/pi-oven-setup/shipped-skill-registry";
 
 const ROOT = path.resolve(__dirname, "../../");
-
-const EXPECTED_SKILLS = [
-  "./skills/memory-discipline/SKILL.md",
-  "./skills/code-quality-discipline/SKILL.md",
-  "./skills/tdd-strict/SKILL.md",
-  "./skills/brainstorming/SKILL.md",
-  "./skills/codebase-survey/SKILL.md",
-  "./skills/fresh-verifier/SKILL.md",
-  "./skills/writing-plans/SKILL.md",
-  "./skills/spec-and-review/SKILL.md",
-  "./skills/pre-commit-gate/SKILL.md",
-  "./skills/large-task-delegation/SKILL.md",
-  "./skills/subagent-driven-development/SKILL.md",
-  "./skills/autonomous-loop/SKILL.md",
-  "./skills/deep-init/SKILL.md",
-  "./skills/deep-dive/SKILL.md",
-  "./skills/systematic-debugging/SKILL.md",
-  "./skills/improve-codebase-architecture/SKILL.md",
-  "./skills/receiving-code-review/SKILL.md",
-  "./skills/html-research-orchestrator/SKILL.md",
-  "./skills/git-workflow/SKILL.md",
-  "./skills/aws/SKILL.md",
-  "./skills/bitbucket-pipeline/SKILL.md",
-  "./skills/cloudflare/SKILL.md",
-] as const;
 
 const EXPECTED_COMMANDS = [
   "./commands/setup.md",
@@ -61,15 +40,15 @@ describe("plugin.json manifest SoT alignment", () => {
     expect(marketplace.plugins[0].version).toBe(pkg.version);
   });
 
-  it("loads exactly the SoT skills", async () => {
+  it("loads exactly the shipped-skill registry paths", async () => {
     const plugin = await Bun.file(path.join(ROOT, ".claude-plugin/plugin.json")).json();
-    expect(plugin.skills).toEqual(EXPECTED_SKILLS);
+    expect(plugin.skills).toEqual(SHIPPED_SKILL_PATHS);
   });
 
-  it("plugin.skills length matches the number of skill dirs on disk", async () => {
+  it("plugin.skills length matches the registry and the number of skill dirs on disk", async () => {
     const plugin = await Bun.file(path.join(ROOT, ".claude-plugin/plugin.json")).json();
     expect(plugin.skills.length).toBe(countSkillDirsOnDisk());
-    expect(plugin.skills.length).toBe(22);
+    expect(plugin.skills.length).toBe(SHIPPED_SKILL_COUNT);
   });
 
   it("loads exactly the 3 SoT commands", async () => {

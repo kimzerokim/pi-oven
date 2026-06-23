@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.16 - 2026-06-23
+
+- merge: runtime reliability hardening
+- feat(runtime): harden new-user reliability and tool exposure
+- Align project apply truth surface
+- Harden standalone runtime reliability
 ## v0.1.15 - 2026-06-18
 
 - fix: use omp models in setup flow

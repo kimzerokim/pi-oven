@@ -781,7 +781,7 @@ export default function piOvenPi(
     pi.logger.debug(`pi-oven: pi-oven_ask registration skipped: ${err}`);
   }
 
-  pi.setLabel("pi-oven v0.1.14");
+  pi.setLabel("pi-oven v0.1.16");
   pi.logger.info("pi-oven loaded");
 
 }

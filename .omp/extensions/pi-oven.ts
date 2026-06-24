@@ -32,7 +32,7 @@ import {
   RulesInjector,
   ORCHESTRATOR_CONDUCT_DEDUP_KEY,
 } from "./pi-oven-runtime/rules-injector";
-import { GateStateStore } from "./pi-oven-runtime/gate-state";
+import { GateStateStore, type OwnershipTraceEntry } from "./pi-oven-runtime/gate-state";
 import { createGateHandler } from "./pi-oven-runtime/gate-handler";
 import { registerPiOvenAsk } from "./pi-oven-runtime/pi-oven-ask";
 import { resolveLanguage } from "./pi-oven-runtime/language";
@@ -503,6 +503,16 @@ function buildSkillOwnershipTrace(
   }));
 }
 
+function mergeOwnershipTrace(
+  currentTrace: OwnershipTraceEntry[] | undefined,
+  skillTrace: OwnershipTraceEntry[],
+  sameUserMessage: boolean
+): OwnershipTraceEntry[] {
+  if (!sameUserMessage) return skillTrace;
+  const priorAgentTrace = (currentTrace ?? []).filter((entry) => entry.kind !== "skill");
+  return [...skillTrace, ...priorAgentTrace];
+}
+
 // ---------------------------------------------------------------------------
 // Extension entrypoint
 // ---------------------------------------------------------------------------
@@ -807,7 +817,11 @@ export default function piOvenPi(
         requiredSkills,
         skillReads: persistedReads.filter((target) => ownedSkillReadTargets.includes(target)),
         requiredSkillsMessageId: skillKeywordState.lastUserMessageId,
-        ownershipTrace: buildSkillOwnershipTrace(skillKeywordState.matchedSkills),
+        ownershipTrace: mergeOwnershipTrace(
+          current.ownershipTrace,
+          buildSkillOwnershipTrace(skillKeywordState.matchedSkills),
+          sameUserMessage
+        ),
         explicitForeignAgents: latestUserMessage
           ? extractExplicitForeignAgents(latestUserMessage.text)
           : current.explicitForeignAgents ?? [],

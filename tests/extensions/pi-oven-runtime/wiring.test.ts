@@ -498,4 +498,105 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain(".pi-oven/state/branch-contract.json");
     expect(joined).toContain(ownedSkillTarget("autonomous-loop"));
   });
+  it("keeps mixed registries observable across turn resyncs while automatic task dispatch stays pi-oven-owned", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+
+    const pi = makeFakePi();
+    piOvenPi(pi as never);
+
+    const onTurnStart = pi.handlers["turn_start"];
+    const onToolCall = pi.handlers["tool_call"];
+    const ctx = {
+      sessionManager: {
+        getBranch: () => [
+          {
+            id: "u1",
+            type: "message",
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "자율 실행으로 큰 작업 진행해줘. kzk:explorer는 유지하고 spec 잡자 first.",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    await onTurnStart({ type: "turn_start", turnIndex: 1, timestamp: Date.now() }, ctx);
+
+    const bareTaskEvent = {
+      type: "tool_call",
+      toolCallId: "t1",
+      toolName: "task",
+      input: { agent: "explorer" },
+    };
+    const bareResult = (await onToolCall(bareTaskEvent)) as { block?: boolean } | void;
+    expect(bareResult?.block ?? false).toBe(false);
+    expect(bareTaskEvent.input.agent).toBe("pi-oven:explorer");
+
+    const foreignTaskEvent = {
+      type: "tool_call",
+      toolCallId: "t2",
+      toolName: "task",
+      input: { agent: "kzk:explorer" },
+    };
+    const foreignResult = (await onToolCall(foreignTaskEvent)) as { block?: boolean } | void;
+    expect(foreignResult?.block ?? false).toBe(false);
+    expect(foreignTaskEvent.input.agent).toBe("kzk:explorer");
+
+    await onTurnStart({ type: "turn_start", turnIndex: 2, timestamp: Date.now() }, ctx);
+
+    const persisted = JSON.parse(
+      readFileSync(join(tempDir, ".pi-oven", "state", "autonomous.json"), "utf-8")
+    ) as {
+      explicitForeignAgents?: string[];
+      ownershipTrace?: Array<{
+        origin: string;
+        kind: string;
+        requested: string;
+        canonical: string;
+        resolved: string;
+        status: string;
+        reason: string;
+      }>;
+    };
+
+    expect(persisted.explicitForeignAgents).toEqual(["kzk:explorer"]);
+    expect(persisted.ownershipTrace).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          origin: "pi-oven-auto",
+          kind: "skill",
+          requested: "autonomous-loop",
+          canonical: ownedSkillTarget("autonomous-loop"),
+          resolved: ownedSkillTarget("autonomous-loop"),
+          status: "resolved",
+          reason: expect.any(String),
+        }),
+        {
+          origin: "pi-oven-auto",
+          kind: "agent",
+          requested: "explorer",
+          canonical: "pi-oven:explorer",
+          resolved: "pi-oven:explorer",
+          status: "rewritten",
+          reason: "canonicalized bare agent dispatch to pi-oven namespace",
+        },
+        {
+          origin: "user-explicit",
+          kind: "agent",
+          requested: "kzk:explorer",
+          canonical: "kzk:explorer",
+          resolved: "kzk:explorer",
+          status: "resolved",
+          reason: "preserved exact user-explicit foreign agent dispatch",
+        },
+      ])
+    );
+  });
 });

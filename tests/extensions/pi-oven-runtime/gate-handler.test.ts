@@ -10,7 +10,7 @@ import {
   toGateFsmView,
   type GateHandlerDeps,
 } from "../../../.omp/extensions/pi-oven-runtime/gate-handler";
-import { GateStateStore, type FsmState } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
+import { GateStateStore, type FsmState, type OwnershipTraceEntry } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-gh-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -332,7 +332,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(initialized.state.ownedSkillReadTargets).toEqual([]);
 
     const ownedTarget = "/plugin/skills/autonomous-loop/SKILL.md";
-    const ownershipTrace = [
+    const ownershipTrace: OwnershipTraceEntry[] = [
       {
         origin: "pi-oven-auto",
         kind: "skill",

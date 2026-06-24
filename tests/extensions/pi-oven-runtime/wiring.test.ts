@@ -6,7 +6,8 @@ import {
   writePluginSkillsManifest,
   writeShippedSkill,
 } from "../../helpers/installed-topology";
-import { SHIPPED_SKILL_PATHS } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
+import { SHIPPED_SKILL_NAMES, SHIPPED_SKILL_PATHS } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
+import type { OwnershipTraceEntry } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
 
 mock.module("@oh-my-pi/pi-tui", () => ({
   Container: class {},
@@ -17,6 +18,9 @@ mock.module("@oh-my-pi/pi-tui", () => ({
 }));
 
 const { default: piOvenPi } = await import("../../../.omp/extensions/pi-oven");
+
+type ShippedSkillName = (typeof SHIPPED_SKILL_NAMES)[number];
+type ShippedSkillPath = (typeof SHIPPED_SKILL_PATHS)[number];
 // ---------------------------------------------------------------------------
 // AC4 — no regression + correctness: the extension entrypoint still wires the
 // baseline behaviors (validateAgentRegistry at load, session_start capture)
@@ -73,8 +77,8 @@ function makeTempDir(): string {
   return createInstalledTopologyFixture({ prefix: "pi-oven-wiring-" }).root;
 }
 
-function ownedSkillTarget(skillName: string): string {
-  const skillPath = `./skills/${skillName}/SKILL.md`;
+function ownedSkillTarget(skillName: ShippedSkillName): string {
+  const skillPath = `./skills/${skillName}/SKILL.md` as ShippedSkillPath;
   expect(SHIPPED_SKILL_PATHS).toContain(skillPath);
   return join(__dirname, "../../..", "skills", skillName, "SKILL.md");
 }
@@ -447,15 +451,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       skillReads?: string[];
       explicitForeignAgents?: string[];
       ownedSkillReadTargets?: string[];
-      ownershipTrace?: Array<{
-        origin: string;
-        kind: string;
-        requested: string;
-        canonical: string;
-        resolved: string;
-        status: string;
-        reason: string;
-      }>;
+      ownershipTrace?: OwnershipTraceEntry[];
     };
     expect(persisted.active).toBe(true);
     expect(persisted.requiredSkills).toHaveLength(3);
@@ -555,15 +551,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       readFileSync(join(tempDir, ".pi-oven", "state", "autonomous.json"), "utf-8")
     ) as {
       explicitForeignAgents?: string[];
-      ownershipTrace?: Array<{
-        origin: string;
-        kind: string;
-        requested: string;
-        canonical: string;
-        resolved: string;
-        status: string;
-        reason: string;
-      }>;
+      ownershipTrace?: OwnershipTraceEntry[];
     };
 
     expect(persisted.explicitForeignAgents).toEqual(["kzk:explorer"]);

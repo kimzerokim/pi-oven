@@ -22,6 +22,9 @@ import {
   updateSkillKeywordLoaderOnTurnStart,
 } from "../../../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
 
+type ShippedSkillName = (typeof SHIPPED_SKILL_NAMES)[number];
+type ShippedSkillPath = (typeof SHIPPED_SKILL_PATHS)[number];
+
 function userEntry(id: string, text: string) {
   return {
     id,
@@ -38,8 +41,8 @@ function makeTempRepo(): string {
   return fixture.pluginRoot;
 }
 
-function ownedSkillTarget(repoRoot: string, skillName: string): string {
-  const skillPath = `./skills/${skillName}/SKILL.md`;
+function ownedSkillTarget(repoRoot: string, skillName: ShippedSkillName): string {
+  const skillPath = `./skills/${skillName}/SKILL.md` as ShippedSkillPath;
   expect(SHIPPED_SKILL_PATHS).toContain(skillPath);
   return path.resolve(repoRoot, skillPath);
 }

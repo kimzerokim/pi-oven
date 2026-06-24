@@ -1,10 +1,27 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
-import * as ext from "../../.omp/extensions/pi-oven";
+import type {
+  AgentFileEntry,
+  SessionModelCapture,
+} from "../../.omp/extensions/pi-oven";
 import {
+  RulesInjector,
+  ORCHESTRATOR_CONDUCT_DEDUP_KEY,
+} from "../../.omp/extensions/pi-oven-runtime/rules-injector";
+
+mock.module("@oh-my-pi/pi-tui", () => ({
+  Container: class {},
+  Markdown: class {},
+  Text: class {},
+  SelectList: class {},
+  wrapTextWithAnsi: (value: string) => value,
+}));
+
+const ext = await import("../../.omp/extensions/pi-oven");
+const {
   validateAgentRegistry,
   getAllowedPrefixes,
   captureSessionModel,
@@ -12,15 +29,8 @@ import {
   readSetupComplete,
   countProjectRoutingRoles,
   applyOrchestratorConduct,
-  type AgentFileEntry,
-  type SessionModelCapture,
-} from "../../.omp/extensions/pi-oven";
-import { readProjectInstructions } from "../../.omp/extensions/pi-oven";
-import {
-  RulesInjector,
-  ORCHESTRATOR_CONDUCT_DEDUP_KEY,
-} from "../../.omp/extensions/pi-oven-runtime/rules-injector";
-
+  readProjectInstructions,
+} = ext;
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-ext-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
@@ -294,6 +304,16 @@ describe("applyOrchestratorConduct", () => {
     });
     expect(out[0].includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY)).toBe(true);
     expect(out[0]).toMatch(/boundary contract|keep going/i);
+  });
+});
+
+describe("extractExplicitForeignAgents", () => {
+  it("returns unique canonical foreign agent ids and excludes pi-oven namespace entries", () => {
+    expect(
+      ext.extractExplicitForeignAgents(
+        "Use KZK:Explorer, kzk:explorer, pi-oven:executor, and OH-MY-CLAUDECODE:Planner."
+      )
+    ).toEqual(["kzk:explorer", "oh-my-claudecode:planner"]);
   });
 });
 

@@ -414,33 +414,110 @@ describe("gateHandler — subagent read-only (AC8b)", () => {
   });
 });
 
-// Strict task identity guard:
-// allow only `pi-oven:<role>`; block bare aliases and foreign namespaces.
+// Task dispatch ownership guard:
+// - canonicalize bare pi-oven-owned automatic roles to `pi-oven:<role>`
+// - preserve exact allowlisted foreign namespaces as explicit user intent
+// - block non-allowlisted foreign namespaces
 // ---------------------------------------------------------------------------
 
-describe("gateHandler — task dispatch strict identity guard", () => {
+describe("gateHandler — task dispatch ownership guard", () => {
   let dir: string;
   beforeEach(() => { dir = makeTempDir(); });
   afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
-  it("blocks task dispatch with bare built-in agent names", async () => {
+  it("canonicalizes bare built-in agent names to the pi-oven namespace and records the rewrite", async () => {
     const h = createGateHandler(await deps(dir));
-    const r = await h(taskEvent("executor"));
-    expect(r?.block).toBe(true);
-    expect(r?.reason).toMatch(/pi-oven:executor|exact registered name|bare/i);
-  });
-
-  it("allows task dispatch when agent uses the pi-oven namespace", async () => {
-    const h = createGateHandler(await deps(dir));
-    const r = await h(taskEvent("pi-oven:executor"));
+    const event = taskEvent("executor");
+    const r = await h(event);
     expect(r?.block ?? false).toBe(false);
+    expect(event.input.agent).toBe("pi-oven:executor");
+
+    const after = await new GateStateStore(dir).readState();
+    expect(after.kind).toBe("OK");
+    if (after.kind !== "OK") return;
+    expect(after.state.ownershipTrace?.at(-1)).toEqual({
+      origin: "pi-oven-auto",
+      kind: "agent",
+      requested: "executor",
+      canonical: "pi-oven:executor",
+      resolved: "pi-oven:executor",
+      status: "rewritten",
+      reason: "canonicalized bare agent dispatch to pi-oven namespace",
+    });
   });
 
-  it("blocks task dispatch when agent uses a foreign namespace", async () => {
+  it("allows task dispatch when agent already uses the pi-oven namespace", async () => {
     const h = createGateHandler(await deps(dir));
-    const r = await h(taskEvent("oh-my-claudecode:executor"));
+    const event = taskEvent("pi-oven:executor");
+    const r = await h(event);
+    expect(r?.block ?? false).toBe(false);
+    expect(event.input.agent).toBe("pi-oven:executor");
+  });
+
+  it("preserves explicit foreign task dispatches from the allowlist and records explicit intent", async () => {
+    writeState(dir, {
+      active: false,
+      gateCache: {},
+      version: 1,
+      schemaVersion: 1,
+      ownershipTrace: [],
+      explicitForeignAgents: ["kzk:explorer"],
+      ownedSkillReadTargets: [],
+      requiredSkills: [],
+      skillReads: [],
+      requiredSkillsMessageId: null,
+    });
+    const h = createGateHandler(await deps(dir));
+    const event = taskEvent("kzk:explorer");
+    const r = await h(event);
+    expect(r?.block ?? false).toBe(false);
+    expect(event.input.agent).toBe("kzk:explorer");
+
+    const after = await new GateStateStore(dir).readState();
+    expect(after.kind).toBe("OK");
+    if (after.kind !== "OK") return;
+    expect(after.state.ownershipTrace?.at(-1)).toEqual({
+      origin: "user-explicit",
+      kind: "agent",
+      requested: "kzk:explorer",
+      canonical: "kzk:explorer",
+      resolved: "kzk:explorer",
+      status: "resolved",
+      reason: "preserved exact user-explicit foreign agent dispatch",
+    });
+  });
+
+  it("blocks foreign task dispatch when the exact agent was not explicitly allowlisted", async () => {
+    writeState(dir, {
+      active: false,
+      gateCache: {},
+      version: 1,
+      schemaVersion: 1,
+      ownershipTrace: [],
+      explicitForeignAgents: ["kzk:explorer"],
+      ownedSkillReadTargets: [],
+      requiredSkills: [],
+      skillReads: [],
+      requiredSkillsMessageId: null,
+    });
+    const h = createGateHandler(await deps(dir));
+    const event = taskEvent("oh-my-claudecode:executor");
+    const r = await h(event);
     expect(r?.block).toBe(true);
-    expect(r?.reason).toMatch(/pi-oven:executor|foreign namespace|exact registered name/i);
+    expect(r?.reason).toMatch(/user-explicit|pi-oven:<role>|foreign namespace/i);
+
+    const after = await new GateStateStore(dir).readState();
+    expect(after.kind).toBe("OK");
+    if (after.kind !== "OK") return;
+    expect(after.state.ownershipTrace?.at(-1)).toEqual({
+      origin: "foreign-auto",
+      kind: "agent",
+      requested: "oh-my-claudecode:executor",
+      canonical: "oh-my-claudecode:executor",
+      resolved: "oh-my-claudecode:executor",
+      status: "blocked",
+      reason: "foreign namespace requires exact user-explicit allowlist",
+    });
   });
 });
 

@@ -209,7 +209,7 @@ export class RulesInjector {
     ];
     const sharedRules = [
       "SKILL PRECEDENCE: pi-oven skills are authoritative. Load `skill://pi-oven:<name>`. NEVER load a same-purpose skill from another plugin namespace (`superpowers:*`, `oh-my-claudecode:*`, `agentmemory:*`). On any name/purpose overlap, the pi-oven skill wins.",
-      "AGENT NAMING: Dispatch subagents ONLY by their exact registered name `pi-oven:<role>` (e.g. `pi-oven:explorer`). NEVER `kzk:<role>` or the marketplace id — `kzk` is only the marketplace catalog name, not an agent or skill namespace.",
+      "AGENT NAMING: Dispatch pi-oven-owned automatic subagents ONLY by their exact registered name `pi-oven:<role>` (e.g. `pi-oven:explorer`). Foreign namespaces such as `kzk:<role>` are allowed only when the user explicitly asked for that exact foreign agent.",
     ];
     if (opts.autonomousActive) {
       return [

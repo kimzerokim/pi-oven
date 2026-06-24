@@ -466,16 +466,17 @@ function getLatestUserBranchMessage(
   return null;
 }
 
-function extractExplicitForeignAgents(text: string): string[] {
+export function extractExplicitForeignAgents(text: string): string[] {
   const matches = text.match(/\b[a-z0-9-]+:[a-z0-9-]+\b/gi) ?? [];
   const seen = new Set<string>();
   const explicitForeignAgents: string[] = [];
   for (const match of matches) {
-    const namespace = match.split(":", 1)[0]?.toLowerCase();
+    const normalized = match.toLowerCase();
+    const namespace = normalized.split(":", 1)[0];
     if (namespace === "pi-oven") continue;
-    if (seen.has(match)) continue;
-    seen.add(match);
-    explicitForeignAgents.push(match);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    explicitForeignAgents.push(normalized);
   }
   return explicitForeignAgents;
 }

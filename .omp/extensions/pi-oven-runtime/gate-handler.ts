@@ -30,7 +30,7 @@ import {
   type GateEnv,
   type FsmStateView as GateFsmView,
 } from "./gate";
-import type { GateStateStore } from "./gate-state";
+import type { GateStateStore, OwnershipTraceEntry } from "./gate-state";
 
 export interface GateLogger {
   info(msg: string): void;
@@ -92,6 +92,127 @@ export function getSkillReadName(event: ToolCallEventLike): string | null {
   return name.length > 0 ? name : null;
 }
 
+const PI_OVEN_AGENT_PREFIX = "pi-oven:";
+const CANONICAL_AGENT_PATTERN = /^[a-z0-9-]+:[a-z0-9-]+$/;
+const BARE_AGENT_ROLE_PATTERN = /^[a-z0-9-]+$/;
+
+interface TaskAgentDecision {
+  block: boolean;
+  reason?: string;
+  nextAgent?: string;
+  trace: OwnershipTraceEntry;
+}
+
+function normalizeAgentName(agent: string): string {
+  return agent.trim().toLowerCase();
+}
+
+function classifyTaskAgent(
+  agent: string,
+  explicitForeignAgents: string[]
+): TaskAgentDecision {
+  const requested = agent.trim();
+  const normalized = normalizeAgentName(agent);
+  const explicitForeign = new Set(explicitForeignAgents.map(normalizeAgentName));
+
+  if (explicitForeign.has(normalized)) {
+    return {
+      block: false,
+      nextAgent: requested,
+      trace: {
+        origin: "user-explicit",
+        kind: "agent",
+        requested,
+        canonical: normalized,
+        resolved: requested,
+        status: "resolved",
+        reason: "preserved exact user-explicit foreign agent dispatch",
+      },
+    };
+  }
+
+  if (normalized.startsWith(PI_OVEN_AGENT_PREFIX) && CANONICAL_AGENT_PATTERN.test(normalized)) {
+    return {
+      block: false,
+      nextAgent: normalized,
+      trace: {
+        origin: "pi-oven-auto",
+        kind: "agent",
+        requested,
+        canonical: normalized,
+        resolved: normalized,
+        status: normalized === requested ? "resolved" : "rewritten",
+        reason:
+          normalized === requested
+            ? "resolved pi-oven-owned agent dispatch"
+            : "canonicalized pi-oven agent dispatch casing",
+      },
+    };
+  }
+
+  if (BARE_AGENT_ROLE_PATTERN.test(normalized)) {
+    const canonical = `${PI_OVEN_AGENT_PREFIX}${normalized}`;
+    return {
+      block: false,
+      nextAgent: canonical,
+      trace: {
+        origin: "pi-oven-auto",
+        kind: "agent",
+        requested,
+        canonical,
+        resolved: canonical,
+        status: "rewritten",
+        reason: "canonicalized bare agent dispatch to pi-oven namespace",
+      },
+    };
+  }
+
+  return {
+    block: true,
+    reason:
+      `pi-oven: task dispatch blocked — automatic flows must resolve to the exact registered pi-oven name \`pi-oven:<role>\`; foreign namespaces require an exact user-explicit allowlist entry (received \`${requested}\`).`,
+    trace: {
+      origin: "foreign-auto",
+      kind: "agent",
+      requested,
+      canonical: normalized.length > 0 ? normalized : requested,
+      resolved: requested,
+      status: "blocked",
+      reason: "foreign namespace requires exact user-explicit allowlist",
+    },
+  };
+}
+
+async function appendOwnershipTrace(
+  deps: GateHandlerDeps,
+  trace: OwnershipTraceEntry
+): Promise<void> {
+  if (!deps.isParentSession) return;
+  await deps.store.mutate((current) => ({
+    ...current,
+    version: current.version + 1,
+    ownershipTrace: [...(current.ownershipTrace ?? []), trace],
+  }));
+}
+
+async function decideForTaskDispatch(
+  deps: GateHandlerDeps,
+  event: ToolCallEventLike
+): Promise<ToolCallResultLike | void> {
+  if (event.toolName !== "task") return undefined;
+  const agent = event.input?.agent;
+  if (typeof agent !== "string" || agent.trim().length === 0) return { block: false };
+  const currentState = deps.isParentSession ? await deps.store.readState() : { kind: "ABSENT" as const };
+  const explicitForeignAgents =
+    currentState.kind === "OK" ? (currentState.state.explicitForeignAgents ?? []) : [];
+  const decision = classifyTaskAgent(agent, explicitForeignAgents);
+  if (decision.nextAgent !== undefined && event.input !== undefined) {
+    event.input = { ...event.input, agent: decision.nextAgent };
+  }
+  await appendOwnershipTrace(deps, decision.trace);
+  return decision.block ? { block: true, reason: decision.reason } : { block: false };
+}
+
 export function toGateFsmView(view: Awaited<ReturnType<GateStateStore["readState"]>>): GateFsmView {
   return view.kind === "OK"
     ? { kind: "OK", state: { active: view.state.active, gateCache: view.state.gateCache } }
@@ -149,6 +270,11 @@ async function decideForToolCall(
     return { block: false };
   }
 
+  const taskDecision = await decideForTaskDispatch(deps, event);
+  if (taskDecision !== undefined) {
+    return taskDecision;
+  }
+
   if (isCodeWriteTool(event.toolName)) {
     return decideForCodeWrite(deps, event);
   }
@@ -181,20 +307,6 @@ export function createGateHandler(
   return async function handler(
     event: ToolCallEventLike
   ): Promise<ToolCallResultLike | void> {
-    // Task dispatch strict identity guard:
-    // - allow exact `pi-oven:<role>`
-    // - block bare aliases (`executor`, `task`, ...)
-    // - block foreign namespaces (`oh-my-claudecode:*`, `omo:*`, ...)
-    if (event.toolName === "task") {
-      const agent = event.input?.agent;
-      if (typeof agent !== "string" || agent.length === 0) return { block: false };
-      if (/^pi-oven:[^:]+$/.test(agent)) return { block: false };
-      return {
-        block: true,
-        reason:
-          `pi-oven: task dispatch blocked — agent must use the exact registered pi-oven name \`pi-oven:<role>\`. Bare aliases and foreign namespaces are not allowed (received \`${agent}\`).`,
-      };
-    }
     // Wrap ALL work in a self-deadline. On overrun → THROW → omp fail-closes.
     const deadline = new Promise<never>((_resolve, reject) => {
       const t = setTimeout(() => reject(new DeadlineError(deadlineMs)), deadlineMs);

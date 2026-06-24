@@ -206,11 +206,12 @@ describe("orchestrator conduct block", () => {
     expect(b).toMatch(/pi-oven skills are authoritative|SKILL PRECEDENCE/i);
   });
 
-  it("interactive: contains AGENT NAMING rule forbidding kzk:<role>", () => {
+  it("interactive: contains AGENT NAMING rule that keeps foreign namespaces user-explicit only", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
     expect(b).toContain("kzk:");
     expect(b).toMatch(/pi-oven:<role>|AGENT NAMING/i);
+    expect(b).toMatch(/user-explicit|explicitly asked/i);
   });
 
   it("autonomous: contains SKILL PRECEDENCE rule forbidding superpowers:* namespace", () => {
@@ -220,11 +221,12 @@ describe("orchestrator conduct block", () => {
     expect(b).toMatch(/pi-oven skills are authoritative|SKILL PRECEDENCE/i);
   });
 
-  it("autonomous: contains AGENT NAMING rule forbidding kzk:<role>", () => {
+  it("autonomous: contains AGENT NAMING rule that keeps foreign namespaces user-explicit only", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: true });
     expect(b).toContain("kzk:");
     expect(b).toMatch(/pi-oven:<role>|AGENT NAMING/i);
+    expect(b).toMatch(/user-explicit|explicitly asked/i);
   });
 });
 

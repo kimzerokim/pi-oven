@@ -5,6 +5,7 @@ import {
   loadSkillKeywordIndexReport,
 } from "../../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
 import {
+  PI_OVEN_MANAGED_PROVIDERS,
   PI_OVEN_SIBLING_SKILL_GLOBS,
   SUBAGENT_RUNTIME_PREREQUISITES,
   readConfigValueDisplayState,
@@ -38,6 +39,7 @@ export interface StandaloneTruthFacts {
   projectRoutingRoleCount: number | null;
   projectRoutingState: "present" | "absent" | "unknown";
   globalPrerequisiteStates: Array<{ key: string; state: GlobalPrerequisiteTruthState }>;
+  disabledProvidersState: DisplayReadResult<string[]>;
   ignoredSkillsState: DisplayReadResult<string[]>;
   keywordIndexTruth?: {
     state: KeywordIndexTruthState;
@@ -55,6 +57,8 @@ export const PROJECT_SCOPE_FILE_REPAIR_FIX =
   "Repair or remove the project's .omp/settings.json, then rerun /pi-oven:setup --status.";
 export const SIBLING_SUPPRESSION_FIX =
   "Optional global-only step: /pi-oven:setup --suppress-sibling-skills";
+export const CLEAN_ROOM_FIX =
+  "Prefer /pi-oven:setup --suppress-sibling-skills for selective conflict reduction. Reserve /pi-oven:setup --isolate for clean-room troubleshooting when you intentionally want to hide the ~/.claude home layer.";
 export const KEYWORD_SKILL_INTEGRITY_FIX =
   "Sync .claude-plugin/plugin.json skills[], shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries. Reinstall pi-oven@kzk if installed assets are stale.";
 
@@ -88,6 +92,16 @@ function classifyGlobalPrerequisiteState(
   return value.value === expected ? "configured" : "not-configured";
 }
 
+function normalizeStringArrayDisplayState(
+  value: DisplayReadResult<unknown>
+): DisplayReadResult<string[]> {
+  if (value.state !== "present") return value;
+  if (!Array.isArray(value.value)) {
+    return { state: "unknown", error: "value is not array-like" };
+  }
+  return { state: "present", value: value.value.map((entry) => String(entry)) };
+}
+
 export function buildStandaloneTruthSignals(
   facts: StandaloneTruthFacts
 ): StandaloneTruthSignal[] {
@@ -99,6 +113,12 @@ export function buildStandaloneTruthSignals(
         `pi-oven shipped assets read from ${facts.pluginAssetPath}; ` +
         `project state read from ${facts.projectRoot}; ` +
         `machine-global config remains ${GLOBAL_CONFIG_PATH}.`,
+    },
+    {
+      level: "INFO",
+      name: "session policy",
+      detail:
+        "pi-oven-first is the default lane for automatic pi-oven routing; selective sibling suppression and clean-room isolation remain optional global toggles.",
     },
   ];
 
@@ -189,6 +209,42 @@ export function buildStandaloneTruthSignals(
     }
   }
 
+  if (facts.disabledProvidersState.state === "unknown") {
+    signals.push({
+      level: "WARN",
+      name: "clean-room isolation",
+      detail: `state unknown because disabledProviders in ${GLOBAL_CONFIG_PATH} is unreadable/corrupt.`,
+      fix: CLEAN_ROOM_FIX,
+    });
+  } else {
+    const disabledProviders =
+      facts.disabledProvidersState.state === "present" ? facts.disabledProvidersState.value : [];
+    const cleanRoomEnabled = PI_OVEN_MANAGED_PROVIDERS.some((provider) =>
+      disabledProviders.includes(provider)
+    );
+
+    if (cleanRoomEnabled) {
+      signals.push({
+        level: "WARN",
+        name: "clean-room isolation",
+        detail:
+          `enabled in ${GLOBAL_CONFIG_PATH} ` +
+          `(disabledProviders includes ${PI_OVEN_MANAGED_PROVIDERS.join(", ")}). ` +
+          "This broad home-layer cut can hide ~/.claude kzk/omc skills, hooks, and other behavior, so it is not the default fix for pi-oven-first conflicts.",
+        fix: CLEAN_ROOM_FIX,
+      });
+    } else {
+      signals.push({
+        level: "INFO",
+        name: "clean-room isolation",
+        detail:
+          `not enabled in ${GLOBAL_CONFIG_PATH}; ` +
+          "the ~/.claude home layer stays visible and pi-oven-first remains the default lane.",
+        fix: CLEAN_ROOM_FIX,
+      });
+    }
+  }
+
   if (facts.ignoredSkillsState.state === "unknown") {
     signals.push({
       level: "WARN",
@@ -211,13 +267,16 @@ export function buildStandaloneTruthSignals(
       name: "sibling-skill suppression",
       detail:
         `enabled in ${GLOBAL_CONFIG_PATH} ` +
-        `(${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")} hidden).`,
+        `(${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")} hidden). ` +
+        "This is the selective sibling-suppressed lane on top of pi-oven-first routing.",
     });
   } else if (matched.length === 0) {
     signals.push({
       level: "INFO",
       name: "sibling-skill suppression",
-      detail: `not enabled in ${GLOBAL_CONFIG_PATH}; sibling marketplace skills remain visible.`,
+      detail:
+        `not enabled in ${GLOBAL_CONFIG_PATH}; ` +
+        "pi-oven-first remains the default lane and sibling marketplace skills remain visible.",
       fix: SIBLING_SUPPRESSION_FIX,
     });
   } else {
@@ -226,7 +285,8 @@ export function buildStandaloneTruthSignals(
       name: "sibling-skill suppression",
       detail:
         `partially enabled in ${GLOBAL_CONFIG_PATH} ` +
-        `(${matched.join(", ")} present; missing ${missing.join(", ")}).`,
+        `(${matched.join(", ")} present; missing ${missing.join(", ")}). ` +
+        "Selective sibling suppression is only partially applied.",
       fix: SIBLING_SUPPRESSION_FIX,
     });
   }
@@ -249,6 +309,9 @@ export async function collectStandaloneTruthSignals(
         state: classifyGlobalPrerequisiteState(value, expected),
       };
     })
+  );
+  const disabledProvidersState = normalizeStringArrayDisplayState(
+    await readConfigValueDisplayState("disabledProviders", opts)
   );
 
   let keywordIndexTruth: StandaloneTruthFacts["keywordIndexTruth"];
@@ -303,6 +366,7 @@ export async function collectStandaloneTruthSignals(
           : null,
     projectRoutingState: projectSettings.state,
     globalPrerequisiteStates,
+    disabledProvidersState,
     ignoredSkillsState: await readIgnoredSkillsDisplayState(opts),
     keywordIndexTruth,
   });

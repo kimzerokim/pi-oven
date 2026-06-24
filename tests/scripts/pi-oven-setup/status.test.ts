@@ -418,13 +418,15 @@ describe("runStatus — project layer", () => {
     expect(result.output).not.toContain("missing or mismatched: memory.backend");
   });
 
-  it("surfaces sibling-skill suppression as disabled with the global-only remediation", async () => {
+  it("surfaces sibling-skill suppression as disabled while pi-oven-first remains the default lane", async () => {
     const spawnFn = makeSpawnFn({ overrides: {}, ignoredSkills: [] });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toContain("sibling-skill suppression");
     expect(result.output).toContain("not enabled in ~/.omp/agent/config.yml");
     expect(result.output).toContain("--suppress-sibling-skills");
+    expect(result.output).toContain("pi-oven-first");
+    expect(result.output).toContain("default");
   });
   it("surfaces unreadable sibling-skill suppression state as unknown instead of disabled", async () => {
     const baseSpawn = makeSpawnFn({ overrides: {} });
@@ -439,7 +441,7 @@ describe("runStatus — project layer", () => {
     expect(result.output).toContain("sibling-skill suppression");
     expect(result.output).toContain("state unknown");
     expect(result.output).toContain("unreadable");
-    expect(result.output).not.toContain("not enabled in ~/.omp/agent/config.yml");
+    expect(result.output).not.toContain("sibling-skill suppression: not enabled");
   });
 
 
@@ -454,6 +456,24 @@ describe("runStatus — project layer", () => {
     expect(result.output).toContain("enabled in ~/.omp/agent/config.yml");
     expect(result.output).toContain("superpowers:*");
     expect(result.output).toContain("oh-my-claudecode:*");
+    expect(result.output).toContain("selective");
+  });
+
+  it("warns when clean-room isolation is enabled and does not present it as the default fix", async () => {
+    const spawnFn = makeSpawnFn({
+      overrides: {},
+      ignoredSkills: [],
+      scalarValues: {
+        disabledProviders: ["claude"],
+      },
+    });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("clean-room isolation");
+    expect(result.output).toContain("disabledProviders");
+    expect(result.output).toContain("kzk");
+    expect(result.output).toMatch(/not the default/i);
+    expect(result.output).toContain("--suppress-sibling-skills");
   });
 
   it("makes the installed topology explicit by naming the plugin root separately from project state", async () => {

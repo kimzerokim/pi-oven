@@ -724,6 +724,19 @@ describe("pi-oven-setup CLI --suppress-sibling-skills", () => {
     expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
   });
 
+  it("--isolate warns that clean-room mode can hide the ~/.claude home-layer and is not the default fix", async () => {
+    const { exitCode, stdout: out } = await runCLIInCwd(
+      ["--isolate"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
+    );
+    expect(exitCode).toBe(0);
+    expect(out).toMatch(/clean-room/i);
+    expect(out).toContain("kzk");
+    expect(out).toMatch(/not the default/i);
+    expect(out).toContain("--suppress-sibling-skills");
+  });
+
   it("--isolate + --scope project is rejected (no global write leak)", async () => {
     const { exitCode, stderr } = await runCLIInCwd(
       ["--isolate", "--scope", "project"],

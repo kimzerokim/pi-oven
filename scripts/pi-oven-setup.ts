@@ -317,13 +317,21 @@ if (repairPrereqs) {
 // success, so e.g. `--profile A --isolate` applies the profile then isolates.
 if (hasIsolate && result.exitCode === 0) {
   const iso = await runIsolate({ enable: wantIsolate, spawnFn });
-  result = { exitCode: iso.exitCode, output: result.output + iso.output };
+  const cleanRoomNote =
+    wantIsolate && iso.exitCode === 0
+      ? "  Clean-room note: this niche mode can hide ~/.claude home-layer behavior such as kzk/omc skills and hooks. It is not the default pi-oven-first fix; prefer /pi-oven:setup --suppress-sibling-skills for selective conflict reduction.\n"
+      : "";
+  result = { exitCode: iso.exitCode, output: result.output + iso.output + cleanRoomNote };
 }
 
 // Sibling-skill suppression toggle runs after isolate (if any), also only on success.
 if (hasSuppressSibling && result.exitCode === 0) {
   const suppress = await runSuppressSibling({ enable: wantSuppressSibling, spawnFn });
-  result = { exitCode: suppress.exitCode, output: result.output + suppress.output };
+  const siblingNote =
+    wantSuppressSibling && suppress.exitCode === 0
+      ? "  Policy note: pi-oven-first remains the default lane; this selective toggle hides sibling marketplace skills without cutting the whole ~/.claude layer.\n"
+      : "";
+  result = { exitCode: suppress.exitCode, output: result.output + suppress.output + siblingNote };
 }
 
 // ---------------------------------------------------------------------------

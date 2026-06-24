@@ -44,6 +44,7 @@ export interface GateInput {
   targetPath?: string | null;
   branchContract?: BranchContractView;
   requiredSkills?: string[];
+  ownedSkillReadTargets?: string[];
   skillReads?: string[];
 }
 
@@ -84,10 +85,30 @@ function isBranchContractBootstrapWrite(
   );
 }
 
-function getRemainingSkills(requiredSkills: string[] | undefined, skillReads: string[] | undefined): string[] {
-  if (!requiredSkills || requiredSkills.length === 0) return [];
+function getRemainingSkillProofs(
+  requiredSkills: string[] | undefined,
+  ownedSkillReadTargets: string[] | undefined,
+  skillReads: string[] | undefined
+): { missingOwnershipSkills: string[]; unreadProofTargets: Array<{ name: string; target: string }> } {
+  if (!requiredSkills || requiredSkills.length === 0) {
+    return { missingOwnershipSkills: [], unreadProofTargets: [] };
+  }
   const readSet = new Set(skillReads ?? []);
-  return requiredSkills.filter((name) => !readSet.has(name));
+  const missingOwnershipSkills: string[] = [];
+  const unreadProofTargets: Array<{ name: string; target: string }> = [];
+  for (let i = 0; i < requiredSkills.length; i++) {
+    const name = requiredSkills[i];
+    const target = ownedSkillReadTargets?.[i];
+    if (typeof name !== "string" || name.length === 0) continue;
+    if (typeof target !== "string" || target.length === 0) {
+      missingOwnershipSkills.push(name);
+      continue;
+    }
+    if (!readSet.has(target)) {
+      unreadProofTargets.push({ name, target });
+    }
+  }
+  return { missingOwnershipSkills, unreadProofTargets };
 }
 
 /** Pure decision. No I/O, no mutation. */
@@ -101,6 +122,7 @@ export function decideGate(input: GateInput): GateDecision {
     targetPath,
     branchContract = { kind: "ABSENT" },
     requiredSkills,
+    ownedSkillReadTargets,
     skillReads,
   } = input;
 
@@ -165,12 +187,29 @@ export function decideGate(input: GateInput): GateDecision {
       }
     }
 
-    const remainingSkills = getRemainingSkills(requiredSkills, skillReads);
-    if (remainingSkills.length > 0) {
-      const required = remainingSkills.map((name) => `skill://pi-oven:${name}`).join(", ");
+    const { missingOwnershipSkills, unreadProofTargets } = getRemainingSkillProofs(
+      requiredSkills,
+      ownedSkillReadTargets,
+      skillReads
+    );
+    if (missingOwnershipSkills.length > 0) {
       return {
         block: true,
-        reason: `pi-oven: code-write blocked — required skills not yet read: ${required}. Read them first.`,
+        reason:
+          "pi-oven: code-write blocked — owned skill proof targets are missing for required skills: " +
+          `${missingOwnershipSkills.map((name) => `skill://pi-oven:${name}`).join(", ")}. ` +
+          "Automatic pi-oven skill ownership cannot be proven until the runtime persists exact plugin-owned SKILL.md targets.",
+      };
+    }
+    if (unreadProofTargets.length > 0) {
+      const required = unreadProofTargets
+        .map(({ name, target }) => `${name} -> ${target}`)
+        .join(", ");
+      return {
+        block: true,
+        reason:
+          "pi-oven: code-write blocked — owned skill proof targets not yet read: " +
+          `${required}. Read the exact plugin-owned SKILL.md targets first.`,
       };
     }
 

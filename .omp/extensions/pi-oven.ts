@@ -442,7 +442,6 @@ export function applyOrchestratorConduct(
     ...systemPrompt,
   ];
 }
-const PI_OVEN_SKILL_READ_TARGET_PREFIX = "skill://pi-oven:";
 const PI_OVEN_SKILL_TRACE_REASON = "matched by pi-oven runtime keyword whitelist";
 
 interface BranchMessageLike {
@@ -481,23 +480,27 @@ export function extractExplicitForeignAgents(text: string): string[] {
   return explicitForeignAgents;
 }
 
-function toOwnedSkillReadTarget(name: string): string {
-  return `${PI_OVEN_SKILL_READ_TARGET_PREFIX}${name}`;
+function getRemainingOwnedSkillReadTargets(
+  ownedSkillReadTargets: string[] | undefined,
+  skillReads: string[] | undefined
+): string[] {
+  if (!ownedSkillReadTargets || ownedSkillReadTargets.length === 0) return [];
+  const readSet = new Set(skillReads ?? []);
+  return ownedSkillReadTargets.filter((target) => !readSet.has(target));
 }
 
-function buildSkillOwnershipTrace(matchedSkills: { name: string }[]) {
-  return matchedSkills.map((skill) => {
-    const canonical = toOwnedSkillReadTarget(skill.name);
-    return {
-      origin: "pi-oven-auto" as const,
-      kind: "skill" as const,
-      requested: skill.name,
-      canonical,
-      resolved: canonical,
-      status: "resolved" as const,
-      reason: PI_OVEN_SKILL_TRACE_REASON,
-    };
-  });
+function buildSkillOwnershipTrace(
+  matchedSkills: Array<{ name: string; ownedReadTarget: string }>
+) {
+  return matchedSkills.map((skill) => ({
+    origin: "pi-oven-auto" as const,
+    kind: "skill" as const,
+    requested: skill.name,
+    canonical: skill.ownedReadTarget,
+    resolved: skill.ownedReadTarget,
+    status: "resolved" as const,
+    reason: PI_OVEN_SKILL_TRACE_REASON,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -646,16 +649,13 @@ export default function piOvenPi(
 
       if (isParentSession) {
         const fsm = await store.readState();
-        const remainingFromState =
+        const remainingSkillReadTargets =
           fsm.kind === "OK"
-            ? (fsm.state.requiredSkills ?? []).filter(
-                (name) => !(fsm.state.skillReads ?? []).includes(name)
+            ? getRemainingOwnedSkillReadTargets(
+                fsm.state.ownedSkillReadTargets,
+                fsm.state.skillReads
               )
-            : [];
-        const remainingSkills =
-          remainingFromState.length > 0
-            ? remainingFromState
-            : effectiveMatchedSkills.map((skill) => skill.name);
+            : effectiveMatchedSkills.map((skill) => skill.ownedReadTarget);
         const reminders: string[] = [];
         const branchContract = await store.readBranchContract();
         needsAutonomousReminder =
@@ -667,9 +667,9 @@ export default function piOvenPi(
               "Before code-write, write `.pi-oven/state/branch-contract.json` with `destination`, `branch`, and `pr_mode`."
             );
           }
-          if (remainingSkills.length > 0) {
+          if (remainingSkillReadTargets.length > 0) {
             reminders.push(
-              `Before code-write, read ${remainingSkills.map((name) => `skill://pi-oven:${name}`).join(", ")}.`
+              `Before code-write, read ${remainingSkillReadTargets.join(", ")}.`
             );
           }
         }
@@ -794,7 +794,9 @@ export default function piOvenPi(
     );
     await store.mutate((current) => {
       const requiredSkills = skillKeywordState.matchedSkills.map((skill) => skill.name);
-      const ownedSkillReadTargets = requiredSkills.map(toOwnedSkillReadTarget);
+      const ownedSkillReadTargets = skillKeywordState.matchedSkills.map(
+        (skill) => skill.ownedReadTarget
+      );
       const sameUserMessage = current.requiredSkillsMessageId === skillKeywordState.lastUserMessageId;
       const persistedReads = sameUserMessage ? current.skillReads ?? [] : [];
       return {
@@ -803,7 +805,7 @@ export default function piOvenPi(
         version: current.version + 1,
         schemaVersion: current.schemaVersion ?? 1,
         requiredSkills,
-        skillReads: persistedReads.filter((name) => requiredSkills.includes(name)),
+        skillReads: persistedReads.filter((target) => ownedSkillReadTargets.includes(target)),
         requiredSkillsMessageId: skillKeywordState.lastUserMessageId,
         ownershipTrace: buildSkillOwnershipTrace(skillKeywordState.matchedSkills),
         explicitForeignAgents: latestUserMessage

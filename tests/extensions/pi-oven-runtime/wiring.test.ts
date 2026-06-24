@@ -6,6 +6,7 @@ import {
   writePluginSkillsManifest,
   writeShippedSkill,
 } from "../../helpers/installed-topology";
+import { SHIPPED_SKILL_PATHS } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
 
 mock.module("@oh-my-pi/pi-tui", () => ({
   Container: class {},
@@ -70,6 +71,12 @@ function makeFakePi(): FakePi {
 
 function makeTempDir(): string {
   return createInstalledTopologyFixture({ prefix: "pi-oven-wiring-" }).root;
+}
+
+function ownedSkillTarget(skillName: string): string {
+  const skillPath = `./skills/${skillName}/SKILL.md`;
+  expect(SHIPPED_SKILL_PATHS).toContain(skillPath);
+  return join(__dirname, "../../..", "skills", skillName, "SKILL.md");
 }
 
 
@@ -213,9 +220,9 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
 
     expect(res.systemPrompt.some((s) => s.includes("pi-oven:keyword-skills@v1"))).toBe(true);
     const joined = res.systemPrompt.join("\n");
-    expect(joined).toContain("skill://pi-oven:autonomous-loop");
-    expect(joined).toContain("skill://pi-oven:large-task-delegation");
-    expect(joined).toContain("skill://pi-oven:spec-and-review");
+    expect(joined).toContain(ownedSkillTarget("autonomous-loop"));
+    expect(joined).toContain(ownedSkillTarget("large-task-delegation"));
+    expect(joined).toContain(ownedSkillTarget("spec-and-review"));
   });
 
   it("session_start surfaces a keyword-integrity warning when plugin assets reference a missing shipped skill file", async () => {
@@ -400,7 +407,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     const joined = res.systemPrompt.join("\n");
     expect(joined).toContain("Current autonomous reminder:");
     expect(joined).toContain(".pi-oven/state/branch-contract.json");
-    expect(joined).toContain("skill://pi-oven:autonomous-loop");
+    expect(joined).toContain(ownedSkillTarget("autonomous-loop"));
   });
 
   it("turn_start syncs autonomous ownership state into the gate store", async () => {
@@ -463,9 +470,9 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(persisted.explicitForeignAgents).toEqual(["kzk:explorer"]);
     expect(persisted.ownedSkillReadTargets).toEqual(
       expect.arrayContaining([
-        "skill://pi-oven:autonomous-loop",
-        "skill://pi-oven:large-task-delegation",
-        "skill://pi-oven:spec-and-review",
+        ownedSkillTarget("autonomous-loop"),
+        ownedSkillTarget("large-task-delegation"),
+        ownedSkillTarget("spec-and-review"),
       ])
     );
     expect(persisted.ownershipTrace).toEqual(
@@ -474,8 +481,8 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
           origin: "pi-oven-auto",
           kind: "skill",
           requested: "autonomous-loop",
-          canonical: "skill://pi-oven:autonomous-loop",
-          resolved: "skill://pi-oven:autonomous-loop",
+          canonical: ownedSkillTarget("autonomous-loop"),
+          resolved: ownedSkillTarget("autonomous-loop"),
           status: "resolved",
         }),
       ])
@@ -489,6 +496,6 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     const joined = res.systemPrompt.join("\n");
     expect(joined).toContain("Current autonomous reminder:");
     expect(joined).toContain(".pi-oven/state/branch-contract.json");
-    expect(joined).toContain("skill://pi-oven:autonomous-loop");
+    expect(joined).toContain(ownedSkillTarget("autonomous-loop"));
   });
 });

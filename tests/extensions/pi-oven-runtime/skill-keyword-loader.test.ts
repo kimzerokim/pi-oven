@@ -9,6 +9,7 @@ import {
 import {
   SHIPPED_SKILL_COUNT,
   SHIPPED_SKILL_NAMES,
+  SHIPPED_SKILL_PATHS,
 } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
 import {
   KEYWORD_SKILL_DEDUP_KEY,
@@ -37,6 +38,12 @@ function makeTempRepo(): string {
   return fixture.pluginRoot;
 }
 
+function ownedSkillTarget(repoRoot: string, skillName: string): string {
+  const skillPath = `./skills/${skillName}/SKILL.md`;
+  expect(SHIPPED_SKILL_PATHS).toContain(skillPath);
+  return path.resolve(repoRoot, skillPath);
+}
+
 afterEach(() => {
   while (fixtures.length > 0) fixtures.pop()!.cleanup();
 });
@@ -56,8 +63,9 @@ describe("skill-keyword-loader", () => {
     );
   });
 
-  it("loads keyword index entries from shipped skills", () => {
-    const index = loadSkillKeywordIndex(path.resolve(__dirname, "../../.."));
+  it("loads keyword index entries from shipped skills with exact plugin-owned read targets", () => {
+    const repoRoot = path.resolve(__dirname, "../../..");
+    const index = loadSkillKeywordIndex(repoRoot);
     expect(index).toHaveLength(SHIPPED_SKILL_COUNT);
     expect(index.map((entry) => entry.name).sort()).toEqual([...SHIPPED_SKILL_NAMES].sort());
 
@@ -65,15 +73,23 @@ describe("skill-keyword-loader", () => {
     const delegation = index.find((entry) => entry.name === "large-task-delegation");
     const htmlDecision = index.find((entry) => entry.name === "html-spec-decision-maker");
 
-    expect(autonomous).toBeDefined();
-    expect(autonomous?.phrases).toEqual(
-      expect.arrayContaining(["자율 실행", "autopilot", "ralph로 돌려"])
+    expect(autonomous).toEqual(
+      expect.objectContaining({
+        ownedReadTarget: ownedSkillTarget(repoRoot, "autonomous-loop"),
+        phrases: expect.arrayContaining(["자율 실행", "autopilot", "ralph로 돌려"]),
+      })
     );
-    expect(delegation?.phrases).toEqual(
-      expect.arrayContaining(["큰 작업", "large task", "multi-file refactor"])
+    expect(delegation).toEqual(
+      expect.objectContaining({
+        ownedReadTarget: ownedSkillTarget(repoRoot, "large-task-delegation"),
+        phrases: expect.arrayContaining(["큰 작업", "large task", "multi-file refactor"]),
+      })
     );
-    expect(htmlDecision?.phrases).toEqual(
-      expect.arrayContaining(["html spec", "의사결정 html", "decision worksheet"])
+    expect(htmlDecision).toEqual(
+      expect.objectContaining({
+        ownedReadTarget: ownedSkillTarget(repoRoot, "html-spec-decision-maker"),
+        phrases: expect.arrayContaining(["html spec", "의사결정 html", "decision worksheet"]),
+      })
     );
   });
 
@@ -112,49 +128,68 @@ describe("skill-keyword-loader", () => {
     expect(report.issues[0]?.reason).toContain("ENOENT");
   });
 
-  it("matches user text to multiple skills and builds a must-read prompt", () => {
-    const index = loadSkillKeywordIndex(path.resolve(__dirname, "../../.."));
+  it("matches user text to multiple skills and builds a plugin-owned must-read prompt", () => {
+    const repoRoot = path.resolve(__dirname, "../../..");
+    const index = loadSkillKeywordIndex(repoRoot);
     const started = updateSkillKeywordLoaderOnTurnStart(
       createSkillKeywordLoaderState(),
       [userEntry("u1", "자율 실행으로 큰 작업 진행해줘. spec 잡자 before coding.")],
       index
     );
 
-    const names = started.matchedSkills.map((skill) => skill.name);
-    expect(names).toEqual(
-      expect.arrayContaining(["autonomous-loop", "large-task-delegation", "spec-and-review"])
+    expect(started.matchedSkills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "autonomous-loop",
+          ownedReadTarget: ownedSkillTarget(repoRoot, "autonomous-loop"),
+        }),
+        expect.objectContaining({
+          name: "large-task-delegation",
+          ownedReadTarget: ownedSkillTarget(repoRoot, "large-task-delegation"),
+        }),
+        expect.objectContaining({
+          name: "spec-and-review",
+          ownedReadTarget: ownedSkillTarget(repoRoot, "spec-and-review"),
+        }),
+      ])
     );
 
     const prompt = buildKeywordMatchedSkillsPrompt(started.matchedSkills);
     expect(prompt).toContain(KEYWORD_SKILL_DEDUP_KEY);
-    expect(prompt).toContain("skill://pi-oven:autonomous-loop");
-    expect(prompt).toContain("skill://pi-oven:large-task-delegation");
-    expect(prompt).toContain("skill://pi-oven:spec-and-review");
-    expect(prompt).toContain("curated keyword whitelist");
+    expect(prompt).toContain(ownedSkillTarget(repoRoot, "autonomous-loop"));
+    expect(prompt).toContain(ownedSkillTarget(repoRoot, "large-task-delegation"));
+    expect(prompt).toContain(ownedSkillTarget(repoRoot, "spec-and-review"));
+    expect(prompt).toContain("plugin-owned");
   });
 
-  it("the matched-skills prompt frames loading as a hard precondition, not a suggestion", () => {
+  it("the matched-skills prompt frames exact plugin-owned reads as a hard precondition", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
-      { name: "spec-and-review", matchedPhrases: ["write a spec"] },
+      {
+        name: "spec-and-review",
+        matchedPhrases: ["write a spec"],
+        ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
+      },
     ]);
     expect(prompt).not.toBeNull();
     expect(prompt!).toMatch(/hard precondition/i);
-    // body text must use the namespaced form
-    expect(prompt!).toContain('read("skill://pi-oven:<name>")');
+    expect(prompt!).toContain("/plugin/skills/spec-and-review/SKILL.md");
+    expect(prompt!).toContain("plugin-owned");
   });
 
-  it("buildKeywordMatchedSkillsPrompt emits namespaced skill:// URIs, not bare ones", () => {
+  it("buildKeywordMatchedSkillsPrompt emits exact SKILL.md file targets, not skill:// aliases", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
-      { name: "brainstorming", matchedPhrases: ["brainstorm"] },
+      {
+        name: "brainstorming",
+        matchedPhrases: ["brainstorm"],
+        ownedReadTarget: "/plugin/skills/brainstorming/SKILL.md",
+      },
     ]);
     expect(prompt).not.toBeNull();
-    // must contain the namespaced form
-    expect(prompt!).toContain("skill://pi-oven:brainstorming");
-    // must NOT contain a bare (non-namespaced) skill:// line entry
-    // (bare skill:// in the body text example is updated too, so we check no line-item bare form)
+    expect(prompt!).toContain("/plugin/skills/brainstorming/SKILL.md");
+    expect(prompt!).not.toContain("skill://pi-oven:brainstorming");
     const lines = prompt!.split("\n");
-    const skillLines = lines.filter((l) => l.startsWith("- `skill://"));
-    expect(skillLines.every((l) => l.includes("skill://pi-oven:"))).toBe(true);
+    const skillLines = lines.filter((l) => l.startsWith("- `"));
+    expect(skillLines.every((l) => l.includes("/SKILL.md"))).toBe(true);
   });
 
   it("matches the broadened common phrasings for the user-triggered skills", () => {

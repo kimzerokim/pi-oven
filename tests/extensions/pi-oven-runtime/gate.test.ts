@@ -241,7 +241,9 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
     expect(r.reason).toMatch(/branch-contract\.json/i);
   });
 
-  it("blocks code-write when required skills remain unread", () => {
+  it("blocks code-write when exact plugin-owned skill proof targets remain unread", () => {
+    const autonomousTarget = "/plugin/skills/autonomous-loop/SKILL.md";
+    const delegationTarget = "/plugin/skills/large-task-delegation/SKILL.md";
     const r = decideGate(
       input("", {
         toolName: "edit",
@@ -250,14 +252,16 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
           contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
         },
         requiredSkills: ["autonomous-loop", "large-task-delegation"],
-        skillReads: ["autonomous-loop"],
+        ownedSkillReadTargets: [autonomousTarget, delegationTarget],
+        skillReads: [autonomousTarget, "skill://large-task-delegation"],
       })
     );
     expect(r.block).toBe(true);
-    expect(r.reason).toMatch(/skill:\/\/pi-oven:large-task-delegation/i);
+    expect(r.reason).toMatch(/owned skill proof/i);
+    expect(r.reason).toContain(delegationTarget);
   });
 
-  it("allows code-write once the branch contract exists and all required skills were read", () => {
+  it("blocks code-write when a required skill has no plugin-owned proof target", () => {
     const r = decideGate(
       input("", {
         toolName: "edit",
@@ -266,7 +270,27 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
           contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
         },
         requiredSkills: ["autonomous-loop"],
-        skillReads: ["autonomous-loop"],
+        ownedSkillReadTargets: [],
+        skillReads: [],
+      })
+    );
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/ownership/i);
+    expect(r.reason).toMatch(/autonomous-loop/i);
+  });
+
+  it("allows code-write once the branch contract exists and every exact owned proof target was read", () => {
+    const autonomousTarget = "/plugin/skills/autonomous-loop/SKILL.md";
+    const r = decideGate(
+      input("", {
+        toolName: "edit",
+        branchContract: {
+          kind: "OK",
+          contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
+        },
+        requiredSkills: ["autonomous-loop"],
+        ownedSkillReadTargets: [autonomousTarget],
+        skillReads: [autonomousTarget],
       })
     );
     expect(r.block).toBe(false);

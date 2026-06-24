@@ -247,7 +247,8 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(r?.block ?? false).toBe(false);
   });
 
-  it("credits only namespaced pi-oven skill reads before unblocking code-write", async () => {
+  it("credits only exact plugin-owned skill proof targets before unblocking code-write", async () => {
+    const ownedTarget = "/plugin/skills/autonomous-loop/SKILL.md";
     writeState(dir, {
       active: true,
       gateCache: { commit: "PASS", regression: "PASS" },
@@ -256,6 +257,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       requiredSkills: ["autonomous-loop"],
       skillReads: [],
       requiredSkillsMessageId: "u1",
+      ownedSkillReadTargets: [ownedTarget],
     });
     mkdirSync(join(dir, "state"), { recursive: true });
     writeFileSync(
@@ -266,23 +268,59 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
 
     const initiallyBlocked = await h(writeEvent("src/example.ts"));
     expect(initiallyBlocked?.block).toBe(true);
-    expect(initiallyBlocked?.reason).toMatch(/skill:\/\/pi-oven:autonomous-loop/i);
+    expect(initiallyBlocked?.reason).toMatch(/owned skill proof/i);
+    expect(initiallyBlocked?.reason).toContain(ownedTarget);
 
     const bareRead = await h(readEvent("skill://autonomous-loop"));
     expect(bareRead?.block ?? false).toBe(false);
 
-    const stillBlocked = await h(writeEvent("src/example.ts", "tc-write-bare"));
-    expect(stillBlocked?.block).toBe(true);
-    expect(stillBlocked?.reason).toMatch(/skill:\/\/pi-oven:autonomous-loop/i);
+    const stillBlockedAfterBare = await h(writeEvent("src/example.ts", "tc-write-bare"));
+    expect(stillBlockedAfterBare?.block).toBe(true);
+    expect(stillBlockedAfterBare?.reason).toContain(ownedTarget);
 
-    const readRes = await h(readEvent("skill://pi-oven:autonomous-loop"));
+    const namespacedRead = await h(readEvent("skill://pi-oven:autonomous-loop"));
+    expect(namespacedRead?.block ?? false).toBe(false);
+
+    const stillBlockedAfterAlias = await h(writeEvent("src/example.ts", "tc-write-ns"));
+    expect(stillBlockedAfterAlias?.block).toBe(true);
+    expect(stillBlockedAfterAlias?.reason).toContain(ownedTarget);
+
+    const readRes = await h(readEvent(ownedTarget));
     expect(readRes?.block ?? false).toBe(false);
 
     const allowed = await h(writeEvent("src/example.ts", "tc-write-2"));
     expect(allowed?.block ?? false).toBe(false);
+
+    const after = await new GateStateStore(dir).readState();
+    expect(after.kind).toBe("OK");
+    if (after.kind !== "OK") return;
+    expect(after.state.skillReads).toEqual([ownedTarget]);
   });
 
-  it("initializes and preserves ownership state fields across skill-read mutations", async () => {
+  it("blocks code-write with an ownership diagnostic when a required skill has no owned proof target", async () => {
+    writeState(dir, {
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: ["autonomous-loop"],
+      skillReads: [],
+      requiredSkillsMessageId: "u1",
+      ownedSkillReadTargets: [],
+    });
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(
+      join(dir, "state", "branch-contract.json"),
+      JSON.stringify({ destination: "worktree", branch: "feature/ws5", pr_mode: "draft" })
+    );
+    const h = createGateHandler(await deps(dir));
+    const blocked = await h(writeEvent("src/example.ts"));
+    expect(blocked?.block).toBe(true);
+    expect(blocked?.reason).toMatch(/ownership/i);
+    expect(blocked?.reason).toMatch(/autonomous-loop/i);
+  });
+
+  it("initializes and preserves ownership state fields across exact skill-proof mutations", async () => {
     const store = new GateStateStore(dir);
     await store.mutate((current) => current);
     const initialized = await store.readState();
@@ -293,13 +331,14 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(initialized.state.explicitForeignAgents).toEqual([]);
     expect(initialized.state.ownedSkillReadTargets).toEqual([]);
 
+    const ownedTarget = "/plugin/skills/autonomous-loop/SKILL.md";
     const ownershipTrace = [
       {
         origin: "pi-oven-auto",
         kind: "skill",
         requested: "autonomous-loop",
-        canonical: "skill://pi-oven:autonomous-loop",
-        resolved: "skill://pi-oven:autonomous-loop",
+        canonical: ownedTarget,
+        resolved: ownedTarget,
         status: "resolved",
         reason: "matched by pi-oven runtime keyword whitelist",
       },
@@ -315,21 +354,26 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       requiredSkillsMessageId: "u1",
       ownershipTrace,
       explicitForeignAgents: ["kzk:explorer"],
-      ownedSkillReadTargets: ["skill://pi-oven:autonomous-loop"],
+      ownedSkillReadTargets: [ownedTarget],
     });
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(
+      join(dir, "state", "branch-contract.json"),
+      JSON.stringify({ destination: "worktree", branch: "feature/ws5", pr_mode: "draft" })
+    );
 
     const h = createGateHandler(await deps(dir));
-    const readRes = await h(readEvent("skill://pi-oven:autonomous-loop"));
+    const readRes = await h(readEvent(ownedTarget));
     expect(readRes?.block ?? false).toBe(false);
 
     const after = await store.readState();
     expect(after.kind).toBe("OK");
     if (after.kind !== "OK") return;
 
-    expect(after.state.skillReads).toEqual(["autonomous-loop"]);
+    expect(after.state.skillReads).toEqual([ownedTarget]);
     expect(after.state.ownershipTrace).toEqual(ownershipTrace);
     expect(after.state.explicitForeignAgents).toEqual(["kzk:explorer"]);
-    expect(after.state.ownedSkillReadTargets).toEqual(["skill://pi-oven:autonomous-loop"]);
+    expect(after.state.ownedSkillReadTargets).toEqual([ownedTarget]);
   });
 
   it("ignores skill:// reads outside an active autonomous state", async () => {

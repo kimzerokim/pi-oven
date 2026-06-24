@@ -1,6 +1,9 @@
 import { readFileSync } from "fs";
 import * as path from "path";
-import { shippedSkillNameFromPath } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
+import {
+  resolveShippedSkillReadTarget,
+  shippedSkillNameFromPath,
+} from "../../../scripts/pi-oven-setup/shipped-skill-registry";
 
 export const PI_OVEN_SKILL_NS = "pi-oven";
 export const KEYWORD_SKILL_DEDUP_KEY = "pi-oven:keyword-skills@v1";
@@ -230,11 +233,13 @@ export interface SkillKeywordIndexEntry {
   name: string;
   description: string;
   phrases: string[];
+  ownedReadTarget: string;
 }
 
 export interface MatchedSkill {
   name: string;
   matchedPhrases: string[];
+  ownedReadTarget: string;
 }
 
 export interface SkillKeywordLoaderState {
@@ -303,7 +308,9 @@ export function matchSkillsForText(
       const matchedPhrases = entry.phrases.filter((phrase) =>
         normalizedText.includes(normalizeText(phrase))
       );
-      return matchedPhrases.length > 0 ? { name: entry.name, matchedPhrases } : null;
+      return matchedPhrases.length > 0
+        ? { name: entry.name, matchedPhrases, ownedReadTarget: entry.ownedReadTarget }
+        : null;
     })
     .filter((entry): entry is MatchedSkill => entry !== null)
     .slice(0, MAX_MATCHED_SKILLS);
@@ -325,6 +332,7 @@ export function loadSkillKeywordIndexReport(repoRoot: string): SkillKeywordIndex
     let name = skillPath;
     try {
       name = shippedSkillNameFromPath(skillPath);
+      const ownedReadTarget = resolveShippedSkillReadTarget(repoRoot, skillPath);
       const content = readFileSync(absolute, "utf-8");
       const frontmatter = parseFrontmatter(content);
       name = typeof frontmatter.name === "string" ? frontmatter.name : name;
@@ -344,7 +352,7 @@ export function loadSkillKeywordIndexReport(repoRoot: string): SkillKeywordIndex
         phrases.push(phrase);
       }
 
-      index.push({ name, description, phrases });
+      index.push({ name, description, phrases, ownedReadTarget });
     } catch (err) {
       issues.push({
         skillPath,
@@ -417,13 +425,15 @@ export function buildKeywordMatchedSkillsPrompt(matchedSkills: MatchedSkill[]): 
     "## Runtime keyword-matched skills",
     "",
     "The latest user message matched these pi-oven skills from the curated keyword whitelist.",
-    `You MUST load each listed skill with \`read("skill://pi-oven:<name>")\` before taking substantive action in this turn.`,
+    "You MUST load each listed skill by reading the exact plugin-owned SKILL.md target shown below before taking substantive action in this turn.",
     "This is a hard precondition, NOT a suggestion: do not begin any skill-governed work until the matching skill is loaded and followed.",
     "Preserve all non-conflicting rules across the matched skills. If two skills conflict, prefer the more specific one.",
     "",
   ];
   for (const skill of matchedSkills) {
-    lines.push(`- \`skill://${PI_OVEN_SKILL_NS}:${skill.name}\` — matched by: ${skill.matchedPhrases.join(", ")}`);
+    lines.push(
+      `- \`${skill.ownedReadTarget}\` — pi-oven skill \`${skill.name}\`, matched by: ${skill.matchedPhrases.join(", ")}`
+    );
   }
   return lines.join("\n");
 }

@@ -1,3 +1,4 @@
+import path from "node:path";
 const SHIPPED_SKILL_PATHS_LIST = [
   "./skills/memory-discipline/SKILL.md",
   "./skills/code-quality-discipline/SKILL.md",
@@ -38,6 +39,11 @@ export function shippedSkillNameFromPath(skillPath: string): string {
 
 export function shippedSkillNamesFromPaths(skillPaths: readonly string[]): string[] {
   return skillPaths.map(shippedSkillNameFromPath);
+}
+
+export function resolveShippedSkillReadTarget(pluginRoot: string, skillPath: string): string {
+  shippedSkillNameFromPath(skillPath);
+  return path.resolve(pluginRoot, skillPath);
 }
 
 export const SHIPPED_SKILL_NAMES = shippedSkillNamesFromPaths(SHIPPED_SKILL_PATHS);

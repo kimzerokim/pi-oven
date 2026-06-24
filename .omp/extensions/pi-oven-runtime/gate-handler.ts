@@ -221,14 +221,15 @@ export function toGateFsmView(view: Awaited<ReturnType<GateStateStore["readState
       : { kind: "ABSENT" };
 }
 
-async function observeSkillRead(deps: GateHandlerDeps, skillName: string): Promise<void> {
+async function observeSkillRead(deps: GateHandlerDeps, skillReadTarget: string): Promise<void> {
   if (!deps.isParentSession) return;
   const currentView = await deps.store.readState();
   if (currentView.kind !== "OK" || !currentView.state.active) return;
-  if (!(currentView.state.requiredSkills ?? []).includes(skillName)) return;
+  const allowedTargets = new Set(currentView.state.ownedSkillReadTargets ?? []);
+  if (!allowedTargets.has(skillReadTarget)) return;
   await deps.store.mutate((current) => {
     const nextReads = new Set(current.skillReads ?? []);
-    nextReads.add(skillName);
+    nextReads.add(skillReadTarget);
     return {
       ...current,
       version: current.version + 1,
@@ -255,6 +256,7 @@ async function decideForCodeWrite(
     targetPath: getTargetPath(event.input),
     branchContract: await deps.store.readBranchContract(),
     requiredSkills: fsmRaw.kind === "OK" ? fsmRaw.state.requiredSkills : [],
+    ownedSkillReadTargets: fsmRaw.kind === "OK" ? fsmRaw.state.ownedSkillReadTargets : [],
     skillReads: fsmRaw.kind === "OK" ? fsmRaw.state.skillReads : [],
   });
   return { block: decision.block, reason: decision.reason };
@@ -264,9 +266,9 @@ async function decideForToolCall(
   deps: GateHandlerDeps,
   event: ToolCallEventLike
 ): Promise<ToolCallResultLike | void> {
-  const skillName = getSkillReadName(event);
-  if (skillName !== null) {
-    await observeSkillRead(deps, skillName);
+  const skillReadTarget = event.toolName === "read" ? getTargetPath(event.input) : null;
+  if (skillReadTarget !== null) {
+    await observeSkillRead(deps, skillReadTarget);
     return { block: false };
   }
 

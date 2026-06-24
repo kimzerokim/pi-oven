@@ -52,7 +52,6 @@ function getSymbolThemeFor(theme: Theme): SymbolTheme {
     table: theme.boxSharp,
     quoteBorder: theme.md.quoteBorder,
     hrChar: theme.md.hrChar,
-    colorSwatch: theme.md.colorSwatch,
     spinnerFrames: theme.getSpinnerFrames("activity"),
   };
 }

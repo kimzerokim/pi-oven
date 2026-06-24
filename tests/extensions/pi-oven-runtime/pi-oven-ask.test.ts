@@ -128,7 +128,7 @@ function makeTheme() {
       teeRight: "├",
       teeLeft: "┤",
     },
-    md: { quoteBorder: "│", hrChar: "─", bullet: "•", colorSwatch: "■" },
+    md: { quoteBorder: "│", hrChar: "─", bullet: "•" },
     checkbox: { unchecked: "□", checked: "■" },
   } as const;
 }

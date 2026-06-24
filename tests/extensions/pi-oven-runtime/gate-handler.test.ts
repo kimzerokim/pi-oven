@@ -282,6 +282,56 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(allowed?.block ?? false).toBe(false);
   });
 
+  it("initializes and preserves ownership state fields across skill-read mutations", async () => {
+    const store = new GateStateStore(dir);
+    await store.mutate((current) => current);
+    const initialized = await store.readState();
+    expect(initialized.kind).toBe("OK");
+    if (initialized.kind !== "OK") return;
+
+    expect(initialized.state.ownershipTrace).toEqual([]);
+    expect(initialized.state.explicitForeignAgents).toEqual([]);
+    expect(initialized.state.ownedSkillReadTargets).toEqual([]);
+
+    const ownershipTrace = [
+      {
+        origin: "pi-oven-auto",
+        kind: "skill",
+        requested: "autonomous-loop",
+        canonical: "skill://pi-oven:autonomous-loop",
+        resolved: "skill://pi-oven:autonomous-loop",
+        status: "resolved",
+        reason: "matched by pi-oven runtime keyword whitelist",
+      },
+    ];
+    writeState(dir, {
+      ...initialized.state,
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: ["autonomous-loop"],
+      skillReads: [],
+      requiredSkillsMessageId: "u1",
+      ownershipTrace,
+      explicitForeignAgents: ["kzk:explorer"],
+      ownedSkillReadTargets: ["skill://pi-oven:autonomous-loop"],
+    });
+
+    const h = createGateHandler(await deps(dir));
+    const readRes = await h(readEvent("skill://pi-oven:autonomous-loop"));
+    expect(readRes?.block ?? false).toBe(false);
+
+    const after = await store.readState();
+    expect(after.kind).toBe("OK");
+    if (after.kind !== "OK") return;
+
+    expect(after.state.skillReads).toEqual(["autonomous-loop"]);
+    expect(after.state.ownershipTrace).toEqual(ownershipTrace);
+    expect(after.state.explicitForeignAgents).toEqual(["kzk:explorer"]);
+    expect(after.state.ownedSkillReadTargets).toEqual(["skill://pi-oven:autonomous-loop"]);
+  });
+
   it("ignores skill:// reads outside an active autonomous state", async () => {
     const h = createGateHandler(await deps(dir));
     const r = await h(readEvent("skill://autonomous-loop"));

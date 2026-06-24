@@ -442,6 +442,62 @@ export function applyOrchestratorConduct(
     ...systemPrompt,
   ];
 }
+const PI_OVEN_SKILL_READ_TARGET_PREFIX = "skill://pi-oven:";
+const PI_OVEN_SKILL_TRACE_REASON = "matched by pi-oven runtime keyword whitelist";
+
+interface BranchMessageLike {
+  id?: unknown;
+  type?: unknown;
+  message?: { role?: unknown; content?: unknown };
+}
+
+function getLatestUserBranchMessage(
+  branchEntries: BranchMessageLike[]
+): { id: string; text: string } | null {
+  for (let i = branchEntries.length - 1; i >= 0; i--) {
+    const entry = branchEntries[i];
+    if (entry?.type !== "message") continue;
+    if (entry.message?.role !== "user") continue;
+    const text = extractTextFromContent(entry.message.content);
+    if (text.length === 0) continue;
+    const id = typeof entry.id === "string" && entry.id.length > 0 ? entry.id : String(i);
+    return { id, text };
+  }
+  return null;
+}
+
+function extractExplicitForeignAgents(text: string): string[] {
+  const matches = text.match(/\b[a-z0-9-]+:[a-z0-9-]+\b/gi) ?? [];
+  const seen = new Set<string>();
+  const explicitForeignAgents: string[] = [];
+  for (const match of matches) {
+    const namespace = match.split(":", 1)[0]?.toLowerCase();
+    if (namespace === "pi-oven") continue;
+    if (seen.has(match)) continue;
+    seen.add(match);
+    explicitForeignAgents.push(match);
+  }
+  return explicitForeignAgents;
+}
+
+function toOwnedSkillReadTarget(name: string): string {
+  return `${PI_OVEN_SKILL_READ_TARGET_PREFIX}${name}`;
+}
+
+function buildSkillOwnershipTrace(matchedSkills: { name: string }[]) {
+  return matchedSkills.map((skill) => {
+    const canonical = toOwnedSkillReadTarget(skill.name);
+    return {
+      origin: "pi-oven-auto" as const,
+      kind: "skill" as const,
+      requested: skill.name,
+      canonical,
+      resolved: canonical,
+      status: "resolved" as const,
+      reason: PI_OVEN_SKILL_TRACE_REASON,
+    };
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Extension entrypoint
@@ -727,7 +783,8 @@ export default function piOvenPi(
 
   pi.on("turn_start", async (_event, ctx) => {
     if (!isParentSession) return;
-    const branchEntries = ctx.sessionManager.getBranch() as never;
+    const branchEntries = ctx.sessionManager.getBranch() as BranchMessageLike[];
+    const latestUserMessage = getLatestUserBranchMessage(branchEntries);
     stopGuardState = updateStopGuardOnTurnStart(stopGuardState, branchEntries);
     skillKeywordState = updateSkillKeywordLoaderOnTurnStart(
       skillKeywordState,
@@ -736,6 +793,7 @@ export default function piOvenPi(
     );
     await store.mutate((current) => {
       const requiredSkills = skillKeywordState.matchedSkills.map((skill) => skill.name);
+      const ownedSkillReadTargets = requiredSkills.map(toOwnedSkillReadTarget);
       const sameUserMessage = current.requiredSkillsMessageId === skillKeywordState.lastUserMessageId;
       const persistedReads = sameUserMessage ? current.skillReads ?? [] : [];
       return {
@@ -746,6 +804,11 @@ export default function piOvenPi(
         requiredSkills,
         skillReads: persistedReads.filter((name) => requiredSkills.includes(name)),
         requiredSkillsMessageId: skillKeywordState.lastUserMessageId,
+        ownershipTrace: buildSkillOwnershipTrace(skillKeywordState.matchedSkills),
+        explicitForeignAgents: latestUserMessage
+          ? extractExplicitForeignAgents(latestUserMessage.text)
+          : current.explicitForeignAgents ?? [],
+        ownedSkillReadTargets,
       };
     });
   });

@@ -17,6 +17,16 @@
 import { promises as fs } from "fs";
 import { join, dirname } from "path";
 
+export interface OwnershipTraceEntry {
+  origin: "pi-oven-auto" | "user-explicit" | "foreign-auto";
+  kind: "agent" | "skill";
+  requested: string;
+  canonical: string;
+  resolved: string;
+  status: "resolved" | "rewritten" | "blocked";
+  reason: string;
+}
+
 export interface FsmState {
   active: boolean;
   gateCache: { commit?: string; regression?: string };
@@ -27,6 +37,28 @@ export interface FsmState {
   requiredSkills?: string[];
   skillReads?: string[];
   requiredSkillsMessageId?: string | null;
+  ownershipTrace?: OwnershipTraceEntry[];
+  explicitForeignAgents?: string[];
+  ownedSkillReadTargets?: string[];
+}
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isValidOwnershipTraceEntry(value: unknown): value is OwnershipTraceEntry {
+  if (typeof value !== "object" || value === null) return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    (entry.origin === "pi-oven-auto" ||
+      entry.origin === "user-explicit" ||
+      entry.origin === "foreign-auto") &&
+    (entry.kind === "agent" || entry.kind === "skill") &&
+    typeof entry.requested === "string" &&
+    typeof entry.canonical === "string" &&
+    typeof entry.resolved === "string" &&
+    (entry.status === "resolved" || entry.status === "rewritten" || entry.status === "blocked") &&
+    typeof entry.reason === "string"
+  );
 }
 
 export type FsmStateView =
@@ -80,13 +112,13 @@ function isValidState(v: unknown): v is FsmState {
   if (typeof o.gateCache !== "object" || o.gateCache === null) return false;
   if (
     o.requiredSkills !== undefined &&
-    (!Array.isArray(o.requiredSkills) || o.requiredSkills.some((item) => typeof item !== "string"))
+    !isStringArray(o.requiredSkills)
   ) {
     return false;
   }
   if (
     o.skillReads !== undefined &&
-    (!Array.isArray(o.skillReads) || o.skillReads.some((item) => typeof item !== "string"))
+    !isStringArray(o.skillReads)
   ) {
     return false;
   }
@@ -94,6 +126,25 @@ function isValidState(v: unknown): v is FsmState {
     o.requiredSkillsMessageId !== undefined &&
     o.requiredSkillsMessageId !== null &&
     typeof o.requiredSkillsMessageId !== "string"
+  ) {
+    return false;
+  }
+  if (
+    o.ownershipTrace !== undefined &&
+    (!Array.isArray(o.ownershipTrace) ||
+      o.ownershipTrace.some((entry) => !isValidOwnershipTraceEntry(entry)))
+  ) {
+    return false;
+  }
+  if (
+    o.explicitForeignAgents !== undefined &&
+    !isStringArray(o.explicitForeignAgents)
+  ) {
+    return false;
+  }
+  if (
+    o.ownedSkillReadTargets !== undefined &&
+    !isStringArray(o.ownedSkillReadTargets)
   ) {
     return false;
   }
@@ -184,6 +235,9 @@ export class GateStateStore {
               requiredSkills: [],
               skillReads: [],
               requiredSkillsMessageId: null,
+              ownershipTrace: [],
+              explicitForeignAgents: [],
+              ownedSkillReadTargets: [],
             };
       const next = updater(current);
       await this.writeState(next);

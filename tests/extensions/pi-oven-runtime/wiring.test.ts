@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { readFileSync, rmSync } from "fs";
 import { join } from "path";
 import {
@@ -6,8 +6,16 @@ import {
   writePluginSkillsManifest,
   writeShippedSkill,
 } from "../../helpers/installed-topology";
-import piOvenPi from "../../../.omp/extensions/pi-oven";
 
+mock.module("@oh-my-pi/pi-tui", () => ({
+  Container: class {},
+  Markdown: class {},
+  Text: class {},
+  SelectList: class {},
+  wrapTextWithAnsi: (value: string) => value,
+}));
+
+const { default: piOvenPi } = await import("../../../.omp/extensions/pi-oven");
 // ---------------------------------------------------------------------------
 // AC4 — no regression + correctness: the extension entrypoint still wires the
 // baseline behaviors (validateAgentRegistry at load, session_start capture)
@@ -395,7 +403,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain("skill://pi-oven:autonomous-loop");
   });
 
-  it("turn_start syncs autonomous active state and matched skills into the gate store", async () => {
+  it("turn_start syncs autonomous ownership state into the gate store", async () => {
     tempDir = makeTempDir();
     process.chdir(tempDir);
 
@@ -411,7 +419,12 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
             type: "message",
             message: {
               role: "user",
-              content: [{ type: "text", text: "자율 실행으로 큰 작업 진행해줘. spec 잡자 first." }],
+              content: [
+                {
+                  type: "text",
+                  text: "자율 실행으로 큰 작업 진행해줘. kzk:explorer는 유지하고 spec 잡자 first.",
+                },
+              ],
             },
           },
         ],
@@ -425,6 +438,17 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       active: boolean;
       requiredSkills?: string[];
       skillReads?: string[];
+      explicitForeignAgents?: string[];
+      ownedSkillReadTargets?: string[];
+      ownershipTrace?: Array<{
+        origin: string;
+        kind: string;
+        requested: string;
+        canonical: string;
+        resolved: string;
+        status: string;
+        reason: string;
+      }>;
     };
     expect(persisted.active).toBe(true);
     expect(persisted.requiredSkills).toHaveLength(3);
@@ -436,6 +460,26 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       ])
     );
     expect(persisted.skillReads).toEqual([]);
+    expect(persisted.explicitForeignAgents).toEqual(["kzk:explorer"]);
+    expect(persisted.ownedSkillReadTargets).toEqual(
+      expect.arrayContaining([
+        "skill://pi-oven:autonomous-loop",
+        "skill://pi-oven:large-task-delegation",
+        "skill://pi-oven:spec-and-review",
+      ])
+    );
+    expect(persisted.ownershipTrace).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          origin: "pi-oven-auto",
+          kind: "skill",
+          requested: "autonomous-loop",
+          canonical: "skill://pi-oven:autonomous-loop",
+          resolved: "skill://pi-oven:autonomous-loop",
+          status: "resolved",
+        }),
+      ])
+    );
     const onBeforeAgentStart = pi.handlers["before_agent_start"];
     const res = (await onBeforeAgentStart({
       type: "before_agent_start",

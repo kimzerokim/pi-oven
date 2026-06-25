@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.17 - 2026-06-25
+
+- docs(plan): add pi-oven-first tracking design and plan
+- Align pi-oven ask theme test fixture
+- test: fix pi-oven runtime typing
+- Fix pi-oven ask symbol theme typing
+- test(runtime): lock mixed-registry pi-oven-first ownership
+- feat(setup): align pi-oven-first policy surfaces
+- feat(runtime): fail-close automatic skill ownership outside pi-oven
+- feat(runtime): enforce pi-oven-first agent dispatch ownership
+- feat(runtime): add ownership resolution state contract
 ## v0.1.16 - 2026-06-23
 
 - merge: runtime reliability hardening

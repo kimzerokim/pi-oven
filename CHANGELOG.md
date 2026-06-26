@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.18 - 2026-06-26
+
+- docs(release): bump human-facing refs to v0.1.18
+- feat(runtime): gate external execution on explicit consent
 ## v0.1.17 - 2026-06-25
 
 - docs(plan): add pi-oven-first tracking design and plan

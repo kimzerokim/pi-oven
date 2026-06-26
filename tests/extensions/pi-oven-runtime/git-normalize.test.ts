@@ -17,6 +17,14 @@ function verbs(cmd: string): string[] {
   return normalizeCommand(cmd).gitVerbs;
 }
 
+function externalKinds(cmd: string): string[] {
+  return normalizeCommand(cmd).externalMatches.map((m) => m.kind);
+}
+
+function inlineSecretKinds(cmd: string): string[] {
+  return normalizeCommand(cmd).inlineSecretMatches.map((m) => m.kind);
+}
+
 describe("normalizeCommand — git verb detection (AC7)", () => {
   it("detects a plain `git commit`", () => {
     expect(verbs("git commit -m x")).toContain("commit");
@@ -151,14 +159,173 @@ describe("normalizeCommand — forbidden set detection (Spec §3 Layer 1)", () =
     expect(n.forbiddenMatches.length).toBeGreaterThan(0);
   });
 
-  it("flags prod-access pattern: aws ssm to production", () => {
-    const n = normalizeCommand("aws ssm start-session --target i-prod");
-    expect(n.forbiddenMatches.length).toBeGreaterThan(0);
+  it("classifies external-session commands instead of forbidding them", () => {
+    const ssm = normalizeCommand("aws ssm start-session --target i-prod");
+    expect(ssm.forbiddenMatches).toEqual([]);
+    expect(ssm.externalMatches.map((m) => m.kind)).toEqual(["external-session"]);
+
+    const sts = normalizeCommand("aws sts assume-role --role-arn arn:aws:iam::1:role/prod");
+    expect(sts.forbiddenMatches).toEqual([]);
+    expect(sts.externalMatches.map((m) => m.kind)).toEqual(["external-session"]);
+
+    const stsWithProfile = normalizeCommand(
+      "aws --profile prod sts assume-role --role-arn arn:aws:iam::1:role/prod"
+    );
+    expect(stsWithProfile.forbiddenMatches).toEqual([]);
+    expect(stsWithProfile.externalMatches.map((m) => m.kind)).toEqual(["external-session"]);
+
+    expect(externalKinds("ssh deploy@example.com")).toEqual(["external-session"]);
+    expect(externalKinds("kubectl exec pod -- sh")).toEqual(["external-session"]);
+    expect(externalKinds("psql postgres://prod-db")).toEqual(["external-session"]);
+    expect(externalKinds("mysql mysql://prod-db")).toEqual(["external-session"]);
+    expect(externalKinds("mongosh mongodb://prod-db")).toEqual(["external-session"]);
+    expect(externalKinds("redis-cli -u redis://prod-db")).toEqual(["external-session"]);
   });
 
-  it("flags prod-access pattern: aws sts assume-role", () => {
-    const n = normalizeCommand("aws sts assume-role --role-arn arn:aws:iam::1:role/prod");
-    expect(n.forbiddenMatches.length).toBeGreaterThan(0);
+  it("classifies external-read commands without marking them forbidden", () => {
+    const s3 = normalizeCommand("aws s3 ls");
+    expect(s3.forbiddenMatches).toEqual([]);
+    expect(s3.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
+
+    const ec2 = normalizeCommand("aws ec2 describe-instances");
+    expect(ec2.forbiddenMatches).toEqual([]);
+    expect(ec2.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
+  });
+  it("classifies direct Bitbucket and Cloudflare API reads", () => {
+    expect(externalKinds("http GET https://api.bitbucket.org/2.0/repositories/ws/repo/pipelines/")).toEqual([
+      "external-read",
+    ]);
+    expect(externalKinds("http https://api.bitbucket.org/2.0/repositories/ws/repo/pipelines/")).toEqual([
+      "external-read",
+    ]);
+    expect(externalKinds("curl -X GET https://api.cloudflare.com/client/v4/zones")).toEqual([
+      "external-read",
+    ]);
+    expect(externalKinds("curl https://api.cloudflare.com/client/v4/zones")).toEqual([
+      "external-read",
+    ]);
+  });
+  it("classifies external-mutation commands", () => {
+    expect(externalKinds("./scripts/deploy.sh --region singapore --warp on")).toEqual([
+      "external-mutation",
+    ]);
+    expect(externalKinds("aws s3 sync ./dist s3://bucket")).toEqual(["external-mutation"]);
+    expect(externalKinds("aws ecr batch-delete-image --repository-name app --image-ids imageTag=old")).toEqual([
+      "external-mutation",
+    ]);
+    expect(externalKinds("aws route53 change-resource-record-sets --hosted-zone-id Z1 --change-batch file://batch.json")).toEqual([
+      "external-mutation",
+    ]);
+    expect(externalKinds("terraform apply")).toEqual(["external-mutation"]);
+    expect(externalKinds("terraform -chdir=infra apply")).toEqual(["external-mutation"]);
+    expect(externalKinds("tofu destroy")).toEqual(["external-mutation"]);
+    expect(externalKinds("kubectl apply -f deploy.yaml")).toEqual(["external-mutation"]);
+    expect(externalKinds("kubectl --context prod apply -f deploy.yaml")).toEqual([
+      "external-mutation",
+    ]);
+    expect(externalKinds("helm upgrade app chart/")).toEqual(["external-mutation"]);
+    expect(externalKinds('psql -c "UPDATE users SET active=false"')).toEqual([
+      "external-mutation",
+    ]);
+  });
+  it("classifies direct Bitbucket and Cloudflare API mutations", () => {
+    expect(externalKinds("http POST https://api.bitbucket.org/2.0/repositories/ws/repo/pipelines/")).toEqual([
+      "external-mutation",
+    ]);
+    expect(externalKinds("http DELETE https://api.bitbucket.org/2.0/repositories/ws/repo/pipelines/123")).toEqual([
+      "external-mutation",
+    ]);
+    expect(externalKinds("curl -X POST https://api.cloudflare.com/client/v4/zones")).toEqual([
+      "external-mutation",
+    ]);
+    expect(externalKinds("curl -X PATCH https://api.cloudflare.com/client/v4/zones/abc/settings")).toEqual([
+      "external-mutation",
+    ]);
+    expect(externalKinds("curl -X DELETE https://api.cloudflare.com/client/v4/zones/abc")).toEqual([
+      "external-mutation",
+    ]);
+    expect(externalKinds(`curl -d '{"type":"A"}' https://api.cloudflare.com/client/v4/zones`)).toEqual([
+      "external-mutation",
+    ]);
+    expect(externalKinds(`curl --json '{"type":"A"}' https://api.bitbucket.org/2.0/repositories/ws/repo/pipelines/`)).toEqual([
+      "external-mutation",
+    ]);
+  });
+
+  it("classifies only embedded inline secret literals separately from external commands", () => {
+    const accessKey = normalizeCommand(
+      "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE aws s3 ls"
+    );
+    expect(accessKey.forbiddenMatches).toEqual([]);
+    expect(accessKey.externalMatches).toEqual([]);
+    expect(accessKey.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+
+    const secretKey = normalizeCommand(
+      "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY aws s3 ls"
+    );
+    expect(secretKey.externalMatches).toEqual([]);
+    expect(secretKey.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+
+    const psql = normalizeCommand('psql --password hunter2 -c "select 1"');
+    expect(psql.externalMatches).toEqual([]);
+    expect(psql.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+
+    const envIndirection = normalizeCommand(
+      "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY aws s3 ls"
+    );
+    expect(envIndirection.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
+    expect(envIndirection.inlineSecretMatches).toEqual([]);
+
+    const promptPassword = normalizeCommand('psql --password -c "select 1"');
+    expect(promptPassword.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
+    expect(promptPassword.inlineSecretMatches).toEqual([]);
+
+    const promptToken = normalizeCommand("tool --access-token");
+    expect(promptToken.inlineSecretMatches).toEqual([]);
+    const bearerHeader = normalizeCommand(
+      "curl -H 'Authorization: Bearer abc123' https://api.cloudflare.com/client/v4/zones"
+    );
+    expect(bearerHeader.externalMatches).toEqual([]);
+    expect(bearerHeader.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+
+    const authKeyHeader = normalizeCommand(
+      "curl -H 'X-Auth-Key: secret123' https://api.cloudflare.com/client/v4/zones"
+    );
+    expect(authKeyHeader.externalMatches).toEqual([]);
+    expect(authKeyHeader.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+    const httpieBearerHeader = normalizeCommand(
+      "http GET https://api.cloudflare.com/client/v4/zones Authorization:Bearer secret123"
+    );
+    expect(httpieBearerHeader.externalMatches).toEqual([]);
+    expect(httpieBearerHeader.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+
+    const httpieCompactBearerHeader = normalizeCommand(
+      'http GET https://api.cloudflare.com/client/v4/zones "Authorization:Bearer secret123"'
+    );
+    expect(httpieCompactBearerHeader.externalMatches).toEqual([]);
+    expect(httpieCompactBearerHeader.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+
+    const httpieAuthKeyHeader = normalizeCommand(
+      "http GET https://api.cloudflare.com/client/v4/zones X-Auth-Key:secret123"
+    );
+    expect(httpieAuthKeyHeader.externalMatches).toEqual([]);
+    expect(httpieAuthKeyHeader.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+
+    const httpieTokenLiteral = normalizeCommand(
+      "http GET https://api.cloudflare.com/client/v4/zones api_token==secret123"
+    );
+    expect(httpieTokenLiteral.externalMatches).toEqual([]);
+    expect(httpieTokenLiteral.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+
+    const httpieTokenEnv = normalizeCommand(
+      "http GET https://api.cloudflare.com/client/v4/zones api_token==$CF_API_TOKEN"
+    );
+    expect(httpieTokenEnv.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
+    expect(httpieTokenEnv.inlineSecretMatches).toEqual([]);
+
+    expect(inlineSecretKinds("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE aws s3 ls")).toEqual([
+      "inline-secret",
+    ]);
   });
 
   it("flags a forbidden rm inside a bash -c wrapper", () => {
@@ -178,11 +345,6 @@ describe("normalizeCommand — forbidden set detection (Spec §3 Layer 1)", () =
 
   it("does NOT flag a benign rm of a relative file", () => {
     const n = normalizeCommand("rm -f foo.txt");
-    expect(n.forbiddenMatches).toEqual([]);
-  });
-
-  it("does NOT flag a benign aws s3 ls", () => {
-    const n = normalizeCommand("aws s3 ls");
     expect(n.forbiddenMatches).toEqual([]);
   });
 });

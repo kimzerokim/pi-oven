@@ -5,6 +5,7 @@
 **Spec A dependency**: `docs/specs/2026-05-28-pi-oven-agent-registry.md` (ACCEPTED cycle 4) — 23 pi-oven-* agent files, dispatch namespace `pi-oven:<role>`
 **Spec B dependency**: `docs/specs/2026-05-28-pi-oven-setup-wizard.md` (ACCEPTED cycle 4) — `/pi-oven:setup` wizard, Profile A/B routing, agent-file source-of-truth
 
+**Supersession note (2026-06-26)**: The older production-code-first / "AI direct execution forbidden" wording below is superseded for pi-oven-owned external execution. Default no-consent handling is still script/CI redirection, but the latest user message may authorize one matching direct external command with local credential files already on the machine; pasted inline secrets remain forbidden.
 ---
 
 ## §1 Goal
@@ -222,11 +223,12 @@ TDD red phase (writing failing test) entry:
 Return task BLOCKED + request plan revision on violation.
 ```
 
-**English replacements for `dispatch-anatomy.md:45–50`** (production state mutation rules):
+**English replacements for `dispatch-anatomy.md:45–50`** (production state mutation rules; superseded by `docs/specs/2026-06-26-explicit-external-exec-override.md`):
 ```
 If this task involves production state mutation (DB schema / IAM policy / S3 lifecycle / IaC-managed Lambda env / CloudFront, etc.):
-- AI direct execution forbidden (even with explicit user instruction). Author script (migration / IaC) → user review → user/CI execution
-- Read-only inspection (aws s3 ls, describe-*, \dt) OK for AI direct execution — requires explicit user instruction
+- Default: direct execution blocked until explicit external execution consent is active for the latest user message
+- Under active consent, one matching direct command may run using local credential files already present on the machine
+- Inline secret literals remain forbidden regardless of consent
 - Idempotency mandatory: IF NOT EXISTS / ON CONFLICT DO NOTHING / --if-not-exists
 - On drift: forward-only migration (no production state rollback; code commit git revert is OK)
 Return task BLOCKED + request plan revision on violation.

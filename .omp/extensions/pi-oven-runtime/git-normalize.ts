@@ -5,8 +5,8 @@
 // and newlines; strip a leading `env VAR=val` (or bare VAR=val) prefix; unwrap
 // ONE level of `bash -c` / `bash -lc` / `sh -c` / `zsh -c`; detect the `git`
 // program even behind `-C dir` / `-c k=v` / `--git-dir=...` options; return the
-// detected gated verbs (commit / push) plus the forbidden-set matches
-// (rm -rf of repo/HOME roots, prod-access patterns).
+// detected gated verbs (commit / push) plus the destructive `rm -rf` forbidden
+// floor, consent-gated external command matches, and inline secret literals.
 //
 // This is best-effort, NOT a sandbox. The documented residual bypass surface
 // (heredocs, aliases, $(...), eval, decode-then-exec, deeper interpreter
@@ -23,11 +23,33 @@ export interface ForbiddenMatch {
   segment: string;
 }
 
+export type ExternalCommandKind =
+  | "external-read"
+  | "external-session"
+  | "external-mutation"
+  | "inline-secret";
+
+export interface ExternalMatch {
+  kind: Exclude<ExternalCommandKind, "inline-secret">;
+  rule: string;
+  segment: string;
+}
+
+export interface InlineSecretMatch {
+  kind: "inline-secret";
+  rule: string;
+  segment: string;
+}
+
 export interface NormalizedCommand {
   /** Gated git verbs detected anywhere in the (unwrapped, split) command. */
   gitVerbs: GitVerb[];
-  /** Forbidden-set matches (always-on floor). */
+  /** Forbidden-set matches (always-on destructive floor only). */
   forbiddenMatches: ForbiddenMatch[];
+  /** Consent-gated external command matches. */
+  externalMatches: ExternalMatch[];
+  /** Inline secret literals embedded directly in command text. */
+  inlineSecretMatches: InlineSecretMatch[];
   /** Best-effort "<remote> <branch>" parse from the first `git push` segment. */
   pushTarget?: string;
 }
@@ -97,8 +119,10 @@ function splitSubCommands(input: string): string[] {
     const ch = input[i];
     const next = input[i + 1];
     if (quote) {
-      if (ch === quote) quote = null;
-      else if (ch === "\\" && quote === '"' && i + 1 < input.length) cur += ch + input[++i];
+      if (ch === quote) {
+        cur += ch;
+        quote = null;
+      } else if (ch === "\\" && quote === '"' && i + 1 < input.length) cur += ch + input[++i];
       else cur += ch;
       continue;
     }
@@ -322,20 +346,414 @@ function detectForbiddenRm(
   return null;
 }
 
-/** Detect a production-access pattern (per production-access). */
-function detectForbiddenProdAccess(tokens: string[], segment: string): ForbiddenMatch | null {
+function externalMatch(
+  kind: ExternalMatch["kind"],
+  rule: string,
+  segment: string
+): ExternalMatch {
+  return { kind, rule, segment };
+}
+
+function inlineSecretMatch(rule: string, segment: string): InlineSecretMatch {
+  return { kind: "inline-secret", rule, segment };
+}
+
+function findFlagValue(tokens: string[], flags: readonly string[]): string | null {
+  for (let i = 1; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (flags.includes(token)) return tokens[i + 1] ?? null;
+    const prefix = flags.find((flag) => token.startsWith(`${flag}=`));
+    if (prefix) return token.slice(prefix.length + 1);
+    const shortFlag = flags.find((flag) => flag.length === 2 && token.startsWith(flag) && token.length > flag.length);
+    if (shortFlag) return token.slice(shortFlag.length);
+  }
+  return null;
+}
+
+function hasFlag(tokens: string[], flags: readonly string[]): boolean {
+  return tokens.some((token, index) => {
+    if (index === 0) return false;
+    if (flags.includes(token)) return true;
+    if (flags.some((flag) => token.startsWith(`${flag}=`))) return true;
+    return flags.some((flag) => flag.length === 2 && token.startsWith(flag) && token.length > flag.length);
+  });
+}
+
+function firstNonFlag(tokens: string[], start: number): string | null {
+  for (let i = start; i < tokens.length; i++) {
+    if (!tokens[i].startsWith("-")) return tokens[i];
+  }
+  return null;
+}
+
+const EMPTY_FLAG_SET: ReadonlySet<string> = new Set();
+const AWS_VALUE_FLAGS: ReadonlySet<string> = new Set([
+  "--ca-bundle",
+  "--cli-connect-timeout",
+  "--cli-read-timeout",
+  "--color",
+  "--endpoint-url",
+  "--output",
+  "--profile",
+  "--query",
+  "--region",
+]);
+const AWS_BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
+  "--debug",
+  "--no-cli-pager",
+  "--no-paginate",
+  "--no-sign-request",
+  "--no-verify-ssl",
+]);
+const TERRAFORM_VALUE_FLAGS: ReadonlySet<string> = new Set(["-chdir"]);
+const KUBECTL_VALUE_FLAGS: ReadonlySet<string> = new Set([
+  "--as",
+  "--as-group",
+  "--as-uid",
+  "--cache-dir",
+  "--certificate-authority",
+  "--client-certificate",
+  "--client-key",
+  "--cluster",
+  "--context",
+  "--kubeconfig",
+  "--namespace",
+  "--request-timeout",
+  "--server",
+  "--tls-server-name",
+  "--token",
+  "--user",
+  "--username",
+  "-n",
+]);
+const HELM_VALUE_FLAGS: ReadonlySet<string> = new Set([
+  "--kube-context",
+  "--kubeconfig",
+  "--namespace",
+  "--registry-config",
+  "--repository-cache",
+  "--repository-config",
+  "-n",
+]);
+const CURL_MUTATION_FLAGS = ["-d", "--data", "--data-binary", "--data-raw", "--form", "-F", "--json"] as const;
+
+function findPositionalIndex(
+  tokens: string[],
+  start: number,
+  valueFlags: ReadonlySet<string> = EMPTY_FLAG_SET,
+  booleanFlags: ReadonlySet<string> = EMPTY_FLAG_SET
+): number | null {
+  for (let i = start; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === "--") return i + 1 < tokens.length ? i + 1 : null;
+    if (!token.startsWith("-")) return i;
+    if (token.includes("=") || booleanFlags.has(token)) continue;
+    if (valueFlags.has(token)) {
+      i++;
+    }
+  }
+  return null;
+}
+
+function findPositional(
+  tokens: string[],
+  start: number,
+  valueFlags: ReadonlySet<string> = EMPTY_FLAG_SET,
+  booleanFlags: ReadonlySet<string> = EMPTY_FLAG_SET
+): string | null {
+  const index = findPositionalIndex(tokens, start, valueFlags, booleanFlags);
+  return index == null ? null : tokens[index];
+}
+
+const DIRECT_API_HOSTS = new Set(["api.bitbucket.org", "api.cloudflare.com"]);
+const DIRECT_API_MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function findUrlToken(tokens: string[]): string | null {
+  for (let i = 1; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (/^https?:\/\//i.test(token)) return token;
+    if (token === "--url") return tokens[i + 1] ?? null;
+    if (token.startsWith("--url=")) return token.slice("--url=".length);
+  }
+  return null;
+}
+
+function findHttpieMethod(tokens: string[], url: string): string | null {
+  const urlIndex = tokens.indexOf(url);
+  if (urlIndex < 0) return null;
+  for (let i = 1; i < urlIndex; i++) {
+    const token = tokens[i];
+    if (/^(get|post|put|patch|delete|head|options)$/i.test(token)) {
+      return token.toUpperCase();
+    }
+  }
+  return null;
+}
+
+function classifyDirectApiCommand(
+  prog: string,
+  tokens: string[],
+  segment: string
+): ExternalMatch | null {
+  const urlToken = findUrlToken(tokens);
+  if (urlToken == null) return null;
+
+  let host: string;
+  try {
+    host = new URL(urlToken).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (!DIRECT_API_HOSTS.has(host)) return null;
+
+  const explicitMethod =
+    prog === "curl"
+      ? findFlagValue(tokens, ["-X", "--request"])?.toUpperCase()
+      : findHttpieMethod(tokens, urlToken);
+  if (prog === "curl" && explicitMethod == null && hasFlag(tokens, CURL_MUTATION_FLAGS)) {
+    return externalMatch("external-mutation", `${prog}-direct-api-mutation`, segment);
+  }
+  const method = explicitMethod ?? "GET";
+
+  return DIRECT_API_MUTATION_METHODS.has(method)
+    ? externalMatch("external-mutation", `${prog}-direct-api-mutation`, segment)
+    : externalMatch("external-read", `${prog}-direct-api-read`, segment);
+}
+function isInlineLiteralValue(value: string | null | undefined): value is string {
+  return value != null && value !== "" && !value.startsWith("-") && !/^\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$/.test(value);
+}
+
+function tokenValue(token: string, nextToken: string | undefined): string | null {
+  const equals = token.indexOf("=");
+  return equals >= 0 ? token.slice(equals + 1) : (nextToken ?? null);
+}
+
+function isSecretEnvAssignment(token: string): boolean {
+  const equals = token.indexOf("=");
+  if (equals <= 0) return false;
+  return /^[A-Z0-9_]*(SECRET|TOKEN|PASSWORD)[A-Z0-9_]*$/i.test(token.slice(0, equals));
+}
+const DB_CONNECTION_URI = /^(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\//i;
+const REDIS_VALUE_FLAGS: ReadonlySet<string> = new Set(["-u", "--uri"]);
+const INLINE_SECRET_HEADER_NAMES: ReadonlySet<string> = new Set([
+  "authorization",
+  "proxy-authorization",
+  "x-auth-key",
+  "x-api-key",
+  "x-auth-token",
+  "cf-access-client-secret",
+]);
+
+function hasDbConnectionUri(tokens: string[]): boolean {
+  return tokens.some((token, index) => index > 0 && DB_CONNECTION_URI.test(token));
+}
+
+function inlineSecretHeaderLiteral(header: string, nextToken: string | undefined): string | null {
+  const match = header.match(/^([^:]+):(.*)$/);
+  if (match == null) return null;
+  const name = match[1].toLowerCase();
+  if (!INLINE_SECRET_HEADER_NAMES.has(name)) return null;
+
+  let value = match[2].trim();
+  if (/authorization$/.test(name)) {
+    const authMatch = value.match(/^(?:bearer|basic|token)(?:\s+(.*))?$/i);
+    if (authMatch != null) value = authMatch[1]?.trim() ?? "";
+  }
+  if (value === "" && nextToken != null) value = nextToken.trim();
+  return isInlineLiteralValue(value) ? value : null;
+}
+
+function inlineSecretHeaderValue(token: string, nextToken: string | undefined): string | null {
+  let header: string | null = null;
+  if (token === "-H" || token === "--header") {
+    header = nextToken ?? null;
+    nextToken = undefined;
+  } else if (token.startsWith("--header=")) {
+    header = token.slice("--header=".length);
+  } else if (token.startsWith("-H") && token.length > 2) {
+    header = token.slice(2);
+  }
+  return header == null ? null : inlineSecretHeaderLiteral(header, nextToken);
+}
+
+
+function detectDbCommand(tokens: string[], segment: string): ExternalMatch | null {
   const prog = tokens[0]?.split("/").pop();
-  if (prog !== "aws") return null;
-  const sub = tokens[1];
-  const verb = tokens[2];
-  if (sub === "ssm" && (verb === "start-session" || verb === "send-command")) {
-    return { rule: "prod-access-ssm", segment };
+  if (prog === "psql") {
+    const query = findFlagValue(tokens, ["-c", "--command"]);
+    if (query != null) {
+      return /^\s*(update|insert|delete|alter|drop|create|truncate|grant|revoke|merge|replace)\b/i.test(
+        query
+      )
+        ? externalMatch("external-mutation", "db-psql-mutation", segment)
+        : externalMatch("external-read", "db-psql-read", segment);
+    }
+    return hasDbConnectionUri(tokens) ? externalMatch("external-session", "db-psql-session", segment) : null;
   }
-  if (sub === "sts" && verb === "assume-role") {
-    return { rule: "prod-access-sts", segment };
+  if (prog === "mysql") {
+    const query = findFlagValue(tokens, ["-e", "--execute"]);
+    if (query != null) {
+      return /^\s*(update|insert|delete|alter|drop|create|truncate|grant|revoke|merge|replace)\b/i.test(
+        query
+      )
+        ? externalMatch("external-mutation", "db-mysql-mutation", segment)
+        : externalMatch("external-read", "db-mysql-read", segment);
+    }
+    return hasDbConnectionUri(tokens) ? externalMatch("external-session", "db-mysql-session", segment) : null;
   }
-  if (sub === "secretsmanager" && verb === "get-secret-value") {
-    return { rule: "prod-access-secrets", segment };
+  if (prog === "mongosh") {
+    const query = findFlagValue(tokens, ["--eval"]);
+    if (query != null) {
+      return /(?:db\.[A-Za-z0-9_]+\.(?:insert|update|delete|remove|drop)|\bdeleteMany\b|\bupdateMany\b)/.test(
+        query
+      )
+        ? externalMatch("external-mutation", "db-mongosh-mutation", segment)
+        : externalMatch("external-read", "db-mongosh-read", segment);
+    }
+    return hasDbConnectionUri(tokens) ? externalMatch("external-session", "db-mongosh-session", segment) : null;
+  }
+  if (prog === "redis-cli") {
+    const verb = findPositional(tokens, 1, REDIS_VALUE_FLAGS)?.toLowerCase();
+    if (verb == null) {
+      return findFlagValue(tokens, ["-u", "--uri"]) != null
+        ? externalMatch("external-session", "db-redis-session", segment)
+        : null;
+    }
+    if (["get", "mget", "keys", "scan", "hget", "smembers", "lrange"].includes(verb)) {
+      return externalMatch("external-read", "db-redis-read", segment);
+    }
+    if (["set", "mset", "del", "eval", "hset", "sadd", "lpush", "rpush"].includes(verb)) {
+      return externalMatch("external-mutation", "db-redis-mutation", segment);
+    }
+    return findFlagValue(tokens, ["-u", "--uri"]) != null
+      ? externalMatch("external-session", "db-redis-session", segment)
+      : null;
+  }
+  return null;
+}
+
+function detectExternalCommand(tokens: string[], segment: string): ExternalMatch | null {
+  const command = tokens[0] ?? "";
+  const prog = command.split("/").pop();
+  if (prog == null) return null;
+
+  if (prog === "aws") {
+    const subIndex = findPositionalIndex(tokens, 1, AWS_VALUE_FLAGS, AWS_BOOLEAN_FLAGS);
+    const sub = subIndex == null ? null : tokens[subIndex];
+    const verb = subIndex == null ? null : findPositional(tokens, subIndex + 1);
+    if (sub === "ssm" && (verb === "start-session" || verb === "send-command")) {
+      return externalMatch("external-session", "aws-ssm-access", segment);
+    }
+    if (sub === "sts" && verb === "assume-role") {
+      return externalMatch("external-session", "aws-sts-assume-role", segment);
+    }
+    if (sub === "secretsmanager" && verb === "get-secret-value") {
+      return externalMatch("external-session", "aws-secretsmanager-access", segment);
+    }
+    if (verb != null) {
+      if (/^(describe|get|list)(-|$)/.test(verb) || (sub === "s3" && verb === "ls")) {
+        return externalMatch("external-read", "aws-read", segment);
+      }
+      if (
+        /^(create|update|put|delete|start|stop|terminate)(-|$)/.test(verb) ||
+        ["deploy", "sync", "cp", "rm", "batch-delete-image", "change-resource-record-sets"].includes(verb)
+      ) {
+        return externalMatch("external-mutation", "aws-mutation", segment);
+      }
+    }
+    return null;
+  }
+
+  if (prog === "terraform" || prog === "tofu") {
+    const verbIndex = findPositionalIndex(tokens, 1, TERRAFORM_VALUE_FLAGS);
+    const verb = verbIndex == null ? null : tokens[verbIndex];
+    const stateVerb = verbIndex == null ? null : findPositional(tokens, verbIndex + 1);
+    if (["apply", "destroy", "import", "taint", "untaint"].includes(verb ?? "")) {
+      return externalMatch("external-mutation", `${prog}-mutation`, segment);
+    }
+    if (verb === "state" && ["mv", "rm"].includes(stateVerb ?? "")) {
+      return externalMatch("external-mutation", `${prog}-state-mutation`, segment);
+    }
+    return null;
+  }
+
+  if (prog === "kubectl") {
+    const verb = findPositional(tokens, 1, KUBECTL_VALUE_FLAGS);
+    if (["get", "describe", "logs"].includes(verb ?? "")) {
+      return externalMatch("external-read", "kubectl-read", segment);
+    }
+    if (verb === "exec" || verb === "port-forward") {
+      return externalMatch("external-session", "kubectl-access", segment);
+    }
+    if (["apply", "delete", "patch", "edit", "scale"].includes(verb ?? "")) {
+      return externalMatch("external-mutation", "kubectl-mutation", segment);
+    }
+    return null;
+  }
+
+  if (prog === "helm") {
+    const verb = findPositional(tokens, 1, HELM_VALUE_FLAGS);
+    if (["install", "upgrade", "rollback", "uninstall"].includes(verb ?? "")) {
+      return externalMatch("external-mutation", "helm-mutation", segment);
+    }
+  }
+  if (prog === "curl" || prog === "http") {
+    return classifyDirectApiCommand(prog, tokens, segment);
+  }
+  const db = detectDbCommand(tokens, segment);
+  if (db) return db;
+
+  if (prog === "ssh" || prog === "scp" || prog === "rsync") {
+    return externalMatch("external-session", "remote-transport", segment);
+  }
+
+  if (
+    /^(deploy|release|migrate)[^/\s]*\.sh$/i.test(prog) ||
+    /(?:^|\/)scripts\/(?:deploy|release|migrate)[^/\s]*$/i.test(command)
+  ) {
+    return externalMatch("external-mutation", "repo-local-deploy", segment);
+  }
+
+  return null;
+}
+
+function detectInlineSecret(rawTokens: string[], segment: string): InlineSecretMatch | null {
+  const tokens = stripLeadingEnv(rawTokens);
+  const isDirectHttpieApi =
+    ((tokens[0]?.split("/").pop()) ?? "") === "http" && classifyDirectApiCommand("http", tokens, segment) != null;
+
+  for (let i = 0; i < rawTokens.length; i++) {
+    const token = rawTokens[i];
+    if (/^AWS_ACCESS_KEY_ID=AKIA[0-9A-Z]{12,}$/i.test(token)) {
+      return inlineSecretMatch("inline-aws-access-key-id", segment);
+    }
+    if (isDirectHttpieApi) {
+      const httpieAssignment = token.match(/^([^=\s]+)==(.*)$/);
+      if (httpieAssignment != null) {
+        if (/(?:secret|token|password)/i.test(httpieAssignment[1]) && isInlineLiteralValue(httpieAssignment[2])) {
+          return inlineSecretMatch("inline-secret-httpie-literal", segment);
+        }
+        continue;
+      }
+      if (inlineSecretHeaderLiteral(token, rawTokens[i + 1]) != null) {
+        return inlineSecretMatch("inline-secret-header", segment);
+      }
+    }
+    if (isSecretEnvAssignment(token) && isInlineLiteralValue(tokenValue(token, rawTokens[i + 1]))) {
+      return inlineSecretMatch("inline-secret-env", segment);
+    }
+    if (/^--password(?:=.*)?$/i.test(token) && isInlineLiteralValue(tokenValue(token, rawTokens[i + 1]))) {
+      return inlineSecretMatch("inline-password-flag", segment);
+    }
+    if (
+      /^--(?:access-token|secret-token|auth-token)(?:=.*)?$/i.test(token) &&
+      isInlineLiteralValue(tokenValue(token, rawTokens[i + 1]))
+    ) {
+      return inlineSecretMatch("inline-token-flag", segment);
+    }
+    if (inlineSecretHeaderValue(token, rawTokens[i + 1]) != null) {
+      return inlineSecretMatch("inline-secret-header", segment);
+    }
   }
   return null;
 }
@@ -343,8 +761,9 @@ function detectForbiddenProdAccess(tokens: string[], segment: string): Forbidden
 // --- Top-level entrypoint --------------------------------------------------
 
 /**
- * Normalize a Bash command string into detected gated git verbs + forbidden
- * matches. One level of interpreter unwrapping is applied per sub-command.
+ * Normalize a Bash command string into detected gated git verbs + destructive
+ * forbidden matches. One level of interpreter unwrapping is applied per
+ * sub-command.
  *
  * `roots` (optional) supplies the concrete repo-root / HOME-dir paths the
  * forbidden `rm -rf` matcher resolves targets against. The caller wires these
@@ -354,6 +773,8 @@ function detectForbiddenProdAccess(tokens: string[], segment: string): Forbidden
 export function normalizeCommand(command: string, roots: NormalizeRoots = {}): NormalizedCommand {
   const gitVerbs: GitVerb[] = [];
   const forbiddenMatches: ForbiddenMatch[] = [];
+  const externalMatches: ExternalMatch[] = [];
+  const inlineSecretMatches: InlineSecretMatch[] = [];
   let pushTarget: string | undefined;
 
   // Collect every segment to scan: the top-level sub-commands plus, for each
@@ -370,7 +791,8 @@ export function normalizeCommand(command: string, roots: NormalizeRoots = {}): N
   }
 
   for (const seg of segments) {
-    const tokens = stripLeadingEnv(tokenize(seg));
+    const rawTokens = tokenize(seg);
+    const tokens = stripLeadingEnv(rawTokens);
     if (tokens.length === 0) continue;
 
     const git = detectGitVerb(tokens);
@@ -384,9 +806,16 @@ export function normalizeCommand(command: string, roots: NormalizeRoots = {}): N
 
     const rm = detectForbiddenRm(tokens, seg, roots);
     if (rm) forbiddenMatches.push(rm);
-    const prod = detectForbiddenProdAccess(tokens, seg);
-    if (prod) forbiddenMatches.push(prod);
+
+    const inlineSecret = detectInlineSecret(rawTokens, seg);
+    if (inlineSecret) {
+      inlineSecretMatches.push(inlineSecret);
+      continue;
+    }
+
+    const external = detectExternalCommand(tokens, seg);
+    if (external) externalMatches.push(external);
   }
 
-  return { gitVerbs, forbiddenMatches, pushTarget };
+  return { gitVerbs, forbiddenMatches, externalMatches, inlineSecretMatches, pushTarget };
 }

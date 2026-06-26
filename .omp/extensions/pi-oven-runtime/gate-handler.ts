@@ -70,7 +70,7 @@ interface ToolCallResultLike {
   reason?: string;
 }
 
-const EMPTY_NORMALIZED_COMMAND: NormalizedCommand = { gitVerbs: [], forbiddenMatches: [] };
+const EMPTY_NORMALIZED_COMMAND: NormalizedCommand = { gitVerbs: [], forbiddenMatches: [], externalMatches: [], inlineSecretMatches: [] };
 
 export function isCodeWriteTool(toolName: string): boolean {
   return CODE_WRITE_TOOLS.has(toolName);
@@ -297,6 +297,17 @@ class DeadlineError extends Error {
   }
 }
 
+function externalExecConsumeBlockReason(
+  result: "missing" | "source-message-mismatch"
+): string {
+  switch (result) {
+    case "source-message-mismatch":
+      return "pi-oven: external execution blocked — stored consent sourceMessageId changed before consume, so the approving user message no longer matches this command.";
+    case "missing":
+      return "pi-oven: external execution blocked — matching consent is no longer active or was already consumed.";
+  }
+}
+
 /**
  * Create the Layer-1 `tool_call` handler. Returns a function suitable for
  * `pi.on("tool_call", handler)`.
@@ -326,9 +337,15 @@ async function decideForCommand(
 ): Promise<ToolCallResultLike | void> {
   const normalized = normalizeCommand(command, deps.roots);
 
-  // Fast exit for the overwhelmingly-common case: not a gated verb and not a
-  // forbidden command. Avoids any FS read on the hot path (keeps p95 low).
-  if (normalized.gitVerbs.length === 0 && normalized.forbiddenMatches.length === 0) {
+  // Fast exit for the overwhelmingly-common case: not a gated verb, not a
+  // forbidden command, and not an external/inline-secret command. Avoids any
+  // FS read on the hot path (keeps p95 low).
+  if (
+    normalized.gitVerbs.length === 0 &&
+    normalized.forbiddenMatches.length === 0 &&
+    (normalized.externalMatches?.length ?? 0) === 0 &&
+    (normalized.inlineSecretMatches?.length ?? 0) === 0
+  ) {
     return { block: false };
   }
 
@@ -339,6 +356,7 @@ async function decideForCommand(
 
   const fsmRaw = await deps.store.readState();
   const fsm = toGateFsmView(fsmRaw);
+  const externalExecConsent = fsmRaw.kind === "OK" ? fsmRaw.state.externalExecConsent : undefined;
 
   const wantsPush = normalized.gitVerbs.includes("push");
   const fileConsent = wantsPush ? await deps.store.readFileConsent() : { valid: false };
@@ -348,13 +366,32 @@ async function decideForCommand(
     fsm,
     env,
     fileConsentValid: fileConsent.valid,
+    externalExecConsent,
   });
+
+  if (!decision.block && decision.consumeExternalExecConsent && !deps.isParentSession) {
+    return {
+      block: true,
+      reason:
+        "pi-oven: external execution blocked in subagent session — matching consent is single-use and can only be consumed by the parent session.",
+    };
+  }
 
   // --- Audit logging ---
   if (decision.bypassed) {
     deps.logger.warn(
       `pi-oven: PI_OVEN_GATE_BYPASS active — allowed gated command "${truncate(command)}" (recovery mode).`
     );
+  }
+  if ((normalized.inlineSecretMatches?.length ?? 0) > 0) {
+    deps.logger.warn(`pi-oven: inline secret BLOCKED — command="${truncate(command)}"`);
+  }
+  const externalKinds =
+    (normalized.externalMatches?.length ?? 0) > 0
+      ? normalized.externalMatches?.map((match) => match.kind).join(",") ?? "external"
+      : undefined;
+  if (externalKinds && decision.block) {
+    deps.logger.info(`pi-oven: external execution BLOCKED — kinds=${externalKinds} command="${truncate(command)}"`);
   }
   if (wantsPush) {
     const branch = normalized.pushTarget ?? fileConsent.branch ?? "(unknown)";
@@ -366,20 +403,39 @@ async function decideForCommand(
     }
   }
 
-  // --- Consume-on-use for file consent (single-use), inside the mutex ---
-  // Only the parent session mutates state; consume is a state-adjacent write
-  // and is therefore also parent-only. A subagent that was authorized by a
-  // file consent does not consume it (it never writes); but in practice push
-  // authorization happens on the parent. We guard on isParentSession to honor
-  // the single-writer rule (B4).
-  if (!decision.block && decision.consumeFileConsent && deps.isParentSession) {
-    await deps.store.runExclusive(async () => {
-      // Re-validate inside the mutex to avoid a double-consume race, then delete.
-      const stillValid = await deps.store.readFileConsent();
-      if (stillValid.valid) {
-        await deps.store.consumeFileConsent();
+  // --- Consume-on-use inside the mutex ---
+  if (!decision.block && deps.isParentSession && (decision.consumeExternalExecConsent || decision.consumeFileConsent)) {
+    const consumed = await deps.store.runExclusive(async () => {
+      if (decision.consumeExternalExecConsent) {
+        const consumeResult = await deps.store.consumeExternalExecConsent(
+          externalExecConsent?.sourceMessageId ?? ""
+        );
+        if (consumeResult !== "consumed") {
+          return { externalOk: false, reason: externalExecConsumeBlockReason(consumeResult) };
+        }
       }
+      if (decision.consumeFileConsent) {
+        const stillValid = await deps.store.readFileConsent();
+        if (stillValid.valid) {
+          await deps.store.consumeFileConsent();
+        }
+      }
+      return { externalOk: true as const };
     });
+    if (decision.consumeExternalExecConsent && !consumed.externalOk) {
+      if (externalKinds) {
+        deps.logger.info(
+          `pi-oven: external execution BLOCKED — kinds=${externalKinds} reason=${consumed.reason} command="${truncate(command)}"`
+        );
+      }
+      return {
+        block: true,
+        reason: consumed.reason,
+      };
+    }
+  }
+  if (externalKinds && !decision.block) {
+    deps.logger.info(`pi-oven: external execution ALLOWED — kinds=${externalKinds} source=state command="${truncate(command)}"`);
   }
 
   return { block: decision.block, reason: decision.reason };

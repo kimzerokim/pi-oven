@@ -41,10 +41,11 @@ TDD red phase (writing failing test) entry:
 - Self-check: "Is this test derived from the spec? Not inferred from the current shape of the implementation?"
 Return task BLOCKED + request plan revision on violation.
 
-[PRODUCTION-CODE-FIRST RULE — production-access §Production state changes (rev2)]
+[PRODUCTION-CODE-FIRST RULE — production-access §Production state changes (rev3)]
 If this task involves production state mutation (DB schema / IAM policy / S3 lifecycle / IaC-managed Lambda env / CloudFront, etc.):
-- AI direct execution forbidden (even with explicit user instruction). Author script (migration / IaC) → user review → user/CI execution
-- Read-only inspection (aws s3 ls, describe-*, \dt) OK for AI direct execution — requires explicit user instruction
+- Default: do not execute it directly. Without latest-turn explicit external execution consent, author script (migration / IaC) → user review → user/CI execution
+- With matching active consent, that one direct external command is a parent-session-only exception and must be executed by the parent session itself; delegated workers may assist only with read-only investigation, script authoring, or planning
+- Inline secret literals remain forbidden even with consent
 - Idempotency mandatory: IF NOT EXISTS / ON CONFLICT DO NOTHING / --if-not-exists
 - On drift: forward-only migration (no production state rollback; code commit git revert is OK)
 Return task BLOCKED + request plan revision on violation.

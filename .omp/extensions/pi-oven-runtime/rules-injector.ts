@@ -239,8 +239,12 @@ export class RulesInjector {
       "extension. Do not attempt to work around them:",
       "- `git commit` is blocked unless the pre-commit gate has PASSED.",
       "- `git push` is blocked unless explicit push consent is present.",
-      "- Destructive `rm -rf` of repo/HOME roots and production-access commands",
-      "  are always blocked (this floor is never lifted).",
+      "- Destructive `rm -rf` of repo/HOME roots and inline secret literals are",
+      "  always blocked (this floor is never lifted).",
+      "- External infra/production commands are blocked unless the latest user",
+      "  message carries explicit external execution consent.",
+      "- Local credential files already on the machine may be used only when",
+      "  that explicit external execution consent is active.",
     ];
     if (this.reminder !== null) {
       lines.push("", "Current autonomous reminder:", `- ${this.reminder}`);

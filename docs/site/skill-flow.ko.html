@@ -911,7 +911,7 @@ flowchart TD
 
   <div class="card" id="s-aws">
     <div class="head"><span class="name">aws</span><span class="badge auto">UC5 ops</span></div>
-    <div class="blurb">UC5 read-only AWS 프로덕션 커넥터 — 인벤토리 · 배포 상태 · CloudFront/S3/ECR/EC2/CloudWatch 점검. mutation 은 code-first 경계 (AI 가 스크립트만 작성, 실행은 사용자/CI). credential 은 gitignored <code>.external-credentials</code>.</div>
+    <div class="blurb">UC5 AWS 커넥터 — 인벤토리·배포 상태 점검이 기본. 최신 사용자 메시지에 명시적 외부 실행 인가가 있을 때만 로컬 credential file 로 한 번 직접 read/access/mutation 실행 가능하고, 없으면 script/CI 경로로 돌립니다. inline secret 붙여넣기는 항상 금지입니다.</div>
     <h4>트리거</h4>
     <div class="triggers"><span class="chip k">AWS</span><span class="chip k">aws</span><span class="chip k">cloud infra</span><span class="chip k">S3</span><span class="chip k">CloudFront</span><span class="chip k">EC2</span><span class="chip k">ECR</span><span class="chip k">Route53</span><span class="chip k">CloudWatch</span><span class="chip k">prod read</span><span class="chip k">프로덕션 조회</span><span class="chip k">운영 인프라 조회</span><span class="chip k">AWS 상태 확인</span></div>
     <h4>디스패치 에이전트</h4>
@@ -922,7 +922,7 @@ flowchart TD
 
   <div class="card" id="s-bitbucket-pipeline">
     <div class="head"><span class="name">bitbucket-pipeline</span><span class="badge auto">UC5 ops</span></div>
-    <div class="blurb">UC5 Bitbucket Cloud 커넥터 — pipeline run 상태 · step 진단 · 로그 · repository variable 점검. read-only 점검 + code-first mutation 경계. credential 은 gitignored <code>.external-credentials</code>.</div>
+    <div class="blurb">UC5 Bitbucket Cloud 커넥터 — pipeline run 상태·step 진단·로그·repository variable 점검. read-only 점검이 기본이지만 직접 API read/access/mutation 실행은 최신 사용자 메시지의 명시적 외부 실행 인가가 있을 때만 한 번 가능하고, mutation 은 기본적으로 script/CI 경로로 보냅니다. inline secret 붙여넣기는 금지입니다.</div>
     <h4>트리거</h4>
     <div class="triggers"><span class="chip k">Bitbucket</span><span class="chip k">bitbucket</span><span class="chip k">pipeline</span><span class="chip k">pipelines</span><span class="chip k">CI</span><span class="chip k">CI/CD</span><span class="chip k">deploy pipeline</span><span class="chip k">build failed</span><span class="chip k">비트버킷 파이프라인</span><span class="chip k">파이프라인 실패</span><span class="chip k">빌드 실패 로그</span></div>
     <h4>디스패치 에이전트</h4>
@@ -933,7 +933,7 @@ flowchart TD
 
   <div class="card" id="s-cloudflare">
     <div class="head"><span class="name">cloudflare</span><span class="badge auto">UC5 ops</span></div>
-    <div class="blurb">UC5 Cloudflare DNS 커넥터 — zone/DNS 점검 · propagation 체크 · DNS-to-origin 진단으로 domain-layer ops 커버리지를 마감. read-only + code-first mutation 경계. credential 은 gitignored <code>.external-credentials</code>.</div>
+    <div class="blurb">UC5 Cloudflare DNS 커넥터 — zone/DNS 점검·propagation 체크·DNS-to-origin 진단이 기본. 직접 API read/access/mutation 실행은 최신 사용자 메시지의 명시적 외부 실행 인가가 있을 때만 한 번 가능하고, 로컬 credential file 사용도 그때만 허용됩니다. inline secret 붙여넣기는 항상 금지입니다.</div>
     <h4>트리거</h4>
     <div class="triggers"><span class="chip k">Cloudflare</span><span class="chip k">cloudflare</span><span class="chip k">DNS</span><span class="chip k">zone</span><span class="chip k">CNAME</span><span class="chip k">A record</span><span class="chip k">클라우드플레어</span><span class="chip k">DNS 점검</span><span class="chip k">레코드 확인</span></div>
     <h4>디스패치 에이전트</h4>
@@ -970,7 +970,7 @@ flowchart TD
   </div>
   <div class="note">
     <strong>3개 UC5 ops 커넥터</strong>: <code>aws</code> · <code>bitbucket-pipeline</code> · <code>cloudflare</code>.
-    read-only 프로덕션 점검 전용 — mutation 은 code-first 경계 (AI 는 스크립트만 작성, 실행은 사용자/CI). credential 은 gitignored <code>.external-credentials</code> (schema: <code>.external-credentials.example</code>).
+    read-oriented 기본값을 유지하되, 직접 read/access/mutation 실행은 최신 사용자 메시지의 명시적 외부 실행 인가가 있을 때만 한 번 허용됩니다. 그때만 gitignored <code>.external-credentials</code> 같은 로컬 credential file 을 쓸 수 있고, inline secret 붙여넣기는 항상 금지입니다.
   </div>
 </section>
 

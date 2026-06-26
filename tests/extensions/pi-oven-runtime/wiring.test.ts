@@ -7,7 +7,7 @@ import {
   writeShippedSkill,
 } from "../../helpers/installed-topology";
 import { SHIPPED_SKILL_NAMES, SHIPPED_SKILL_PATHS } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
-import type { OwnershipTraceEntry } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
+import { GateStateStore, type OwnershipTraceEntry } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
 
 mock.module("@oh-my-pi/pi-tui", () => ({
   Container: class {},
@@ -81,6 +81,80 @@ function ownedSkillTarget(skillName: ShippedSkillName): string {
   const skillPath = `./skills/${skillName}/SKILL.md` as ShippedSkillPath;
   expect(SHIPPED_SKILL_PATHS).toContain(skillPath);
   return join(__dirname, "../../..", "skills", skillName, "SKILL.md");
+}
+type PersistedExternalExecConsent = {
+  sourceMessageId: string;
+  scope: "read" | "access" | "mutation" | "all";
+  remainingUses: number;
+};
+
+type PersistedAutonomousState = {
+  requiredSkills?: string[];
+  skillReads?: string[];
+  explicitForeignAgents?: string[];
+  ownershipTrace?: OwnershipTraceEntry[];
+  externalExecConsent?: PersistedExternalExecConsent;
+  consumedExternalExecConsentMessageId?: string;
+};
+
+type UserBranchEntry = {
+  id: string;
+  type: "message";
+  message: {
+    role: "user";
+    content: Array<{ type: "text"; text: string } | { type: "image"; source: string }>;
+  };
+};
+
+function readAutonomousState(tempDir: string): PersistedAutonomousState {
+  return JSON.parse(
+    readFileSync(join(tempDir, ".pi-oven", "state", "autonomous.json"), "utf-8")
+  ) as PersistedAutonomousState;
+}
+
+function consent(
+  scope: PersistedExternalExecConsent["scope"],
+  sourceMessageId = "u1"
+): PersistedExternalExecConsent {
+  return {
+    sourceMessageId,
+    scope,
+    remainingUses: 1,
+  };
+}
+
+function userMessage(
+  id: string,
+  content: UserBranchEntry["message"]["content"]
+): UserBranchEntry {
+  return {
+    id,
+    type: "message",
+    message: {
+      role: "user",
+      content,
+    },
+  };
+}
+
+function userTextMessage(id: string, text: string): UserBranchEntry {
+  return userMessage(id, [{ type: "text", text }]);
+}
+
+function createTurnStartRunner(tempDir: string) {
+  process.chdir(tempDir);
+  const pi = makeFakePi();
+  piOvenPi(pi as never);
+  const onTurnStart = pi.handlers["turn_start"];
+  return async (branchEntries: UserBranchEntry[], turnIndex: number) => {
+    const ctx = {
+      sessionManager: {
+        getBranch: () => branchEntries,
+      },
+    };
+    await onTurnStart({ type: "turn_start", turnIndex, timestamp: Date.now() }, ctx);
+    return readAutonomousState(tempDir);
+  };
 }
 
 
@@ -493,6 +567,141 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain("Current autonomous reminder:");
     expect(joined).toContain(".pi-oven/state/branch-contract.json");
     expect(joined).toContain(ownedSkillTarget("autonomous-loop"));
+  });
+  for (const testCase of [
+    {
+      name: "turn_start persists structured external execution consent with scope all",
+      entry: userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local"),
+      expected: consent("all"),
+    },
+    {
+      name: "turn_start persists structured external execution consent with scope mutation",
+      entry: userTextMessage("u2", "PI_OVEN_EXTERNAL_EXEC: once scope=mutation creds=local"),
+      expected: consent("mutation", "u2"),
+    },
+    {
+      name: "turn_start persists exact phrase external execution consent as scope all",
+      entry: userTextMessage(
+        "u3",
+        "use my local credentials and execute the external command directly"
+      ),
+      expected: consent("all", "u3"),
+    },
+  ] as const) {
+    it(testCase.name, async () => {
+      tempDir = makeTempDir();
+      const runTurnStart = createTurnStartRunner(tempDir);
+      const persisted = await runTurnStart([testCase.entry], 1);
+      expect(persisted.externalExecConsent).toEqual(testCase.expected);
+    });
+  }
+
+  it("turn_start rejects vague approval phrases as external execution consent", async () => {
+    tempDir = makeTempDir();
+    const runTurnStart = createTurnStartRunner(tempDir);
+
+    const persisted = await runTurnStart(
+      [userTextMessage("u4", "go ahead\ncontinue\njust do it")],
+      1
+    );
+
+    expect(persisted.externalExecConsent).toBeUndefined();
+  });
+
+  it("turn_start clears prior external execution consent on a later user message without consent while preserving ownership state behavior", async () => {
+    tempDir = makeTempDir();
+    const runTurnStart = createTurnStartRunner(tempDir);
+    let branchEntries = [
+      userTextMessage(
+        "u1",
+        [
+          "자율 실행으로 큰 작업 진행해줘. kzk:explorer는 유지하고 spec 잡자 first.",
+          "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local",
+        ].join("\n")
+      ),
+    ];
+
+    await runTurnStart(branchEntries, 1);
+    branchEntries = [
+      userTextMessage(
+        "u2",
+        "자율 실행으로 큰 작업 계속 진행해줘. kzk:explorer는 유지하고 spec 잡자 first."
+      ),
+    ];
+
+    const persisted = await runTurnStart(branchEntries, 2);
+    expect(persisted.externalExecConsent).toBeUndefined();
+    expect(persisted.requiredSkills).toEqual(
+      expect.arrayContaining([
+        "autonomous-loop",
+        "large-task-delegation",
+        "spec-and-review",
+      ])
+    );
+    expect(persisted.skillReads).toEqual([]);
+    expect(persisted.explicitForeignAgents).toEqual(["kzk:explorer"]);
+    expect(persisted.ownershipTrace).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          origin: "pi-oven-auto",
+          kind: "skill",
+          requested: "autonomous-loop",
+          status: "resolved",
+        }),
+      ])
+    );
+  });
+  it("turn_start does not resurrect consumed consent while the same latest user message remains current", async () => {
+    tempDir = makeTempDir();
+    const runTurnStart = createTurnStartRunner(tempDir);
+
+    await runTurnStart([userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local")], 1);
+    const store = new GateStateStore(join(tempDir, ".pi-oven"));
+    expect(await store.consumeExternalExecConsent("u1")).toBe("consumed");
+
+    const persisted = await runTurnStart(
+      [userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local")],
+      2
+    );
+
+    expect(persisted.externalExecConsent).toBeUndefined();
+    expect(persisted.consumedExternalExecConsentMessageId).toBe("u1");
+  });
+  it("turn_start grants a fresh consent use when a new latest user message carries consent", async () => {
+    tempDir = makeTempDir();
+    const runTurnStart = createTurnStartRunner(tempDir);
+    let branchEntries = [
+      userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local"),
+    ];
+
+    await runTurnStart(branchEntries, 1);
+    const store = new GateStateStore(join(tempDir, ".pi-oven"));
+    expect(await store.consumeExternalExecConsent("u1")).toBe("consumed");
+    branchEntries = [
+      userTextMessage("u2", "PI_OVEN_EXTERNAL_EXEC: once scope=mutation creds=local"),
+    ];
+
+    const persisted = await runTurnStart(branchEntries, 2);
+
+    expect(persisted.externalExecConsent).toEqual(consent("mutation", "u2"));
+    expect(persisted.consumedExternalExecConsentMessageId).toBeUndefined();
+  });
+  it("turn_start clears prior external execution consent when the latest user message is attachment-only", async () => {
+    tempDir = makeTempDir();
+    const runTurnStart = createTurnStartRunner(tempDir);
+    let branchEntries = [
+      userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local\nkzk:explorer"),
+    ];
+
+    await runTurnStart(branchEntries, 1);
+    branchEntries = [
+      ...branchEntries,
+      userMessage("u2", [{ type: "image", source: "attachment://1" }]),
+    ];
+
+    const persisted = await runTurnStart(branchEntries, 2);
+    expect(persisted.externalExecConsent).toBeUndefined();
+    expect(persisted.explicitForeignAgents).toEqual(["kzk:explorer"]);
   });
   it("keeps mixed registries observable across turn resyncs while automatic task dispatch stays pi-oven-owned", async () => {
     tempDir = makeTempDir();

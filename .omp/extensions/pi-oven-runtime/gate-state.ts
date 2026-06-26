@@ -27,6 +27,12 @@ export interface OwnershipTraceEntry {
   reason: string;
 }
 
+export interface ExternalExecConsent {
+  sourceMessageId: string;
+  scope: "read" | "access" | "mutation" | "all";
+  remainingUses: number;
+}
+
 export interface FsmState {
   active: boolean;
   gateCache: { commit?: string; regression?: string };
@@ -40,6 +46,8 @@ export interface FsmState {
   ownershipTrace?: OwnershipTraceEntry[];
   explicitForeignAgents?: string[];
   ownedSkillReadTargets?: string[];
+  externalExecConsent?: ExternalExecConsent;
+  consumedExternalExecConsentMessageId?: string;
 }
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -58,6 +66,22 @@ function isValidOwnershipTraceEntry(value: unknown): value is OwnershipTraceEntr
     typeof entry.resolved === "string" &&
     (entry.status === "resolved" || entry.status === "rewritten" || entry.status === "blocked") &&
     typeof entry.reason === "string"
+  );
+}
+
+function isValidExternalExecConsent(value: unknown): value is ExternalExecConsent {
+  if (typeof value !== "object" || value === null) return false;
+  const consent = value as Record<string, unknown>;
+  return (
+    typeof consent.sourceMessageId === "string" &&
+    consent.sourceMessageId.length > 0 &&
+    (consent.scope === "read" ||
+      consent.scope === "access" ||
+      consent.scope === "mutation" ||
+      consent.scope === "all") &&
+    typeof consent.remainingUses === "number" &&
+    Number.isInteger(consent.remainingUses) &&
+    consent.remainingUses > 0
   );
 }
 
@@ -145,6 +169,18 @@ function isValidState(v: unknown): v is FsmState {
   if (
     o.ownedSkillReadTargets !== undefined &&
     !isStringArray(o.ownedSkillReadTargets)
+  ) {
+    return false;
+  }
+  if (
+    o.externalExecConsent !== undefined &&
+    !isValidExternalExecConsent(o.externalExecConsent)
+  ) {
+    return false;
+  }
+  if (
+    o.consumedExternalExecConsentMessageId !== undefined &&
+    typeof o.consumedExternalExecConsentMessageId !== "string"
   ) {
     return false;
   }
@@ -238,6 +274,8 @@ export class GateStateStore {
               ownershipTrace: [],
               explicitForeignAgents: [],
               ownedSkillReadTargets: [],
+              externalExecConsent: undefined,
+              consumedExternalExecConsentMessageId: undefined,
             };
       const next = updater(current);
       await this.writeState(next);
@@ -316,5 +354,33 @@ export class GateStateStore {
     } catch {
       // already gone — fine.
     }
+  }
+
+  /**
+   * Consume one active external execution consent use. Intended to run inside
+   * runExclusive() so the read-modify-write stays serialized.
+   */
+  async consumeExternalExecConsent(
+    expectedSourceMessageId: string
+  ): Promise<"consumed" | "missing" | "source-message-mismatch"> {
+    const view = await this.readState();
+    if (view.kind !== "OK" || view.state.externalExecConsent === undefined) return "missing";
+    const current = view.state.externalExecConsent;
+    if (current.sourceMessageId !== expectedSourceMessageId) return "source-message-mismatch";
+    const remainingUses = current.remainingUses - 1;
+    await this.writeState({
+      ...view.state,
+      version: view.state.version + 1,
+      externalExecConsent:
+        remainingUses > 0
+          ? {
+              ...current,
+              remainingUses,
+            }
+          : undefined,
+      consumedExternalExecConsentMessageId:
+        remainingUses > 0 ? view.state.consumedExternalExecConsentMessageId : current.sourceMessageId,
+    });
+    return "consumed";
   }
 }

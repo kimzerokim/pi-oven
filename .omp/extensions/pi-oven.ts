@@ -32,7 +32,11 @@ import {
   RulesInjector,
   ORCHESTRATOR_CONDUCT_DEDUP_KEY,
 } from "./pi-oven-runtime/rules-injector";
-import { GateStateStore, type OwnershipTraceEntry } from "./pi-oven-runtime/gate-state";
+import {
+  GateStateStore,
+  type ExternalExecConsent,
+  type OwnershipTraceEntry,
+} from "./pi-oven-runtime/gate-state";
 import { createGateHandler } from "./pi-oven-runtime/gate-handler";
 import { registerPiOvenAsk } from "./pi-oven-runtime/pi-oven-ask";
 import { resolveLanguage } from "./pi-oven-runtime/language";
@@ -458,6 +462,20 @@ function getLatestUserBranchMessage(
     if (entry?.type !== "message") continue;
     if (entry.message?.role !== "user") continue;
     const text = extractTextFromContent(entry.message.content);
+    const id = typeof entry.id === "string" && entry.id.length > 0 ? entry.id : String(i);
+    return { id, text };
+  }
+  return null;
+}
+
+function getLatestTextUserBranchMessage(
+  branchEntries: BranchMessageLike[]
+): { id: string; text: string } | null {
+  for (let i = branchEntries.length - 1; i >= 0; i--) {
+    const entry = branchEntries[i];
+    if (entry?.type !== "message") continue;
+    if (entry.message?.role !== "user") continue;
+    const text = extractTextFromContent(entry.message.content);
     if (text.length === 0) continue;
     const id = typeof entry.id === "string" && entry.id.length > 0 ? entry.id : String(i);
     return { id, text };
@@ -478,6 +496,44 @@ export function extractExplicitForeignAgents(text: string): string[] {
     explicitForeignAgents.push(normalized);
   }
   return explicitForeignAgents;
+}
+
+const EXTERNAL_EXEC_CONSENT_PHRASES = new Set([
+  "you may execute external commands using local credentials",
+  "run the external infra command yourself with local credentials",
+  "use my local credentials and execute the external command directly",
+  "외부 인프라 명령을 로컬 자격증명으로 직접 실행해",
+  "로컬 자격증명으로 외부 명령 직접 실행해",
+]);
+
+export function extractExternalExecConsent(
+  text: string,
+  sourceMessageId: string
+): ExternalExecConsent | undefined {
+  const structuredMatch = text.match(
+    /(?:^|\r?\n)\s*PI_OVEN_EXTERNAL_EXEC:\s*once\s+scope=(all|read|access|mutation)\s+creds=local\s*(?=$|\r?\n)/i
+  );
+  if (structuredMatch) {
+    return {
+      sourceMessageId,
+      scope: structuredMatch[1].toLowerCase() as ExternalExecConsent["scope"],
+      remainingUses: 1,
+    };
+  }
+
+  const normalizedLines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim().toLowerCase())
+    .filter((line) => line.length > 0);
+  if (normalizedLines.some((line) => EXTERNAL_EXEC_CONSENT_PHRASES.has(line))) {
+    return {
+      sourceMessageId,
+      scope: "all",
+      remainingUses: 1,
+    };
+  }
+
+  return undefined;
 }
 
 function getRemainingOwnedSkillReadTargets(
@@ -796,6 +852,7 @@ export default function piOvenPi(
     if (!isParentSession) return;
     const branchEntries = ctx.sessionManager.getBranch() as BranchMessageLike[];
     const latestUserMessage = getLatestUserBranchMessage(branchEntries);
+    const latestTextUserMessage = getLatestTextUserBranchMessage(branchEntries);
     stopGuardState = updateStopGuardOnTurnStart(stopGuardState, branchEntries);
     skillKeywordState = updateSkillKeywordLoaderOnTurnStart(
       skillKeywordState,
@@ -809,6 +866,24 @@ export default function piOvenPi(
       );
       const sameUserMessage = current.requiredSkillsMessageId === skillKeywordState.lastUserMessageId;
       const persistedReads = sameUserMessage ? current.skillReads ?? [] : [];
+      const extractedExternalExecConsent = latestUserMessage
+        ? extractExternalExecConsent(latestUserMessage.text, latestUserMessage.id)
+        : undefined;
+      const sameConsentMessage = latestUserMessage?.id === current.externalExecConsent?.sourceMessageId;
+      const sameConsumedConsentMessage =
+        latestUserMessage?.id === current.consumedExternalExecConsentMessageId;
+      const externalExecConsent = sameConsentMessage
+        ? current.externalExecConsent
+        : sameConsumedConsentMessage
+          ? undefined
+          : latestUserMessage
+            ? extractedExternalExecConsent
+            : current.externalExecConsent;
+      const consumedExternalExecConsentMessageId = sameConsumedConsentMessage
+        ? current.consumedExternalExecConsentMessageId
+        : latestUserMessage
+          ? undefined
+          : current.consumedExternalExecConsentMessageId;
       return {
         ...current,
         active: stopGuardState.autonomousActive,
@@ -822,10 +897,12 @@ export default function piOvenPi(
           buildSkillOwnershipTrace(skillKeywordState.matchedSkills),
           sameUserMessage
         ),
-        explicitForeignAgents: latestUserMessage
-          ? extractExplicitForeignAgents(latestUserMessage.text)
+        explicitForeignAgents: latestTextUserMessage
+          ? extractExplicitForeignAgents(latestTextUserMessage.text)
           : current.explicitForeignAgents ?? [],
         ownedSkillReadTargets,
+        externalExecConsent,
+        consumedExternalExecConsentMessageId,
       };
     });
   });

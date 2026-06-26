@@ -28,12 +28,28 @@ function ok(partial: Partial<FsmStateView & { kind: "OK" }> & { commit?: string;
   } as FsmStateView;
 }
 
-function input(command: string, overrides: Partial<GateInput> = {}): GateInput {
+function input(
+  command: string,
+  overrides: Partial<GateInput> = {}
+): GateInput {
   return {
     normalized: normalizeCommand(command),
     fsm: ok({ commit: "FAIL", regression: "FAIL", active: true }),
     env: {},
     fileConsentValid: false,
+    ...overrides,
+  };
+}
+type TestConsent = NonNullable<GateInput["externalExecConsent"]>;
+
+function consent(
+  scope: TestConsent["scope"],
+  overrides: Partial<TestConsent> = {}
+): TestConsent {
+  return {
+    sourceMessageId: "u1",
+    scope,
+    remainingUses: 1,
     ...overrides,
   };
 }
@@ -133,11 +149,6 @@ describe("decideGate — forbidden floor always-on (AC6)", () => {
     expect(r.reason).toMatch(/forbidden/i);
   });
 
-  it("blocks a prod-access pattern when FSM ABSENT", () => {
-    const r = decideGate(input("aws sts assume-role --role-arn x", { fsm: { kind: "ABSENT" } }));
-    expect(r.block).toBe(true);
-    expect(r.reason).toMatch(/forbidden/i);
-  });
 
   it("forbidden floor takes precedence over a PASS commit cache", () => {
     // command both has a forbidden match and would otherwise be allowed
@@ -194,6 +205,92 @@ describe("decideGate — push consent (AC5)", () => {
       fileConsentValid: false,
     }));
     expect(r.block).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// External execution consent gate
+// ---------------------------------------------------------------------------
+
+describe("decideGate — external execution consent", () => {
+  it("blocks `aws sts assume-role --role-arn x` by default even when FSM is ABSENT", () => {
+    const r = decideGate(input("aws sts assume-role --role-arn x", { fsm: { kind: "ABSENT" } }));
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/external-session/i);
+    expect(r.reason).toMatch(/PI_OVEN_EXTERNAL_EXEC/i);
+  });
+
+  it("allows `aws sts assume-role --role-arn x` with access consent and marks single-use consumption", () => {
+    const r = decideGate(
+      input("aws sts assume-role --role-arn x", {
+        fsm: { kind: "ABSENT" },
+        externalExecConsent: consent("access"),
+      })
+    );
+    expect(r.block).toBe(false);
+    expect((r as { consumeExternalExecConsent?: boolean }).consumeExternalExecConsent).toBe(true);
+  });
+
+  it("blocks external execution when consent is exhausted", () => {
+    const r = decideGate(
+      input("aws sts assume-role --role-arn x", {
+        fsm: { kind: "ABSENT" },
+        externalExecConsent: consent("access", { remainingUses: 0 }),
+      })
+    );
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/PI_OVEN_EXTERNAL_EXEC/i);
+  });
+
+  it("blocks `aws s3 ls` with mutation-only consent but allows it with read consent", () => {
+    const blocked = decideGate(
+      input("aws s3 ls", {
+        externalExecConsent: consent("mutation"),
+      })
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/external-read/i);
+
+    const allowed = decideGate(
+      input("aws s3 ls", {
+        externalExecConsent: consent("read"),
+      })
+    );
+    expect(allowed.block).toBe(false);
+    expect((allowed as { consumeExternalExecConsent?: boolean }).consumeExternalExecConsent).toBe(true);
+  });
+
+  it("blocks chained external subcommands in one bash call even with broad consent", () => {
+    const r = decideGate(
+      input("aws s3 ls && aws sts assume-role --role-arn x", {
+        fsm: { kind: "ABSENT" },
+        externalExecConsent: consent("all"),
+      })
+    );
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/split/i);
+    expect((r as { consumeExternalExecConsent?: boolean }).consumeExternalExecConsent).toBeFalsy();
+  });
+
+  for (const scope of ["mutation", "all"] as const) {
+    it(`allows \`./scripts/deploy.sh --region singapore --warp on\` with ${scope} consent`, () => {
+      const result = decideGate(
+        input("./scripts/deploy.sh --region singapore --warp on", {
+          externalExecConsent: consent(scope),
+        })
+      );
+      expect(result.block).toBe(false);
+    });
+  }
+
+  it("blocks inline secret literals even with all-scope consent", () => {
+    const r = decideGate(
+      input("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE aws s3 ls", {
+        externalExecConsent: consent("all"),
+      })
+    );
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/inline secret/i);
   });
 });
 

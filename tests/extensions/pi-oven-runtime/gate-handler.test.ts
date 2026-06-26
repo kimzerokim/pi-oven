@@ -53,6 +53,36 @@ function writeState(dir: string, s: FsmState): void {
   mkdirSync(join(dir, "state"), { recursive: true });
   writeFileSync(join(dir, "state", "autonomous.json"), JSON.stringify(s));
 }
+type StoredConsent = NonNullable<FsmState["externalExecConsent"]>;
+
+function consent(
+  scope: StoredConsent["scope"],
+  overrides: Partial<StoredConsent> = {}
+): StoredConsent {
+  return {
+    sourceMessageId: "u1",
+    scope,
+    remainingUses: 1,
+    ...overrides,
+  };
+}
+
+function activeState(externalExecConsent?: StoredConsent): FsmState {
+  return {
+    active: true,
+    gateCache: { commit: "PASS", regression: "PASS" },
+    version: 1,
+    schemaVersion: 1,
+    ...(externalExecConsent ? { externalExecConsent } : {}),
+  };
+}
+
+async function expectStoredConsent(dir: string, expected: StoredConsent | undefined) {
+  const after = await new GateStateStore(dir).readState();
+  expect(after.kind).toBe("OK");
+  if (after.kind !== "OK") return;
+  expect(after.state.externalExecConsent).toEqual(expected);
+}
 
 async function deps(dir: string, env: Record<string, string | undefined> = {}): Promise<GateHandlerDeps & { _logger: ReturnType<typeof makeLogger> }> {
   const lg = makeLogger();
@@ -205,6 +235,96 @@ describe("gateHandler — push consent (AC5)", () => {
     const r = await h(bashEvent("git push origin main"));
     expect(r?.block).toBe(true);
   });
+});
+
+// ---------------------------------------------------------------------------
+// External execution consent consumption
+// ---------------------------------------------------------------------------
+
+describe("gateHandler — external execution consent", () => {
+  let dir: string;
+  beforeEach(() => { dir = makeTempDir(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("allows one consent-gated external session command, consumes it, then blocks the second identical command", async () => {
+    writeState(dir, activeState(consent("all")));
+    const d = await deps(dir);
+    const h = createGateHandler(d);
+
+    const first = await h(bashEvent("aws sts assume-role --role-arn x"));
+    expect(first?.block ?? false).toBe(false);
+    expect(d._logger.lines.some((l) => l.msg.includes("external execution ALLOWED"))).toBe(true);
+    await expectStoredConsent(dir, undefined);
+
+    const second = await h(bashEvent("aws sts assume-role --role-arn x"));
+    expect(second?.block).toBe(true);
+    expect(second?.reason).toMatch(/PI_OVEN_EXTERNAL_EXEC/i);
+  });
+
+  it("blocks when stored consent sourceMessageId changes before parent-session consume", async () => {
+    writeState(dir, activeState(consent("all")));
+    class RaceStore extends GateStateStore {
+      private swapped = false;
+
+      override async runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+        if (!this.swapped) {
+          this.swapped = true;
+          await this.writeState(activeState(consent("read", { sourceMessageId: "u2" })));
+        }
+        return super.runExclusive(fn);
+      }
+    }
+    const d = await deps(dir);
+    const h = createGateHandler({ ...d, store: new RaceStore(dir) });
+
+    const result = await h(bashEvent("aws sts assume-role --role-arn x"));
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/sourceMessageId/i);
+    expect(d._logger.lines.some((l) => l.msg.includes("external execution ALLOWED"))).toBe(false);
+    expect(d._logger.lines.some((l) => l.msg.includes("external execution BLOCKED") && l.msg.includes("sourceMessageId"))).toBe(true);
+    await expectStoredConsent(dir, consent("read", { sourceMessageId: "u2" }));
+  });
+
+  for (const testCase of [
+    {
+      name: "does not consume mismatched mutation consent for `aws s3 ls`",
+      command: "aws s3 ls",
+      storedConsent: consent("mutation"),
+      reason: /external-read/i,
+    },
+    {
+      name: "blocks chained external subcommands without consuming consent",
+      command: "aws s3 ls && aws sts assume-role --role-arn x",
+      storedConsent: consent("all"),
+      reason: /split/i,
+    },
+    {
+      name: "does not consume consent when an inline secret literal is blocked",
+      command: "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE aws s3 ls",
+      storedConsent: consent("all"),
+      reason: /inline secret/i,
+    },
+    {
+      name: "blocks consent-gated external execution in non-parent sessions because they cannot consume consent",
+      command: "aws sts assume-role --role-arn x",
+      storedConsent: consent("all"),
+      reason: undefined,
+      isParentSession: false,
+    },
+  ] as const) {
+    it(testCase.name, async () => {
+      writeState(dir, activeState(testCase.storedConsent));
+      const d = await deps(dir);
+      const handler = createGateHandler(
+        testCase.isParentSession === false ? { ...d, isParentSession: false } : d
+      );
+
+      const result = await handler(bashEvent(testCase.command));
+      expect(result?.block).toBe(true);
+      if (testCase.reason) expect(result?.reason).toMatch(testCase.reason);
+      await expectStoredConsent(dir, testCase.storedConsent);
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------

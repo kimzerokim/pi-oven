@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.19 - 2026-06-29
+
+- fix(runtime): stop setup from triggering unresolved namespaced skill reads
+- test(runtime): remove stale TUI mocks so the full suite uses the installed API
+- docs(release): bump human-facing refs to v0.1.19
+
 ## v0.1.18 - 2026-06-26
 
 - docs(release): bump human-facing refs to v0.1.18

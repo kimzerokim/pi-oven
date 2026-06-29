@@ -150,20 +150,20 @@ describe("RulesInjector — rehydrate (AC3 step 3)", () => {
 // Orchestrator conduct block (Spec §4 / Plan B1 — parent-only standing conduct)
 //
 //   - Interactive variant: SKILL-FIRST + WAIT-FOR-USER + ASK-WHEN-AMBIGUOUS,
-//     names the `read("skill://<name>")` invocation, carries the dedup marker.
+//     names exact plugin-owned SKILL.md target reads, carries the dedup marker.
 //   - Autonomous variant: SKILL-FIRST + KEEP GOING per the boundary contract,
 //     relaxes the WAIT-FOR-USER rule (no polite stop in a running loop).
 // ---------------------------------------------------------------------------
 
 describe("orchestrator conduct block", () => {
-  it("interactive: contains SKILL-FIRST + WAIT-FOR-USER + skill:// + dedup marker", () => {
+  it("interactive: contains SKILL-FIRST + WAIT-FOR-USER + plugin-owned target wording + dedup marker", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
     expect(b).toContain(ORCHESTRATOR_CONDUCT_DEDUP_KEY);
     expect(b).toMatch(/SKILL-FIRST/);
     expect(b).toMatch(/WAIT FOR THE USER|wait for the user/i);
     expect(b).toMatch(/ASK WHEN AMBIGUOUS|ask when ambiguous/i);
-    expect(b).toMatch(/skill:\/\//);
+    expect(b).toMatch(/exact plugin-owned .*SKILL\.md target/i);
   });
 
   it("autonomous: relaxes WAIT and points to the boundary contract / keep going", () => {
@@ -187,16 +187,20 @@ describe("orchestrator conduct block", () => {
     expect(ORCHESTRATOR_CONDUCT_DEDUP_KEY).toMatch(/@v2$/);
   });
 
-  it("interactive: uses skill://pi-oven:<name> form (not bare skill://<name>)", () => {
+  it("interactive: does not point agents at unresolved namespaced skill aliases", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
-    expect(b).toContain("skill://pi-oven:");
+    expect(b).not.toContain("skill://pi-oven:");
+    expect(b).toMatch(/\/pi-oven:\*.*commands, not skills/i);
+    expect(b).toMatch(/\/pi-oven:setup.*commands\/setup\.md/i);
   });
 
-  it("autonomous: uses skill://pi-oven:<name> form (not bare skill://<name>)", () => {
+  it("autonomous: does not point agents at unresolved namespaced skill aliases", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: true });
-    expect(b).toContain("skill://pi-oven:");
+    expect(b).not.toContain("skill://pi-oven:");
+    expect(b).toMatch(/exact plugin-owned .*SKILL\.md target/i);
+    expect(b).toMatch(/\/pi-oven:setup.*commands\/setup\.md/i);
   });
 
   it("interactive: contains SKILL PRECEDENCE rule forbidding superpowers:* namespace", () => {

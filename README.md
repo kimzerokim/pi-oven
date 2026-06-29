@@ -95,8 +95,8 @@ Agents load from the marketplace plugin registry. Their committed frontmatter pr
 
 Skills can now activate in two ways:
 
-1. **Runtime keyword whitelist** — on each `turn_start`, the pi-oven extension matches the latest user message against a curated, code-owned keyword list for each shipped skill. On a match, `before_agent_start` injects a system prompt block that tells the model it **MUST** read the matched `skill://pi-oven:<name>` entries before proceeding.
-2. **Description-driven discovery** — even without a keyword hit, shipped skills are still surfaced through their `description:` field in the system prompt, and the model can decide a skill applies and read `skill://pi-oven:<name>` on its own.
+1. **Runtime keyword whitelist** — on each `turn_start`, the pi-oven extension matches the latest user message against a curated, code-owned keyword list for each shipped skill. On a match, `before_agent_start` injects a system prompt block that tells the model it **MUST** read the exact plugin-owned `SKILL.md` file targets shown in that block before proceeding.
+2. **Description-driven discovery** — even without a keyword hit, shipped skills are still surfaced through their `description:` field in the system prompt. If a pi-oven skill is needed, prefer the exact plugin-owned `SKILL.md` target from the runtime keyword block; do not invent namespaced skill aliases. `/pi-oven:*` entries such as `/pi-oven:setup` are commands, not skills.
 
 The autonomous stop-guard still exists as a separate runtime behavior: autonomous-mode keywords keep the agent looping until completion or explicit stop. That guard now complements skill loading instead of being the only keyword-driven behavior.
 

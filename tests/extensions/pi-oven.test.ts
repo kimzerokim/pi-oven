@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -12,13 +12,6 @@ import {
   ORCHESTRATOR_CONDUCT_DEDUP_KEY,
 } from "../../.omp/extensions/pi-oven-runtime/rules-injector";
 
-mock.module("@oh-my-pi/pi-tui", () => ({
-  Container: class {},
-  Markdown: class {},
-  Text: class {},
-  SelectList: class {},
-  wrapTextWithAnsi: (value: string) => value,
-}));
 
 const ext = await import("../../.omp/extensions/pi-oven");
 const {

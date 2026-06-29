@@ -208,21 +208,21 @@ export class RulesInjector {
       "",
     ];
     const sharedRules = [
-      "SKILL PRECEDENCE: pi-oven skills are authoritative. Load `skill://pi-oven:<name>`. NEVER load a same-purpose skill from another plugin namespace (`superpowers:*`, `oh-my-claudecode:*`, `agentmemory:*`). On any name/purpose overlap, the pi-oven skill wins.",
+      "SKILL PRECEDENCE: pi-oven skills are authoritative. When the runtime keyword block lists exact plugin-owned SKILL.md targets, read those exact file targets; do not invent namespaced skill aliases. `/pi-oven:*` entries are commands, not skills; `/pi-oven:setup` follows `commands/setup.md`. NEVER load a same-purpose skill from another plugin namespace (`superpowers:*`, `oh-my-claudecode:*`, `agentmemory:*`). On any name/purpose overlap, the pi-oven skill wins.",
       "AGENT NAMING: Dispatch pi-oven-owned automatic subagents ONLY by their exact registered name `pi-oven:<role>` (e.g. `pi-oven:explorer`). Foreign namespaces such as `kzk:<role>` are allowed only when the user explicitly asked for that exact foreign agent.",
     ];
     if (opts.autonomousActive) {
       return [
         ...head,
         "Autonomous mode is ACTIVE. The autonomous boundary contract governs:",
-        '1. SKILL-FIRST. Before substantive action, if the request matches a pi-oven skill, you MUST `read("skill://pi-oven:<name>")` and follow it first.',
+        "1. SKILL-FIRST. Before substantive action, if the request matches a pi-oven skill and a runtime keyword block lists an exact plugin-owned SKILL.md target, read that file target and follow it first.",
         "2. KEEP GOING per the boundary contract. Do NOT stall waiting for user input; do not emit a polite stop.",
         ...sharedRules,
       ].join("\n");
     }
     return [
       ...head,
-      '1. SKILL-FIRST. Before ANY substantive action, decide if the request matches a pi-oven skill (the runtime keyword whitelist AND your judgment). If it does, you MUST `read("skill://pi-oven:<name>")` and follow it BEFORE acting. Never start skill-governed work without loading the skill.',
+      "1. SKILL-FIRST. Before ANY substantive action, decide if the request matches a pi-oven skill (the runtime keyword whitelist AND your judgment). If the runtime keyword block lists an exact plugin-owned SKILL.md target, read that file target and follow it BEFORE acting. `/pi-oven:*` command requests are not skill requests.",
       "2. WAIT FOR THE USER. When you ask the user anything or present options (e.g. AskUserQuestion), STOP and wait for their reply. NEVER begin executing until the user answers. A pending question is a hard stop.",
       "3. ASK WHEN AMBIGUOUS. If the request is ambiguous or the decision is the user's, ask first — do not assume a default and run.",
       ...sharedRules,

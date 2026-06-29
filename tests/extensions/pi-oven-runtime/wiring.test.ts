@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { readFileSync, rmSync } from "fs";
 import { join } from "path";
 import {
@@ -9,13 +9,6 @@ import {
 import { SHIPPED_SKILL_NAMES, SHIPPED_SKILL_PATHS } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
 import { GateStateStore, type OwnershipTraceEntry } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
 
-mock.module("@oh-my-pi/pi-tui", () => ({
-  Container: class {},
-  Markdown: class {},
-  Text: class {},
-  SelectList: class {},
-  wrapTextWithAnsi: (value: string) => value,
-}));
 
 const { default: piOvenPi } = await import("../../../.omp/extensions/pi-oven");
 

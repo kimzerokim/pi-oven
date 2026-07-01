@@ -237,14 +237,19 @@ export class RulesInjector {
       "",
       "These rules are ALSO hard-enforced at the tool boundary by the pi-oven",
       "extension. Do not attempt to work around them:",
-      "- `git commit` is blocked unless the pre-commit gate has PASSED.",
+      "- `git commit` is blocked unless the pre-commit gate has PASSED, plus any",
+      "  heavy verifier requirement selected by the verifier risk matrix.",
       "- `git push` is blocked unless explicit push consent is present.",
       "- Destructive `rm -rf` of repo/HOME roots and inline secret literals are",
       "  always blocked (this floor is never lifted).",
       "- External infra/production commands are blocked unless the latest user",
       "  message carries explicit external execution consent.",
-      "- Local credential files already on the machine may be used only when",
-      "  that explicit external execution consent is active.",
+      "- Local credential files already on the machine may be used only while",
+      "  that explicit external execution consent is active, and they do NOT",
+      "  authorize production mutation/all scopes.",
+      "- Pasted credentials stay blocked unless they are explicitly consented",
+      "  full AWS temporary bundles (`ASIA...` + secret access key + session",
+      "  token + matching fingerprints + unexpired `expiresAt`).",
     ];
     if (this.reminder !== null) {
       lines.push("", "Current autonomous reminder:", `- ${this.reminder}`);

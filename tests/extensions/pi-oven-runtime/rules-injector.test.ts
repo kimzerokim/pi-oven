@@ -66,6 +66,14 @@ describe("RulesInjector — inject (AC3 step 1)", () => {
     expect(block).toContain("Current autonomous reminder:");
     expect(block).toContain("skill://autonomous-loop");
   });
+
+  it("states that commit blocking also depends on the verifier risk matrix when heavy verification is required", () => {
+    const inj = new RulesInjector();
+    inj.setPhase("BUILD");
+    const block = inj.buildSystemPromptBlock();
+    expect(block).toContain("pre-commit gate has PASSED");
+    expect(block).toContain("verifier risk matrix");
+  });
 });
 
 describe("RulesInjector — preserve (AC3 step 2)", () => {

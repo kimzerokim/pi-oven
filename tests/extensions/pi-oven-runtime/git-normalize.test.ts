@@ -3,6 +3,8 @@ import {
   normalizeCommand,
   type NormalizedCommand,
 } from "../../../.omp/extensions/pi-oven-runtime/git-normalize";
+import { fingerprintExternalExecSecret } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
+
 
 // ---------------------------------------------------------------------------
 // AC7 — git-command normalization adversarial (Spec §3 Layer 1 B3)
@@ -257,17 +259,59 @@ describe("normalizeCommand — forbidden set detection (Spec §3 Layer 1)", () =
       "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE aws s3 ls"
     );
     expect(accessKey.forbiddenMatches).toEqual([]);
-    expect(accessKey.externalMatches).toEqual([]);
+    expect(accessKey.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
     expect(accessKey.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+    expect(accessKey.inlineSecretMatches[0]).toMatchObject({
+      rule: "inline-aws-access-key-id",
+      awsCredentials: {
+        provider: "aws",
+        accessKeyId: "AKIAIOSFODNN7EXAMPLE",
+        accessKeyKind: "permanent",
+        hasSessionToken: false,
+      },
+    });
+
+    const tempAccessKey = normalizeCommand(
+      "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws s3 ls"
+    );
+    expect(tempAccessKey.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
+    expect(tempAccessKey.inlineSecretMatches[0]).toMatchObject({
+      rule: "inline-aws-access-key-id",
+      awsCredentials: {
+        provider: "aws",
+        accessKeyId: "ASIAIOSFODNN7EXAMPLE",
+        accessKeyKind: "temporary",
+        hasSessionToken: true,
+        sessionTokenFingerprint: fingerprintExternalExecSecret("session123"),
+        secretAccessKeyFingerprint: fingerprintExternalExecSecret("secret"),
+      },
+    });
+
+    const tempWithApiToken = normalizeCommand(
+      "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 API_TOKEN=abc123 aws s3 ls"
+    );
+    expect(tempWithApiToken.inlineSecretMatches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "inline-aws-access-key-id" }),
+        expect.objectContaining({ rule: "inline-secret-env" }),
+      ])
+    );
 
     const secretKey = normalizeCommand(
       "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY aws s3 ls"
     );
-    expect(secretKey.externalMatches).toEqual([]);
-    expect(secretKey.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
+    expect(secretKey.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
+    expect(secretKey.inlineSecretMatches).toEqual([
+      expect.objectContaining({ kind: "inline-secret", rule: "inline-secret-env" }),
+    ]);
 
+    const sessionTokenOnly = normalizeCommand("AWS_SESSION_TOKEN=session123 aws s3 ls");
+    expect(sessionTokenOnly.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
+    expect(sessionTokenOnly.inlineSecretMatches).toEqual([
+      expect.objectContaining({ kind: "inline-secret", rule: "inline-secret-env" }),
+    ]);
     const psql = normalizeCommand('psql --password hunter2 -c "select 1"');
-    expect(psql.externalMatches).toEqual([]);
+    expect(psql.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
     expect(psql.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
 
     const envIndirection = normalizeCommand(
@@ -285,36 +329,36 @@ describe("normalizeCommand — forbidden set detection (Spec §3 Layer 1)", () =
     const bearerHeader = normalizeCommand(
       "curl -H 'Authorization: Bearer abc123' https://api.cloudflare.com/client/v4/zones"
     );
-    expect(bearerHeader.externalMatches).toEqual([]);
+    expect(bearerHeader.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
     expect(bearerHeader.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
 
     const authKeyHeader = normalizeCommand(
       "curl -H 'X-Auth-Key: secret123' https://api.cloudflare.com/client/v4/zones"
     );
-    expect(authKeyHeader.externalMatches).toEqual([]);
+    expect(authKeyHeader.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
     expect(authKeyHeader.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
     const httpieBearerHeader = normalizeCommand(
       "http GET https://api.cloudflare.com/client/v4/zones Authorization:Bearer secret123"
     );
-    expect(httpieBearerHeader.externalMatches).toEqual([]);
+    expect(httpieBearerHeader.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
     expect(httpieBearerHeader.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
 
     const httpieCompactBearerHeader = normalizeCommand(
       'http GET https://api.cloudflare.com/client/v4/zones "Authorization:Bearer secret123"'
     );
-    expect(httpieCompactBearerHeader.externalMatches).toEqual([]);
+    expect(httpieCompactBearerHeader.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
     expect(httpieCompactBearerHeader.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
 
     const httpieAuthKeyHeader = normalizeCommand(
       "http GET https://api.cloudflare.com/client/v4/zones X-Auth-Key:secret123"
     );
-    expect(httpieAuthKeyHeader.externalMatches).toEqual([]);
+    expect(httpieAuthKeyHeader.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
     expect(httpieAuthKeyHeader.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
 
     const httpieTokenLiteral = normalizeCommand(
       "http GET https://api.cloudflare.com/client/v4/zones api_token==secret123"
     );
-    expect(httpieTokenLiteral.externalMatches).toEqual([]);
+    expect(httpieTokenLiteral.externalMatches.map((m) => m.kind)).toEqual(["external-read"]);
     expect(httpieTokenLiteral.inlineSecretMatches.map((m) => m.kind)).toEqual(["inline-secret"]);
 
     const httpieTokenEnv = normalizeCommand(

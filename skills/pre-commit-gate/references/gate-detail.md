@@ -5,12 +5,12 @@ Per-gate procedure, failure protocol, and skill integration map.
 
 ## Runtime gate decision (hook layer)
 
-For `git commit` under ACTIVE gate (`state.kind=OK` + `state.active=true`), runtime allow requires full regression cache pass:
+For `git commit` under ACTIVE gate (`state.kind=OK` + `state.active=true`), runtime allow requires:
 
 - `gateCache.commit === "PASS"`
-- `gateCache.regression === "PASS"`
+- and, **only when the verifier risk matrix selected the heavy path for this commit**, `gateCache.regression === "PASS"`
 
-If either check is not `PASS`, commit is blocked.
+Targeted implementation-stage verifier passes may leave `gateCache.regression` unset. Any present non-`PASS` regression value blocks the commit.
 
 Preserved invariants:
 - Forbidden floor is always-on (independent of gate state / bypass).
@@ -163,11 +163,19 @@ Heredoc / `psql -f migration.sql` style script-driven calls are not FAIL.
 
 ## Gate 5 — Fresh-verifier
 
-**Trigger**: ANY of — (a) 3+ files in `git diff --cached --name-only`, (b) high-risk tag in plan or commit body (`auth`, `payment`, `migration`, `public API`), (c) any main-authored commit.
+**Trigger**: executable-code commit **and** at least one verifier-risk signal:
+- exported / public / shared symbol change with reverse dependencies,
+- user-visible behavior change that is not already proven by narrow TDD evidence,
+- high-risk domain (`auth`, `payment`, `migration`, `public API`, credential / permission policy, prod-mutation path),
+- heavy-path signal (`UI-heavy`, `MILESTONE:`, `CYCLE-EXIT:`, `STUB-CLEAR:`).
+
+Explicit non-triggers: file-count thresholds by themselves, "main-authored commit" by itself, and doc-only commits.
 
 If none apply → Gate 5 N/A.
 
 **Procedure**: delegates to `fresh-verifier` skill. Stage 3 cache lookup first (key = staged\_diff\_hash + acceptance\_hash + verifier\_model). Cache hit → cite PASS in commit body. Cache miss → dispatch fresh verifier agent via omp `task`.
+- If only the targeted implementation path is required, the verifier must prove intent-match + relevant TDD evidence + changed-area / reverse-dep / risk-focused checks only.
+- If any heavy-path signal is present, the verifier must run the 4 heavy sub-checks from `references/4-sub-check.md`.
 
 **Verdict**: `VERDICT: PASS` allows commit. `VERDICT: BLOCK` or `VERDICT: PARTIAL` halts.
 
@@ -175,7 +183,7 @@ If none apply → Gate 5 N/A.
 
 **Q-halt patterns**: `Q-VERIFIER-FAIL` (2 consecutive BLOCKs), `Q-VERIFIER-INVALID` (bad verdict format), `Q-VERIFIER-DISPATCH-FAIL` (omp task error).
 
-**Skill integration**: `fresh-verifier` owns the 4 sub-check mandate and verdict format. Gate 5 is a wrapper that enforces the trigger condition and commit-body citation.
+**Skill integration**: `fresh-verifier` owns the intent/risk matrix, targeted evidence rules, heavy 4-sub-check path, and verdict format. Gate 5 is a wrapper that enforces the trigger condition and commit-body citation.
 
 **Plan 1 vs Plan 3**: skill-layer in Plan 1. Plan 3 hook dispatches the verifier inline before allowing the `git commit` Bash call.
 
@@ -183,7 +191,7 @@ If none apply → Gate 5 N/A.
 
 **Trigger**: `gh pr create` or `git push origin main`.
 
-**Procedure**: full `fresh-verifier` 4 sub-check dispatch (prod-build smoke, stub sweep, SoT alignment, spec-freeze re-check). Main self-declared "done" without Gate 6 PASS is forbidden.
+**Procedure**: force the **heavy** `fresh-verifier` path (prod-build smoke, stub sweep, SoT alignment, spec-freeze re-check). Main self-declared "done" without Gate 6 PASS is forbidden.
 
 **Bypass**: `PI_OVEN_CYCLE_EXIT_SKIP=1` → logs `Q-CYCLE-EXIT-STALE`. Fail-closed: the push / PR creation proceeds but the cycle is marked incomplete.
 

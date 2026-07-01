@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, utimesSync } from "fs";
+import { describe, it, expect, beforeEach, afterEach, vi } from "bun:test";
+import { promises as fsPromises, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, utimesSync, readdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
   GateStateStore,
+  fingerprintExternalExecSecret,
   type FsmState,
 } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
 
@@ -25,7 +26,42 @@ function branchContractPath(dir: string): string {
   return join(dir, "state", "branch-contract.json");
 }
 
+function localExternalConsent() {
+  return {
+    sourceMessageId: "u1",
+    scope: "all" as const,
+    remainingUses: 1,
+  };
+}
 
+function temporaryExternalConsent(expiresAt = Date.now() + 60_000) {
+  return {
+    sourceMessageId: "u1",
+    scope: "read" as const,
+    remainingUses: 1,
+    tempCredentials: {
+      provider: "aws" as const,
+      accessKeyId: "ASIAIOSFODNN7EXAMPLE",
+      sessionTokenFingerprint: fingerprintExternalExecSecret("session123"),
+      secretAccessKeyFingerprint: fingerprintExternalExecSecret("secret"),
+      expiresAt,
+    },
+  };
+}
+
+function writeExternalConsentState(dir: string, externalExecConsent: NonNullable<FsmState["externalExecConsent"]>) {
+  mkdirSync(join(dir, "state"), { recursive: true });
+  writeFileSync(
+    statePath(dir),
+    JSON.stringify({
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      externalExecConsent,
+    })
+  );
+}
 describe("GateStateStore — read failure policy (AC6)", () => {
   let dir: string;
   beforeEach(() => { dir = makeTempDir(); });
@@ -109,10 +145,48 @@ describe("GateStateStore — atomic write (AC6 / AC8)", () => {
     const s: FsmState = { active: true, gateCache: { commit: "PASS", regression: "PASS" }, version: 1, schemaVersion: 1 };
     await store.writeState(s);
     expect(existsSync(statePath(dir))).toBe(true);
-    expect(existsSync(statePath(dir) + ".tmp")).toBe(false);
+    expect(readdirSync(join(dir, "state")).filter((entry) => entry.endsWith(".tmp"))).toEqual([]);
     const parsed = JSON.parse(readFileSync(statePath(dir), "utf-8"));
     expect(parsed.gateCache.commit).toBe("PASS");
     expect(parsed.gateCache.regression).toBe("PASS");
+  });
+
+  it("two independent stores writing the same state dir in parallel use distinct tmp paths", async () => {
+    const storeA = new GateStateStore(dir);
+    const storeB = new GateStateStore(dir);
+    const stateA: FsmState = { active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 };
+    const stateB: FsmState = { active: true, gateCache: { commit: "FAIL" }, version: 2, schemaVersion: 1 };
+    const originalRename = fsPromises.rename.bind(fsPromises);
+    let releaseRename!: () => void;
+    const renameGate = new Promise<void>((resolve) => {
+      releaseRename = resolve;
+    });
+    let renameCalls = 0;
+    const renameSources: string[] = [];
+    const renameSpy = vi.spyOn(fsPromises, "rename").mockImplementation(async (from, to) => {
+      renameCalls += 1;
+      renameSources.push(String(from));
+      if (renameCalls === 1) {
+        await renameGate;
+      } else {
+        releaseRename();
+      }
+      return originalRename(from, to);
+    });
+    try {
+      await Promise.all([storeA.writeState(stateA), storeB.writeState(stateB)]);
+    } finally {
+      renameSpy.mockRestore();
+    }
+    expect(renameSources).toHaveLength(2);
+    expect(new Set(renameSources).size).toBe(2);
+    expect(renameSources.every((source) => source.startsWith(statePath(dir) + ".") && source.endsWith(".tmp"))).toBe(true);
+    expect(readdirSync(join(dir, "state")).filter((entry) => entry.endsWith(".tmp"))).toEqual([]);
+    const parsed = JSON.parse(readFileSync(statePath(dir), "utf-8")) as FsmState;
+    expect(
+      (parsed.gateCache.commit === "PASS" && parsed.version === 1) ||
+        (parsed.gateCache.commit === "FAIL" && parsed.version === 2)
+    ).toBe(true);
   });
 
   it("creates the state dir if absent", async () => {
@@ -162,6 +236,85 @@ describe("GateStateStore — mtime stale-cache invalidation (AC8c)", () => {
 
     const v2 = await store.readState();
     expect(v2.kind === "OK" && v2.state.gateCache.commit).toBe("PASS");
+  });
+  it("cache hits still purge temporary AWS consent after it expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const expiresAt = Date.now() + 5;
+      writeExternalConsentState(dir, temporaryExternalConsent(expiresAt));
+      const store = new GateStateStore(dir);
+
+      const initial = await store.readState();
+      expect(initial.kind).toBe("OK");
+      if (initial.kind !== "OK") return;
+      expect(initial.state.externalExecConsent?.tempCredentials).toBeDefined();
+
+      vi.advanceTimersByTime(20);
+
+      const afterExpiry = await store.readState();
+      expect(afterExpiry.kind).toBe("OK");
+      if (afterExpiry.kind !== "OK") return;
+      expect(afterExpiry.state.externalExecConsent).toBeUndefined();
+
+      const persisted = JSON.parse(readFileSync(statePath(dir), "utf-8")) as FsmState;
+      expect(persisted.externalExecConsent).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cache-hit expiry purge does not overwrite a newer state written during the sanitize path", async () => {
+    vi.useFakeTimers();
+    try {
+      writeExternalConsentState(dir, temporaryExternalConsent(Date.now() + 5));
+      const store = new GateStateStore(dir);
+
+      const initial = await store.readState();
+      expect(initial.kind).toBe("OK");
+      if (initial.kind !== "OK") return;
+
+      vi.advanceTimersByTime(20);
+
+      const originalRunExclusive = store.runExclusive.bind(store);
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      let intercepted = false;
+      (
+        store as GateStateStore & {
+          runExclusive: <T>(fn: () => Promise<T>) => Promise<T>;
+        }
+      ).runExclusive = async <T>(fn: () => Promise<T>) => {
+        if (!intercepted) {
+          intercepted = true;
+          entered.resolve();
+          await release.promise;
+        }
+        return originalRunExclusive(fn);
+      };
+
+      const purgePromise = store.readState();
+      await entered.promise;
+
+      const concurrentState: FsmState = {
+        active: true,
+        gateCache: { commit: "PASS", regression: "PASS" },
+        version: 2,
+        schemaVersion: 1,
+      };
+      writeFileSync(statePath(dir), JSON.stringify(concurrentState));
+      const future = new Date(Date.now() + 5_000);
+      utimesSync(statePath(dir), future, future);
+
+      release.resolve();
+
+      const after = await purgePromise;
+      expect(after).toEqual({ kind: "OK", state: concurrentState });
+
+      const persisted = JSON.parse(readFileSync(statePath(dir), "utf-8")) as FsmState;
+      expect(persisted).toEqual(concurrentState);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("repeated reads with unchanged mtime serve from cache (no re-parse error on a now-corrupt-but-cached file is not asserted; just consistency)", async () => {
@@ -224,6 +377,70 @@ describe("GateStateStore — file push-consent (AC5 file source single-use)", ()
     await store.consumeFileConsent();
     expect(existsSync(consentPath(dir))).toBe(false);
     expect((await store.readFileConsent()).valid).toBe(false);
+  });
+});
+
+describe("GateStateStore — external execution consent persistence", () => {
+  let dir: string;
+  beforeEach(() => { dir = makeTempDir(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("consumeExternalExecConsent preserves temporary AWS credential consent until expiry", async () => {
+    writeExternalConsentState(dir, temporaryExternalConsent());
+    const store = new GateStateStore(dir);
+
+    expect(await store.consumeExternalExecConsent("u1")).toBe("consumed");
+
+    const after = await store.readState();
+    expect(after.kind).toBe("OK");
+    if (after.kind !== "OK") return;
+    expect(after.state.externalExecConsent).toEqual(temporaryExternalConsent(after.state.externalExecConsent?.tempCredentials?.expiresAt));
+    expect(after.state.consumedExternalExecConsentMessageId).toBeUndefined();
+  });
+
+  it("consumeExternalExecConsent keeps local credential consent single-use", async () => {
+    writeExternalConsentState(dir, localExternalConsent());
+    const store = new GateStateStore(dir);
+
+    expect(await store.consumeExternalExecConsent("u1")).toBe("consumed");
+
+    const after = await store.readState();
+    expect(after.kind).toBe("OK");
+    if (after.kind !== "OK") return;
+    expect(after.state.externalExecConsent).toBeUndefined();
+    expect(after.state.consumedExternalExecConsentMessageId).toBe("u1");
+  });
+  it("mutate purges expired temporary AWS consent without re-entering the writer mutex", async () => {
+    writeExternalConsentState(dir, temporaryExternalConsent(Date.now() - 1_000));
+    const store = new GateStateStore(dir);
+    const runExclusiveSpy = vi.spyOn(store, "runExclusive").mockImplementation((fn) => fn());
+
+    try {
+      await store.mutate((current) => ({ ...current, version: current.version + 1 }));
+      expect(runExclusiveSpy).not.toHaveBeenCalled();
+
+      const after = await store.readState();
+      expect(after.kind).toBe("OK");
+      if (after.kind !== "OK") return;
+      expect(after.state.externalExecConsent).toBeUndefined();
+      expect(after.state.version).toBe(2);
+    } finally {
+      runExclusiveSpy.mockRestore();
+    }
+  });
+
+
+  it("readState purges expired temporary AWS consent metadata", async () => {
+    writeExternalConsentState(dir, temporaryExternalConsent(Date.now() - 1_000));
+    const store = new GateStateStore(dir);
+
+    const view = await store.readState();
+    expect(view.kind).toBe("OK");
+    if (view.kind !== "OK") return;
+    expect(view.state.externalExecConsent).toBeUndefined();
+
+    const persisted = JSON.parse(readFileSync(statePath(dir), "utf-8")) as FsmState;
+    expect(persisted.externalExecConsent).toBeUndefined();
   });
 });
 

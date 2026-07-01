@@ -1,7 +1,8 @@
-# fresh-verifier — 4 Sub-Check Procedure
+# fresh-verifier — Heavy 4 Sub-Check Procedure
 
 Sources: autonomous-boundary §Mandate, harness-share.md §33, pre-merge-sync §5/§6/§7
 
+This reference defines the **heavy** verifier path only. Use it when the fresh-verifier intent/risk matrix selects a high-risk, UI-heavy, cycle-exit, or release-like verification pass. Standard implementation-stage verification stays on the targeted path unless it escalates.
 ---
 
 ## Sub-check 1: Prod-build smoke
@@ -106,7 +107,7 @@ Sources: autonomous-boundary §Mandate, harness-share.md §33, pre-merge-sync §
 
 ## Verdict template
 
-The verifier agent must open its response with exactly one of:
+The heavy-path verifier agent must open its response with exactly one of:
 
 ```
 VERDICT: PASS

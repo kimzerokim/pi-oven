@@ -1,6 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { decideGate, type GateInput, type FsmStateView } from "../../../.omp/extensions/pi-oven-runtime/gate";
 import { normalizeCommand } from "../../../.omp/extensions/pi-oven-runtime/git-normalize";
+import { fingerprintExternalExecSecret } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
+
 
 // ---------------------------------------------------------------------------
 // gate.ts — PURE decision (Spec §3 Layer 1 B2/B3, §5.4)
@@ -19,12 +21,15 @@ import { normalizeCommand } from "../../../.omp/extensions/pi-oven-runtime/git-n
 // ---------------------------------------------------------------------------
 
 function ok(partial: Partial<FsmStateView & { kind: "OK" }> & { commit?: string; regression?: string; active?: boolean }): FsmStateView {
+  const gateCache: { commit?: string; regression?: string } = { commit: partial.commit ?? "FAIL" };
+  if (Object.prototype.hasOwnProperty.call(partial, "regression")) {
+    gateCache.regression = partial.regression;
+  } else {
+    gateCache.regression = "FAIL";
+  }
   return {
     kind: "OK",
-    state: {
-      active: partial.active ?? true,
-      gateCache: { commit: partial.commit ?? "FAIL", regression: partial.regression ?? "FAIL" },
-    },
+    state: { active: partial.active ?? true, gateCache },
   } as FsmStateView;
 }
 
@@ -54,26 +59,47 @@ function consent(
   };
 }
 
+function tempConsent(
+  scope: TestConsent["scope"],
+  overrides: Partial<NonNullable<TestConsent["tempCredentials"]>> = {}
+): TestConsent {
+  return consent(scope, {
+    tempCredentials: {
+      provider: "aws",
+      accessKeyId: "ASIAIOSFODNN7EXAMPLE",
+      sessionTokenFingerprint: fingerprintExternalExecSecret("session123"),
+      secretAccessKeyFingerprint: fingerprintExternalExecSecret("secret"),
+      expiresAt: Date.now() + 60_000,
+      ...overrides,
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // AC1 — commit gate
 // ---------------------------------------------------------------------------
 
 describe("decideGate — commit gate (AC1)", () => {
-  it("blocks `git commit` when active and commit/regression gate is not fully PASS", () => {
-    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "PASS", regression: "FAIL", active: true }) }));
+  it("blocks `git commit` when active and commit gate is not PASS", () => {
+    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "FAIL", regression: "PASS", active: true }) }));
     expect(r.block).toBe(true);
     expect(r.reason).toBeDefined();
   });
 
-  it("allows `git commit` when active and gateCache.commit/regression are both PASS", () => {
+  it("allows `git commit` when active and commit+heavy-verifier cache are PASS", () => {
     const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "PASS", regression: "PASS", active: true }) }));
     expect(r.block).toBe(false);
   });
 
-  it("blocks `git commit` when active and commit PASS but regression is missing (schema compatibility default)", () => {
+  it("allows `git commit` when active and heavy-verifier cache is absent (targeted verifier path)", () => {
     const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "PASS", regression: undefined, active: true }) }));
+    expect(r.block).toBe(false);
+  });
+
+  it("blocks `git commit` when active and heavy-verifier cache is present but not PASS", () => {
+    const r = decideGate(input("git commit -m x", { fsm: ok({ commit: "PASS", regression: "FAIL", active: true }) }));
     expect(r.block).toBe(true);
-    expect(r.reason).toMatch(/full regression gate/i);
+    expect(r.reason).toMatch(/pre-commit gate has not PASSED/i);
   });
 
   it("allows a non-git command unconditionally", () => {
@@ -213,6 +239,11 @@ describe("decideGate — push consent (AC5)", () => {
 // ---------------------------------------------------------------------------
 
 describe("decideGate — external execution consent", () => {
+  const tempCommand =
+    "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws s3 ls";
+  const tempMutationCommand =
+    "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws s3 cp ./artifact.tgz s3://example-bucket/artifact.tgz";
+
   it("blocks `aws sts assume-role --role-arn x` by default even when FSM is ABSENT", () => {
     const r = decideGate(input("aws sts assume-role --role-arn x", { fsm: { kind: "ABSENT" } }));
     expect(r.block).toBe(true);
@@ -228,7 +259,7 @@ describe("decideGate — external execution consent", () => {
       })
     );
     expect(r.block).toBe(false);
-    expect((r as { consumeExternalExecConsent?: boolean }).consumeExternalExecConsent).toBe(true);
+    expect(r.consumeExternalExecConsent).toBe(true);
   });
 
   it("blocks external execution when consent is exhausted", () => {
@@ -257,7 +288,144 @@ describe("decideGate — external execution consent", () => {
       })
     );
     expect(allowed.block).toBe(false);
-    expect((allowed as { consumeExternalExecConsent?: boolean }).consumeExternalExecConsent).toBe(true);
+    expect(allowed.consumeExternalExecConsent).toBe(true);
+  });
+
+  it("allows matching AWS temporary credentials until expiresAt without consuming parent-only consent", () => {
+    const allowed = decideGate(
+      input(tempCommand, {
+        externalExecConsent: tempConsent("read"),
+      })
+    );
+    expect(allowed.block).toBe(false);
+    expect(allowed.consumeExternalExecConsent).toBeFalsy();
+  });
+
+  it("blocks expired AWS temporary credentials", () => {
+    const blocked = decideGate(
+      input(tempCommand, {
+        externalExecConsent: tempConsent("read", { expiresAt: Date.now() - 1_000 }),
+      })
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/PI_OVEN_EXTERNAL_EXEC|expired|unexpired/i);
+  });
+
+  it("blocks AWS temporary credentials when the pasted session token is missing", () => {
+    const blocked = decideGate(
+      input(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret aws s3 ls",
+        {
+          externalExecConsent: tempConsent("read"),
+        }
+      )
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/AWS_SESSION_TOKEN|inline secret/i);
+  });
+
+  it("blocks AWS temporary credentials when the pasted session token does not match consent", () => {
+    const blocked = decideGate(
+      input(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=other-session aws s3 ls",
+        {
+          externalExecConsent: tempConsent("read"),
+        }
+      )
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/session token/i);
+  });
+  it("blocks pasted AWS_SECRET_ACCESS_KEY values when consent omitted its fingerprint", () => {
+    const blocked = decideGate(
+      input(tempCommand, {
+        externalExecConsent: tempConsent("read", { secretAccessKeyFingerprint: undefined }),
+      })
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/secret access key|AWS_SECRET_ACCESS_KEY/i);
+  });
+
+  it("allows mutation commands when the full temporary bundle prefixes the same shell segment", () => {
+    const allowed = decideGate(
+      input(tempMutationCommand, {
+        externalExecConsent: tempConsent("mutation"),
+      })
+    );
+    expect(allowed.block).toBe(false);
+    expect(allowed.consumeExternalExecConsent).toBeFalsy();
+  });
+
+  it("blocks mutation commands when a matching temporary bundle appears only in an earlier shell segment", () => {
+    const blocked = decideGate(
+      input(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123; aws s3 cp ./artifact.tgz s3://example-bucket/artifact.tgz",
+        {
+          externalExecConsent: tempConsent("mutation"),
+        }
+      )
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/external-mutation/i);
+  });
+
+  it("blocks mutation consent when its temporary credential bundle omits the secret access key fingerprint", () => {
+    const blocked = decideGate(
+      input(tempMutationCommand, {
+        externalExecConsent: tempConsent("mutation", { secretAccessKeyFingerprint: undefined }),
+      })
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/aws_secret_access_key|temporary credential bundle|external-mutation/i);
+  });
+
+  it("blocks mutation commands when the inline temporary credential bundle omits AWS_SECRET_ACCESS_KEY", () => {
+    const blocked = decideGate(
+      input(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SESSION_TOKEN=session123 aws s3 cp ./artifact.tgz s3://example-bucket/artifact.tgz",
+        {
+          externalExecConsent: tempConsent("mutation"),
+        }
+      )
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/aws_secret_access_key|temporary credential bundle|external-mutation/i);
+  });
+
+  it("still blocks unrelated inline secrets even when AWS temporary credentials match consent", () => {
+    const blocked = decideGate(
+      input(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 API_TOKEN=abc123 aws s3 ls",
+        {
+          externalExecConsent: tempConsent("read"),
+        }
+      )
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/Unrelated inline secrets remain blocked|inline secret/i);
+  });
+
+  it("blocks pasted permanent AWS access keys even when temporary consent exists", () => {
+    const blocked = decideGate(
+      input(
+        "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws s3 ls",
+        {
+          externalExecConsent: tempConsent("read"),
+        }
+      )
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/Permanent AWS access keys remain blocked|inline secret/i);
+  });
+
+  it("still blocks pasted AWS temporary credentials when consent scope does not match", () => {
+    const blocked = decideGate(
+      input(tempCommand, {
+        externalExecConsent: tempConsent("mutation"),
+      })
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/external-read/i);
   });
 
   it("blocks chained external subcommands in one bash call even with broad consent", () => {
@@ -269,21 +437,44 @@ describe("decideGate — external execution consent", () => {
     );
     expect(r.block).toBe(true);
     expect(r.reason).toMatch(/split/i);
-    expect((r as { consumeExternalExecConsent?: boolean }).consumeExternalExecConsent).toBeFalsy();
+    expect(r.consumeExternalExecConsent).toBeFalsy();
   });
 
   for (const scope of ["mutation", "all"] as const) {
-    it(`allows \`./scripts/deploy.sh --region singapore --warp on\` with ${scope} consent`, () => {
+    it(`blocks \`./scripts/deploy.sh --region singapore --warp on\` with local ${scope} consent`, () => {
       const result = decideGate(
         input("./scripts/deploy.sh --region singapore --warp on", {
           externalExecConsent: consent(scope),
+        })
+      );
+      expect(result.block).toBe(true);
+      expect(result.reason).toMatch(/Local-credential consent cannot authorize mutation|external-mutation/i);
+    });
+  }
+
+  for (const scope of ["mutation", "all"] as const) {
+    it(`blocks \`./scripts/deploy.sh --region singapore --warp on\` with temporary ${scope} consent when the command does not use the consented temp bundle`, () => {
+      const result = decideGate(
+        input("./scripts/deploy.sh --region singapore --warp on", {
+          externalExecConsent: tempConsent(scope),
+        })
+      );
+      expect(result.block).toBe(true);
+      expect(result.reason).toMatch(/exact temporary credential bundle inline|external-mutation/i);
+    });
+  }
+  for (const scope of ["mutation", "all"] as const) {
+    it(`allows a mutation command that uses the consented temporary bundle with ${scope} consent`, () => {
+      const result = decideGate(
+        input(tempMutationCommand, {
+          externalExecConsent: tempConsent(scope),
         })
       );
       expect(result.block).toBe(false);
     });
   }
 
-  it("blocks inline secret literals even with all-scope consent", () => {
+  it("blocks inline secret literals even with all-scope local consent", () => {
     const r = decideGate(
       input("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE aws s3 ls", {
         externalExecConsent: consent("all"),

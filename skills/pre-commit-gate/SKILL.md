@@ -31,18 +31,18 @@ Match the agent to the work (model-fit + role-fit is first-class): gate verifica
 | 3.5 | Docker compose smoke | Staged path touches `docker-compose*.yml`, `Dockerfile*`, or container infra | `PI_OVEN_GATE35_SKIP=1` / `PI_OVEN_GATE35_DISABLE=1` |
 | 4 | Playwright UI + dev-server health | Staged path matches frontend source glob | `PI_OVEN_GATE4_SKIP=1` |
 | 4.5 | Fix-scope expansion | Default DISABLED; enabled by `pre-merge-sync` step 3 | `PI_OVEN_GATE45_SKIP=1` |
-| 5 | Fresh-verifier | 3+ files changed, high-risk tag, or any main-authored commit | `PI_OVEN_GATE5_SKIP=1` |
+| 5 | Fresh-verifier | Risk-matrix trigger only: exported/shared reverse-dep fanout, user-visible behavior lacking narrow proof, high-risk domain, or heavy-path signal (`UI-heavy` / release-like) | `PI_OVEN_GATE5_SKIP=1` |
 
-Gate 6 (cycle-exit verifier) fires separately on `gh pr create` / `git push origin main` — not part of the per-commit sequence above.
+Gate 6 (cycle-exit verifier) fires separately on cycle-exit / release-like closure actions (`gh pr create` / `git push origin main`) — not part of the per-commit sequence above.
 
 ## Runtime commit enforcement (ACTIVE gate)
 
-When `.pi-oven/state/autonomous.json` is `kind=OK` and `active=true`, runtime `git commit` allow is **full regression gate only**:
+When `.pi-oven/state/autonomous.json` is `kind=OK` and `active=true`, runtime `git commit` allow requires:
 
 - `gateCache.commit === "PASS"` **and**
-- `gateCache.regression === "PASS"`
+- `gateCache.regression === "PASS"` **only when** the verifier risk matrix selected the heavy path for this commit
 
-If either is missing/non-`PASS`, commit is blocked fail-closed.  
+Targeted implementation-stage verifier passes may omit `gateCache.regression`; any present non-`PASS` regression value still blocks fail-closed.  
 ABSENT state remains non-blocking, CORRUPT remains fail-closed, forbidden floor remains always-on, and push-consent behavior is unchanged.
 
 ## Sequential failure protocol

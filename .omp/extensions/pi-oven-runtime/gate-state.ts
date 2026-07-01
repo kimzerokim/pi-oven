@@ -14,6 +14,7 @@
 //  - File push-consent: read/validate (TTL) + consume-on-use (single-use).
 // ---------------------------------------------------------------------------
 
+import { createHash, randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import { join, dirname } from "path";
 
@@ -27,10 +28,32 @@ export interface OwnershipTraceEntry {
   reason: string;
 }
 
+export interface TemporaryAwsCredentials {
+  provider: "aws";
+  accessKeyId: string;
+  sessionTokenFingerprint: string;
+  secretAccessKeyFingerprint?: string;
+  expiresAt: number;
+}
+
+export function fingerprintExternalExecSecret(secret: string): string {
+  return createHash("sha256")
+    .update(`pi-oven-temp-credential:v1:${secret}`)
+    .digest("hex");
+}
+
+export function isTemporaryCredentialWindowActive(
+  tempCredentials: TemporaryAwsCredentials | undefined,
+  now: number = Date.now()
+): boolean {
+  return tempCredentials !== undefined && now < tempCredentials.expiresAt;
+}
+
 export interface ExternalExecConsent {
   sourceMessageId: string;
   scope: "read" | "access" | "mutation" | "all";
   remainingUses: number;
+  tempCredentials?: TemporaryAwsCredentials;
 }
 
 export interface FsmState {
@@ -69,6 +92,25 @@ function isValidOwnershipTraceEntry(value: unknown): value is OwnershipTraceEntr
   );
 }
 
+function isValidFingerprint(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/i.test(value);
+}
+
+function isValidTemporaryAwsCredentials(value: unknown): value is TemporaryAwsCredentials {
+  if (typeof value !== "object" || value === null) return false;
+  const credentials = value as Record<string, unknown>;
+  return (
+    credentials.provider === "aws" &&
+    typeof credentials.accessKeyId === "string" &&
+    /^ASIA[0-9A-Z]{12,}$/i.test(credentials.accessKeyId) &&
+    isValidFingerprint(credentials.sessionTokenFingerprint) &&
+    (credentials.secretAccessKeyFingerprint === undefined ||
+      isValidFingerprint(credentials.secretAccessKeyFingerprint)) &&
+    typeof credentials.expiresAt === "number" &&
+    Number.isFinite(credentials.expiresAt)
+  );
+}
+
 function isValidExternalExecConsent(value: unknown): value is ExternalExecConsent {
   if (typeof value !== "object" || value === null) return false;
   const consent = value as Record<string, unknown>;
@@ -81,14 +123,58 @@ function isValidExternalExecConsent(value: unknown): value is ExternalExecConsen
       consent.scope === "all") &&
     typeof consent.remainingUses === "number" &&
     Number.isInteger(consent.remainingUses) &&
-    consent.remainingUses > 0
+    consent.remainingUses > 0 &&
+    (consent.tempCredentials === undefined ||
+      isValidTemporaryAwsCredentials(consent.tempCredentials))
   );
+}
+
+function normalizeExternalExecConsent(
+  consent: ExternalExecConsent | undefined,
+  now: number = Date.now()
+): ExternalExecConsent | undefined {
+  if (!consent?.tempCredentials) return consent;
+  return isTemporaryCredentialWindowActive(consent.tempCredentials, now)
+    ? consent
+    : undefined;
+}
+
+function sanitizeState(state: FsmState): { state: FsmState; changed: boolean } {
+  const externalExecConsent = normalizeExternalExecConsent(state.externalExecConsent);
+  if (externalExecConsent === state.externalExecConsent) {
+    return { state, changed: false };
+  }
+  return {
+    state: {
+      ...state,
+      externalExecConsent,
+    },
+    changed: true,
+  };
 }
 
 export type FsmStateView =
   | { kind: "ABSENT" }
   | { kind: "CORRUPT" }
   | { kind: "OK"; state: FsmState };
+
+async function readPrimaryStateFile(statePath: string): Promise<FsmStateView> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(statePath, "utf-8");
+  } catch {
+    return { kind: "CORRUPT" };
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return isValidState(parsed)
+      ? { kind: "OK", state: parsed }
+      : { kind: "CORRUPT" };
+  } catch {
+    return { kind: "CORRUPT" };
+  }
+}
 
 export interface FileConsent {
   valid: boolean;
@@ -187,6 +273,11 @@ function isValidState(v: unknown): v is FsmState {
   return true;
 }
 
+interface ReadStateOptions {
+  alreadyExclusive?: boolean;
+  persistSanitizedRead?: boolean;
+}
+
 export class GateStateStore {
   /** `.pi-oven/` root directory. State lives under `<root>/state/`. */
   private readonly root: string;
@@ -208,8 +299,46 @@ export class GateStateStore {
     this.branchContractPath = join(root, "state", BRANCH_CONTRACT_FILE);
   }
 
-  /** Read the FSM state, discriminating ABSENT / CORRUPT / OK, with mtime cache. */
-  async readState(): Promise<FsmStateView> {
+  private async persistSanitizedRead(
+    observedMtimeMs: number,
+    sanitizedState: FsmState,
+    alreadyExclusive: boolean = false
+  ): Promise<FsmStateView> {
+    const persist = async (): Promise<FsmStateView> => {
+      let latestStat: { mtimeMs: number };
+      try {
+        latestStat = await fs.stat(this.statePath);
+      } catch {
+        this.cache = null;
+        return { kind: "ABSENT" };
+      }
+
+      if (latestStat.mtimeMs !== observedMtimeMs) {
+        const latestView = await readPrimaryStateFile(this.statePath);
+        if (latestView.kind !== "OK") {
+          this.cache = { mtimeMs: latestStat.mtimeMs, view: latestView };
+          return latestView;
+        }
+
+        const latestSanitized = sanitizeState(latestView.state);
+        if (!latestSanitized.changed) {
+          this.cache = { mtimeMs: latestStat.mtimeMs, view: latestView };
+          return latestView;
+        }
+
+        await this.writeState(latestSanitized.state);
+        return { kind: "OK", state: latestSanitized.state };
+      }
+
+      await this.writeState(sanitizedState);
+      return { kind: "OK", state: sanitizedState };
+    };
+
+    return alreadyExclusive ? persist() : this.runExclusive(persist);
+  }
+
+  private async readStateInternal(options: ReadStateOptions = {}): Promise<FsmStateView> {
+    const { alreadyExclusive = false, persistSanitizedRead = true } = options;
     let stat: { mtimeMs: number };
     try {
       stat = await fs.stat(this.statePath);
@@ -220,22 +349,28 @@ export class GateStateStore {
     }
 
     if (this.cache && this.cache.mtimeMs === stat.mtimeMs) {
-      return this.cache.view;
+      if (this.cache.view.kind !== "OK") {
+        return this.cache.view;
+      }
+      const sanitized = sanitizeState(this.cache.view.state);
+      if (!sanitized.changed) {
+        return this.cache.view;
+      }
+      if (!persistSanitizedRead) {
+        return { kind: "OK", state: sanitized.state };
+      }
+      return this.persistSanitizedRead(stat.mtimeMs, sanitized.state, alreadyExclusive);
     }
 
-    let raw: string;
-    try {
-      raw = await fs.readFile(this.statePath, "utf-8");
-    } catch {
-      return { kind: "CORRUPT" };
-    }
-
-    let view: FsmStateView;
-    try {
-      const parsed = JSON.parse(raw);
-      view = isValidState(parsed) ? { kind: "OK", state: parsed } : { kind: "CORRUPT" };
-    } catch {
-      view = { kind: "CORRUPT" };
+    const view = await readPrimaryStateFile(this.statePath);
+    if (view.kind === "OK") {
+      const sanitized = sanitizeState(view.state);
+      if (sanitized.changed) {
+        if (!persistSanitizedRead) {
+          return { kind: "OK", state: sanitized.state };
+        }
+        return this.persistSanitizedRead(stat.mtimeMs, sanitized.state, alreadyExclusive);
+      }
     }
 
     // Cache OK and CORRUPT both keyed by mtime; ABSENT is never cached (handled above).
@@ -243,13 +378,23 @@ export class GateStateStore {
     return view;
   }
 
+  /** Read the FSM state, discriminating ABSENT / CORRUPT / OK, with mtime cache. */
+  async readState(): Promise<FsmStateView> {
+    return this.readStateInternal();
+  }
+
   /** Atomically write the FSM state (temp + rename). Invalidates the cache. */
   async writeState(state: FsmState): Promise<void> {
     await fs.mkdir(dirname(this.statePath), { recursive: true });
-    const tmp = `${this.statePath}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(state, null, 2), "utf-8");
-    await fs.rename(tmp, this.statePath);
-    this.cache = null; // force re-read (next readState re-stats)
+    const tmp = join(dirname(this.statePath), `${STATE_FILE}.${randomUUID()}.tmp`);
+    try {
+      await fs.writeFile(tmp, JSON.stringify(state, null, 2), "utf-8");
+      await fs.rename(tmp, this.statePath);
+      this.cache = null; // force re-read (next readState re-stats)
+    } catch (error) {
+      await fs.rm(tmp, { force: true }).catch(() => {});
+      throw error;
+    }
   }
 
   /**
@@ -259,7 +404,7 @@ export class GateStateStore {
    */
   async mutate(updater: (current: FsmState) => FsmState): Promise<void> {
     const run = this.writeChain.then(async () => {
-      const view = await this.readState();
+      const view = await this.readStateInternal({ alreadyExclusive: true, persistSanitizedRead: false });
       const current: FsmState =
         view.kind === "OK"
           ? view.state
@@ -358,15 +503,18 @@ export class GateStateStore {
 
   /**
    * Consume one active external execution consent use. Intended to run inside
-   * runExclusive() so the read-modify-write stays serialized.
+   * runExclusive() so the read-modify-write stays serialized. Temporary AWS
+   * credential consent keeps the allow-window open until expiresAt instead of
+   * burning a single use.
    */
   async consumeExternalExecConsent(
     expectedSourceMessageId: string
   ): Promise<"consumed" | "missing" | "source-message-mismatch"> {
-    const view = await this.readState();
+    const view = await this.readStateInternal({ alreadyExclusive: true });
     if (view.kind !== "OK" || view.state.externalExecConsent === undefined) return "missing";
     const current = view.state.externalExecConsent;
     if (current.sourceMessageId !== expectedSourceMessageId) return "source-message-mismatch";
+    if (current.tempCredentials) return "consumed";
     const remainingUses = current.remainingUses - 1;
     await this.writeState({
       ...view.state,

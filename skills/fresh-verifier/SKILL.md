@@ -18,25 +18,25 @@ Call the RIGHT agent — model-fit + role-fit is first-class. Completion verific
 
 ## When to use
 
-Three contexts require a fresh-verifier dispatch:
+Three contexts route into fresh-verifier, but not all of them take the same depth:
 
-- **Cycle exit** — any autonomous loop (ralph, ultrawork, autopilot) reaching a self-declared terminal state.
-- **Large-cycle commit** — a commit message or working note contains `MILESTONE:`, `CYCLE-EXIT:`, or `STUB-CLEAR:`.
-- **Gate 6 hook trigger** — the `pre-commit-gate` Gate 6 step fires this skill before the commit is allowed to land.
+- **Implementation-stage proof (targeted path)** — Gate 5 or a story-completion claim needs fresh evidence for an executable-code change, but the risk matrix does **not** classify it as high-risk / UI-heavy / cycle-exit / release-like.
+- **Cycle exit / release-like closure (heavy path)** — any autonomous loop reaching a terminal state, or any commit message / working note containing `MILESTONE:`, `CYCLE-EXIT:`, or `STUB-CLEAR:`.
+- **Gate 6 hook trigger (heavy path)** — the `pre-commit-gate` Gate 6 step fires this skill before `gh pr create` or `git push origin main` is allowed to close the cycle.
 
 ---
 
 ## Pre-completion gate
 
-Before claiming ANY work complete — not just cycle exits — apply this gate:
+Before claiming ANY work complete — not just cycle exits — apply this gate with the narrowest evidence that proves the claim:
 
 1. **Identify the exact behavior to prove**: what observable output or state change is the claim based on?
-2. **Prefer existing tests**: run the relevant test suite first. If tests pass, that is your primary evidence.
-3. **Typecheck / build**: run `bun run build` or `tsc --noEmit`. Type errors are evidence of incompleteness.
-4. **Narrow direct commands**: run the narrowest direct verification available (e.g. `grep -n "expected string" output.txt`, `curl localhost:3000/health`).
-5. **Manual validation** (last resort): if no automated path exists, describe the manual steps and gather observable evidence. Do not bluff with "should work" or "appears correct".
-
-This gate applies to every `DONE` / `complete` / `verified` claim in any context — interactive, executor subagent, or autonomous loop. It is not exclusive to cycle exits.
+2. **Intent-match first**: confirm the diff and the acceptance claim point at the same behavior; a passing unrelated test is not evidence.
+3. **Prefer relevant TDD evidence**: use the failing/passing test pair, scoped test file, or directly-related existing suite first.
+4. **Changed-area checks**: run the narrowest direct command against the touched surface (typecheck slice, API probe, CLI invocation, focused fixture, etc.).
+5. **Reverse-dep checks when warranted**: if an exported/public/shared symbol changed, inspect direct reverse dependencies and verify the highest-risk caller path.
+6. **Risk-focused probe**: for the touched domain, run the one additional check most likely to catch a real regression (auth path, serializer boundary, migration consumer, etc.).
+7. **Escalate to the heavy path** when the change is high-risk, UI-heavy, cycle-exit, release-like, or the targeted path leaves unresolved risk.
 
 Using "should", "probably", "seems to", or "looks correct" without running a verification command is a gate violation.
 
@@ -61,20 +61,17 @@ Valid verification paths:
 
 Main self-declared "verification PASS", "loop exit", or "done" is FORBIDDEN.
 
-A fresh agent — separate from the main execution context — must perform all 4 sub-checks and emit a `VERDICT:` line. The main agent may not run the sub-checks and then claim PASS in the same context. If no fresh agent is dispatched, the cycle is treated as incomplete regardless of how many tests passed.
+At cycle exit or release-like closure, a fresh agent — separate from the main execution context — must run the **heavy** verifier path from the matrix below and emit a `VERDICT:` line. The main agent may not run the heavy checks and then claim PASS in the same context. If no fresh agent is dispatched, the cycle is treated as incomplete regardless of how many tests passed.
 
 ---
 
-## 4 sub-check
+## Intent / risk matrix
 
-| # | Check | Passes when |
+| Route | When to use | Required evidence |
 |---|---|---|
-| 1 | **Prod-build smoke** | Playwright user-persona flow completes without console errors or HTTP 5xx |
-| 2 | **Stub sweep** | `git log --oneline -20` contains no unresolved `STUB:` markers; `grep -rn "STUB:" src/` returns zero matches |
-| 3 | **SoT alignment** | Every feature listed in the active spec/plan is traceable to staged code; no spec line is unimplemented |
-| 4 | **Spec-freeze re-check** | All visual modifiers (size tokens, spacing, color semantics) absorbed from the frozen spec; no open `TODO:` in UI layer |
-
-Any sub-check returning FAIL produces `VERDICT: BLOCK`.
+| **Targeted implementation verifier** | Standard implementation-stage proof where the change is executable but not high-risk, not UI-heavy, and not closing a cycle/release | Intent-match, relevant TDD evidence, changed-area checks, reverse-dep check for exported/shared symbols, and one risk-focused probe on the touched domain |
+| **Heavy 4-sub-check verifier** | Any high-risk domain (`auth`, `payment`, `migration`, `public API`, credential / permission policy, prod-mutation path), any UI-heavy change, any cycle exit, any release-like marker (`MILESTONE:`, `CYCLE-EXIT:`, `STUB-CLEAR:`), or any case where the targeted path cannot close the risk | All 4 heavy sub-checks from `references/4-sub-check.md` |
+| **Escalation rule** | The targeted path finds unresolved risk, reverse-dep uncertainty, or incomplete evidence | Re-dispatch on the heavy path before issuing `VERDICT: PASS` |
 
 ---
 
@@ -82,6 +79,7 @@ Any sub-check returning FAIL produces `VERDICT: BLOCK`.
 
 Every verification report — whether from a fresh-verifier dispatch or inline verification — must state:
 
+- **Route selected**: targeted implementation verifier or heavy 4-sub-check verifier, and why
 - **What was verified**: specific behavior, feature, or contract
 - **Commands run**: exact commands with output excerpts
 - **What passed**: list with evidence
@@ -122,10 +120,10 @@ Any response that does not match this pattern triggers `Q-VERIFIER-INVALID`.
 
 ## Model routing
 
-- **Sonnet baseline** — small cycles (<3 files changed, non-UI, no auth/payment/migration/public API).
-- **Opus** — multi-file changes, any UI change, high-risk domains (auth, payment, migration, public API).
+- **Sonnet baseline** — targeted implementation verifier on non-UI, non-release, non-high-risk changes.
+- **Opus** — heavy 4-sub-check verifier for UI-heavy, cycle-exit, release-like, or high-risk-domain changes.
 
-The `agents/pi-oven-verifier.md` profile defaults to `model: sonnet`. Opus promotion is automatic when the diff stat exceeds 3 files or the changed paths match `auth/`, `payment/`, `migration/`, or `api/public/`.
+The `agents/pi-oven-verifier.md` profile defaults to `model: sonnet`. Promote to Opus whenever the risk matrix selects the heavy path.
 
 ---
 

@@ -14,6 +14,8 @@
 // AC7 test's KNOWN-UNCOVERED block.
 // ---------------------------------------------------------------------------
 
+import { fingerprintExternalExecSecret } from "./gate-state";
+
 export type GitVerb = "commit" | "push";
 
 export interface ForbiddenMatch {
@@ -39,6 +41,14 @@ export interface InlineSecretMatch {
   kind: "inline-secret";
   rule: string;
   segment: string;
+  awsCredentials?: {
+    provider: "aws";
+    accessKeyId: string;
+    accessKeyKind: "temporary" | "permanent";
+    hasSessionToken: boolean;
+    sessionTokenFingerprint?: string;
+    secretAccessKeyFingerprint?: string;
+  };
 }
 
 export interface NormalizedCommand {
@@ -354,8 +364,12 @@ function externalMatch(
   return { kind, rule, segment };
 }
 
-function inlineSecretMatch(rule: string, segment: string): InlineSecretMatch {
-  return { kind: "inline-secret", rule, segment };
+function inlineSecretMatch(
+  rule: string,
+  segment: string,
+  awsCredentials?: InlineSecretMatch["awsCredentials"]
+): InlineSecretMatch {
+  return { kind: "inline-secret", rule, segment, ...(awsCredentials ? { awsCredentials } : {}) };
 }
 
 function findFlagValue(tokens: string[], flags: readonly string[]): string | null {
@@ -717,45 +731,98 @@ function detectExternalCommand(tokens: string[], segment: string): ExternalMatch
   return null;
 }
 
-function detectInlineSecret(rawTokens: string[], segment: string): InlineSecretMatch | null {
+function detectInlineSecrets(rawTokens: string[], segment: string): InlineSecretMatch[] {
   const tokens = stripLeadingEnv(rawTokens);
   const isDirectHttpieApi =
     ((tokens[0]?.split("/").pop()) ?? "") === "http" && classifyDirectApiCommand("http", tokens, segment) != null;
 
+  const matches: InlineSecretMatch[] = [];
+  let awsAccessKeyIndex: number | undefined;
+  let awsSecretAccessKeyIndex: number | undefined;
+  let awsSessionTokenIndex: number | undefined;
+  let awsAccessKeyId: string | null = null;
+  let awsAccessKeyKind: "temporary" | "permanent" | null = null;
+  let awsSessionTokenFingerprint: string | undefined;
+  let awsSecretAccessKeyFingerprint: string | undefined;
+
   for (let i = 0; i < rawTokens.length; i++) {
     const token = rawTokens[i];
-    if (/^AWS_ACCESS_KEY_ID=AKIA[0-9A-Z]{12,}$/i.test(token)) {
-      return inlineSecretMatch("inline-aws-access-key-id", segment);
+    const accessKeyMatch = token.match(/^AWS_ACCESS_KEY_ID=(AKIA|ASIA)([0-9A-Z]{12,})$/i);
+    if (accessKeyMatch) {
+      awsAccessKeyIndex = i;
+      awsAccessKeyId = accessKeyMatch[1].toUpperCase() + accessKeyMatch[2].toUpperCase();
+      awsAccessKeyKind = accessKeyMatch[1].toUpperCase() === "ASIA" ? "temporary" : "permanent";
+      continue;
     }
+    const secretAccessKeyMatch = token.match(/^AWS_SECRET_ACCESS_KEY=(.*)$/i);
+    if (secretAccessKeyMatch && isInlineLiteralValue(secretAccessKeyMatch[1])) {
+      awsSecretAccessKeyIndex = i;
+      awsSecretAccessKeyFingerprint = fingerprintExternalExecSecret(secretAccessKeyMatch[1]);
+      continue;
+    }
+    const sessionTokenMatch = token.match(/^AWS_SESSION_TOKEN=(.*)$/i);
+    if (sessionTokenMatch && isInlineLiteralValue(sessionTokenMatch[1])) {
+      awsSessionTokenIndex = i;
+      awsSessionTokenFingerprint = fingerprintExternalExecSecret(sessionTokenMatch[1]);
+      continue;
+    }
+  }
+
+  const recognizedAwsTokenIndexes = new Set<number>();
+  if (awsAccessKeyId && awsAccessKeyKind) {
+    if (awsAccessKeyIndex !== undefined) recognizedAwsTokenIndexes.add(awsAccessKeyIndex);
+    if (awsSecretAccessKeyIndex !== undefined) recognizedAwsTokenIndexes.add(awsSecretAccessKeyIndex);
+    if (awsSessionTokenIndex !== undefined) recognizedAwsTokenIndexes.add(awsSessionTokenIndex);
+    matches.push(
+      inlineSecretMatch("inline-aws-access-key-id", segment, {
+        provider: "aws",
+        accessKeyId: awsAccessKeyId,
+        accessKeyKind: awsAccessKeyKind,
+        hasSessionToken: awsSessionTokenFingerprint !== undefined,
+        ...(awsSessionTokenFingerprint ? { sessionTokenFingerprint: awsSessionTokenFingerprint } : {}),
+        ...(awsSecretAccessKeyFingerprint
+          ? { secretAccessKeyFingerprint: awsSecretAccessKeyFingerprint }
+          : {}),
+      })
+    );
+  }
+
+  for (let i = 0; i < rawTokens.length; i++) {
+    const token = rawTokens[i];
+    if (recognizedAwsTokenIndexes.has(i)) continue;
     if (isDirectHttpieApi) {
       const httpieAssignment = token.match(/^([^=\s]+)==(.*)$/);
       if (httpieAssignment != null) {
         if (/(?:secret|token|password)/i.test(httpieAssignment[1]) && isInlineLiteralValue(httpieAssignment[2])) {
-          return inlineSecretMatch("inline-secret-httpie-literal", segment);
+          matches.push(inlineSecretMatch("inline-secret-httpie-literal", segment));
         }
         continue;
       }
       if (inlineSecretHeaderLiteral(token, rawTokens[i + 1]) != null) {
-        return inlineSecretMatch("inline-secret-header", segment);
+        matches.push(inlineSecretMatch("inline-secret-header", segment));
+        continue;
       }
     }
     if (isSecretEnvAssignment(token) && isInlineLiteralValue(tokenValue(token, rawTokens[i + 1]))) {
-      return inlineSecretMatch("inline-secret-env", segment);
+      matches.push(inlineSecretMatch("inline-secret-env", segment));
+      continue;
     }
     if (/^--password(?:=.*)?$/i.test(token) && isInlineLiteralValue(tokenValue(token, rawTokens[i + 1]))) {
-      return inlineSecretMatch("inline-password-flag", segment);
+      matches.push(inlineSecretMatch("inline-password-flag", segment));
+      continue;
     }
     if (
-      /^--(?:access-token|secret-token|auth-token)(?:=.*)?$/i.test(token) &&
+      /^(?:--access-token|--secret-token|--auth-token)(?:=.*)?$/i.test(token) &&
       isInlineLiteralValue(tokenValue(token, rawTokens[i + 1]))
     ) {
-      return inlineSecretMatch("inline-token-flag", segment);
+      matches.push(inlineSecretMatch("inline-token-flag", segment));
+      continue;
     }
     if (inlineSecretHeaderValue(token, rawTokens[i + 1]) != null) {
-      return inlineSecretMatch("inline-secret-header", segment);
+      matches.push(inlineSecretMatch("inline-secret-header", segment));
     }
   }
-  return null;
+  return matches;
 }
 
 // --- Top-level entrypoint --------------------------------------------------
@@ -807,11 +874,8 @@ export function normalizeCommand(command: string, roots: NormalizeRoots = {}): N
     const rm = detectForbiddenRm(tokens, seg, roots);
     if (rm) forbiddenMatches.push(rm);
 
-    const inlineSecret = detectInlineSecret(rawTokens, seg);
-    if (inlineSecret) {
-      inlineSecretMatches.push(inlineSecret);
-      continue;
-    }
+    const inlineSecrets = detectInlineSecrets(rawTokens, seg);
+    if (inlineSecrets.length > 0) inlineSecretMatches.push(...inlineSecrets);
 
     const external = detectExternalCommand(tokens, seg);
     if (external) externalMatches.push(external);

@@ -378,20 +378,26 @@ async function decideForCommand(
   }
 
   // --- Audit logging ---
+  const auditCommand =
+    (normalized.inlineSecretMatches?.length ?? 0) > 0
+      ? "[redacted inline secret command]"
+      : command;
   if (decision.bypassed) {
     deps.logger.warn(
-      `pi-oven: PI_OVEN_GATE_BYPASS active — allowed gated command "${truncate(command)}" (recovery mode).`
+      `pi-oven: PI_OVEN_GATE_BYPASS active — allowed gated command "${truncate(auditCommand)}" (recovery mode).`
     );
   }
   if ((normalized.inlineSecretMatches?.length ?? 0) > 0) {
-    deps.logger.warn(`pi-oven: inline secret BLOCKED — command="${truncate(command)}"`);
+    deps.logger.warn(`pi-oven: inline secret BLOCKED — command="${truncate(auditCommand)}"`);
   }
   const externalKinds =
     (normalized.externalMatches?.length ?? 0) > 0
       ? normalized.externalMatches?.map((match) => match.kind).join(",") ?? "external"
       : undefined;
   if (externalKinds && decision.block) {
-    deps.logger.info(`pi-oven: external execution BLOCKED — kinds=${externalKinds} command="${truncate(command)}"`);
+    deps.logger.info(
+      `pi-oven: external execution BLOCKED — kinds=${externalKinds} command="${truncate(auditCommand)}"`
+    );
   }
   if (wantsPush) {
     const branch = normalized.pushTarget ?? fileConsent.branch ?? "(unknown)";
@@ -425,7 +431,7 @@ async function decideForCommand(
     if (decision.consumeExternalExecConsent && !consumed.externalOk) {
       if (externalKinds) {
         deps.logger.info(
-          `pi-oven: external execution BLOCKED — kinds=${externalKinds} reason=${consumed.reason} command="${truncate(command)}"`
+          `pi-oven: external execution BLOCKED — kinds=${externalKinds} reason=${consumed.reason} command="${truncate(auditCommand)}"`
         );
       }
       return {
@@ -435,7 +441,9 @@ async function decideForCommand(
     }
   }
   if (externalKinds && !decision.block) {
-    deps.logger.info(`pi-oven: external execution ALLOWED — kinds=${externalKinds} source=state command="${truncate(command)}"`);
+    deps.logger.info(
+      `pi-oven: external execution ALLOWED — kinds=${externalKinds} source=state command="${truncate(auditCommand)}"`
+    );
   }
 
   return { block: decision.block, reason: decision.reason };

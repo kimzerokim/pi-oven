@@ -7,7 +7,11 @@ import {
   writeShippedSkill,
 } from "../../helpers/installed-topology";
 import { SHIPPED_SKILL_NAMES, SHIPPED_SKILL_PATHS } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
-import { GateStateStore, type OwnershipTraceEntry } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
+import {
+  GateStateStore,
+  fingerprintExternalExecSecret,
+  type OwnershipTraceEntry,
+} from "../../../.omp/extensions/pi-oven-runtime/gate-state";
 
 
 const { default: piOvenPi } = await import("../../../.omp/extensions/pi-oven");
@@ -79,6 +83,13 @@ type PersistedExternalExecConsent = {
   sourceMessageId: string;
   scope: "read" | "access" | "mutation" | "all";
   remainingUses: number;
+  tempCredentials?: {
+    provider: "aws";
+    accessKeyId: string;
+    sessionTokenFingerprint: string;
+    secretAccessKeyFingerprint?: string;
+    expiresAt: number;
+  };
 };
 
 type PersistedAutonomousState = {
@@ -113,6 +124,27 @@ function consent(
     sourceMessageId,
     scope,
     remainingUses: 1,
+  };
+}
+
+const TEMP_CONSENT_EXPIRES_AT = 4_102_444_800_000;
+
+function tempConsent(
+  scope: PersistedExternalExecConsent["scope"],
+  sourceMessageId = "u1",
+  expiresAt = TEMP_CONSENT_EXPIRES_AT
+): PersistedExternalExecConsent {
+  return {
+    sourceMessageId,
+    scope,
+    remainingUses: 1,
+    tempCredentials: {
+      provider: "aws",
+      accessKeyId: "ASIAIOSFODNN7EXAMPLE",
+      sessionTokenFingerprint: fingerprintExternalExecSecret("session123"),
+      secretAccessKeyFingerprint: fingerprintExternalExecSecret("secret"),
+      expiresAt,
+    },
   };
 }
 
@@ -563,22 +595,17 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
   });
   for (const testCase of [
     {
-      name: "turn_start persists structured external execution consent with scope all",
-      entry: userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local"),
-      expected: consent("all"),
+      name: "turn_start persists structured local external execution consent with scope access",
+      entry: userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local"),
+      expected: consent("access"),
     },
     {
-      name: "turn_start persists structured external execution consent with scope mutation",
-      entry: userTextMessage("u2", "PI_OVEN_EXTERNAL_EXEC: once scope=mutation creds=local"),
-      expected: consent("mutation", "u2"),
-    },
-    {
-      name: "turn_start persists exact phrase external execution consent as scope all",
+      name: "turn_start persists structured temporary AWS external execution consent",
       entry: userTextMessage(
-        "u3",
-        "use my local credentials and execute the external command directly"
+        "u2",
+        `PI_OVEN_EXTERNAL_EXEC: once scope=mutation accessKeyId=ASIAIOSFODNN7EXAMPLE secretAccessKey=secret sessionToken=session123 expiresAt=${TEMP_CONSENT_EXPIRES_AT}`
       ),
-      expected: consent("all", "u3"),
+      expected: tempConsent("mutation", "u2"),
     },
   ] as const) {
     it(testCase.name, async () => {
@@ -589,16 +616,19 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     });
   }
 
-  it("turn_start rejects vague approval phrases as external execution consent", async () => {
+  it("turn_start rejects vague approval phrases, unsupported local scopes, and legacy exact-phrase consent", async () => {
     tempDir = makeTempDir();
     const runTurnStart = createTurnStartRunner(tempDir);
 
-    const persisted = await runTurnStart(
-      [userTextMessage("u4", "go ahead\ncontinue\njust do it")],
-      1
-    );
-
-    expect(persisted.externalExecConsent).toBeUndefined();
+    for (const entry of [
+      userTextMessage("u3", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local"),
+      userTextMessage("u4", "PI_OVEN_EXTERNAL_EXEC: once scope=mutation creds=local"),
+      userTextMessage("u5", "use my local credentials and execute the external command directly"),
+      userTextMessage("u6", "go ahead\ncontinue\njust do it"),
+    ]) {
+      const persisted = await runTurnStart([entry], 1);
+      expect(persisted.externalExecConsent).toBeUndefined();
+    }
   });
 
   it("turn_start clears prior external execution consent on a later user message without consent while preserving ownership state behavior", async () => {
@@ -609,7 +639,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
         "u1",
         [
           "자율 실행으로 큰 작업 진행해줘. kzk:explorer는 유지하고 spec 잡자 first.",
-          "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local",
+          "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local",
         ].join("\n")
       ),
     ];
@@ -648,12 +678,12 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     tempDir = makeTempDir();
     const runTurnStart = createTurnStartRunner(tempDir);
 
-    await runTurnStart([userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local")], 1);
+    await runTurnStart([userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local")], 1);
     const store = new GateStateStore(join(tempDir, ".pi-oven"));
     expect(await store.consumeExternalExecConsent("u1")).toBe("consumed");
 
     const persisted = await runTurnStart(
-      [userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local")],
+      [userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local")],
       2
     );
 
@@ -664,26 +694,26 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     tempDir = makeTempDir();
     const runTurnStart = createTurnStartRunner(tempDir);
     let branchEntries = [
-      userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local"),
+      userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local"),
     ];
 
     await runTurnStart(branchEntries, 1);
     const store = new GateStateStore(join(tempDir, ".pi-oven"));
     expect(await store.consumeExternalExecConsent("u1")).toBe("consumed");
     branchEntries = [
-      userTextMessage("u2", "PI_OVEN_EXTERNAL_EXEC: once scope=mutation creds=local"),
+      userTextMessage("u2", "PI_OVEN_EXTERNAL_EXEC: once scope=read creds=local"),
     ];
 
     const persisted = await runTurnStart(branchEntries, 2);
 
-    expect(persisted.externalExecConsent).toEqual(consent("mutation", "u2"));
+    expect(persisted.externalExecConsent).toEqual(consent("read", "u2"));
     expect(persisted.consumedExternalExecConsentMessageId).toBeUndefined();
   });
   it("turn_start clears prior external execution consent when the latest user message is attachment-only", async () => {
     tempDir = makeTempDir();
     const runTurnStart = createTurnStartRunner(tempDir);
     let branchEntries = [
-      userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local\nkzk:explorer"),
+      userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local\nkzk:explorer"),
     ];
 
     await runTurnStart(branchEntries, 1);

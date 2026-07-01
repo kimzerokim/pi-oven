@@ -16,7 +16,11 @@
 // ---------------------------------------------------------------------------
 
 import type { NormalizedCommand, ExternalCommandKind } from "./git-normalize";
-import type { BranchContractView, ExternalExecConsent } from "./gate-state";
+import {
+  isTemporaryCredentialWindowActive,
+  type BranchContractView,
+  type ExternalExecConsent,
+} from "./gate-state";
 
 export interface FsmStateData {
   active: boolean;
@@ -58,7 +62,7 @@ export interface GateDecision {
   bypassed?: boolean;
   /** True when a file consent should be consumed (single-use) on this allow. */
   consumeFileConsent?: boolean;
-  /** True when an external execution consent should be consumed (single-use) on this allow. */
+  /** True when the parent session must reconcile the external execution consent on this allow. */
   consumeExternalExecConsent?: boolean;
   /** Which consent source authorized a push (for audit). */
   consentSource?: ConsentSource;
@@ -114,19 +118,163 @@ function getRemainingSkillProofs(
   return { missingOwnershipSkills, unreadProofTargets };
 }
 
+function hasActiveTemporaryCredentialConsent(consent: ExternalExecConsent | undefined): boolean {
+  return (
+    consent?.tempCredentials !== undefined &&
+    consent.tempCredentials.sessionTokenFingerprint.length > 0 &&
+    isTemporaryCredentialWindowActive(consent.tempCredentials)
+  );
+}
+
 function matchesExternalConsent(
   consent: ExternalExecConsent | undefined,
-  kind: Exclude<ExternalCommandKind, "inline-secret">
+  match: NormalizedCommand["externalMatches"][number],
+  inlineSecretMatches: NormalizedCommand["inlineSecretMatches"]
 ): boolean {
-  if (!consent || consent.remainingUses < 1) return false;
-  switch (kind) {
+  if (!consent) return false;
+  if (consent.tempCredentials) {
+    if (!hasActiveTemporaryCredentialConsent(consent)) return false;
+  } else if (consent.remainingUses < 1) {
+    return false;
+  }
+
+  switch (match.kind) {
     case "external-read":
       return consent.scope === "read" || consent.scope === "all";
     case "external-session":
       return consent.scope === "access" || consent.scope === "all";
     case "external-mutation":
-      return consent.scope === "mutation" || consent.scope === "all";
+      return (
+        hasActiveTemporaryCredentialConsent(consent) &&
+        (consent.scope === "mutation" || consent.scope === "all") &&
+        tempInlineCredentialsAllowed(inlineSecretMatches, consent, true, match.segment)
+      );
   }
+}
+
+function getAwsInlineCredentials(
+  matches: NormalizedCommand["inlineSecretMatches"],
+  segment?: string
+): NonNullable<NormalizedCommand["inlineSecretMatches"][number]["awsCredentials"]> | undefined {
+  return matches.find((match) => match.awsCredentials && (segment === undefined || match.segment === segment))
+    ?.awsCredentials;
+}
+
+function hasUnrelatedInlineSecretMatches(
+  matches: NormalizedCommand["inlineSecretMatches"]
+): boolean {
+  return matches.some((match) => match.awsCredentials === undefined);
+}
+
+function tempInlineCredentialsAllowed(
+  matches: NormalizedCommand["inlineSecretMatches"],
+  consent: ExternalExecConsent | undefined,
+  requireSecretAccessKeyFingerprint: boolean = false,
+  segment?: string
+): boolean {
+  const awsCredentials = getAwsInlineCredentials(matches, segment);
+  if (!awsCredentials) return false;
+  if (
+    awsCredentials.accessKeyKind !== "temporary" ||
+    !awsCredentials.hasSessionToken ||
+    !awsCredentials.sessionTokenFingerprint
+  ) {
+    return false;
+  }
+  if (!consent?.tempCredentials || !hasActiveTemporaryCredentialConsent(consent)) return false;
+  if (consent.tempCredentials.accessKeyId !== awsCredentials.accessKeyId) return false;
+  if (consent.tempCredentials.sessionTokenFingerprint !== awsCredentials.sessionTokenFingerprint) {
+    return false;
+  }
+  const consentSecretAccessKeyFingerprint = consent.tempCredentials.secretAccessKeyFingerprint;
+  if (requireSecretAccessKeyFingerprint) {
+    return (
+      awsCredentials.secretAccessKeyFingerprint !== undefined &&
+      consentSecretAccessKeyFingerprint !== undefined &&
+      consentSecretAccessKeyFingerprint === awsCredentials.secretAccessKeyFingerprint
+    );
+  }
+  if (awsCredentials.secretAccessKeyFingerprint !== undefined) {
+    return (
+      consentSecretAccessKeyFingerprint !== undefined &&
+      consentSecretAccessKeyFingerprint === awsCredentials.secretAccessKeyFingerprint
+    );
+  }
+  return consentSecretAccessKeyFingerprint === undefined;
+}
+
+function inlineSecretBlockReason(
+  matches: NormalizedCommand["inlineSecretMatches"],
+  consent: ExternalExecConsent | undefined
+): string {
+  const rules = matches.map((m) => m.rule).join(", ");
+  const awsCredentials = getAwsInlineCredentials(matches);
+  if (!awsCredentials) {
+    return (
+      `pi-oven: inline secret literal blocked (${rules}). ` +
+      "Pasted credentials stay forbidden unless they are explicitly consented, unexpired AWS temporary credentials."
+    );
+  }
+  if (hasUnrelatedInlineSecretMatches(matches)) {
+    return (
+      `pi-oven: inline secret literal blocked (${rules}). ` +
+      "Unrelated inline secrets remain blocked even when AWS temporary credentials are otherwise consented."
+    );
+  }
+  if (awsCredentials.accessKeyKind === "permanent") {
+    return (
+      `pi-oven: inline secret literal blocked (${rules}). ` +
+      "Permanent AWS access keys remain blocked even with explicit external execution consent."
+    );
+  }
+  if (!awsCredentials.hasSessionToken || !awsCredentials.sessionTokenFingerprint) {
+    return (
+      `pi-oven: inline secret literal blocked (${rules}). ` +
+      "AWS temporary credentials require AWS_SESSION_TOKEN alongside the ASIA access key."
+    );
+  }
+  if (!consent?.tempCredentials) {
+    return (
+      `pi-oven: inline secret literal blocked (${rules}). ` +
+      "Pasted AWS temporary credentials require matching explicit consent with the same session token and expiresAt."
+    );
+  }
+  if (consent.tempCredentials.accessKeyId !== awsCredentials.accessKeyId) {
+    return (
+      `pi-oven: inline secret literal blocked (${rules}). ` +
+      "Pasted AWS temporary credentials must match the latest consented access key id."
+    );
+  }
+  if (consent.tempCredentials.sessionTokenFingerprint !== awsCredentials.sessionTokenFingerprint) {
+    return (
+      `pi-oven: inline secret literal blocked (${rules}). ` +
+      "Pasted AWS temporary credentials must match the latest consented session token."
+    );
+  }
+  if (awsCredentials.secretAccessKeyFingerprint !== undefined) {
+    if (consent.tempCredentials.secretAccessKeyFingerprint === undefined) {
+      return (
+        `pi-oven: inline secret literal blocked (${rules}). ` +
+        "Pasted AWS_SECRET_ACCESS_KEY values require consent that includes the same secret access key."
+      );
+    }
+    if (consent.tempCredentials.secretAccessKeyFingerprint !== awsCredentials.secretAccessKeyFingerprint) {
+      return (
+        `pi-oven: inline secret literal blocked (${rules}). ` +
+        "Pasted AWS temporary credentials must match the latest consented secret access key."
+      );
+    }
+  }
+  if (!hasActiveTemporaryCredentialConsent(consent)) {
+    return (
+      `pi-oven: inline secret literal blocked (${rules}). ` +
+      "The latest consented AWS temporary credentials are expired or incomplete."
+    );
+  }
+  return (
+    `pi-oven: inline secret literal blocked (${rules}). ` +
+    "Pasted credentials stay forbidden unless they are explicitly consented, unexpired AWS temporary credentials."
+  );
 }
 
 function requiredConsentScope(kind: Exclude<ExternalCommandKind, "inline-secret">): "read" | "access" | "mutation" {
@@ -142,10 +290,17 @@ function requiredConsentScope(kind: Exclude<ExternalCommandKind, "inline-secret"
 
 function externalConsentBlockReason(kind: Exclude<ExternalCommandKind, "inline-secret">): string {
   const scope = requiredConsentScope(kind);
+  if (kind === "external-mutation") {
+    return (
+      `pi-oven: ${kind} command blocked — matching explicit external execution consent is required. ` +
+      `Ask the user to send \`PI_OVEN_EXTERNAL_EXEC: scope=${scope} aws_access_key_id=ASIA... aws_secret_access_key=... aws_session_token=... expiresAt=<ISO-8601>\` ` +
+      "or `scope=all` with the same unexpired full temporary AWS credential bundle, then run the mutation command with that exact inline bundle. Local-credential consent cannot authorize mutation."
+    );
+  }
   return (
-    `pi-oven: ${kind} command blocked — explicit external execution consent is required. ` +
+    `pi-oven: ${kind} command blocked — matching explicit external execution consent is required. ` +
     `Ask the user to send \`PI_OVEN_EXTERNAL_EXEC: once scope=${scope} creds=local\` ` +
-    "(or a broader matching scope such as `scope=all`)."
+    `or \`PI_OVEN_EXTERNAL_EXEC: scope=${scope} aws_access_key_id=ASIA... aws_secret_access_key=... aws_session_token=... expiresAt=<ISO-8601>\`.`
   );
 }
 
@@ -176,14 +331,6 @@ export function decideGate(input: GateInput): GateDecision {
       reason: `pi-oven: forbidden command blocked (${rules}). This floor is always-on and is not lifted by PI_OVEN_GATE_BYPASS.`,
     };
   }
-  if (inlineSecretMatches.length > 0) {
-    const rules = inlineSecretMatches.map((m) => m.rule).join(", ");
-    return {
-      block: true,
-      reason: `pi-oven: inline secret literal blocked (${rules}). Pasted credentials stay forbidden even with explicit external execution consent.`,
-    };
-  }
-
   let consumeExternalExecConsent = false;
   if (externalMatches.length > 1) {
     return {
@@ -192,15 +339,42 @@ export function decideGate(input: GateInput): GateDecision {
         "pi-oven: multiple external subcommands in one bash call are blocked — split them so one consent use authorizes exactly one direct external command.",
     };
   }
-  if (externalMatches.length > 0) {
-    const unmet = externalMatches.find((match) => !matchesExternalConsent(externalExecConsent, match.kind));
-    if (unmet) {
+  const unmetExternalConsent = externalMatches.find(
+    (match) => !matchesExternalConsent(externalExecConsent, match, inlineSecretMatches)
+  );
+  const awsInlineCredentials = getAwsInlineCredentials(inlineSecretMatches);
+  if (inlineSecretMatches.length > 0) {
+    if (hasUnrelatedInlineSecretMatches(inlineSecretMatches)) {
       return {
         block: true,
-        reason: externalConsentBlockReason(unmet.kind),
+        reason: inlineSecretBlockReason(inlineSecretMatches, externalExecConsent),
       };
     }
-    consumeExternalExecConsent = true;
+    if (
+      awsInlineCredentials?.accessKeyKind === "temporary" &&
+      awsInlineCredentials.hasSessionToken &&
+      unmetExternalConsent
+    ) {
+      return {
+        block: true,
+        reason: externalConsentBlockReason(unmetExternalConsent.kind),
+      };
+    }
+    if (!tempInlineCredentialsAllowed(inlineSecretMatches, externalExecConsent)) {
+      return {
+        block: true,
+        reason: inlineSecretBlockReason(inlineSecretMatches, externalExecConsent),
+      };
+    }
+  }
+  if (unmetExternalConsent) {
+    return {
+      block: true,
+      reason: externalConsentBlockReason(unmetExternalConsent.kind),
+    };
+  }
+  if (externalMatches.length > 0) {
+    consumeExternalExecConsent = !hasActiveTemporaryCredentialConsent(externalExecConsent);
   }
 
   const wantsCommit = normalized.gitVerbs.includes("commit");
@@ -307,13 +481,13 @@ export function decideGate(input: GateInput): GateDecision {
     };
   }
 
-  // wantsCommit
-  if (fsm.state.gateCache.commit === "PASS" && fsm.state.gateCache.regression === "PASS") {
+  const regressionStatus = fsm.state.gateCache.regression;
+  if (fsm.state.gateCache.commit === "PASS" && (regressionStatus === undefined || regressionStatus === "PASS")) {
     return { block: false, consumeExternalExecConsent };
   }
   return {
     block: true,
     reason:
-      "pi-oven: git commit blocked — full regression gate has not PASSED (requires gateCache.commit === PASS and gateCache.regression === PASS).",
+      "pi-oven: git commit blocked — pre-commit gate has not PASSED (requires gateCache.commit === PASS and, when the verifier risk matrix selects the heavy path, gateCache.regression === PASS).",
   };
 }

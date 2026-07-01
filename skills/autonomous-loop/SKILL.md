@@ -182,14 +182,15 @@ After two consecutive fix attempts on the same surface have failed, dispatch `pi
 Before declaring any cycle or loop complete:
 
 1. Dispatch `pi-oven:verifier` with `model="opus"`
-2. Verifier runs 4 mandatory checks:
+2. The verifier selects the **heavy** path from `fresh-verifier`'s intent/risk matrix — cycle exit is always heavy
+3. Heavy-path checks are the 4 sub-checks:
    - Prod-build smoke (build passes with zero errors)
    - Stub sweep (no `TODO`, `FIXME`, placeholder stubs in touched files)
    - SoT alignment (plan checkboxes match actual file state)
    - Spec-freeze re-check (no locked decisions overridden)
-3. **PASS required** — partial pass is not accepted
-4. On FAIL: re-execute the failing check's fix, then re-run verifier
-5. 2 consecutive verifier FAILs → append `Q-VERIFIER-FAIL` to `docs/harness/user-queue.md` and halt to user
+4. **PASS required** — partial pass is not accepted
+5. On FAIL: re-execute the failing check's fix, then re-run verifier
+6. 2 consecutive verifier FAILs → append `Q-VERIFIER-FAIL` to `docs/harness/user-queue.md` and halt to user
 
 Main cannot self-declare PASS. Only `pi-oven:verifier` `VERDICT: PASS` output counts.
 

@@ -10,7 +10,12 @@ import {
   toGateFsmView,
   type GateHandlerDeps,
 } from "../../../.omp/extensions/pi-oven-runtime/gate-handler";
-import { GateStateStore, type FsmState, type OwnershipTraceEntry } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
+import {
+  GateStateStore,
+  fingerprintExternalExecSecret,
+  type FsmState,
+  type OwnershipTraceEntry,
+} from "../../../.omp/extensions/pi-oven-runtime/gate-state";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-gh-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -67,6 +72,22 @@ function consent(
   };
 }
 
+function tempConsent(
+  scope: StoredConsent["scope"],
+  overrides: Partial<NonNullable<StoredConsent["tempCredentials"]>> = {}
+): StoredConsent {
+  return consent(scope, {
+    tempCredentials: {
+      provider: "aws",
+      accessKeyId: "ASIAIOSFODNN7EXAMPLE",
+      sessionTokenFingerprint: fingerprintExternalExecSecret("session123"),
+      secretAccessKeyFingerprint: fingerprintExternalExecSecret("secret"),
+      expiresAt: Date.now() + 60_000,
+      ...overrides,
+    },
+  });
+}
+
 function activeState(externalExecConsent?: StoredConsent): FsmState {
   return {
     active: true,
@@ -112,7 +133,14 @@ describe("gateHandler — commit gate (AC1)", () => {
     expect(r?.reason).toBeDefined();
   });
 
-  it("allows git commit when active and commit+regression cache == PASS", async () => {
+  it("allows git commit when active and heavy-verifier cache is absent", async () => {
+    writeState(dir, { active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 });
+    const h = createGateHandler(await deps(dir));
+    const r = await h(bashEvent("git commit -m x"));
+    expect(r?.block ?? false).toBe(false);
+  });
+
+  it("allows git commit when active and commit+heavy-verifier cache == PASS", async () => {
     writeState(
       dir,
       { active: true, gateCache: { commit: "PASS", regression: "PASS" }, version: 1, schemaVersion: 1 }
@@ -121,8 +149,8 @@ describe("gateHandler — commit gate (AC1)", () => {
     const r = await h(bashEvent("git commit -m x"));
     expect(r?.block ?? false).toBe(false);
   });
- 
-  it("blocks git commit when active and regression cache != PASS", async () => {
+
+  it("blocks git commit when active and heavy-verifier cache != PASS", async () => {
     writeState(
       dir,
       { active: true, gateCache: { commit: "PASS", regression: "FAIL" }, version: 1, schemaVersion: 1 }
@@ -285,12 +313,152 @@ describe("gateHandler — external execution consent", () => {
     await expectStoredConsent(dir, consent("read", { sourceMessageId: "u2" }));
   });
 
+  it("allows matching temporary AWS credential consent in non-parent sessions until expiry", async () => {
+    const storedConsent = tempConsent("read");
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(
+      bashEvent(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws s3 ls"
+      )
+    );
+
+    expect(result?.block ?? false).toBe(false);
+    await expectStoredConsent(dir, storedConsent);
+  });
+  it("redacts inline-secret commands from audit logs on allowed temporary-credential commands", async () => {
+    const storedConsent = tempConsent("read");
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(
+      bashEvent(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws s3 ls"
+      )
+    );
+
+    expect(result?.block ?? false).toBe(false);
+    const rendered = d._logger.lines.map((line) => line.msg).join("\n");
+    expect(rendered).toContain("[redacted inline secret command]");
+    expect(rendered).not.toContain("AWS_SECRET_ACCESS_KEY=secret");
+    expect(rendered).not.toContain("AWS_SESSION_TOKEN=session123");
+    expect(rendered).not.toContain("session123");
+  });
+
+  it("redacts non-AWS inline secrets from blocked audit logs", async () => {
+    writeState(dir, activeState(consent("read")));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(bashEvent("API_TOKEN=abc123 aws s3 ls"));
+
+    expect(result?.block).toBe(true);
+    const rendered = d._logger.lines.map((line) => line.msg).join("\n");
+    expect(rendered).toContain("[redacted inline secret command]");
+    expect(rendered).not.toContain("API_TOKEN=abc123");
+    expect(rendered).not.toContain("abc123");
+  });
+
+  it("allows mutation commands that actually use the consented temporary bundle", async () => {
+    const storedConsent = tempConsent("mutation");
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(
+      bashEvent(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws s3 cp ./artifact.tgz s3://example-bucket/artifact.tgz"
+      )
+    );
+
+    expect(result?.block ?? false).toBe(false);
+    await expectStoredConsent(dir, storedConsent);
+  });
+
+  it("blocks mutation commands when the temporary bundle appears only in an earlier shell segment", async () => {
+    const storedConsent = tempConsent("mutation");
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(
+      bashEvent(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123; aws s3 cp ./artifact.tgz s3://example-bucket/artifact.tgz"
+      )
+    );
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/external-mutation/i);
+    await expectStoredConsent(dir, storedConsent);
+  });
+
+  it("blocks mutation commands when stored temporary consent omitted the secret access key fingerprint", async () => {
+    const storedConsent = tempConsent("mutation", { secretAccessKeyFingerprint: undefined });
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(
+      bashEvent(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws s3 cp ./artifact.tgz s3://example-bucket/artifact.tgz"
+      )
+    );
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/aws_secret_access_key|temporary credential bundle|external-mutation/i);
+    await expectStoredConsent(dir, storedConsent);
+  });
+
+  it("blocks mutation commands when the inline temporary credential bundle omits AWS_SECRET_ACCESS_KEY", async () => {
+    const storedConsent = tempConsent("mutation");
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(
+      bashEvent(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SESSION_TOKEN=session123 aws s3 cp ./artifact.tgz s3://example-bucket/artifact.tgz"
+      )
+    );
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/aws_secret_access_key|temporary credential bundle|external-mutation/i);
+    await expectStoredConsent(dir, storedConsent);
+  });
+
   for (const testCase of [
     {
       name: "does not consume mismatched mutation consent for `aws s3 ls`",
       command: "aws s3 ls",
       storedConsent: consent("mutation"),
       reason: /external-read/i,
+    },
+    {
+      name: "blocks deploy script when stored local mutation consent lacks temporary credentials",
+      command: "./scripts/deploy.sh --region singapore --warp on",
+      storedConsent: consent("mutation"),
+      reason: /Local-credential consent cannot authorize mutation|external-mutation/i,
+    },
+    {
+      name: "blocks deploy script when stored local all-scope consent lacks temporary credentials",
+      command: "./scripts/deploy.sh --region singapore --warp on",
+      storedConsent: consent("all"),
+      reason: /Local-credential consent cannot authorize mutation|external-mutation/i,
+    },
+    {
+      name: "blocks deploy script when stored temporary mutation consent does not use the consented temp bundle",
+      command: "./scripts/deploy.sh --region singapore --warp on",
+      storedConsent: tempConsent("mutation"),
+      reason: /exact temporary credential bundle inline|external-mutation/i,
+    },
+    {
+      name: "blocks deploy script when stored temporary all-scope consent does not use the consented temp bundle",
+      command: "./scripts/deploy.sh --region singapore --warp on",
+      storedConsent: tempConsent("all"),
+      reason: /exact temporary credential bundle inline|external-mutation/i,
     },
     {
       name: "blocks chained external subcommands without consuming consent",

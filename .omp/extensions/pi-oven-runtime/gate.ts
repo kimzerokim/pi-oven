@@ -122,6 +122,7 @@ function hasActiveTemporaryCredentialConsent(consent: ExternalExecConsent | unde
   return (
     consent?.tempCredentials !== undefined &&
     consent.tempCredentials.sessionTokenFingerprint.length > 0 &&
+    (consent.tempCredentials.secretAccessKeyFingerprint?.length ?? 0) > 0 &&
     isTemporaryCredentialWindowActive(consent.tempCredentials)
   );
 }
@@ -140,9 +141,17 @@ function matchesExternalConsent(
 
   switch (match.kind) {
     case "external-read":
-      return consent.scope === "read" || consent.scope === "all";
+      return (
+        (consent.scope === "read" || consent.scope === "all") &&
+        (!consent.tempCredentials ||
+          tempInlineCredentialsAllowed(inlineSecretMatches, consent, true, match.segment))
+      );
     case "external-session":
-      return consent.scope === "access" || consent.scope === "all";
+      return (
+        (consent.scope === "access" || consent.scope === "all") &&
+        (!consent.tempCredentials ||
+          tempInlineCredentialsAllowed(inlineSecretMatches, consent, true, match.segment))
+      );
     case "external-mutation":
       return (
         hasActiveTemporaryCredentialConsent(consent) &&
@@ -169,7 +178,7 @@ function hasUnrelatedInlineSecretMatches(
 function tempInlineCredentialsAllowed(
   matches: NormalizedCommand["inlineSecretMatches"],
   consent: ExternalExecConsent | undefined,
-  requireSecretAccessKeyFingerprint: boolean = false,
+  requireSecretAccessKeyFingerprint: boolean = true,
   segment?: string
 ): boolean {
   const awsCredentials = getAwsInlineCredentials(matches, segment);
@@ -288,8 +297,17 @@ function requiredConsentScope(kind: Exclude<ExternalCommandKind, "inline-secret"
   }
 }
 
-function externalConsentBlockReason(kind: Exclude<ExternalCommandKind, "inline-secret">): string {
+function externalConsentBlockReason(
+  kind: Exclude<ExternalCommandKind, "inline-secret">,
+  consent: ExternalExecConsent | undefined
+): string {
   const scope = requiredConsentScope(kind);
+  if (consent?.tempCredentials) {
+    return (
+      `pi-oven: ${kind} command blocked — matching explicit external execution consent is required. ` +
+      "The latest consented AWS temporary credentials only authorize commands that carry the exact same unexpired inline bundle on the same shell segment; ambient or local credentials cannot be reused."
+    );
+  }
   if (kind === "external-mutation") {
     return (
       `pi-oven: ${kind} command blocked — matching explicit external execution consent is required. ` +
@@ -357,7 +375,7 @@ export function decideGate(input: GateInput): GateDecision {
     ) {
       return {
         block: true,
-        reason: externalConsentBlockReason(unmetExternalConsent.kind),
+        reason: externalConsentBlockReason(unmetExternalConsent.kind, externalExecConsent),
       };
     }
     if (!tempInlineCredentialsAllowed(inlineSecretMatches, externalExecConsent)) {
@@ -370,7 +388,7 @@ export function decideGate(input: GateInput): GateDecision {
   if (unmetExternalConsent) {
     return {
       block: true,
-      reason: externalConsentBlockReason(unmetExternalConsent.kind),
+      reason: externalConsentBlockReason(unmetExternalConsent.kind, externalExecConsent),
     };
   }
   if (externalMatches.length > 0) {

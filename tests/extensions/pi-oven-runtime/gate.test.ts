@@ -243,6 +243,8 @@ describe("decideGate — external execution consent", () => {
     "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws s3 ls";
   const tempMutationCommand =
     "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws s3 cp ./artifact.tgz s3://example-bucket/artifact.tgz";
+  const tempSessionCommand =
+    "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws sts assume-role --role-arn x";
 
   it("blocks `aws sts assume-role --role-arn x` by default even when FSM is ABSENT", () => {
     const r = decideGate(input("aws sts assume-role --role-arn x", { fsm: { kind: "ABSENT" } }));
@@ -260,6 +262,27 @@ describe("decideGate — external execution consent", () => {
     );
     expect(r.block).toBe(false);
     expect(r.consumeExternalExecConsent).toBe(true);
+  });
+  it("allows external-session commands when the exact temporary bundle prefixes the same shell segment", () => {
+    const allowed = decideGate(
+      input(tempSessionCommand, {
+        fsm: { kind: "ABSENT" },
+        externalExecConsent: tempConsent("access"),
+      })
+    );
+    expect(allowed.block).toBe(false);
+    expect(allowed.consumeExternalExecConsent).toBeFalsy();
+  });
+
+  it("blocks external-session commands when temporary consent falls back to ambient credentials", () => {
+    const blocked = decideGate(
+      input("aws sts assume-role --role-arn x", {
+        fsm: { kind: "ABSENT" },
+        externalExecConsent: tempConsent("access"),
+      })
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/exact same unexpired inline bundle|external-session/i);
   });
 
   it("blocks external execution when consent is exhausted", () => {
@@ -300,6 +323,29 @@ describe("decideGate — external execution consent", () => {
     expect(allowed.block).toBe(false);
     expect(allowed.consumeExternalExecConsent).toBeFalsy();
   });
+  it("blocks external-read commands when temporary consent falls back to ambient credentials", () => {
+    const blocked = decideGate(
+      input("aws s3 ls", {
+        externalExecConsent: tempConsent("read"),
+      })
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/exact same unexpired inline bundle|external-read/i);
+  });
+
+  it("blocks external-read commands when access key + session token omit AWS_SECRET_ACCESS_KEY", () => {
+    const blocked = decideGate(
+      input(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SESSION_TOKEN=session123 aws s3 ls",
+        {
+          externalExecConsent: tempConsent("read", { secretAccessKeyFingerprint: undefined }),
+        }
+      )
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/exact same unexpired inline bundle|external-read|AWS_SECRET_ACCESS_KEY/i);
+  });
+
 
   it("blocks expired AWS temporary credentials", () => {
     const blocked = decideGate(
@@ -334,7 +380,7 @@ describe("decideGate — external execution consent", () => {
       )
     );
     expect(blocked.block).toBe(true);
-    expect(blocked.reason).toMatch(/session token/i);
+    expect(blocked.reason).toMatch(/exact same unexpired inline bundle|ambient or local credentials cannot be reused/i);
   });
   it("blocks pasted AWS_SECRET_ACCESS_KEY values when consent omitted its fingerprint", () => {
     const blocked = decideGate(
@@ -343,8 +389,23 @@ describe("decideGate — external execution consent", () => {
       })
     );
     expect(blocked.block).toBe(true);
-    expect(blocked.reason).toMatch(/secret access key|AWS_SECRET_ACCESS_KEY/i);
+    expect(blocked.reason).toMatch(/exact same unexpired inline bundle|ambient or local credentials cannot be reused/i);
   });
+
+  it("blocks external-session commands when access key + session token omit AWS_SECRET_ACCESS_KEY", () => {
+    const blocked = decideGate(
+      input(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SESSION_TOKEN=session123 aws sts assume-role --role-arn x",
+        {
+          fsm: { kind: "ABSENT" },
+          externalExecConsent: tempConsent("access", { secretAccessKeyFingerprint: undefined }),
+        }
+      )
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/exact same unexpired inline bundle|external-session|AWS_SECRET_ACCESS_KEY/i);
+  });
+
 
   it("allows mutation commands when the full temporary bundle prefixes the same shell segment", () => {
     const allowed = decideGate(

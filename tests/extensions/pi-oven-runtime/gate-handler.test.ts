@@ -328,6 +328,78 @@ describe("gateHandler — external execution consent", () => {
     expect(result?.block ?? false).toBe(false);
     await expectStoredConsent(dir, storedConsent);
   });
+  it("blocks external-read commands when temporary consent would fall back to ambient credentials", async () => {
+    const storedConsent = tempConsent("read");
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(bashEvent("aws s3 ls"));
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/exact same unexpired inline bundle|external-read/i);
+    await expectStoredConsent(dir, storedConsent);
+  });
+
+  it("blocks external-read commands when access key + session token omit AWS_SECRET_ACCESS_KEY", async () => {
+    const storedConsent = tempConsent("read", { secretAccessKeyFingerprint: undefined });
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(
+      bashEvent("AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SESSION_TOKEN=session123 aws s3 ls")
+    );
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/exact same unexpired inline bundle|external-read|AWS_SECRET_ACCESS_KEY/i);
+    await expectStoredConsent(dir, storedConsent);
+  });
+
+
+  it("allows external-session commands when the exact temporary bundle prefixes the same shell segment", async () => {
+    const storedConsent = tempConsent("access");
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(
+      bashEvent(
+        "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 aws sts assume-role --role-arn x"
+      )
+    );
+
+    expect(result?.block ?? false).toBe(false);
+    await expectStoredConsent(dir, storedConsent);
+  });
+
+  it("blocks external-session commands when temporary consent would fall back to ambient credentials", async () => {
+    const storedConsent = tempConsent("access");
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(bashEvent("aws sts assume-role --role-arn x"));
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/exact same unexpired inline bundle|external-session/i);
+    await expectStoredConsent(dir, storedConsent);
+  });
+
+  it("blocks external-session commands when access key + session token omit AWS_SECRET_ACCESS_KEY", async () => {
+    const storedConsent = tempConsent("access", { secretAccessKeyFingerprint: undefined });
+    writeState(dir, activeState(storedConsent));
+    const d = await deps(dir);
+    const handler = createGateHandler({ ...d, isParentSession: false });
+
+    const result = await handler(
+      bashEvent("AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SESSION_TOKEN=session123 aws sts assume-role --role-arn x")
+    );
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/exact same unexpired inline bundle|external-session|AWS_SECRET_ACCESS_KEY/i);
+    await expectStoredConsent(dir, storedConsent);
+  });
   it("redacts inline-secret commands from audit logs on allowed temporary-credential commands", async () => {
     const storedConsent = tempConsent("read");
     writeState(dir, activeState(storedConsent));

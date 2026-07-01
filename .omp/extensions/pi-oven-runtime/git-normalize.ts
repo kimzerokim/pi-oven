@@ -168,12 +168,27 @@ function splitSubCommands(input: string): string[] {
   return parts.map((p) => p.trim()).filter((p) => p.length > 0);
 }
 
+const LEADING_ENV_ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
+
 /** Strip leading `env` keyword and any leading `VAR=val` assignment tokens. */
 function stripLeadingEnv(tokens: string[]): string[] {
   let i = 0;
   if (tokens[i] === "env") i++;
-  while (i < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(tokens[i])) i++;
+  while (i < tokens.length && LEADING_ENV_ASSIGNMENT.test(tokens[i])) i++;
   return tokens.slice(i);
+}
+
+function readLeadingEnvAssignments(tokens: string[]): Record<string, string> {
+  let i = 0;
+  if (tokens[i] === "env") i++;
+  const env: Record<string, string> = {};
+  while (i < tokens.length) {
+    const match = tokens[i].match(LEADING_ENV_ASSIGNMENT);
+    if (!match) break;
+    env[match[1]] = match[2];
+    i++;
+  }
+  return env;
 }
 
 const INTERPRETERS: ReadonlySet<string> = new Set(["bash", "sh", "zsh", "dash"]);
@@ -196,6 +211,73 @@ function unwrapInterpreter(tokens: string[]): string | null {
     if (!t.startsWith("-")) break; // first non-flag positional reached without -c
   }
   return null;
+}
+
+interface GitVerbEnvLookupState {
+  sawVerb: boolean;
+  hasValue: boolean;
+  value?: string;
+  consistent: boolean;
+}
+
+function collectLeadingEnvVarForGitVerb(
+  segment: string,
+  verb: GitVerb,
+  name: string,
+  inheritedEnv: Readonly<Record<string, string>>,
+  state: GitVerbEnvLookupState
+): void {
+  if (!state.consistent) return;
+  const rawTokens = tokenize(segment);
+  const localEnv = readLeadingEnvAssignments(rawTokens);
+  const effectiveEnv =
+    Object.keys(localEnv).length > 0
+      ? { ...inheritedEnv, ...localEnv }
+      : inheritedEnv;
+  const tokens = stripLeadingEnv(rawTokens);
+  if (tokens.length === 0) return;
+
+  const git = detectGitVerb(tokens);
+  if (git?.verb === verb) {
+    state.sawVerb = true;
+    if (!Object.prototype.hasOwnProperty.call(effectiveEnv, name)) {
+      state.consistent = false;
+      return;
+    }
+    const value = effectiveEnv[name];
+    if (!state.hasValue) {
+      state.hasValue = true;
+      state.value = value;
+    } else if (state.value !== value) {
+      state.consistent = false;
+      return;
+    }
+  }
+
+  const innerScript = unwrapInterpreter(tokens);
+  if (innerScript != null) {
+    for (const innerSub of splitSubCommands(innerScript)) {
+      collectLeadingEnvVarForGitVerb(innerSub, verb, name, effectiveEnv, state);
+      if (!state.consistent) return;
+    }
+  }
+}
+
+export function getLeadingEnvVarForGitVerb(
+  command: string,
+  verb: GitVerb,
+  name: string
+): string | undefined {
+  const state: GitVerbEnvLookupState = {
+    sawVerb: false,
+    hasValue: false,
+    consistent: true,
+  };
+  for (const sub of splitSubCommands(command)) {
+    collectLeadingEnvVarForGitVerb(sub, verb, name, {}, state);
+    if (!state.consistent) return undefined;
+  }
+  return state.sawVerb && state.hasValue ? state.value : undefined;
 }
 
 /**

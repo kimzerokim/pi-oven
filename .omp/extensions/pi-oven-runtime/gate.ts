@@ -495,7 +495,8 @@ export function decideGate(input: GateInput): GateDecision {
     return {
       block: true,
       consentSource: "none",
-      reason: "pi-oven: git push blocked — no valid push consent. Set PI_OVEN_PUSH_CONSENT=<ref> inline or grant a .pi-oven/state/push-consent.json file.",
+      reason:
+        "pi-oven: git push blocked — no valid push consent. Run `PI_OVEN_PUSH_CONSENT=<ref> git push ...` in the same command, or create `<cwd>/.pi-oven/state/push-consent.json`.",
     };
   }
 

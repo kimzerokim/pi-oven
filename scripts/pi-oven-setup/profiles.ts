@@ -95,7 +95,8 @@ const QA_TESTER_TOOLS = [
 
 /**
  * Profile A — Release default.
- * Benchmark + cost-optimized heterogeneous routing.
+ * Balanced heterogeneous routing for day-to-day use, not the "maximum fan-out"
+ * profile.
  * - anthropic/claude-opus-4-8: critic, planner, security-reviewer, oracle.
  * - openai-codex/gpt-5.4: executor, debugger, test-engineer, architect, metis, data-runner.
  * - openai-codex/gpt-5.4-mini: multimodal-looker, qa-tester.
@@ -341,7 +342,9 @@ export const PROFILE_C_FALLBACK_CHAINS: Record<string, string[]> = {
 };
 
 /**
- * Profile B — openai-codex-only, performance-first.
+ * Profile B — openai-codex-only, wide-fan-out performance profile.
+ * Pins all 24 roles to codex-family selectors so large executor/explorer/review
+ * waves do not depend on mixed-provider auth.
  * Model tier and thinking effort are deliberately decoupled:
  *   - gpt-5.5 for implementation, causal investigation, review, planning,
  *     architecture, advisory, and deep research roles.
@@ -350,7 +353,8 @@ export const PROFILE_C_FALLBACK_CHAINS: Record<string, string[]> = {
  *     rollouts where extra latency buys correctness.
  *   - medium for retrieval, docs, writing, git, and vision fan-out.
  * registry_alternate = opencode-zen/ mirror of the same model id.
- * tools and blocked_tools copied verbatim from PROFILE_A.
+ * This biases routing for aggressive subagent batching, but actual worker count
+ * still depends on omp/runtime/provider limits.
  */
 export const PROFILE_B: ProfileMap = {
   executor: {
@@ -709,14 +713,18 @@ export const PROFILE_C: ProfileMap = {
 };
 
 /**
- * Profile D — opencode-zen only, "quality tone" (kimi-k2.6 heavy).
- * Spec: all 24 roles use exclusively enabled opencode-zen models.
+ * Profile D — opencode-zen-only, wide-fan-out local-provider profile.
+ * Spec: all 24 roles use exclusively enabled opencode-zen models, which keeps
+ * large waves inside one provider family when users want aggressive fan-out
+ * without external-provider auth dependencies.
  * Tiering rule (thinkingLevel copied verbatim from PROFILE_A):
  *   xhigh + high roles               → opencode-zen/kimi-k2.6 (primary), opencode-zen/glm-5.1 (alt)
- *   medium NON-vision roles           → opencode-zen/minimax-m2.5 (primary), opencode-zen/glm-5.1 (alt)
+ *   medium NON-vision roles         → opencode-zen/minimax-m2.5 (primary), opencode-zen/glm-5.1 (alt)
  *   VISION roles (multimodal-looker, qa-tester) → opencode-zen/gemini-3-flash (primary), opencode-zen/minimax-m2.5 (alt)
- *   low (git-master)                  → opencode-zen/minimax-m2.5 (primary), opencode-zen/glm-5.1 (alt)
+ *   low (git-master)                → opencode-zen/minimax-m2.5 (primary), opencode-zen/glm-5.1 (alt)
  * tools and blocked_tools copied verbatim from PROFILE_A.
+ * This biases routing for aggressive subagent batching, but actual worker count
+ * still depends on omp/runtime/provider limits.
  */
 export const PROFILE_D: ProfileMap = {
   executor: {

@@ -158,7 +158,7 @@ export async function runApply(
         projectRoot: cwd,
         spawnFn: opts.spawnFn,
       });
-      scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles + modelRoles + retry.fallbackChains; Profile B includes reasoning-effort suffixes)\n`;
+      scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles pinned + modelRoles + retry.fallbackChains; Profile B includes reasoning-effort suffixes)\n`;
       projectRemediationLine =
         "Project scope kept ~/.omp/agent/config.yml untouched.\n" +
         formatStandaloneTruthSignals(standaloneSignals).join("\n") +
@@ -189,7 +189,7 @@ export async function runApply(
       // Does NOT touch task.agentModelOverrides for A (Spec E boundary preserved).
       await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });
       memoryConfigLine =
-        "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled\n";
+        "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled for subagent coordination\n";
 
       // Enable omp's gated tools so the agents' tool mandates have teeth
       // (inspect_image defaults false; the rest are written defensively). Global
@@ -233,6 +233,7 @@ export async function runApply(
       projectRemediationLine +
       memoryConfigLine +
       toolsEnabledLine +
+      "Note: setup biases routing and prerequisites for wide pi-oven subagent fan-out; actual concurrent worker count still depends on omp/runtime/provider limits.\n" +
       `Setup complete.\n`,
   };
 }
@@ -247,7 +248,7 @@ export async function runRepairPrereqs(opts: {
     exitCode: 0,
     output:
       "Machine-global prerequisites repaired.\n" +
-      "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled\n" +
+      "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled for subagent coordination\n" +
       "✓ tools enabled: inspect_image, web_search, lsp, ast_grep, browser, debug\n" +
       "Repair complete.\n",
   };

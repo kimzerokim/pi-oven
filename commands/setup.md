@@ -94,10 +94,12 @@ Map the choice to `<scope>`: Option 1 → `global` (today's behavior), Option 2 
 
 **What scope changes:**
 
-- **`global` (default)** — exactly today's behavior. Per-role overrides (profiles B/C/D) and `modelRoles`/`retry.fallbackChains` go to the user-global `~/.omp/agent/config.yml`; language + the setup-complete marker go to `~/.pi-oven/config.json`. A global-scope run is also the only path that writes the machine-global tool flags plus the memory/async/LSP prerequisites.
+- **`global` (default)** — exactly today's behavior. Per-role overrides (profiles B/C/D) and `modelRoles`/`retry.fallbackChains` go to the user-global `~/.omp/agent/config.yml`; language + the setup-complete marker go to `~/.pi-oven/config.json`. A global-scope run is also the only path that writes the machine-global tool flags plus the memory/async/LSP prerequisites that pi-oven uses for wide subagent fan-out.
 - **`project`** — per-role overrides for **EVERY profile (A, B, C, and D — all 24 roles)**, plus `modelRoles` and `retry.fallbackChains`, are written to `<cwd>/.omp/settings.json` (omp reads this at project level and it wins per-role over global). Language + the setup-complete marker go to `<cwd>/.pi-oven/config.json`. Memory/async/LSP infra, tool enablement, and sibling-skill suppression stay global-only and are NOT written under project scope.
 
 `.omp/settings.json` is **NOT auto-committed and NOT auto-gitignored**: commit it to share per-project routing with a team, or gitignore it for machine-local use. Tell the user both options. Launch omp from the **repo root** — project settings load from `<cwd>/.omp/` (no git-root ancestor walk).
+
+Fan-out honesty note: setup can bias routing and prerequisites toward aggressive pi-oven subagent batching, but it does NOT control omp-core worker scheduling. Actual concurrent worker count still depends on omp/runtime/provider limits.
 
 Now persist the language WITH the chosen scope by dispatching the resolved script:
 
@@ -182,10 +184,10 @@ If only Profile A is possible (no openai-codex, no anthropic), also offer Profil
 
 ```
 Select profile:
-  [A] Profile A — Release default (opencode-zen + openai-codex, anthropic for 4 advisory roles)   (default)
-  [B] Profile B — openai-codex-only performance profile (gpt-5.5 high/xhigh, gpt-5.4 medium/high; writes 24 per-role model+effort overrides)   ← only if openai-codex authed
+  [A] Profile A — Release default (balanced routing; not the max-fan-out profile)   (default)
+  [B] Profile B — openai-codex-only wide fan-out performance profile (gpt-5.5 high/xhigh, gpt-5.4 medium/high; writes 24 per-role model+effort overrides)   ← only if openai-codex authed
   [C] Profile C — All-Anthropic (opus-4-8 / sonnet-4-6, writes 24 per-role overrides)   ← only if anthropic authed
-  [D] Profile D — opencode-zen-only (kimi-k2.6 / minimax-m2.5 / gemini-3-flash, writes 24 per-role overrides)   ← always if opencode-zen authed
+  [D] Profile D — opencode-zen-only wide fan-out profile (kimi-k2.6 / minimax-m2.5 / gemini-3-flash, writes 24 per-role overrides)   ← always if opencode-zen authed
 
 Enter choice [A]:
 ```
@@ -206,6 +208,8 @@ Proceed with Profile <B|C|D>? [y/N]:
 ```
 
 In global scope, Profiles B, C, and D each write all 24 `task.agentModelOverrides` entries (one per role) into `~/.omp/agent/config.yml`; Profile A only sets the main orchestrator model (`modelRoles`). In project scope, every profile writes all 24 per-role overrides plus `modelRoles` and `retry.fallbackChains` into `<project>/.omp/settings.json`. Run `--reset` on the same scope to clear pi-oven routing overrides.
+
+If the goal is wide parallel pi-oven waves, prefer Profile B or D when that provider's auth is healthy; project-scope A also fully pins all 24 roles. This biases routing only — it does not guarantee a specific omp worker count.
 
 ### Step 4 — Optional per-role override
 
@@ -302,9 +306,9 @@ This writes `disabledProviders: [claude]` to `~/.omp/agent/config.yml` (and purg
 | Flag | Behavior |
 |---|---|
 | `--profile A` | Apply Profile A (release default). |
-| `--profile B` | Apply Profile B (openai-codex-only performance profile: gpt-5.5 for implementation/review/planning/deep research, gpt-5.4 for fan-out/docs/vision/git/data-runner; writes `:<thinkingLevel>` suffixes; no gpt-5.4-mini/nano). Requires openai-codex auth detected. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
+| `--profile B` | Apply Profile B (openai-codex-only wide fan-out performance profile: gpt-5.5 for implementation/review/planning/deep research, gpt-5.4 for fan-out/docs/vision/git/data-runner; writes `:<thinkingLevel>` suffixes; no gpt-5.4-mini/nano). Requires openai-codex auth detected. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
 | `--profile C` | Apply Profile C (all-Anthropic: opus-4-8 for high/xhigh roles, sonnet-4-6 for medium and for git-master + orchestrator title; haiku-4-5 is unavailable). Requires anthropic auth. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
-| `--profile D` | Apply Profile D (opencode-zen-only: kimi-k2.6 for heavy/coding roles, minimax-m2.5 for mid/low, gemini-3-flash for vision). Requires opencode-zen auth. Writes all 24 per-role `task.agentModelOverrides`. Profile A is orchestrator-only (sets modelRoles, no per-role overrides); B, C, and D each write all 24. Reversible via `--reset`. |
+| `--profile D` | Apply Profile D (opencode-zen-only wide fan-out profile: kimi-k2.6 for heavy/coding roles, minimax-m2.5 for mid/low, gemini-3-flash for vision). Requires opencode-zen auth. Writes all 24 per-role `task.agentModelOverrides`. Profile A is orchestrator-only (sets modelRoles, no per-role overrides); B, C, and D each write all 24. Reversible via `--reset`. |
 | `--override <role>=<model>` | Override a specific role's model in config.yml task.agentModelOverrides. Repeatable. |
 | `--validate=smoke` | (Default) Ping 7 MUST-tier roles after persist. |
 | `--validate=full` | Ping all 24 roles. |

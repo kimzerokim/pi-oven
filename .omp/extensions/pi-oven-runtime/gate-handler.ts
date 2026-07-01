@@ -20,6 +20,7 @@
 // ---------------------------------------------------------------------------
 
 import {
+  getLeadingEnvVarForGitVerb,
   normalizeCommand,
   type NormalizeRoots,
   type NormalizedCommand,
@@ -349,8 +350,12 @@ async function decideForCommand(
     return { block: false };
   }
 
+  const wantsPush = normalized.gitVerbs.includes("push");
+  const inlinePushConsent = wantsPush
+    ? getLeadingEnvVarForGitVerb(command, "push", "PI_OVEN_PUSH_CONSENT")
+    : undefined;
   const env: GateEnv = {
-    PI_OVEN_PUSH_CONSENT: deps.getEnv().PI_OVEN_PUSH_CONSENT,
+    PI_OVEN_PUSH_CONSENT: inlinePushConsent,
     PI_OVEN_GATE_BYPASS: deps.getEnv().PI_OVEN_GATE_BYPASS,
   };
 
@@ -358,9 +363,7 @@ async function decideForCommand(
   const fsm = toGateFsmView(fsmRaw);
   const externalExecConsent = fsmRaw.kind === "OK" ? fsmRaw.state.externalExecConsent : undefined;
 
-  const wantsPush = normalized.gitVerbs.includes("push");
   const fileConsent = wantsPush ? await deps.store.readFileConsent() : { valid: false };
-
   const decision = decideGate({
     normalized,
     fsm,

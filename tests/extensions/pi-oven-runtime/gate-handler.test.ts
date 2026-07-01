@@ -231,26 +231,33 @@ describe("gateHandler — push consent (AC5)", () => {
     expect(r?.block).toBe(true);
   });
 
-  it("env source: two successive pushes both allowed (NOT consumed)", async () => {
+  it("inline env source: two successive pushes both allowed (NOT consumed)", async () => {
     writeState(dir, { active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 });
-    const d = await deps(dir, { PI_OVEN_PUSH_CONSENT: "ref" });
+    const d = await deps(dir);
     const h = createGateHandler(d);
-    const r1 = await h(bashEvent("git push origin main"));
-    const r2 = await h(bashEvent("git push origin main"));
+    const r1 = await h(bashEvent("PI_OVEN_PUSH_CONSENT=ref git push origin main"));
+    const r2 = await h(bashEvent("PI_OVEN_PUSH_CONSENT=ref git push origin main"));
     expect(r1?.block ?? false).toBe(false);
     expect(r2?.block ?? false).toBe(false);
-    // audit log records source + branch
-    expect(d._logger.lines.some((l) => l.msg.includes("env") && l.msg.includes("main"))).toBe(true);
+    expect(d._logger.lines.some((l) => l.msg.includes("source=env") && l.msg.includes("main"))).toBe(true);
   });
 
-  it("file source: first push allowed AND file consumed; second push blocks (single-use)", async () => {
+  it("blocks git push when only ambient process env consent is present", async () => {
     writeState(dir, { active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 });
-    const consent = join(dir, "state", "push-consent.json");
+    const h = createGateHandler(await deps(dir, { PI_OVEN_PUSH_CONSENT: "ref" }));
+    const r = await h(bashEvent("git push origin main"));
+    expect(r?.block).toBe(true);
+  });
+
+  it("file source: first push allowed from <cwd>/.pi-oven/state/push-consent.json; second push blocks after consume", async () => {
+    const stateRoot = join(dir, ".pi-oven");
+    writeState(stateRoot, { active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 });
+    const consent = join(stateRoot, "state", "push-consent.json");
     writeFileSync(consent, JSON.stringify({ grantedAt: Date.now(), expiresAt: Date.now() + 60_000, branch: "main" }));
-    const h = createGateHandler(await deps(dir));
+    const h = createGateHandler(await deps(stateRoot));
     const r1 = await h(bashEvent("git push origin main"));
     expect(r1?.block ?? false).toBe(false);
-    expect(existsSync(consent)).toBe(false); // consumed within the mutex
+    expect(existsSync(consent)).toBe(false);
     const r2 = await h(bashEvent("git push origin main"));
     expect(r2?.block).toBe(true);
   });

@@ -59,13 +59,14 @@ Default when user says `자율 실행`, `자율실행`, `끝까지 끝내줘`, o
 
 ## Ultrawork pattern
 
-Fire all independent task calls simultaneously — never serialize independent work. Use a dependency matrix to identify parallel waves:
+Fire all independent task calls simultaneously — never serialize independent work or peel off "safe pairs" when the tasks are actually disjoint. Start with the widest clean wave you can describe.
 
 ```
-Wave 1 (parallel): tasks with no dependencies
-Wave 2 (parallel): tasks whose only blockers are in Wave 1
-Wave N: repeat until all tasks complete
+Wave 1 (parallel): every dependency-free task you can launch together (default target 8-12 siblings)
+Wave 2 (parallel): every task whose only blockers cleared in Wave 1
+Wave N: repeat with the widest dependency-ready batch until all tasks complete
 ```
+This 8-12 figure is pi-oven's batching target, not an OMC-core worker guarantee. If omp/runtime/provider only executes fewer at once, keep the wave dependency-packed and immediately queue the next batch.
 
 Tier routing:
 - Simple lookups / 1-file isolated changes: `pi-oven:executor` (cheap model)
@@ -115,7 +116,7 @@ Regardless of mode, invoke skills in this order each cycle:
 4. Broad exploration gate — if this is the first improvement scope in the run, dispatch `pi-oven:explorer` + `pi-oven:tracer` + `pi-oven:analyst` in parallel and record cross-subsystem evidence before scoping spec/plan
 5. `spec-and-review` — if the cycle introduces a new capability or design change (autopilot Phase 0/1)
 6. `writing-plans` — produce/update `docs/plans/` checkpoint (autopilot Phase 1)
-7. Execution phase — dispatch `subagent-driven-development` as the per-task execution orchestrator: one fresh subagent per plan task with two-stage review (spec-compliance pass, then code-quality pass). Route a single task to `large-task-delegation` if it exceeds 3+ files or 200+ LoC. Mode shapes the cadence: ultrawork waves / ralph loop / autopilot lifecycle.
+7. Execution phase — dispatch `subagent-driven-development` as the per-task execution orchestrator: one fresh subagent per plan task with two-stage review (spec-compliance pass, then code-quality pass). Group independent plan tasks into the widest dependency-safe waves you can justify; do not serialize disjoint work just because the list is long. Route a single task to `large-task-delegation` if it exceeds 3+ files or 200+ LoC. Mode shapes the cadence: ultrawork waves / ralph loop / autopilot lifecycle.
 8. `tdd-strict` — enforced inside executor subagents (Red→Green→Refactor), not in main
 8.5. `pi-oven:data-runner` — conditional: if the cycle touches metrics, benchmarks, or performance, dispatch `pi-oven:data-runner` via `task` after `pi-oven:test-engineer` to validate claims empirically via REPL. Skip for cycles with no metric/perf scope.
 9. `pre-commit-gate` — run after each commit boundary (Gates 0–4.5, all modes)
@@ -123,7 +124,7 @@ Regardless of mode, invoke skills in this order each cycle:
 
 **Milestone retain:** At each confirmed MILESTONE (story acceptance criteria verified, phase complete, or spec approved), call `retain({items:[{content:"<milestone description and outcome>", context:"autonomous-loop cycle <N>"}]})`. If the backend is not available, skip gracefully.
 
-Main agent role: orchestrator only — dispatch, sequence, synthesize evidence, and queue next subagent work in the same turn. Main MUST NOT implement inline code, inline tests, or inline refactors during autonomous-loop execution. Any work touching multiple files, requiring 3+ reads, or exceeding 200 LoC MUST be dispatched to a subagent — main doing it inline is a hard violation, not a shortcut.
+Main agent role: orchestrator only — dispatch, sequence, synthesize evidence, and queue next subagent work in the same turn. Main MUST NOT implement inline code, inline tests, or inline refactors during autonomous-loop execution. Any work touching multiple files, requiring 3+ reads, or exceeding 200 LoC MUST be dispatched to a subagent — main doing it inline is a hard violation, not a shortcut. After each result lands, main should queue the next full dependency-ready wave immediately instead of drip-feeding independent tasks one-by-one.
 
 Route to the RIGHT agent — match model-fit and role-fit to the work (first-class concern): explore (`pi-oven:explorer` / `pi-oven:tracer` / `pi-oven:analyst`) → plan (`pi-oven:planner`) → implement (`pi-oven:executor` / `pi-oven:debugger`) → verify (`pi-oven:verifier` / `pi-oven:security-reviewer` / `pi-oven:code-reviewer`). Main never implements inline.
 

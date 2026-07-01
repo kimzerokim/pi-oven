@@ -57,10 +57,11 @@ Within a large task, route by work type before dispatching `pi-oven:executor` di
 
 ## Parallel dispatch
 
-Fire file-scope-disjoint tasks simultaneously: multiple `task` calls in one response, each with `run_in_background: true`. Main continues and gets notified on completion.
+Fire file-scope-disjoint tasks simultaneously: batch the widest clean wave you can describe instead of dribbling out independent tasks one at a time.
 
-- Max 5 parallel subagents per wave
-- Same file region = sequential (one subagent owns it)
+- Default packing target: 8-12 parallel subagents per wave when scopes are disjoint and prompts are self-contained
+- If omp/runtime/provider admits fewer concurrently, that smaller ceiling wins — queue the next dependency-ready wave immediately instead of pretending pi-oven can force more workers
+- Same file region, shared generated artifact, or review dependency = sequential
 - Git push race → subagent handles with `git fetch && rebase && push`
 
 **irc coordination (parallel executor waves):** When two or more `pi-oven:executor` subagents are running in the same wave, use irc to coordinate before they write. At wave start, each executor calls `irc({op:"list"})` to see which files siblings have claimed. Before touching a file, an executor sends `irc({op:"send", to:"<sibling-name>", message:"claiming <file-path> — confirm no overlap"})` and awaits the reply. If a collision is detected, the later executor halts and reports back to main for re-sequencing. irc is auto-injected — do not add it to tools: frontmatter.

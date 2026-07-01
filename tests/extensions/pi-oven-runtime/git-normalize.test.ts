@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import {
+  getLeadingEnvVarForGitVerb,
   normalizeCommand,
   type NormalizedCommand,
 } from "../../../.omp/extensions/pi-oven-runtime/git-normalize";
@@ -75,6 +76,15 @@ describe("normalizeCommand — git verb detection (AC7)", () => {
   it("detects a bare-prefix env assignment without the `env` keyword", () => {
     // `FOO=bar git commit` — leading VAR=val tokens before git
     expect(verbs("GIT_AUTHOR_NAME=x git commit")).toContain("commit");
+  });
+
+  it("extracts inline PI_OVEN_PUSH_CONSENT only from the git push segment", () => {
+    expect(getLeadingEnvVarForGitVerb("PI_OVEN_PUSH_CONSENT=ref git push origin main", "push", "PI_OVEN_PUSH_CONSENT"))
+      .toBe("ref");
+    expect(getLeadingEnvVarForGitVerb('PI_OVEN_PUSH_CONSENT=ref bash -lc "git push origin main"', "push", "PI_OVEN_PUSH_CONSENT"))
+      .toBe("ref");
+    expect(getLeadingEnvVarForGitVerb("PI_OVEN_PUSH_CONSENT=ref echo ok && git push origin main", "push", "PI_OVEN_PUSH_CONSENT"))
+      .toBeUndefined();
   });
 
   it("detects push in an `&&` chain", () => {

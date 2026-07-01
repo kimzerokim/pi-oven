@@ -399,6 +399,18 @@ describe("renderReport", () => {
         },
         {
           level: "INFO",
+          name: "native worker runtime",
+          detail:
+            "vendored launcher scripts/pi-oven-team/index.ts → scripts/pi-oven-team/runtime-v2.ts is ACTIVE; pi-oven owns native worker startup and scale decisions through this path.",
+        },
+        {
+          level: "INFO",
+          name: "native worker ceiling",
+          detail:
+            "dependency-ready wave target remains 8-12 siblings. Effective native worker ceiling is nativeWorkers.maxWorkers=100 from ~/.pi-oven/config.json (machine-global config); the vendored pi-oven launcher enforces this ceiling when it starts or scales native workers.",
+        },
+        {
+          level: "INFO",
           name: "sibling-skill suppression",
           detail:
             "not enabled in ~/.omp/agent/config.yml; sibling marketplace skills remain visible.",
@@ -411,6 +423,11 @@ describe("renderReport", () => {
     expect(report).toContain("Standalone truth surface:");
     expect(report).toContain("[WARN] project-scope remediation:");
     expect(report).toContain("task.enableLsp");
+    expect(report).toContain("[INFO] native worker runtime:");
+    expect(report).toContain("scripts/pi-oven-team/index.ts");
+    expect(report).toContain("[INFO] native worker ceiling:");
+    expect(report).toContain("nativeWorkers.maxWorkers=100");
+    expect(report).toContain("8-12");
     expect(report).toContain("[INFO] sibling-skill suppression:");
     expect(report).toContain("--suppress-sibling-skills");
   });

@@ -208,7 +208,7 @@ export class RulesInjector {
       "",
     ];
     const sharedRules = [
-      "SKILL PRECEDENCE: pi-oven skills are authoritative. When the runtime keyword block lists exact plugin-owned SKILL.md targets, read those exact file targets; do not invent namespaced skill aliases. `/pi-oven:*` entries are commands, not skills; `/pi-oven:setup` follows `commands/setup.md`. NEVER load a same-purpose skill from another plugin namespace (`superpowers:*`, `oh-my-claudecode:*`, `agentmemory:*`). On any name/purpose overlap, the pi-oven skill wins.",
+      "SKILL PRECEDENCE: pi-oven skills are authoritative. When the runtime keyword block lists exact plugin-owned SKILL.md targets, read those exact file targets; do not invent namespaced skill aliases. `/pi-oven:*` entries are commands, not skills; `/pi-oven:setup` follows `commands/setup.md`. NEVER load a same-purpose skill from another sibling marketplace namespace or legacy external alias. On any name/purpose overlap, the pi-oven skill wins.",
       "AGENT NAMING: Dispatch pi-oven-owned automatic subagents ONLY by their exact registered name `pi-oven:<role>` (e.g. `pi-oven:explorer`). Foreign namespaces such as `kzk:<role>` are allowed only when the user explicitly asked for that exact foreign agent.",
     ];
     if (opts.autonomousActive) {
@@ -243,13 +243,14 @@ export class RulesInjector {
       "- Destructive `rm -rf` of repo/HOME roots and inline secret literals are",
       "  always blocked (this floor is never lifted).",
       "- External infra/production commands are blocked unless the latest user",
-      "  message carries explicit external execution consent.",
+      "  message explicitly approves a direct external read/access/mutation/all",
+      "  command in natural language.",
       "- Local credential files already on the machine may be used only while",
-      "  that explicit external execution consent is active, and they do NOT",
-      "  authorize production mutation/all scopes.",
-      "- Pasted credentials stay blocked unless they are explicitly consented",
-      "  full AWS temporary bundles (`ASIA...` + secret access key + session",
-      "  token + matching fingerprints + unexpired `expiresAt`).",
+      "  that latest-message consent is active, and only for read/access scopes.",
+      "- Pasted credentials stay blocked unless the latest user message also",
+      "  explicitly approves mutation/all scope and includes the full unexpired",
+      "  AWS temporary bundle (`ASIA...` + secret access key + session token +",
+      "  matching fingerprints + `expiresAt`).",
     ];
     if (this.reminder !== null) {
       lines.push("", "Current autonomous reminder:", `- ${this.reminder}`);

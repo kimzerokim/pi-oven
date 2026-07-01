@@ -211,10 +211,11 @@ describe("orchestrator conduct block", () => {
     expect(b).toMatch(/\/pi-oven:setup.*commands\/setup\.md/i);
   });
 
-  it("interactive: contains SKILL PRECEDENCE rule forbidding superpowers:* namespace", () => {
+  it("interactive: contains dependency-free SKILL PRECEDENCE wording", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
-    expect(b).toContain("superpowers:");
+    expect(b).not.toContain("superpowers:");
+    expect(b).toMatch(/sibling marketplace namespace|legacy external alias/i);
     expect(b).toMatch(/pi-oven skills are authoritative|SKILL PRECEDENCE/i);
   });
 
@@ -226,10 +227,11 @@ describe("orchestrator conduct block", () => {
     expect(b).toMatch(/user-explicit|explicitly asked/i);
   });
 
-  it("autonomous: contains SKILL PRECEDENCE rule forbidding superpowers:* namespace", () => {
+  it("autonomous: contains dependency-free SKILL PRECEDENCE wording", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: true });
-    expect(b).toContain("superpowers:");
+    expect(b).not.toContain("superpowers:");
+    expect(b).toMatch(/sibling marketplace namespace|legacy external alias/i);
     expect(b).toMatch(/pi-oven skills are authoritative|SKILL PRECEDENCE/i);
   });
 

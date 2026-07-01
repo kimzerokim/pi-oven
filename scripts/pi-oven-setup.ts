@@ -22,7 +22,15 @@ import { runOverride } from "./pi-oven-setup/override";
 import { runIsolate } from "./pi-oven-setup/isolate";
 import { runSuppressSibling } from "./pi-oven-setup/suppress-sibling";
 import { resolveDefaultAgentsDir } from "./pi-oven-setup/cache-resolver";
-import { normalizeLanguage, setProjectLanguage, setGlobalLanguage, markSetupComplete, markSetupCompleteGlobal } from "./pi-oven-setup/project-config";
+import {
+  normalizeLanguage,
+  setProjectLanguage,
+  setGlobalLanguage,
+  seedProjectNativeWorkerMax,
+  seedGlobalNativeWorkerMax,
+  markSetupComplete,
+  markSetupCompleteGlobal,
+} from "./pi-oven-setup/project-config";
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -343,8 +351,10 @@ if (hasSuppressSibling && result.exitCode === 0) {
 // before the success exit so a failure (exitCode !== 0) never marks the project.
 if (markRouting && result.exitCode === 0) {
   if (scope === "project") {
+    await seedProjectNativeWorkerMax();
     await markSetupComplete();
   } else {
+    await seedGlobalNativeWorkerMax();
     await markSetupCompleteGlobal();
   }
 }

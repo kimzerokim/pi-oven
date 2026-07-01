@@ -276,7 +276,7 @@
     Model-fit 이 일급(first-class) 관심사입니다. 자세한 내용은 <a href="#model-routing">§3 모델 라우팅</a>.
   </div>
   <div class="note">
-    <strong>omp 격리 + 프로젝트 CLAUDE.md</strong>: <code>/pi-oven:setup --isolate</code> 로 omp 가 글로벌 <code>~/.claude</code> 컨텍스트 레이어(omc <code>~/.claude/CLAUDE.md</code> + pi-oven skills/hooks)를 무시하게 만들 수 있습니다 — <code>~/.omp/agent/config.yml</code> 에 <code>disabledProviders: [claude]</code> 를 기록합니다. <code>claude</code> discovery provider 만 끄고 <code>claude-plugins</code> 는 <strong>의도적으로 유지</strong>합니다 — pi-oven 자신의 <code>/pi-oven:*</code> 커맨드가 바로 그 provider 로 등록되기 때문입니다 (trade-off: omc/agentmemory 마켓플레이스 커맨드는 계속 보임). 이 쓰기는 <strong>omp 전용이며 디스크의 <code>~/.claude</code> 는 절대 건드리지 않으므로</strong> 실제 Claude Code 세션은 영향이 없습니다. 동시에 런타임 extension 이 레포 루트 <code>CLAUDE.md</code> 를 읽어 메인·서브 에이전트 시스템 프롬프트에 주입하므로(omp 는 루트 <code>CLAUDE.md</code> 를 네이티브로 읽지 않습니다), 글로벌은 무시하되 프로젝트별 지침은 그대로 따릅니다. 되돌리려면 <code>/pi-oven:setup --no-isolate</code>.
+    <strong>omp 격리 + 프로젝트 CLAUDE.md</strong>: <code>/pi-oven:setup --isolate</code> 로 omp 가 글로벌 <code>~/.claude</code> 컨텍스트 레이어(글로벌 <code>~/.claude/CLAUDE.md</code> + 형제 skills/hooks)를 무시하게 만들 수 있습니다 — <code>~/.omp/agent/config.yml</code> 에 <code>disabledProviders: [claude]</code> 를 기록합니다. <code>claude</code> discovery provider 만 끄고 <code>claude-plugins</code> 는 <strong>의도적으로 유지</strong>합니다 — pi-oven 자신의 <code>/pi-oven:*</code> 커맨드가 바로 그 provider 로 등록되기 때문입니다 (trade-off: 다른 마켓플레이스 커맨드는 계속 보일 수 있음). 이 쓰기는 <strong>omp 전용이며 디스크의 <code>~/.claude</code> 는 절대 건드리지 않으므로</strong> 실제 Claude Code 세션은 영향이 없습니다. 동시에 런타임 extension 이 레포 루트 <code>CLAUDE.md</code> 를 읽어 메인·서브 에이전트 시스템 프롬프트에 주입하므로(omp 는 루트 <code>CLAUDE.md</code> 를 네이티브로 읽지 않습니다), 글로벌은 무시하되 프로젝트별 …
   </div>
 </section>
 
@@ -510,7 +510,7 @@ flowchart LR
     <li><strong>코드 변경 → TDD-strict + pre-commit-gate</strong>.</li>
     <li><strong>커밋 subject = what/why only</strong> — "Plan N" / "Task N" 진행 마커 금지.</li>
     <li><strong><code>git push</code> 는 매번 사용자 명시 확인</strong> — 자율 모드도 자동 push 금지.</li>
-    <li><strong>외부 dispatch 금지</strong> — <code>oh-my-claudecode:*</code> / <code>omo:*</code> 는 401 (모델 문자열로 해석됨).</li>
+    <li><strong>외부 dispatch 금지</strong> — 외부 namespaced ref / <code>omo:*</code> 는 401 (모델 문자열로 해석됨).</li>
   </ol>
 </section>
 

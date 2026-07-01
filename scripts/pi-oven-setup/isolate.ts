@@ -2,14 +2,14 @@
  * isolate.ts — `/pi-oven:setup --isolate` / `--no-isolate`.
  *
  * Toggles omp's user-global `disabledProviders` so omp IGNORES (or re-enables)
- * the `~/.claude` Claude-Code CONTEXT layer — omc's `~/.claude/CLAUDE.md` and
- * pi-oven (`~/.claude/skills/pi-oven-*`) plus Claude hooks/commands/MCP. It
+ * the `~/.claude` home context layer — sibling marketplace CLAUDE/skills plus
+ * Claude hooks/commands/MCP discovered from that tree. It
  * disables the `claude` discovery provider ONLY. It deliberately leaves
  * `claude-plugins` ENABLED, because pi-oven's own `/pi-oven:*` commands and skills
  * register through that same `claude-plugins` provider (it reads ~/.omp/plugins
  * too) — disabling it would also remove pi-oven's own commands. The accepted
- * trade-off: omc/agentmemory marketplace plugin commands (`/oh-my-claudecode:*`)
- * remain visible. pi-oven injects the repo-root `CLAUDE.md` in place of the
+ * trade-off: sibling marketplace plugin commands that still load through
+ * `claude-plugins` remain visible. pi-oven injects the repo-root `CLAUDE.md` in place of the
  * global one. The write is machine-global (`~/.omp/agent/config.yml`) and
  * omp-only — it never touches `~/.claude` on disk, so real Claude Code sessions
  * keep working.
@@ -32,10 +32,10 @@ export async function runIsolate(
       return {
         exitCode: 0,
         output:
-          "omp will now IGNORE the ~/.claude Claude-Code layer (omc + pi-oven).\n" +
+          "omp will now IGNORE the ~/.claude home context layer (global CLAUDE + sibling marketplace context).\n" +
           `  disabledProviders = [${list.join(", ")}] in ~/.omp/agent/config.yml\n` +
           "  pi-oven still loads via the claude-plugins provider, which stays enabled.\n" +
-          "  Note: omc/agentmemory marketplace plugin commands remain visible.\n" +
+          "  Note: sibling marketplace plugin commands that still load via claude-plugins remain visible.\n" +
           "  pi-oven injects the repo-root CLAUDE.md in place of the global one.\n" +
           "  Restart omp to apply. Real Claude Code sessions are unaffected.\n",
       };

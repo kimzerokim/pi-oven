@@ -27,6 +27,45 @@ import { resolveLanguage } from "../../.omp/extensions/pi-oven-runtime/language"
  */
 export type ProjectLanguage = string;
 
+export const DEFAULT_NATIVE_WORKER_MAX = 100;
+
+function normalizeNativeWorkerMax(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= DEFAULT_NATIVE_WORKER_MAX
+    ? value
+    : null;
+}
+
+function readNativeWorkerMaxFromConfig(data: Record<string, unknown>): number | null {
+  const nativeWorkers = data.nativeWorkers;
+  if (!nativeWorkers || typeof nativeWorkers !== "object" || Array.isArray(nativeWorkers)) {
+    return null;
+  }
+  return normalizeNativeWorkerMax((nativeWorkers as Record<string, unknown>).maxWorkers);
+}
+
+function withNativeWorkerMax(
+  existing: Record<string, unknown>,
+  maxWorkers: number
+): Record<string, unknown> {
+  const currentNativeWorkers =
+    existing.nativeWorkers &&
+    typeof existing.nativeWorkers === "object" &&
+    !Array.isArray(existing.nativeWorkers)
+      ? (existing.nativeWorkers as Record<string, unknown>)
+      : {};
+
+  return {
+    ...existing,
+    nativeWorkers: {
+      ...currentNativeWorkers,
+      maxWorkers,
+    },
+  };
+}
+
 /** Directory + file the per-project config lives in (relative to a cwd). */
 const CONFIG_DIR = ".pi-oven";
 const CONFIG_FILE = "config.json";
@@ -104,6 +143,28 @@ export async function readProjectLanguage(
   } catch {
     return null;
   }
+}
+
+export async function readProjectNativeWorkerMax(opts?: { cwd?: string }): Promise<number | null> {
+  const cwd = opts?.cwd ?? process.cwd();
+  return readNativeWorkerMaxFromConfig(await readConfigObject(configPath(cwd)));
+}
+
+export async function seedProjectNativeWorkerMax(opts?: {
+  cwd?: string;
+  maxWorkers?: number;
+}): Promise<number> {
+  const cwd = opts?.cwd ?? process.cwd();
+  const file = configPath(cwd);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+
+  const existing = await readConfigObject(file);
+  const current = readNativeWorkerMaxFromConfig(existing);
+  if (current !== null) return current;
+
+  const value = normalizeNativeWorkerMax(opts?.maxWorkers) ?? DEFAULT_NATIVE_WORKER_MAX;
+  await fs.writeFile(file, JSON.stringify(withNativeWorkerMax(existing, value), null, 2) + "\n", "utf-8");
+  return value;
 }
 
 /**
@@ -204,8 +265,9 @@ export async function clearSetupComplete(opts?: { cwd?: string }): Promise<void>
 
 // ---------------------------------------------------------------------------
 // Global config helpers — ~/.pi-oven/config.json
-// Same schema as the project-local config ({ language, setupCompletedAt }).
-// Writes to os.homedir()/.pi-oven/config.json (or homeDir override for tests).
+// Same schema as the project-local config ({ language, nativeWorkers.maxWorkers,
+// setupCompletedAt }). Writes to os.homedir()/.pi-oven/config.json (or homeDir
+// override for tests).
 // ---------------------------------------------------------------------------
 
 function globalConfigPath(homeDir: string): string {
@@ -253,6 +315,30 @@ export async function readGlobalLanguage(
   } catch {
     return null;
   }
+}
+
+export async function readGlobalNativeWorkerMax(opts?: {
+  homeDir?: string;
+}): Promise<number | null> {
+  const homeDir = opts?.homeDir ?? os.homedir();
+  return readNativeWorkerMaxFromConfig(await readConfigObject(globalConfigPath(homeDir)));
+}
+
+export async function seedGlobalNativeWorkerMax(opts?: {
+  homeDir?: string;
+  maxWorkers?: number;
+}): Promise<number> {
+  const homeDir = opts?.homeDir ?? os.homedir();
+  const file = globalConfigPath(homeDir);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+
+  const existing = await readConfigObject(file);
+  const current = readNativeWorkerMaxFromConfig(existing);
+  if (current !== null) return current;
+
+  const value = normalizeNativeWorkerMax(opts?.maxWorkers) ?? DEFAULT_NATIVE_WORKER_MAX;
+  await fs.writeFile(file, JSON.stringify(withNativeWorkerMax(existing, value), null, 2) + "\n", "utf-8");
+  return value;
 }
 
 /**

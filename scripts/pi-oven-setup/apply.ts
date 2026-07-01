@@ -36,6 +36,10 @@ import {
   formatStandaloneTruthSignals,
 } from "./standalone-truth-surface";
 import {
+  describeNativeWorkerRuntime,
+  resolveNativeWorkerRuntimeStatus,
+} from "../pi-oven-team";
+import {
   PROFILE_A,
   PROFILE_B,
   PROFILE_C,
@@ -107,7 +111,8 @@ export async function runApply(
   let toolsEnabledLine = "";
   let scopeLine = "";
   let projectRemediationLine = "";
-
+  let nativeWorkerRuntimeLine = "";
+  let workerCeilingLine = "";
   const scope = opts.scope ?? "global";
 
   if (opts.agentsDir) {
@@ -163,6 +168,7 @@ export async function runApply(
         "Project scope kept ~/.omp/agent/config.yml untouched.\n" +
         formatStandaloneTruthSignals(standaloneSignals).join("\n") +
         "\n";
+      workerCeilingLine = "";
     } else {
       // User setup (global): write the MAIN ORCHESTRATOR model pair (modelRoles
       // default + title) in ONE atomic whole-record merge-write. omp's schema
@@ -197,6 +203,14 @@ export async function runApply(
       await setToolEnablementConfig({ spawnFn: opts.spawnFn });
       toolsEnabledLine =
         "✓ tools enabled: inspect_image, web_search, lsp, ast_grep, browser, debug\n";
+      const nativeWorkerRuntime = await resolveNativeWorkerRuntimeStatus({
+        pluginRoot: path.resolve(import.meta.dir, "..", ".."),
+        projectRoot: opts.cwd ?? process.cwd(),
+      });
+      nativeWorkerRuntimeLine =
+        `✓ native worker runtime: ${describeNativeWorkerRuntime(nativeWorkerRuntime)}\n`;
+      workerCeilingLine =
+        `✓ native worker ceiling: nativeWorkers.maxWorkers=${nativeWorkerRuntime.maxWorkers} from ${nativeWorkerRuntime.maxWorkersConfigPath} (${nativeWorkerRuntime.maxWorkersSource})\n`;
     }
   }
 
@@ -233,7 +247,9 @@ export async function runApply(
       projectRemediationLine +
       memoryConfigLine +
       toolsEnabledLine +
-      "Note: setup biases routing and prerequisites for wide pi-oven subagent fan-out; actual concurrent worker count still depends on omp/runtime/provider limits.\n" +
+      nativeWorkerRuntimeLine +
+      workerCeilingLine +
+      "Fan-out contract: dispatch dependency-ready work in the widest safe wave (default target 8-12 siblings). The vendored pi-oven launcher enforces nativeWorkers.maxWorkers when its control path is present, and setup/status/doctor surface any degraded runtime state explicitly.\n" +
       `Setup complete.\n`,
   };
 }

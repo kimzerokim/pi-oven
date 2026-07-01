@@ -3,8 +3,9 @@
  * `--no-suppress-sibling-skills`.
  *
  * Opt-in toggle that writes `skills.ignoredSkills` in omp's user-global
- * `~/.omp/agent/config.yml` so omp hides the listed sibling marketplace
- * skills (superpowers:* and oh-my-claudecode:*) from the model. This is
+ * `~/.omp/agent/config.yml` so omp hides the shipped sibling marketplace
+ * skill globs selected by `PI_OVEN_SIBLING_SKILL_GLOBS`
+ * from the model. This is
  * GLOBAL-ONLY — it never writes to a project `.omp/settings.json`.
  *
  * Design decisions (§3.4):

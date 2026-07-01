@@ -106,7 +106,10 @@ task({
   model: "sonnet",
   run_in_background: true,
 });
-// Max 5 tasks per wave. Same file region = do NOT parallelize.
+// Launch the whole dependency-ready wave. 8-12 disjoint tasks is the
+// default planning target; actual simultaneous workers may be lower until the
+// pi-oven native runtime path owns the configured ceiling. Same file region =
+// do NOT parallelize.
 
 // Wave 2 — only after Wave 1 subagents return
 task({

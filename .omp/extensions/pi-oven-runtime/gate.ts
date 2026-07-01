@@ -311,14 +311,14 @@ function externalConsentBlockReason(
   if (kind === "external-mutation") {
     return (
       `pi-oven: ${kind} command blocked — matching explicit external execution consent is required. ` +
-      `Ask the user to send \`PI_OVEN_EXTERNAL_EXEC: scope=${scope} aws_access_key_id=ASIA... aws_secret_access_key=... aws_session_token=... expiresAt=<ISO-8601>\` ` +
-      "or `scope=all` with the same unexpired full temporary AWS credential bundle, then run the mutation command with that exact inline bundle. Local-credential consent cannot authorize mutation."
+      `Ask the user to say something like "You may run direct external ${scope} commands using this temporary AWS credential bundle until it expires: AWS_ACCESS_KEY_ID=ASIA... AWS_SECRET_ACCESS_KEY=... AWS_SESSION_TOKEN=... expiresAt=<ISO-8601>" ` +
+      'or "... all direct external commands ..." only if they intend that wider scope. Local-credential consent cannot authorize mutation.'
     );
   }
   return (
     `pi-oven: ${kind} command blocked — matching explicit external execution consent is required. ` +
-    `Ask the user to send \`PI_OVEN_EXTERNAL_EXEC: once scope=${scope} creds=local\` ` +
-    `or \`PI_OVEN_EXTERNAL_EXEC: scope=${scope} aws_access_key_id=ASIA... aws_secret_access_key=... aws_session_token=... expiresAt=<ISO-8601>\`.`
+    `Ask the user to say something like "You may use my local credentials for one direct external ${scope} command." ` +
+    `They may instead consent an unexpired AWS temporary bundle in the latest message for that same direct external ${scope} scope.`
   );
 }
 

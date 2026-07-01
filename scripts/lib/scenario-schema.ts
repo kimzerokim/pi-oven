@@ -53,7 +53,7 @@ export interface ScenarioExpectation {
    *  "all" (default) = every phrase must be present; "any" = at least one phrase. */
   agent_response_must_contain_match?: "all" | "any";
   /** HARD GATE — fails the scenario when any forbidden substring is found in content.
-   *  The primary omp-native violation detector (e.g. "oh-my-claudecode:", "omo:"). */
+   *  The primary omp-native violation detector (e.g. legacy foreign namespace refs, "omo:"). */
   agent_response_must_not_contain?: string[];
   /** TELEMETRY — recorded as observations, never a failure (D1 contract).
    *  Each pattern records a "tool_required[telemetry]" hit (✓) or MISS observation. */

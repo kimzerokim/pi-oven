@@ -293,7 +293,8 @@ describe("gateHandler — external execution consent", () => {
 
     const second = await h(bashEvent("aws sts assume-role --role-arn x"));
     expect(second?.block).toBe(true);
-    expect(second?.reason).toMatch(/PI_OVEN_EXTERNAL_EXEC/i);
+    expect(second?.reason).toMatch(/latest user message|direct external access command/i);
+    expect(second?.reason).not.toMatch(/PI_OVEN_EXTERNAL_EXEC/i);
   });
 
   it("blocks when stored consent sourceMessageId changes before parent-session consume", async () => {

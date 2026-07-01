@@ -92,7 +92,7 @@ Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/
 - **Commit subjects:** what/why only — **no "Plan N" / "Task N"** progress markers. Per-spec semantic commits, not per-task.
 - **`git push` requires explicit user confirmation** every time. Autonomous mode never auto-pushes.
 - Agent name frontmatter MUST be `pi-oven:<role>` (colon) — equals omp registry key = override key.
-- Smallest viable diff; match existing patterns; no external dispatch (`oh-my-claudecode:*` / `omo:*` → 401, they resolve as model strings).
+- Smallest viable diff; match existing patterns; no external dispatch (foreign namespaced refs / `omo:*` → 401, they resolve as model strings).
 - Big structural change / new spec → `spec-and-review` (codex cross-vendor review loop) before code. Touching code → TDD-strict + `pre-commit-gate`.
 
 ## Status

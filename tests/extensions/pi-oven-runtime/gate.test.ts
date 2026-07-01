@@ -249,8 +249,8 @@ describe("decideGate — external execution consent", () => {
   it("blocks `aws sts assume-role --role-arn x` by default even when FSM is ABSENT", () => {
     const r = decideGate(input("aws sts assume-role --role-arn x", { fsm: { kind: "ABSENT" } }));
     expect(r.block).toBe(true);
-    expect(r.reason).toMatch(/external-session/i);
-    expect(r.reason).toMatch(/PI_OVEN_EXTERNAL_EXEC/i);
+    expect(r.reason).toMatch(/external-session|latest user message|direct external access command/i);
+    expect(r.reason).not.toMatch(/PI_OVEN_EXTERNAL_EXEC/i);
   });
 
   it("allows `aws sts assume-role --role-arn x` with access consent and marks single-use consumption", () => {
@@ -293,7 +293,8 @@ describe("decideGate — external execution consent", () => {
       })
     );
     expect(r.block).toBe(true);
-    expect(r.reason).toMatch(/PI_OVEN_EXTERNAL_EXEC/i);
+    expect(r.reason).toMatch(/latest user message|direct external access command/i);
+    expect(r.reason).not.toMatch(/PI_OVEN_EXTERNAL_EXEC/i);
   });
 
   it("blocks `aws s3 ls` with mutation-only consent but allows it with read consent", () => {
@@ -346,7 +347,6 @@ describe("decideGate — external execution consent", () => {
     expect(blocked.reason).toMatch(/exact same unexpired inline bundle|external-read|AWS_SECRET_ACCESS_KEY/i);
   });
 
-
   it("blocks expired AWS temporary credentials", () => {
     const blocked = decideGate(
       input(tempCommand, {
@@ -354,7 +354,8 @@ describe("decideGate — external execution consent", () => {
       })
     );
     expect(blocked.block).toBe(true);
-    expect(blocked.reason).toMatch(/PI_OVEN_EXTERNAL_EXEC|expired|unexpired/i);
+    expect(blocked.reason).toMatch(/latest consented AWS temporary credentials|expired|unexpired/i);
+    expect(blocked.reason).not.toMatch(/PI_OVEN_EXTERNAL_EXEC/i);
   });
 
   it("blocks AWS temporary credentials when the pasted session token is missing", () => {

@@ -639,6 +639,40 @@ describe("pi-oven-setup CLI --scope", () => {
     expect(existsSync(join(tempDir, ".pi-oven", "config.json"))).toBe(false);
   });
 
+  it("--scope project --apply seeds nativeWorkers.maxWorkers in project config and reports the new fan-out contract", async () => {
+    const { exitCode, stdout } = await runCLIInCwd(["--apply", "--scope", "project"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      PI_OVEN_VALIDATE_MODE: "none",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+
+    const projectCfg = JSON.parse(
+      readFileSync(join(tempDir, ".pi-oven", "config.json"), "utf-8")
+    );
+    expect(projectCfg.nativeWorkers.maxWorkers).toBe(100);
+    expect(stdout).toContain("nativeWorkers.maxWorkers=100");
+    expect(stdout).toContain("scripts/pi-oven-team/index.ts");
+    expect(stdout).toContain("8-12");
+    expect(stdout).not.toContain("does NOT control omp-core worker scheduling");
+  });
+
+  it("--scope global --apply seeds nativeWorkers.maxWorkers in global config", async () => {
+    const { exitCode, stdout } = await runCLIInCwd(["--apply", "--scope", "global"], tempDir, {
+      PI_OVEN_MOCK_SPAWN: "1",
+      PI_OVEN_VALIDATE_MODE: "none",
+      HOME: homeDir,
+    });
+    expect(exitCode).toBe(0);
+
+    const globalCfg = JSON.parse(
+      readFileSync(join(homeDir, ".pi-oven", "config.json"), "utf-8")
+    );
+    expect(globalCfg.nativeWorkers.maxWorkers).toBe(100);
+    expect(stdout).toContain("nativeWorkers.maxWorkers=100");
+    expect(stdout).toContain("scripts/pi-oven-team/index.ts");
+  });
+
   it("--scope project --apply writes the project .omp/settings.json", async () => {
     const { exitCode } = await runCLIInCwd(["--apply", "--scope", "project"], tempDir, {
       PI_OVEN_MOCK_SPAWN: "1",

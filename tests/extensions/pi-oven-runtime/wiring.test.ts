@@ -595,15 +595,18 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
   });
   for (const testCase of [
     {
-      name: "turn_start persists structured local external execution consent with scope access",
-      entry: userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local"),
+      name: "turn_start persists natural-language local external execution consent with scope access",
+      entry: userTextMessage(
+        "u1",
+        "You may use my local credentials for one direct external access command."
+      ),
       expected: consent("access"),
     },
     {
-      name: "turn_start persists structured temporary AWS external execution consent",
+      name: "turn_start persists natural-language temporary AWS external execution consent from a full inline bundle",
       entry: userTextMessage(
         "u2",
-        `PI_OVEN_EXTERNAL_EXEC: once scope=mutation accessKeyId=ASIAIOSFODNN7EXAMPLE secretAccessKey=secret sessionToken=session123 expiresAt=${TEMP_CONSENT_EXPIRES_AT}`
+        `You may run direct external mutation commands using this temporary AWS credential bundle until it expires: AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 expiresAt=${TEMP_CONSENT_EXPIRES_AT}`
       ),
       expected: tempConsent("mutation", "u2"),
     },
@@ -616,15 +619,23 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     });
   }
 
-  it("turn_start rejects vague approval phrases, unsupported local scopes, and legacy exact-phrase consent", async () => {
+  it("turn_start rejects vague approval phrases, unsupported local scopes, scope-free local direct-exec phrasing, and negated consent wording", async () => {
     tempDir = makeTempDir();
     const runTurnStart = createTurnStartRunner(tempDir);
 
     for (const entry of [
-      userTextMessage("u3", "PI_OVEN_EXTERNAL_EXEC: once scope=all creds=local"),
-      userTextMessage("u4", "PI_OVEN_EXTERNAL_EXEC: once scope=mutation creds=local"),
+      userTextMessage("u3", "You may use my local credentials for all direct external commands."),
+      userTextMessage("u4", "You may use my local credentials for one direct external mutation command."),
       userTextMessage("u5", "use my local credentials and execute the external command directly"),
       userTextMessage("u6", "go ahead\ncontinue\njust do it"),
+      userTextMessage("u7", "Please don't use my local credentials for one direct external access command."),
+      userTextMessage("u8", "Please do not use my local credentials for one direct external access command."),
+      userTextMessage(
+        "u9",
+        `You can never run direct external mutation commands using this temporary AWS credential bundle until it expires: AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 expiresAt=${TEMP_CONSENT_EXPIRES_AT}`
+      ),
+      userTextMessage("u10", "Please issue no direct external access commands using my local credentials."),
+      userTextMessage("u11", "직접 실행해도 돼, 그런데 외부 접근 명령에 로컬 자격증명은 사용하지 마."),
     ]) {
       const persisted = await runTurnStart([entry], 1);
       expect(persisted.externalExecConsent).toBeUndefined();
@@ -639,7 +650,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
         "u1",
         [
           "자율 실행으로 큰 작업 진행해줘. kzk:explorer는 유지하고 spec 잡자 first.",
-          "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local",
+          "You may use my local credentials for one direct external access command.",
         ].join("\n")
       ),
     ];
@@ -678,12 +689,15 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     tempDir = makeTempDir();
     const runTurnStart = createTurnStartRunner(tempDir);
 
-    await runTurnStart([userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local")], 1);
+    await runTurnStart(
+      [userTextMessage("u1", "You may use my local credentials for one direct external access command.")],
+      1
+    );
     const store = new GateStateStore(join(tempDir, ".pi-oven"));
     expect(await store.consumeExternalExecConsent("u1")).toBe("consumed");
 
     const persisted = await runTurnStart(
-      [userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local")],
+      [userTextMessage("u1", "You may use my local credentials for one direct external access command.")],
       2
     );
 
@@ -694,14 +708,14 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     tempDir = makeTempDir();
     const runTurnStart = createTurnStartRunner(tempDir);
     let branchEntries = [
-      userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local"),
+      userTextMessage("u1", "You may use my local credentials for one direct external access command."),
     ];
 
     await runTurnStart(branchEntries, 1);
     const store = new GateStateStore(join(tempDir, ".pi-oven"));
     expect(await store.consumeExternalExecConsent("u1")).toBe("consumed");
     branchEntries = [
-      userTextMessage("u2", "PI_OVEN_EXTERNAL_EXEC: once scope=read creds=local"),
+      userTextMessage("u2", "You may use my local credentials for one direct external read command."),
     ];
 
     const persisted = await runTurnStart(branchEntries, 2);
@@ -713,7 +727,10 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     tempDir = makeTempDir();
     const runTurnStart = createTurnStartRunner(tempDir);
     let branchEntries = [
-      userTextMessage("u1", "PI_OVEN_EXTERNAL_EXEC: once scope=access creds=local\nkzk:explorer"),
+      userTextMessage(
+        "u1",
+        "You may use my local credentials for one direct external access command.\nkzk:explorer"
+      ),
     ];
 
     await runTurnStart(branchEntries, 1);

@@ -338,7 +338,7 @@
       <tr><td class="role">코드지능</td><td><code>lsp</code></td><td>진단·정의·참조·hover·심볼·rename(파일 이동+import 갱신)·code action</td><td class="partial">omc lsp_* MCP ◐</td></tr>
       <tr><td class="role">웹/브라우저</td><td><code>web_search</code> <code>browser</code></td><td>14-backend 검색 폴백 + headless Chromium(JS·스크린샷·a11y)</td><td class="nope">WebFetch/WebSearch ○</td></tr>
       <tr><td class="role">오케스트레이션</td><td><code>task</code> <code>job</code> <code>irc</code></td><td>격리 subagent + async job 폴링 + 에이전트 간 라이브 IRC</td><td class="partial">task ◐ / irc ○</td></tr>
-      <tr><td class="role">메모리</td><td><code>retain</code> <code>recall</code> <code>reflect</code> <code>memory_edit</code></td><td>Hindsight/Mnemopi 장기 메모리, subagent alias 공유</td><td class="nope">○ (.omc 파일 우회)</td></tr>
+      <tr><td class="role">메모리</td><td><code>retain</code> <code>recall</code> <code>reflect</code> <code>memory_edit</code></td><td>Hindsight/Mnemopi 장기 메모리, subagent alias 공유</td><td class="nope">○ (레거시 파일 상태 우회)</td></tr>
       <tr><td class="role">상태/계획</td><td><code>todo_write</code> <code>checkpoint</code> <code>rewind</code></td><td>단계별 할일 + 컨텍스트 체크포인트/되감기(탐색 압축)</td><td class="nope">TodoWrite ◐ / rewind ○</td></tr>
       <tr><td class="role">GitHub/미디어</td><td><code>github</code> <code>inspect_image</code> <code>image_gen</code> <code>render_mermaid</code></td><td>gh 래퍼·CI 스트리밍 + 비전 분석 + 이미지 생성 + mermaid 렌더</td><td class="partial">gh CLI ◐ / 비전 ◐</td></tr>
       <tr><td class="role">상호작용(hidden)</td><td><code>ask</code> <code>yield</code> <code>report_finding</code> <code>resolve</code> <code>goal</code></td><td>중간 질의 + 구조화 종료 + 개별 finding 등록 + 편집 수락 + 목표 추적</td><td class="partial">◐</td></tr>
@@ -450,7 +450,7 @@
       <tr><td class="feat">데이터 실행(REPL)</td><td class="yes">● eval</td><td class="nope">○ analyst 읽기전용</td><td><b>OMP 압도</b> — Python/JS 실제 실행</td></tr>
       <tr><td class="feat">브라우저 자동화</td><td class="yes">● browser</td><td class="partial">◐ qa Playwright-MCP</td><td>OMP 네이티브 / pi-oven은 외부 MCP 의존</td></tr>
       <tr><td class="feat">데이터 분석(읽기)</td><td class="nope">○</td><td class="yes">● analyst</td><td>pi-oven 전용 역할 (단 실행은 불가)</td></tr>
-      <tr><td class="feat">장기 메모리</td><td class="yes">● retain/recall</td><td class="nope">○ (.omc 파일)</td><td><b>OMP 압도</b> — 에이전트 큐레이션 메모리</td></tr>
+      <tr><td class="feat">장기 메모리</td><td class="yes">● retain/recall</td><td class="nope">○ (레거시 파일 상태)</td><td><b>OMP 압도</b> — 에이전트 큐레이션 메모리</td></tr>
       <tr><td class="feat">에이전트 간 라이브 통신</td><td class="yes">● irc</td><td class="nope">○</td><td><b>OMP 압도</b> — 병렬 subagent 실시간 협응</td></tr>
       <tr><td class="feat">격리 실행(worktree/FUSE)</td><td class="yes">● task isolated</td><td class="partial">◐ 하네스 스킬</td><td>OMP는 툴 레벨, pi-oven은 스킬 레벨</td></tr>
       <tr><td class="feat">모델 다양성</td><td class="partial">◐ pi/* 별칭</td><td class="yes">● 6모델 3프로바이더</td><td><b>pi-oven 우위</b> — 역할별 모델-fit 매핑</td></tr>
@@ -518,7 +518,7 @@
       </ul></div>
     <div class="card pi-c"><h4>D. 인프라 — 설계 결정 필요</h4>
       <ul>
-        <li><b>메모리 정책</b>: retain/recall을 .omc 파일 대신/병행으로 쓸지</li>
+        <li><b>메모리 정책</b>: retain/recall을 로컬 상태 파일 대신/병행으로 쓸지</li>
         <li><b>irc 협응</b>: 병렬 dispatch 역할에 라이브 통신 도입 범위</li>
         <li><b>checkpoint/rewind</b>: 탐색계 역할(explorer/tracer)의 컨텍스트 압축</li>
         <li><b>모델 라우팅 유지</b>: pi-oven 6모델 매핑은 omp 대비 우위 — 보존</li>

@@ -59,8 +59,8 @@ Within a large task, route by work type before dispatching `pi-oven:executor` di
 
 Fire file-scope-disjoint tasks simultaneously: batch the widest clean wave you can describe instead of dribbling out independent tasks one at a time.
 
-- Default packing target: 8-12 parallel subagents per wave when scopes are disjoint and prompts are self-contained
-- If omp/runtime/provider admits fewer concurrently, that smaller ceiling wins — queue the next dependency-ready wave immediately instead of pretending pi-oven can force more workers
+- Default packing target: 8-12 parallel subagents per dependency-safe wave when scopes are disjoint and prompts are self-contained
+- This is pi-oven's batching target, not a guaranteed live-worker count. If omp/runtime/provider admits fewer concurrently, that smaller ceiling wins until the native runtime path is active; once it is, `nativeWorkers.maxWorkers` becomes the pi-oven-owned ceiling without overriding runtime availability
 - Same file region, shared generated artifact, or review dependency = sequential
 - Git push race → subagent handles with `git fetch && rebase && push`
 

@@ -240,7 +240,7 @@ export async function runScenario(
     }
 
     // 3. agent_response_must_not_contain — HARD GATE (D1 contract).
-    //    The primary omp-native violation detector (e.g. "oh-my-claudecode:", "omo:").
+    //    The primary omp-native violation detector (e.g. legacy foreign namespace refs, "omo:").
     if (exp.agent_response_must_not_contain) {
       for (const phrase of exp.agent_response_must_not_contain) {
         if (lastBuf.content.includes(phrase)) {

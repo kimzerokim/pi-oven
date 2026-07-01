@@ -61,7 +61,7 @@ No other exemptions are recognized. "It's small" and "it's obvious" are not vali
 **Action**:
 
 1. Halt. Do not write any test or source file.
-2. Append a `Q-TDD-MAIN` entry to `docs/harness/user-queue.md` (or `.omc/state/queue.md` if the harness queue is not present) with:
+2. Append a `Q-TDD-MAIN` entry to `docs/harness/user-queue.md` (or `<cwd>/.pi-oven/state/queue.md` if the harness queue is not present) with:
    - The task description.
    - The planned test file path(s).
    - Tentative default: dispatch fresh sonnet executor.

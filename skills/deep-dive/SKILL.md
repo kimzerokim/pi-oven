@@ -103,7 +103,7 @@ After all tracer lanes and deep-researcher complete, dispatch `pi-oven:analyst` 
 Then:
 - **Conditional REPL probe:** if static trace analysis is insufficient (e.g., log parsing, metric correlation, or trace file analysis is needed to confirm/rule out a hypothesis), dispatch `pi-oven:data-runner` via `task` to run a targeted REPL probe. This is a conditional post-lane dispatch — not a hypothesis lane and not part of the parallel fan-out. Dispatch only when static analysis leaves a hypothesis unresolved by evidence.
 - Produce the trace output structure (see below)
-- Save to `.omc/specs/deep-dive-trace-{slug}.md`
+- Save to `.pi-oven/specs/deep-dive-trace-{slug}.md`
 
 ### Trace output format
 
@@ -164,7 +164,7 @@ If all lanes are low-confidence: still apply Injection 2 (even inconclusive find
 - One question per turn when you must ask, targeting a trace-unresolvable critical unknown
 - For single-select option questions, prefer the `pi-oven_ask` tool (options as `{label, description}`) so each option's rationale shows beside it; keep the built-in `ask` for multi-select or free-form input
 - Keep it bounded — this is a bug-investigation pipeline, not a spec interview; stop once the trace-unresolvable unknowns are answered or deferred
-- Spec saved to `.omc/specs/deep-dive-{slug}.md`
+- Spec saved to `.pi-oven/specs/deep-dive-{slug}.md`
 - Spec includes all standard sections plus an additional **Trace Findings** section summarizing the trace results
 
 ## Phase 5: Execution bridge
@@ -184,7 +184,7 @@ Any option whose path writes code must follow `tdd-strict` — the failing test 
 - `ask` for lane confirmation (Phase 2) and each bounded clarification question (Phase 4) — prefer `pi-oven_ask` with `{label, description}` options for single-select choices so rationales show beside each option; keep built-in `ask` for multi-select / free-form
 - `task` with `run_in_background: true` to dispatch 3 parallel `pi-oven:tracer` lanes (Phase 3)
 - `pi-oven:explorer` (model: haiku) for brownfield codebase detection (Phase 1)
-- `write` to save trace result to `.omc/specs/deep-dive-trace-{slug}.md` and final spec to `.omc/specs/deep-dive-{slug}.md`
+- `write` to save trace result to `.pi-oven/specs/deep-dive-trace-{slug}.md` and final spec to `.pi-oven/specs/deep-dive-{slug}.md`
 
 ## Stop conditions
 

@@ -66,7 +66,7 @@ Wave 1 (parallel): every dependency-free task you can launch together (default t
 Wave 2 (parallel): every task whose only blockers cleared in Wave 1
 Wave N: repeat with the widest dependency-ready batch until all tasks complete
 ```
-This 8-12 figure is pi-oven's batching target, not an OMC-core worker guarantee. If omp/runtime/provider only executes fewer at once, keep the wave dependency-packed and immediately queue the next batch.
+This 8-12 figure is pi-oven's batching target, not a guaranteed concurrent-worker count. Before the native runtime path is active, omp/runtime/provider capacity can force fewer live workers; after cutover, `nativeWorkers.maxWorkers` is the pi-oven-owned ceiling without overriding runtime availability.
 
 Tier routing:
 - Simple lookups / 1-file isolated changes: `pi-oven:executor` (cheap model)

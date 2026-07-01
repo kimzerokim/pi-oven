@@ -353,8 +353,10 @@ export const PROFILE_C_FALLBACK_CHAINS: Record<string, string[]> = {
  *     rollouts where extra latency buys correctness.
  *   - medium for retrieval, docs, writing, git, and vision fan-out.
  * registry_alternate = opencode-zen/ mirror of the same model id.
- * This biases routing for aggressive subagent batching, but actual worker count
- * still depends on omp/runtime/provider limits.
+ * This biases routing for aggressive subagent batching. The policy target stays
+ * 8-12 dependency-safe siblings per wave; `nativeWorkers.maxWorkers` is
+ * pi-oven's own ceiling knob, but until the native runtime path is active actual
+ * live workers still depend on omp/runtime/provider limits.
  */
 export const PROFILE_B: ProfileMap = {
   executor: {
@@ -723,8 +725,10 @@ export const PROFILE_C: ProfileMap = {
  *   VISION roles (multimodal-looker, qa-tester) → opencode-zen/gemini-3-flash (primary), opencode-zen/minimax-m2.5 (alt)
  *   low (git-master)                → opencode-zen/minimax-m2.5 (primary), opencode-zen/glm-5.1 (alt)
  * tools and blocked_tools copied verbatim from PROFILE_A.
- * This biases routing for aggressive subagent batching, but actual worker count
- * still depends on omp/runtime/provider limits.
+ * This biases routing for aggressive subagent batching. The policy target stays
+ * 8-12 dependency-safe siblings per wave; `nativeWorkers.maxWorkers` is
+ * pi-oven's own ceiling knob, but until the native runtime path is active actual
+ * live workers still depend on omp/runtime/provider limits.
  */
 export const PROFILE_D: ProfileMap = {
   executor: {

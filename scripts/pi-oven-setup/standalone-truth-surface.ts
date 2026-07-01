@@ -14,6 +14,11 @@ import {
   type DisplayReadResult,
 } from "./config-yml";
 import { readProjectSettingsDisplayState } from "./project-settings";
+import {
+  describeNativeWorkerRuntime,
+  resolveNativeWorkerRuntimeStatus,
+  type NativeWorkerRuntimeStatus,
+} from "../pi-oven-team";
 
 export type StandaloneTruthLevel = "INFO" | "WARN";
 
@@ -48,6 +53,7 @@ export interface StandaloneTruthFacts {
     issues: string[];
     error?: string;
   };
+  nativeWorkerRuntime: NativeWorkerRuntimeStatus;
 }
 
 export const GLOBAL_CONFIG_PATH = "~/.omp/agent/config.yml";
@@ -61,6 +67,8 @@ export const CLEAN_ROOM_FIX =
   "Prefer /pi-oven:setup --suppress-sibling-skills for selective conflict reduction. Reserve /pi-oven:setup --isolate for clean-room troubleshooting when you intentionally want to hide the ~/.claude home layer.";
 export const KEYWORD_SKILL_INTEGRITY_FIX =
   "Sync .claude-plugin/plugin.json skills[], shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries. Reinstall pi-oven@kzk if installed assets are stale.";
+export const NATIVE_WORKER_RUNTIME_FIX =
+  "Restore the vendored native worker launcher under scripts/pi-oven-team/ or reinstall pi-oven@kzk.";
 
 const PROJECT_SCOPE_GLOBAL_PREREQUISITES: GlobalPrerequisiteExpectation[] = [
   { key: "memory.backend", expected: "mnemopi" },
@@ -119,6 +127,21 @@ export function buildStandaloneTruthSignals(
       name: "session policy",
       detail:
         "pi-oven-first is the default lane for automatic pi-oven routing; selective sibling suppression and clean-room isolation remain optional global toggles.",
+    },
+    {
+      level: facts.nativeWorkerRuntime.active ? "INFO" : "WARN",
+      name: "native worker runtime",
+      detail: describeNativeWorkerRuntime(facts.nativeWorkerRuntime),
+      fix: facts.nativeWorkerRuntime.active ? undefined : NATIVE_WORKER_RUNTIME_FIX,
+    },
+    {
+      level: "INFO",
+      name: "native worker ceiling",
+      detail:
+        `dependency-ready wave target remains 8-12 siblings. Effective native worker ceiling is nativeWorkers.maxWorkers=${facts.nativeWorkerRuntime.maxWorkers} from ${facts.nativeWorkerRuntime.maxWorkersConfigPath} (${facts.nativeWorkerRuntime.maxWorkersSource}); ` +
+        (facts.nativeWorkerRuntime.active
+          ? "the vendored pi-oven launcher enforces this ceiling when it starts or scales native workers."
+          : "pi-oven cannot enforce this ceiling until the vendored native runtime path is restored."),
     },
   ];
 
@@ -230,7 +253,7 @@ export function buildStandaloneTruthSignals(
         detail:
           `enabled in ${GLOBAL_CONFIG_PATH} ` +
           `(disabledProviders includes ${PI_OVEN_MANAGED_PROVIDERS.join(", ")}). ` +
-          "This broad home-layer cut can hide ~/.claude kzk/omc skills, hooks, and other behavior, so it is not the default fix for pi-oven-first conflicts.",
+          "This broad home-layer cut can hide sibling marketplace skills, hooks, and other ~/.claude behavior, so it is not the default fix for pi-oven-first conflicts.",
         fix: CLEAN_ROOM_FIX,
       });
     } else {
@@ -298,6 +321,7 @@ export async function collectStandaloneTruthSignals(
   opts: {
     pluginAssetPath: string;
     projectRoot: string;
+    homeDir?: string;
   } & ConfigYmlOpts
 ): Promise<StandaloneTruthSignal[]> {
   const projectSettings = await readProjectSettingsDisplayState({ cwd: opts.projectRoot });
@@ -313,6 +337,12 @@ export async function collectStandaloneTruthSignals(
   const disabledProvidersState = normalizeStringArrayDisplayState(
     await readConfigValueDisplayState("disabledProviders", opts)
   );
+
+  const nativeWorkerRuntime = await resolveNativeWorkerRuntimeStatus({
+    pluginRoot: opts.pluginAssetPath,
+    projectRoot: opts.projectRoot,
+    homeDir: opts.homeDir,
+  });
 
   let keywordIndexTruth: StandaloneTruthFacts["keywordIndexTruth"];
   const pluginManifestPath = path.join(opts.pluginAssetPath, ".claude-plugin", "plugin.json");
@@ -369,6 +399,7 @@ export async function collectStandaloneTruthSignals(
     disabledProvidersState,
     ignoredSkillsState: await readIgnoredSkillsDisplayState(opts),
     keywordIndexTruth,
+    nativeWorkerRuntime,
   });
 }
 

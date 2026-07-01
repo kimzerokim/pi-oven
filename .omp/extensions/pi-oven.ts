@@ -505,10 +505,12 @@ const EXTERNAL_EXEC_SCOPE_VALUES = new Set<ExternalExecConsent["scope"]>([
   "access",
   "mutation",
 ]);
-const TEMP_ACCESS_KEY_FIELD_NAMES = new Set(["accesskeyid", "awsaccesskeyid"]);
-const TEMP_SECRET_ACCESS_KEY_FIELD_NAMES = new Set(["secretaccesskey", "awssecretaccesskey"]);
-const TEMP_SESSION_TOKEN_FIELD_NAMES = new Set(["sessiontoken", "awssessiontoken"]);
-const TEMP_EXPIRY_FIELD_NAMES = new Set(["expiresat", "expiration", "expiry"]);
+const TEMP_ACCESS_KEY_FIELD_NAMES = ["accesskeyid", "awsaccesskeyid"] as const;
+const TEMP_SECRET_ACCESS_KEY_FIELD_NAMES = ["secretaccesskey", "awssecretaccesskey"] as const;
+const TEMP_SESSION_TOKEN_FIELD_NAMES = ["sessiontoken", "awssessiontoken"] as const;
+const TEMP_EXPIRY_FIELD_NAMES = ["expiresat", "expiration", "expiry"] as const;
+const EXTERNAL_EXEC_SCOPE_FIELD_NAMES = ["scope"] as const;
+const EXTERNAL_EXEC_CREDS_FIELD_NAMES = ["creds"] as const;
 
 function normalizeExternalExecFieldName(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -525,33 +527,22 @@ function stripOptionalQuotes(value: string): string {
   return value;
 }
 
-function getStructuredExternalExecFields(text: string): Map<string, string> | null {
-  const lines = text.split(/\r?\n/);
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const match = lines[i].match(/^\s*PI_OVEN_EXTERNAL_EXEC:\s*(.+?)\s*$/i);
-    if (match == null) continue;
-
-    const fields = new Map<string, string>();
-    for (const token of match[1].trim().split(/\s+/).filter((part) => part.length > 0)) {
-      const equals = token.indexOf("=");
-      if (equals < 0) {
-        if (token.toLowerCase() === "once") fields.set("mode", "once");
-        continue;
-      }
-      const key = normalizeExternalExecFieldName(token.slice(0, equals));
-      const value = stripOptionalQuotes(token.slice(equals + 1));
-      if (key.length === 0 || value.length === 0) continue;
-      fields.set(key, value);
-    }
-    return fields;
-  }
-  return null;
+function buildStructuredExternalExecFieldPattern(name: string): RegExp {
+  const normalizedName = normalizeExternalExecFieldName(name);
+  const flexibleName = normalizedName
+    .split("")
+    .map((char) => char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("[^a-z0-9]*");
+  return new RegExp(
+    `\\b${flexibleName}\\s*[:=]\\s*("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|[^\\s]+)`,
+    "i"
+  );
 }
 
-function getStructuredFieldValue(fields: Map<string, string>, candidates: Set<string>): string | undefined {
+function getStructuredFieldValue(text: string, candidates: readonly string[]): string | undefined {
   for (const name of candidates) {
-    const value = fields.get(name);
-    if (value && value.length > 0) return value;
+    const value = buildStructuredExternalExecFieldPattern(name).exec(text)?.[1];
+    if (value && value.length > 0) return stripOptionalQuotes(value);
   }
   return undefined;
 }
@@ -567,61 +558,112 @@ function parseExternalExecExpiry(raw: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+const EXTERNAL_EXEC_APPROVAL_PATTERNS: ReadonlyArray<RegExp> = [
+  /(?:^|[\n.!?]\s*)(?:you may|you can|please|go ahead(?: and)?|proceed(?: with| and)?|use (?:my|this)|run|execute)\b/i,
+  /(?:^|[\n.!?]\s*)(?:직접 실행해|직접 돌려|실행해도 돼|실행해줘)/u,
+];
+const EXTERNAL_EXEC_DENIAL_PATTERNS: ReadonlyArray<RegExp> = [
+  /\b(?:don't|dont|do not|never)\b[^.!?\n]{0,80}\b(?:run|execute|use|allow|approve)\b/i,
+  /\bno\b[^.!?\n]{0,80}\b(?:direct|external|local credentials?|temporary aws|aws credential bundle)\b/i,
+  /(?:직접|외부|로컬 자격증명|로컬 인증|임시 AWS)[^.!?\n]{0,40}(?:하지\s*마|하지마|쓰지\s*마|쓰지마|사용하지\s*마|사용하지마|실행하지\s*마|실행하지마|안\s*돼|안돼|허용하지\s*마|허용하지마|허용하지\s*않|승인하지\s*마|승인하지마|승인하지\s*않|금지)/u,
+  /(?:하지\s*마|하지마|쓰지\s*마|쓰지마|사용하지\s*마|사용하지마|실행하지\s*마|실행하지마|안\s*돼|안돼|허용하지\s*마|허용하지마|허용하지\s*않|승인하지\s*마|승인하지마|승인하지\s*않|금지)[^.!?\n]{0,40}(?:직접|외부|로컬 자격증명|로컬 인증|임시 AWS)/u,
+];
+const DIRECT_EXTERNAL_TARGET_PATTERNS: ReadonlyArray<RegExp> = [
+  /\b(?:direct|directly|external|yourself)\b/i,
+  /(?:직접|외부)/u,
+];
+const LOCAL_CREDENTIAL_PATTERNS: ReadonlyArray<RegExp> = [
+  /\blocal credentials?\b/i,
+  /\blocal credential files?\b/i,
+  /(?:로컬 자격증명|로컬 인증)/u,
+];
+const ALL_SCOPE_PATTERNS: ReadonlyArray<RegExp> = [
+  /\ball direct external commands?\b/i,
+  /\ball scopes?\b/i,
+  /\bscope\s+all\b/i,
+  /(?:모든 외부 명령|전체 범위)/u,
+];
+const READ_SCOPE_PATTERNS: ReadonlyArray<RegExp> = [/\bread\b/i, /\bread-only\b/i, /(?:읽기|조회)/u];
+const ACCESS_SCOPE_PATTERNS: ReadonlyArray<RegExp> = [
+  /\baccess\b/i,
+  /\bexternal session\b/i,
+  /(?:접근|세션)/u,
+];
+const MUTATION_SCOPE_PATTERNS: ReadonlyArray<RegExp> = [
+  /\bmutation\b/i,
+  /\bmutat(?:e|ing)\b/i,
+  /(?:변경|수정|삭제|생성)/u,
+];
+
+function detectNaturalExternalExecScope(
+  text: string
+): ExternalExecConsent["scope"] | undefined {
+  const matches: ExternalExecConsent["scope"][] = [];
+  if (ALL_SCOPE_PATTERNS.some((pattern) => pattern.test(text))) matches.push("all");
+  if (READ_SCOPE_PATTERNS.some((pattern) => pattern.test(text))) matches.push("read");
+  if (ACCESS_SCOPE_PATTERNS.some((pattern) => pattern.test(text))) matches.push("access");
+  if (MUTATION_SCOPE_PATTERNS.some((pattern) => pattern.test(text))) matches.push("mutation");
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+
 export function extractExternalExecConsent(
   text: string,
   sourceMessageId: string
 ): ExternalExecConsent | undefined {
-  const structuredFields = getStructuredExternalExecFields(text);
-  if (structuredFields) {
-    const scopeRaw = structuredFields.get("scope")?.toLowerCase();
-    const scope =
-      scopeRaw && EXTERNAL_EXEC_SCOPE_VALUES.has(scopeRaw as ExternalExecConsent["scope"])
-        ? (scopeRaw as ExternalExecConsent["scope"])
-        : undefined;
-    const accessKeyId = getStructuredFieldValue(structuredFields, TEMP_ACCESS_KEY_FIELD_NAMES);
-    const secretAccessKey = getStructuredFieldValue(
-      structuredFields,
-      TEMP_SECRET_ACCESS_KEY_FIELD_NAMES
-    );
-    const sessionToken = getStructuredFieldValue(structuredFields, TEMP_SESSION_TOKEN_FIELD_NAMES);
-    const expiresAt = parseExternalExecExpiry(
-      getStructuredFieldValue(structuredFields, TEMP_EXPIRY_FIELD_NAMES)
-    );
-    const requiresSecretAccessKey = scope === "mutation" || scope === "all";
-    if (
-      scope &&
-      accessKeyId &&
-      /^ASIA[0-9A-Z]{12,}$/i.test(accessKeyId) &&
-      sessionToken &&
-      expiresAt != null &&
-      Date.now() < expiresAt &&
-      (!requiresSecretAccessKey || secretAccessKey)
-    ) {
-      return {
-        sourceMessageId,
-        scope,
-        remainingUses: 1,
-        tempCredentials: {
-          provider: "aws",
-          accessKeyId: accessKeyId.toUpperCase(),
-          sessionTokenFingerprint: fingerprintExternalExecSecret(sessionToken),
-          ...(secretAccessKey
-            ? { secretAccessKeyFingerprint: fingerprintExternalExecSecret(secretAccessKey) }
-            : {}),
-          expiresAt,
-        },
-      };
-    }
+  const scopeRaw = getStructuredFieldValue(text, EXTERNAL_EXEC_SCOPE_FIELD_NAMES)?.toLowerCase();
+  const scope =
+    scopeRaw && EXTERNAL_EXEC_SCOPE_VALUES.has(scopeRaw as ExternalExecConsent["scope"])
+      ? (scopeRaw as ExternalExecConsent["scope"])
+      : detectNaturalExternalExecScope(text);
+  const hasStructuredApproval = /^\s*PI_OVEN_EXTERNAL_EXEC:/im.test(text);
+  const mentionsDirectExternalTarget = DIRECT_EXTERNAL_TARGET_PATTERNS.some((pattern) => pattern.test(text));
+  const hasNaturalApproval =
+    mentionsDirectExternalTarget &&
+    EXTERNAL_EXEC_APPROVAL_PATTERNS.some((pattern) => pattern.test(text));
+  const hasNaturalDenial =
+    mentionsDirectExternalTarget &&
+    EXTERNAL_EXEC_DENIAL_PATTERNS.some((pattern) => pattern.test(text));
 
-    const mode = structuredFields.get("mode")?.toLowerCase();
-    const creds = structuredFields.get("creds")?.toLowerCase();
-    if (mode === "once" && creds === "local" && (scope === "read" || scope === "access")) {
-      return {
-        sourceMessageId,
-        scope,
-        remainingUses: 1,
-      };
-    }
+  if (!scope || (!hasStructuredApproval && (!hasNaturalApproval || hasNaturalDenial))) {
+    return undefined;
+  }
+
+  const accessKeyId = getStructuredFieldValue(text, TEMP_ACCESS_KEY_FIELD_NAMES);
+  const secretAccessKey = getStructuredFieldValue(text, TEMP_SECRET_ACCESS_KEY_FIELD_NAMES);
+  const sessionToken = getStructuredFieldValue(text, TEMP_SESSION_TOKEN_FIELD_NAMES);
+  const expiresAt = parseExternalExecExpiry(getStructuredFieldValue(text, TEMP_EXPIRY_FIELD_NAMES));
+  if (
+    accessKeyId &&
+    /^ASIA[0-9A-Z]{12,}$/i.test(accessKeyId) &&
+    secretAccessKey &&
+    sessionToken &&
+    expiresAt != null &&
+    Date.now() < expiresAt
+  ) {
+    return {
+      sourceMessageId,
+      scope,
+      remainingUses: 1,
+      tempCredentials: {
+        provider: "aws",
+        accessKeyId: accessKeyId.toUpperCase(),
+        sessionTokenFingerprint: fingerprintExternalExecSecret(sessionToken),
+        secretAccessKeyFingerprint: fingerprintExternalExecSecret(secretAccessKey),
+        expiresAt,
+      },
+    };
+  }
+
+  const creds = getStructuredFieldValue(text, EXTERNAL_EXEC_CREDS_FIELD_NAMES)?.toLowerCase();
+  const localCredentialConsent =
+    creds === "local" || LOCAL_CREDENTIAL_PATTERNS.some((pattern) => pattern.test(text));
+  if (localCredentialConsent && (scope === "read" || scope === "access")) {
+    return {
+      sourceMessageId,
+      scope,
+      remainingUses: 1,
+    };
   }
 
   return undefined;
@@ -1029,7 +1071,7 @@ export default function piOvenPi(
     pi.logger.debug(`pi-oven: pi-oven_ask registration skipped: ${err}`);
   }
 
-  pi.setLabel("pi-oven v0.1.21");
+  pi.setLabel("pi-oven v0.1.22");
   pi.logger.info("pi-oven loaded");
 
 }

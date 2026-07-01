@@ -585,7 +585,11 @@ export async function setMemoryAndAsyncConfig(opts?: ConfigYmlOpts): Promise<voi
 /**
  * Subagent runtime prerequisites written on global-scope setup. The gated tool
  * flags ensure the mandated tools stay callable, and `task.enableLsp=true`
- * removes omp's default subagent LSP gate. Scalar keys → individual
+ * removes omp's default subagent LSP gate. Worker breadth is intentionally NOT
+ * stored here; the pi-oven-owned launcher (`scripts/pi-oven-team/index.ts` →
+ * `runtime-v2.ts`) resolves `.pi-oven/config.json` and enforces
+ * `nativeWorkers.maxWorkers` itself, so setup/status can tell the truth without
+ * claiming omp-core scheduling control. Scalar keys → individual
  * `omp config set <dotted.key> <value>` (no read-merge needed; not
  * record-typed). The EXACT casing is the omp setting key (astGrep camelCase,
  * inspect_image snake) — do not normalize it.
@@ -771,7 +775,8 @@ export async function clearPiOvenIgnoredSkills(opts?: ConfigYmlOpts): Promise<st
  * `/pi-oven:*` commands and skills register through that same `claude-plugins`
  * discovery provider (it reads ~/.omp/plugins too, not just ~/.claude/plugins),
  * so disabling it would also kill pi-oven's own commands. Trade-off (by design):
- * omc/agentmemory marketplace plugin commands remain visible under omp.
+ * sibling marketplace plugin commands that still load through `claude-plugins`
+ * remain visible under omp.
  */
 export const PI_OVEN_MANAGED_PROVIDERS = ["claude"] as const;
 

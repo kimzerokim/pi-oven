@@ -359,6 +359,30 @@ describe("runStatus — project layer", () => {
     expect(plannerLine).toContain("default(frontmatter)");
   });
 
+  it("surfaces the wide-wave policy separately from the configured native worker ceiling", async () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".pi-oven", "config.json"),
+      JSON.stringify({ nativeWorkers: { maxWorkers: 32 } }, null, 2) + "\n",
+      "utf-8"
+    );
+    const spawnFn = makeSpawnFn({ overrides: {}, ignoredSkills: [] });
+
+    const result = await runStatus({
+      spawnFn,
+      agentsDir,
+      cwd,
+      pluginAssetPath: join(import.meta.dir, "..", "..", ".."),
+    });
+    expect(result.output).toContain("native worker runtime");
+    expect(result.output).toContain("scripts/pi-oven-team/index.ts");
+    expect(result.output).toContain("native worker ceiling");
+    expect(result.output).toContain("8-12");
+    expect(result.output).toContain("nativeWorkers.maxWorkers=32");
+    expect(result.output).toContain(join(cwd, ".pi-oven", "config.json"));
+    expect(result.output).toMatch(/enforces this ceiling|cannot enforce this ceiling/i);
+  });
+
   it("surfaces missing machine-global prerequisites when project routing is active", async () => {
     seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({

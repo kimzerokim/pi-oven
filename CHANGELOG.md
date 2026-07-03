@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.23 - 2026-07-03
+
+- feat(pi-oven): cut over native worker runtime
 ## v0.1.19 - 2026-06-29
 
 - fix(runtime): stop setup from triggering unresolved namespaced skill reads

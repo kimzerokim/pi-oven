@@ -6,51 +6,26 @@ argument-hint: "[--bump major|minor|patch | --version X.Y.Z] [--from-tag vX.Y.Z]
 
 # /pi-oven:release
 
-## Resolve the plugin script dir first
+## Run only from the source repo
 
-pi-oven may be installed globally, so the script does NOT live under the user's project cwd. Before dispatching any `bun` command, resolve the plugin script dir once and reuse `$PI_OVEN_DIR` for every dispatch (dev cwd → `installed_plugins.json` `installPath` → cache scan via `bun -e`):
+`/pi-oven:release` is maintainer-only automation for the pi-oven **source repo** checkout.
 
-```bash
-PI_OVEN_DIR="$PWD"
-if [ ! -f "$PI_OVEN_DIR/scripts/pi-oven-release/index.ts" ]; then
-  PI_OVEN_DIR="$(bun -e '
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+- **source repo** — the cwd checkout you are authoring and versioning
+- **release artifact** — the version-synced manifests, optional label update, changelog diff, commit, and `vX.Y.Z` tag produced from that checkout
+- **installed cache** — the consumer snapshot under `~/.omp/plugins/cache/plugins/`, useful for post-install verification only and never a patch target
 
-const manifestPath = path.join(os.homedir(), ".omp/plugins/installed_plugins.json");
-const cacheRoot = path.join(os.homedir(), ".omp/plugins/cache/plugins");
-let resolved = "";
-
-try {
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  resolved = manifest?.plugins?.["pi-oven@kzk"]?.[0]?.installPath ?? "";
-} catch {}
-
-if (!resolved) {
-  try {
-    const entries = fs
-      .readdirSync(cacheRoot, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && entry.name.startsWith("kzk___pi-oven___"))
-      .map((entry) => entry.name)
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    resolved = entries.length ? path.join(cacheRoot, entries[entries.length - 1]) : "";
-  } catch {}
-}
-
-process.stdout.write(resolved);
-')"
-fi
-[ -n "$PI_OVEN_DIR" ] || { echo "pi-oven install not found" >&2; exit 1; }
-```
-
-Use `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-release/index.ts" <args>` — never a cwd-relative `bun` call against `scripts/pi-oven-release/index.ts` (that breaks on global installs where cwd ≠ plugin dir).
-
-Run release automation via:
+Before dispatching any `bun` command, confirm the current cwd is the source repo and that `scripts/pi-oven-release/index.ts` exists there. Do **not** resolve `installed_plugins.json`, do **not** scan the install cache, and do **not** run release automation from a marketplace install snapshot.
 
 ```sh
-bun "${PI_OVEN_DIR%/}/scripts/pi-oven-release/index.ts" --bump patch --dry-run
+test -f scripts/pi-oven-release/index.ts || {
+  echo "Run /pi-oven:release from the pi-oven source repo checkout" >&2
+  exit 1
+}
+
+bun scripts/pi-oven-release/index.ts --bump patch --dry-run
 ```
+
+The dry-run JSON prints a `boundary` object that makes the source repo → release artifact → installed cache contract explicit for the current run.
 
 ## Flags
 
@@ -65,8 +40,11 @@ bun "${PI_OVEN_DIR%/}/scripts/pi-oven-release/index.ts" --bump patch --dry-run
 ## Safety / SoT rules
 
 - Safe by default: if `--publish` is omitted, run is dry-run by default.
+- The helper refuses installed-cache roots; release automation is source-repo only.
 - Version SoT must start consistent before release:
   - `package.json`
   - `.claude-plugin/plugin.json`
   - `.claude-plugin/marketplace.json` (`plugins[0].version`)
+- Local git release writes use the current checked-out branch plus the `vX.Y.Z` tag; the helper never guesses `main`.
 - Optional label sync updates `pi.setLabel("pi-oven v...")` only when requested.
+- The installed cache remains observation-only even after release; verify sync there only after publish/install completes.

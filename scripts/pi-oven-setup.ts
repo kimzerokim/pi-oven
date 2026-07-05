@@ -181,42 +181,41 @@ if (hasOverride) {
   }
 }
 
-// --isolate / --no-isolate toggle omp's ~/.claude isolation (disabledProviders).
-// They are mutually exclusive with each other but MAY combine with any primary
-// action (runs after it). Standalone is also valid. GLOBAL-ONLY: rejected under
-// --scope project because they write ~/.omp/agent/config.yml.
+// --isolate / --no-isolate are legacy home-layer compatibility toggles
+// (disabledProviders). They are mutually exclusive with each other but MAY
+// combine with any primary action (runs after it). Standalone is also valid.
+// GLOBAL-ONLY: rejected under --scope project because they write
+// ~/.omp/agent/config.yml.
 const wantIsolate = Boolean(values.isolate);
 const wantNoIsolate = Boolean(values["no-isolate"]);
 if (wantIsolate && wantNoIsolate) {
   process.stderr.write(
-    "--isolate and --no-isolate are mutually exclusive. Use --isolate to make omp ignore the ~/.claude layer, or --no-isolate to re-enable it.\n"
+    "--isolate and --no-isolate are mutually exclusive legacy compatibility toggles.\n"
   );
   process.exit(1);
 }
 const hasIsolate = wantIsolate || wantNoIsolate;
 if (hasIsolate && scope === "project") {
   process.stderr.write(
-    "--isolate and --no-isolate are global-only: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+    "--isolate and --no-isolate are global-only legacy compatibility toggles: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
   );
   process.exit(1);
 }
 
-// --suppress-sibling-skills / --no-suppress-sibling-skills toggle omp's
-// skills.ignoredSkills (sibling marketplace skill suppression, §3.4).
-// GLOBAL-ONLY: rejected under --scope project. Mutually exclusive with each other.
-// Standalone is valid; may also combine with any primary action (runs after it).
+// --suppress-sibling-skills / --no-suppress-sibling-skills are legacy
+// marketplace skill-visibility compatibility toggles (skills.ignoredSkills).
 const wantSuppressSibling = Boolean(values["suppress-sibling-skills"]);
 const wantNoSuppressSibling = Boolean(values["no-suppress-sibling-skills"]);
 if (wantSuppressSibling && wantNoSuppressSibling) {
   process.stderr.write(
-    "--suppress-sibling-skills and --no-suppress-sibling-skills are mutually exclusive. Cannot use both at once.\n"
+    "--suppress-sibling-skills and --no-suppress-sibling-skills are mutually exclusive legacy compatibility toggles.\n"
   );
   process.exit(1);
 }
 const hasSuppressSibling = wantSuppressSibling || wantNoSuppressSibling;
 if (hasSuppressSibling && scope === "project") {
   process.stderr.write(
-    "--suppress-sibling-skills and --no-suppress-sibling-skills are global-only: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+    "--suppress-sibling-skills and --no-suppress-sibling-skills are global-only legacy compatibility toggles: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
   );
   process.exit(1);
 }
@@ -240,7 +239,7 @@ if (
     hasSuppressSibling)
 ) {
   process.stderr.write(
-    "--repair-prereqs is a standalone repair-only action. Do not combine it with --status, --reset, --import, --apply/--profile, --override, --isolate/--no-isolate, or --suppress-sibling-skills/--no-suppress-sibling-skills.\n"
+    "--repair-prereqs is a standalone repair-only action. Do not combine it with --status, --reset, --import, --apply/--profile, --override, or any legacy compatibility toggle.\n"
   );
   process.exit(1);
 }
@@ -310,36 +309,36 @@ if (repairPrereqs) {
   }
   markRouting = true;
 } else if (hasIsolate || hasSuppressSibling) {
-  // Standalone --isolate / --no-isolate / --suppress-sibling-skills /
-  // --no-suppress-sibling-skills (no primary model-routing action).
+  // Standalone legacy compatibility toggles (no primary model-routing action).
   // The toggles themselves run in the shared post-dispatch step below.
   result = { exitCode: 0, output: "" };
 } else {
   process.stderr.write(
-    "No action specified. Use --profile <A|B|C|D>, --repair-prereqs, --status, --reset, --import <file>, --override <role>=<model>, or --isolate/--no-isolate. Add --scope <global|project> to target the global config or this project's .omp/settings.json.\n"
+    "No action specified. Use --profile <A|B|C|D>, --repair-prereqs, --status, --reset, --import <file>, or --override <role>=<model>. Add --scope <global|project> to target the global config or this project's .omp/settings.json.\n"
   );
   process.exit(1);
 }
 
-// Isolation toggle runs AFTER the primary action (if any) and only on its
-// success, so e.g. `--profile A --isolate` applies the profile then isolates.
+// Legacy compatibility toggles run AFTER the primary action (if any) and only
+// on its success, so e.g. `--profile A --isolate` applies the profile first.
 if (hasIsolate && result.exitCode === 0) {
   const iso = await runIsolate({ enable: wantIsolate, spawnFn });
-  const cleanRoomNote =
+  const legacyNote =
     wantIsolate && iso.exitCode === 0
-      ? "  Clean-room note: this niche mode can hide ~/.claude home-layer behavior such as kzk/omc skills and hooks. It is not the default pi-oven-first fix; prefer /pi-oven:setup --suppress-sibling-skills for selective conflict reduction.\n"
+      ? "  Legacy compatibility note: this maintenance mode is outside the normal pi-oven control plane and is surfaced only as a bounded compatibility path.\n"
       : "";
-  result = { exitCode: iso.exitCode, output: result.output + iso.output + cleanRoomNote };
+  result = { exitCode: iso.exitCode, output: result.output + iso.output + legacyNote };
 }
 
-// Sibling-skill suppression toggle runs after isolate (if any), also only on success.
+// Marketplace skill-visibility compatibility toggle runs after isolate (if
+// any), also only on success.
 if (hasSuppressSibling && result.exitCode === 0) {
   const suppress = await runSuppressSibling({ enable: wantSuppressSibling, spawnFn });
-  const siblingNote =
+  const legacyNote =
     wantSuppressSibling && suppress.exitCode === 0
-      ? "  Policy note: pi-oven-first remains the default lane; this selective toggle hides sibling marketplace skills without cutting the whole ~/.claude layer.\n"
+      ? "  Legacy compatibility note: this maintenance mode is outside the normal pi-oven control plane and is surfaced only as a bounded compatibility path.\n"
       : "";
-  result = { exitCode: suppress.exitCode, output: result.output + suppress.output + siblingNote };
+  result = { exitCode: suppress.exitCode, output: result.output + suppress.output + legacyNote };
 }
 
 // ---------------------------------------------------------------------------

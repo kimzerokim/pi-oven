@@ -16,7 +16,10 @@ import {
   type FsmState,
   type OwnershipTraceEntry,
 } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
-
+import {
+  AUTONOMOUS_STATE_FILE,
+  projectStatePath,
+} from "../../../.omp/extensions/pi-oven-runtime/project-state";
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-gh-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
@@ -138,6 +141,48 @@ describe("gateHandler — commit gate (AC1)", () => {
     const h = createGateHandler(await deps(dir));
     const r = await h(bashEvent("git commit -m x"));
     expect(r?.block ?? false).toBe(false);
+  });
+  it("blocks git commit after an autonomous runtime-contract material edit unless the deep verifier cache passes", async () => {
+    writeState(dir, {
+      active: true,
+      gateCache: { commit: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: [],
+      skillReads: [],
+      requiredSkillsMessageId: "u1",
+    });
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(
+      join(dir, "state", "branch-contract.json"),
+      JSON.stringify({ destination: "worktree", branch: "feature/task7", pr_mode: "direct" })
+    );
+    const h = createGateHandler(await deps(dir));
+
+    const writeResult = await h(writeEvent(".omp/extensions/pi-oven-runtime/gate.ts", "tc-write-trace"));
+    expect(writeResult?.block ?? false).toBe(false);
+
+    const commitResult = await h(bashEvent("git commit -m x", "tc-commit-deep"));
+    expect(commitResult?.block).toBe(true);
+    expect(commitResult?.reason).toMatch(/verifier depth policy selected deep/i);
+  });
+  it("does not promote a blocked runtime-contract write attempt into deep-verifier commit pressure", async () => {
+    writeState(dir, {
+      active: true,
+      gateCache: { commit: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: [],
+      skillReads: [],
+      requiredSkillsMessageId: "u1",
+    });
+    const h = createGateHandler(await deps(dir));
+
+    const blockedWrite = await h(writeEvent(".omp/extensions/pi-oven-runtime/gate.ts", "tc-blocked-write"));
+    expect(blockedWrite?.block).toBe(true);
+
+    const commitResult = await h(bashEvent("git commit -m x", "tc-commit-after-blocked-write"));
+    expect(commitResult?.block ?? false).toBe(false);
   });
 
   it("allows git commit when active and commit+heavy-verifier cache == PASS", async () => {
@@ -636,7 +681,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
 
     const initiallyBlocked = await h(writeEvent("src/example.ts"));
     expect(initiallyBlocked?.block).toBe(true);
-    expect(initiallyBlocked?.reason).toMatch(/owned skill proof/i);
+    expect(initiallyBlocked?.reason).toMatch(/capability proof/i);
     expect(initiallyBlocked?.reason).toContain(ownedTarget);
 
     const bareRead = await h(readEvent("skill://autonomous-loop"));
@@ -665,7 +710,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(after.state.skillReads).toEqual([ownedTarget]);
   });
 
-  it("blocks code-write with an ownership diagnostic when a required skill has no owned proof target", async () => {
+  it("blocks code-write with an explicit capability-proof diagnostic when a required skill has no owned proof target", async () => {
     writeState(dir, {
       active: true,
       gateCache: { commit: "PASS", regression: "PASS" },
@@ -684,7 +729,9 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     const h = createGateHandler(await deps(dir));
     const blocked = await h(writeEvent("src/example.ts"));
     expect(blocked?.block).toBe(true);
-    expect(blocked?.reason).toMatch(/ownership/i);
+    expect(blocked?.reason).toMatch(/capability proof/i);
+    expect(blocked?.reason).toMatch(/requiredSkills/i);
+    expect(blocked?.reason).toMatch(/ownedSkillReadTargets/i);
     expect(blocked?.reason).toMatch(/autonomous-loop/i);
   });
 
@@ -748,7 +795,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     const h = createGateHandler(await deps(dir));
     const r = await h(readEvent("skill://autonomous-loop"));
     expect(r?.block ?? false).toBe(false);
-    expect(existsSync(join(dir, "state", "autonomous.json"))).toBe(false);
+    expect(existsSync(projectStatePath(dir, AUTONOMOUS_STATE_FILE))).toBe(false);
   });
 });
 

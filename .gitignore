@@ -6,7 +6,7 @@
 .omp/agents/
 
 # Harness working artifacts — per-session survey reports etc., regenerated on demand.
-docs/harness/
+# docs/harness/
 
 # Claude Code local state / agent worktrees
 .claude/

@@ -5,8 +5,6 @@ import {
   loadSkillKeywordIndexReport,
 } from "../../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
 import {
-  PI_OVEN_MANAGED_PROVIDERS,
-  PI_OVEN_SIBLING_SKILL_GLOBS,
   SUBAGENT_RUNTIME_PREREQUISITES,
   readConfigValueDisplayState,
   readIgnoredSkillsDisplayState,
@@ -61,14 +59,10 @@ export const PROJECT_SCOPE_GLOBAL_REMEDIATION_FIX =
   "Run /pi-oven:setup --repair-prereqs on this machine to restore those prerequisites. Project scope does not write ~/.omp/agent/config.yml.";
 export const PROJECT_SCOPE_FILE_REPAIR_FIX =
   "Repair or remove the project's .omp/settings.json, then rerun /pi-oven:setup --status.";
-export const SIBLING_SUPPRESSION_FIX =
-  "Optional global-only step: /pi-oven:setup --suppress-sibling-skills";
-export const CLEAN_ROOM_FIX =
-  "Prefer /pi-oven:setup --suppress-sibling-skills for selective conflict reduction. Reserve /pi-oven:setup --isolate for clean-room troubleshooting when you intentionally want to hide the ~/.claude home layer.";
-export const KEYWORD_SKILL_INTEGRITY_FIX =
-  "Sync .claude-plugin/plugin.json skills[], shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries. Reinstall pi-oven@kzk if installed assets are stale.";
 export const NATIVE_WORKER_RUNTIME_FIX =
   "Restore the vendored native worker launcher under scripts/pi-oven-team/ or reinstall pi-oven@kzk.";
+export const KEYWORD_SKILL_INTEGRITY_FIX =
+  "Sync .claude-plugin/plugin.json skills[], shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries. Reinstall pi-oven@kzk if installed assets are stale.";
 
 const PROJECT_SCOPE_GLOBAL_PREREQUISITES: GlobalPrerequisiteExpectation[] = [
   { key: "memory.backend", expected: "mnemopi" },
@@ -124,14 +118,15 @@ export function buildStandaloneTruthSignals(
     },
     {
       level: "INFO",
-      name: "session policy",
+      name: "control-plane front door",
       detail:
-        "pi-oven-first is the default lane for automatic pi-oven routing; selective sibling suppression and clean-room isolation remain optional global toggles.",
+        "automatic pi-oven routing enters gated lanes only through explicit capability proofs: `requiredSkills`, exact plugin-owned SKILL.md reads, the branch contract, and external execution consent where relevant. Bootstrap message injection, tool remap, and discovery-layer compatibility toggles are not normal control-plane paths.",
     },
     {
       level: facts.nativeWorkerRuntime.active ? "INFO" : "WARN",
       name: "native worker runtime",
-      detail: describeNativeWorkerRuntime(facts.nativeWorkerRuntime),
+      detail:
+        "Only temporary adapter boundary remains: " + describeNativeWorkerRuntime(facts.nativeWorkerRuntime),
       fix: facts.nativeWorkerRuntime.active ? undefined : NATIVE_WORKER_RUNTIME_FIX,
     },
     {
@@ -140,7 +135,7 @@ export function buildStandaloneTruthSignals(
       detail:
         `dependency-ready wave target remains 8-12 siblings. Effective native worker ceiling is nativeWorkers.maxWorkers=${facts.nativeWorkerRuntime.maxWorkers} from ${facts.nativeWorkerRuntime.maxWorkersConfigPath} (${facts.nativeWorkerRuntime.maxWorkersSource}); ` +
         (facts.nativeWorkerRuntime.active
-          ? "the vendored pi-oven launcher enforces this ceiling when it starts or scales native workers."
+          ? "the vendored pi-oven launcher enforces this ceiling while that temporary adapter boundary remains."
           : "pi-oven cannot enforce this ceiling until the vendored native runtime path is restored."),
     },
   ];
@@ -232,89 +227,8 @@ export function buildStandaloneTruthSignals(
     }
   }
 
-  if (facts.disabledProvidersState.state === "unknown") {
-    signals.push({
-      level: "WARN",
-      name: "clean-room isolation",
-      detail: `state unknown because disabledProviders in ${GLOBAL_CONFIG_PATH} is unreadable/corrupt.`,
-      fix: CLEAN_ROOM_FIX,
-    });
-  } else {
-    const disabledProviders =
-      facts.disabledProvidersState.state === "present" ? facts.disabledProvidersState.value : [];
-    const cleanRoomEnabled = PI_OVEN_MANAGED_PROVIDERS.some((provider) =>
-      disabledProviders.includes(provider)
-    );
-
-    if (cleanRoomEnabled) {
-      signals.push({
-        level: "WARN",
-        name: "clean-room isolation",
-        detail:
-          `enabled in ${GLOBAL_CONFIG_PATH} ` +
-          `(disabledProviders includes ${PI_OVEN_MANAGED_PROVIDERS.join(", ")}). ` +
-          "This broad home-layer cut can hide sibling marketplace skills, hooks, and other ~/.claude behavior, so it is not the default fix for pi-oven-first conflicts.",
-        fix: CLEAN_ROOM_FIX,
-      });
-    } else {
-      signals.push({
-        level: "INFO",
-        name: "clean-room isolation",
-        detail:
-          `not enabled in ${GLOBAL_CONFIG_PATH}; ` +
-          "the ~/.claude home layer stays visible and pi-oven-first remains the default lane.",
-        fix: CLEAN_ROOM_FIX,
-      });
-    }
-  }
-
-  if (facts.ignoredSkillsState.state === "unknown") {
-    signals.push({
-      level: "WARN",
-      name: "sibling-skill suppression",
-      detail: `state unknown because skills.ignoredSkills in ${GLOBAL_CONFIG_PATH} is unreadable/corrupt.`,
-      fix: SIBLING_SUPPRESSION_FIX,
-    });
-    return signals;
-  }
-  const ignoredSkills = facts.ignoredSkillsState.state === "present" ? facts.ignoredSkillsState.value : [];
-
-  const matched = [...PI_OVEN_SIBLING_SKILL_GLOBS].filter((glob) =>
-    ignoredSkills.includes(glob)
-  );
-  const missing = [...PI_OVEN_SIBLING_SKILL_GLOBS].filter((glob) => !matched.includes(glob));
-
-  if (matched.length === PI_OVEN_SIBLING_SKILL_GLOBS.length) {
-    signals.push({
-      level: "INFO",
-      name: "sibling-skill suppression",
-      detail:
-        `enabled in ${GLOBAL_CONFIG_PATH} ` +
-        `(${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")} hidden). ` +
-        "This is the selective sibling-suppressed lane on top of pi-oven-first routing.",
-    });
-  } else if (matched.length === 0) {
-    signals.push({
-      level: "INFO",
-      name: "sibling-skill suppression",
-      detail:
-        `not enabled in ${GLOBAL_CONFIG_PATH}; ` +
-        "pi-oven-first remains the default lane and sibling marketplace skills remain visible.",
-      fix: SIBLING_SUPPRESSION_FIX,
-    });
-  } else {
-    signals.push({
-      level: "WARN",
-      name: "sibling-skill suppression",
-      detail:
-        `partially enabled in ${GLOBAL_CONFIG_PATH} ` +
-        `(${matched.join(", ")} present; missing ${missing.join(", ")}). ` +
-        "Selective sibling suppression is only partially applied.",
-      fix: SIBLING_SUPPRESSION_FIX,
-    });
-  }
-
   return signals;
+
 }
 
 export async function collectStandaloneTruthSignals(

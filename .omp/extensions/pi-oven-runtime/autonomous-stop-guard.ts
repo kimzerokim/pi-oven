@@ -9,22 +9,43 @@
 // Goal: reduce premature halts after users request autonomous execution.
 // ---------------------------------------------------------------------------
 
+import {
+  createAutonomousLoopResumeMarker,
+  createHaltedByPolicyMarker,
+  createVerifierPendingMarker,
+  type ContinuationMarker,
+} from "./continuation-marker";
+import {
+  listChangedRuntimeState,
+  summarizeFailurePath,
+  type RuntimeTraceSnapshot,
+} from "./trace-primitives";
+import {
+  decideVerifierDepth,
+  deriveVerifierRisk,
+  type VerifierDepthDecision,
+} from "./verifier-depth-policy";
+
 export interface StopGuardState {
   autonomousActive: boolean;
   explicitContinueThisTurn: boolean;
   consecutiveAutoContinues: number;
   lastUserMessageId: string | null;
+  continuationMarker?: ContinuationMarker;
 }
 
 export interface StopGuardTurnEndInput {
   stopReason: string | undefined;
   assistantText: string;
+  runtimeTrace?: RuntimeTraceSnapshot;
+  verifierDepth?: VerifierDepthDecision;
 }
 
 export interface StopGuardDecision {
   state: StopGuardState;
   shouldQueueContinuation: boolean;
-  reason: "explicit-continue" | "polite-stop" | null;
+  reason: "explicit-continue" | "polite-stop" | "verifier-pending" | null;
+  note?: string;
 }
 
 interface MessageLike {
@@ -126,6 +147,7 @@ export function createStopGuardState(): StopGuardState {
     explicitContinueThisTurn: false,
     consecutiveAutoContinues: 0,
     lastUserMessageId: null,
+    continuationMarker: undefined,
   };
 }
 
@@ -159,6 +181,7 @@ export function updateStopGuardOnTurnStart(
     explicitContinueThisTurn: explicitContinue || activate,
     consecutiveAutoContinues: disable ? 0 : state.consecutiveAutoContinues,
     lastUserMessageId: latestUser.id,
+    continuationMarker: undefined,
   };
 }
 
@@ -167,6 +190,22 @@ export function decideStopGuardOnTurnEnd(
   input: StopGuardTurnEndInput
 ): StopGuardDecision {
   const normalized = normalize(input.assistantText);
+  const trace = input.runtimeTrace;
+  const verifierDepth =
+    input.verifierDepth ??
+    decideVerifierDepth({
+      mode: state.autonomousActive ? "autonomous" : "interactive",
+      risk: deriveVerifierRisk({
+        mutationScope: trace?.mutationScope ?? "none",
+        materialEdit: trace?.materialEdit ?? false,
+      }),
+      mutationScope: trace?.mutationScope ?? "none",
+      materialEdit: trace?.materialEdit ?? false,
+    });
+  const autoContinueHardCap =
+    verifierDepth.hardCap.maxConsecutiveAutoContinues > 0
+      ? verifierDepth.hardCap.maxConsecutiveAutoContinues
+      : MAX_CONSECUTIVE_AUTO_CONTINUES;
 
   if (!state.autonomousActive) {
     return {
@@ -174,6 +213,7 @@ export function decideStopGuardOnTurnEnd(
         ...state,
         explicitContinueThisTurn: false,
         consecutiveAutoContinues: 0,
+        continuationMarker: undefined,
       },
       shouldQueueContinuation: false,
       reason: null,
@@ -185,18 +225,72 @@ export function decideStopGuardOnTurnEnd(
       state: {
         ...state,
         explicitContinueThisTurn: false,
+        continuationMarker: undefined,
       },
       shouldQueueContinuation: false,
       reason: null,
     };
   }
 
-  if (isTerminalCompletion(normalized) || isBranchContractQuestion(normalized)) {
+  if (isTerminalCompletion(normalized)) {
+    if (verifierDepth.depth === "deep" && (trace?.materialEdit ?? false)) {
+      const nextState: StopGuardState = {
+        ...state,
+        explicitContinueThisTurn: false,
+        consecutiveAutoContinues: state.consecutiveAutoContinues + 1,
+        continuationMarker: createVerifierPendingMarker("pi-oven:verifier/deep"),
+      };
+      const stateKeys = listChangedRuntimeState(
+        state as unknown as Record<string, unknown>,
+        nextState as unknown as Record<string, unknown>,
+        ["explicitContinueThisTurn", "consecutiveAutoContinues", "continuationMarker"]
+      ).map((entry) => entry.key);
+      const note = summarizeFailurePath({
+        surface: "completion-gate",
+        message: `deep verifier required before exit (${verifierDepth.reason})`,
+        functions: ["decideStopGuardOnTurnEnd", "decideVerifierDepth"],
+        symbols: ["pi-oven:verifier/deep"],
+        stateKeys,
+      }).summary;
+      if (state.consecutiveAutoContinues >= autoContinueHardCap) {
+        return {
+          state: {
+            ...state,
+            explicitContinueThisTurn: false,
+            consecutiveAutoContinues: 0,
+            continuationMarker: createHaltedByPolicyMarker("verifier-depth-hard-cap"),
+          },
+          shouldQueueContinuation: false,
+          reason: null,
+          note,
+        };
+      }
+      return {
+        state: nextState,
+        shouldQueueContinuation: true,
+        reason: "verifier-pending",
+        note,
+      };
+    }
     return {
       state: {
         ...state,
         explicitContinueThisTurn: false,
         consecutiveAutoContinues: 0,
+        continuationMarker: undefined,
+      },
+      shouldQueueContinuation: false,
+      reason: null,
+    };
+  }
+
+  if (isBranchContractQuestion(normalized)) {
+    return {
+      state: {
+        ...state,
+        explicitContinueThisTurn: false,
+        consecutiveAutoContinues: 0,
+        continuationMarker: createHaltedByPolicyMarker("branch-contract"),
       },
       shouldQueueContinuation: false,
       reason: null,
@@ -205,9 +299,8 @@ export function decideStopGuardOnTurnEnd(
 
   const triggeredByExplicit = state.explicitContinueThisTurn;
   const triggeredByPoliteStop = isPoliteStop(normalized);
-  const shouldQueue =
-    (triggeredByExplicit || triggeredByPoliteStop) &&
-    state.consecutiveAutoContinues < MAX_CONSECUTIVE_AUTO_CONTINUES;
+  const triggered = triggeredByExplicit || triggeredByPoliteStop;
+  const shouldQueue = triggered && state.consecutiveAutoContinues < autoContinueHardCap;
 
   if (!shouldQueue) {
     return {
@@ -215,6 +308,9 @@ export function decideStopGuardOnTurnEnd(
         ...state,
         explicitContinueThisTurn: false,
         consecutiveAutoContinues: 0,
+        continuationMarker: triggered
+          ? createHaltedByPolicyMarker("max-consecutive-auto-continues")
+          : undefined,
       },
       shouldQueueContinuation: false,
       reason: null,
@@ -226,6 +322,9 @@ export function decideStopGuardOnTurnEnd(
       ...state,
       explicitContinueThisTurn: false,
       consecutiveAutoContinues: state.consecutiveAutoContinues + 1,
+      continuationMarker: createAutonomousLoopResumeMarker(
+        triggeredByExplicit ? "explicit-continue" : "polite-stop"
+      ),
     },
     shouldQueueContinuation: true,
     reason: triggeredByExplicit ? "explicit-continue" : "polite-stop",
@@ -256,9 +355,9 @@ export function extractTextFromContent(content: unknown): string {
   const texts: string[] = [];
   for (const item of content) {
     if (!item || typeof item !== "object") continue;
-    const part = item as { type?: unknown; text?: unknown };
-    if (part.type === "text" && typeof part.text === "string") {
-      texts.push(part.text);
+    if (!("type" in item) || !("text" in item)) continue;
+    if (item.type === "text" && typeof item.text === "string") {
+      texts.push(item.text);
     }
   }
   return texts.join("\n");

@@ -16,13 +16,34 @@ import {
   writeSync,
 } from "fs";
 import { join } from "path";
+import { assertLaneBatchIsIndependent } from "./lane-policy";
 import { atomicWriteJson, ensureDirWithMode, readJsonFile } from "./fs-utils";
 import { getTaskStoragePath } from "./state-paths";
-import type { TaskFailureSidecar, TaskFile, TaskFileUpdate } from "./types";
+import type {
+  TaskFailureSidecar,
+  TaskFile,
+  TaskFileUpdate,
+  TeamRuntimeLaneMetadata,
+  TeamRuntimePersistenceClaim,
+} from "./types";
 
 export interface LockHandle {
   fd: number;
   path: string;
+}
+
+export interface DependencyAwareBatchItem<T = undefined> {
+  id: string;
+  blockedBy: string[];
+  lane: TeamRuntimeLaneMetadata;
+  persistenceClaims: TeamRuntimePersistenceClaim[];
+  value?: T;
+}
+
+export interface DependencyAwareBatchPlan<T = undefined> {
+  batches: Array<Array<DependencyAwareBatchItem<T>>>;
+  reducerOrder: string[];
+  collisionEvidence: string[];
 }
 
 const DEFAULT_STALE_LOCK_MS = 30_000;
@@ -72,6 +93,56 @@ function isLockStale(lockPath: string, staleLockMs: number): boolean {
   } catch {
     return true;
   }
+}
+
+
+export function buildDependencyAwareBatches<T>(
+  items: readonly DependencyAwareBatchItem<T>[]
+): DependencyAwareBatchPlan<T> {
+  const pending = new Map(items.map((item) => [item.id, item]));
+  const batches: Array<Array<DependencyAwareBatchItem<T>>> = [];
+  const reducerOrder: string[] = [];
+  const collisionEvidence: string[] = [];
+
+  for (const item of items) {
+    if (item.lane.shared_state_policy !== "read_only" && item.lane.kind !== "owned_write") {
+      throw new Error("Fan-out rejected: only read_only and owned_write lanes may batch");
+    }
+  }
+
+  while (pending.size > 0) {
+    const ready = [...pending.values()]
+      .filter((item) => item.blockedBy.every((blockerId) => !pending.has(blockerId)))
+      .sort((left, right) => left.id.localeCompare(right.id, undefined, { numeric: true }));
+    if (ready.length === 0) {
+      throw new Error("Task dependency cycle prevents fan-out batching");
+    }
+
+    assertLaneBatchIsIndependent(
+      ready.map((item) => ({
+        kind: "owned_write",
+        objective: item.lane.objective,
+        independence_reason: item.lane.independence_reason,
+        shared_state_policy: "exclusive_write",
+        output_schema: "owned_write_result",
+        reducer: "owned_write_commit",
+        persistence_claims: item.persistenceClaims,
+      }))
+    );
+
+    batches.push(ready);
+    for (const item of ready) {
+      reducerOrder.push(item.lane.reducer);
+      for (const claim of item.persistenceClaims) {
+        collisionEvidence.push(
+          claim.key ? `${claim.surface}:${claim.key}` : claim.surface
+        );
+      }
+      pending.delete(item.id);
+    }
+  }
+
+  return { batches, reducerOrder, collisionEvidence };
 }
 
 export function acquireTaskLock(

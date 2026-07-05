@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { readCurrentVersionFromSoT, syncReleaseManifests } from "../../../scripts/pi-oven-release/manifest-sync";
+import {
+  assertReleaseRunsFromSourceRepo,
+  readCurrentVersionFromSoT,
+  syncReleaseManifests,
+} from "../../../scripts/pi-oven-release/manifest-sync";
 
 let cwd = "";
 let tempDir = "";
@@ -40,6 +44,12 @@ describe("manifest-sync", () => {
     expect(() => readCurrentVersionFromSoT()).toThrow("Version SoT mismatch");
   });
 
+  it("refuses installed cache paths as release authoring roots", () => {
+    expect(() =>
+      assertReleaseRunsFromSourceRepo(join(homedir(), ".omp/plugins/cache/plugins/kzk___pi-oven___0.4.0"))
+    ).toThrow("installed cache");
+  });
+
   it("syncs manifests and label", () => {
     const result = syncReleaseManifests({ version: "0.5.0", dryRun: false, syncLabel: true });
     expect(result.filesUpdated.length).toBe(3);
@@ -52,6 +62,22 @@ describe("manifest-sync", () => {
     expect(plugin.version).toBe("0.5.0");
     expect(market.plugins[0]?.version).toBe("0.5.0");
     expect(readFileSync(".omp/extensions/pi-oven.ts", "utf8")).toContain('pi-oven v0.5.0');
+    expect(result.boundary).toEqual({
+      sourceRepo: {
+        root: process.cwd(),
+        versionFiles: ["package.json", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"],
+      },
+      releaseArtifact: {
+        version: "0.5.0",
+        manifestFiles: ["package.json", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"],
+        labelFile: ".omp/extensions/pi-oven.ts",
+      },
+      installedCache: {
+        mode: "observation-only",
+        patchTarget: false,
+        touchedByReleaseHelper: false,
+      },
+    });
   });
 
   it("dry-run does not write files", () => {

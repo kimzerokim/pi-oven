@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import { readTeamConfig, saveTeamConfig } from "../../../scripts/pi-oven-team/team-config";
 import { scaleUp } from "../../../scripts/pi-oven-team/scaling";
 import { readTask } from "../../../scripts/pi-oven-team/task-file-ops";
-import type { TeamConfig, TeamTmuxController } from "../../../scripts/pi-oven-team/types";
+import type { TeamConfig, TeamRuntimeLaneMetadata, TeamTmuxController } from "../../../scripts/pi-oven-team/types";
 
 let cwd = "";
 
@@ -66,6 +66,16 @@ function makeTmux(): TeamTmuxController & { calls: string[] } {
       calls.push(`kill-session:${sessionName}`);
     },
   };
+}
+
+function readStartupEvidence(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || !("startup_evidence" in value)) {
+    return null;
+  }
+  const startupEvidence = value.startup_evidence;
+  return startupEvidence && typeof startupEvidence === "object"
+    ? startupEvidence as Record<string, unknown>
+    : null;
 }
 
 beforeEach(() => {
@@ -153,5 +163,88 @@ describe("pi-oven-team/scaling", () => {
       status: "pending",
     });
     expect(readTask("native-team", "3", { cwd })).toBeNull();
+  });
+
+  it("fans out independent scale-up lanes and persists latency evidence", async () => {
+    saveTeamConfig(makeConfig(), cwd);
+    const tmux = makeTmux();
+    const verificationLane: TeamRuntimeLaneMetadata = {
+      kind: "verification",
+      objective: "verify scale-up fanout",
+      independence_reason: "read-only verification lanes are independent",
+      shared_state_policy: "read_only",
+      output_schema: "verification_report",
+      reducer: "append_results",
+    };
+
+    const result = await scaleUp({
+      teamName: "native-team",
+      count: 2,
+      agentType: "claude",
+      tasks: [
+        { subject: "Task B", description: "Do B", lane: verificationLane },
+        { subject: "Task C", description: "Do C", lane: verificationLane },
+      ],
+      cwd,
+      tmux,
+      buildWorkerStart: ({ workerName }) => ({ command: `run-${workerName}` }),
+      dispatchStartup: async ({ workerName, paneId }) => {
+        tmux.calls.push(`dispatch:${workerName}:${paneId}`);
+        return { ok: true };
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(tmux.calls.indexOf("split:%2:down:%3")).toBeGreaterThan(-1);
+    expect(tmux.calls.indexOf("split:%2:down:%3")).toBeLessThan(tmux.calls.indexOf("dispatch:worker-2:%2"));
+    const persisted = readTeamConfig("native-team", cwd);
+    const startupEvidence = readStartupEvidence(persisted);
+    const startupImprovementRatio =
+      startupEvidence && "startupImprovementRatio" in startupEvidence
+        ? startupEvidence.startupImprovementRatio
+        : null;
+    expect(startupEvidence).toMatchObject({
+      fanoutLatencyMs: expect.any(Number),
+      sequentialComparableLatencyMs: expect.any(Number),
+      startupImprovementRatio: expect.any(Number),
+    });
+    expect(typeof startupImprovementRatio).toBe("number");
+    if (typeof startupImprovementRatio === "number") {
+      expect(startupImprovementRatio).toBeGreaterThan(1);
+    }
+  });
+
+  it("rejects colliding owned-write scale-up lanes before spawning workers", async () => {
+    saveTeamConfig(makeConfig(), cwd);
+    const tmux = makeTmux();
+    const collidingLane: TeamRuntimeLaneMetadata = {
+      kind: "owned_write",
+      objective: "mutate shared overlay",
+      independence_reason: "only one writer may own the overlay surface",
+      shared_state_policy: "exclusive_write",
+      output_schema: "owned_write_result",
+      reducer: "owned_write_commit",
+      persistence_claims: [{ surface: "worker_overlay", key: "shared-doc" }],
+    };
+
+    const result = await scaleUp({
+      teamName: "native-team",
+      count: 2,
+      agentType: "claude",
+      tasks: [
+        { subject: "Task B", description: "Do B", lane: collidingLane },
+        { subject: "Task C", description: "Do C", lane: collidingLane },
+      ],
+      cwd,
+      tmux,
+      buildWorkerStart: ({ workerName }) => ({ command: `run-${workerName}` }),
+      dispatchStartup: async () => ({ ok: true }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("collision");
+    }
+    expect(tmux.calls.some((call) => call.startsWith("spawn:"))).toBe(false);
   });
 });

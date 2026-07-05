@@ -32,10 +32,10 @@ export async function runIsolate(
       return {
         exitCode: 0,
         output:
-          "omp will now IGNORE the ~/.claude home context layer (global CLAUDE + sibling marketplace context).\n" +
+          "Applied the legacy home-layer compatibility mode for omp.\n" +
           `  disabledProviders = [${list.join(", ")}] in ~/.omp/agent/config.yml\n` +
-          "  pi-oven still loads via the claude-plugins provider, which stays enabled.\n" +
-          "  Note: sibling marketplace plugin commands that still load via claude-plugins remain visible.\n" +
+          "  This mode hides the ~/.claude home layer from omp while leaving claude-plugins enabled so pi-oven still loads.\n" +
+          "  Note: marketplace plugin commands that still load via claude-plugins remain visible.\n" +
           "  pi-oven injects the repo-root CLAUDE.md in place of the global one.\n" +
           "  Restart omp to apply. Real Claude Code sessions are unaffected.\n",
       };
@@ -47,13 +47,13 @@ export async function runIsolate(
       exitCode: 0,
       output:
         removed.length > 0
-          ? `Re-enabled the ~/.claude layer in omp (removed ${removed.join(", ")} from disabledProviders). Restart omp to apply.\n`
-          : `No pi-oven-managed providers (${undoSet.join(", ")}) were disabled — nothing to undo.\n`,
+          ? `Cleared the legacy home-layer compatibility mode in omp (removed ${removed.join(", ")} from disabledProviders). Restart omp to apply.\n`
+          : `No pi-oven-managed legacy home-layer providers (${undoSet.join(", ")}) were disabled — nothing to undo.\n`,
     };
   } catch (err) {
     return {
       exitCode: 1,
-      output: `Isolation toggle failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      output: `Legacy home-layer compatibility toggle failed: ${err instanceof Error ? err.message : String(err)}\n`,
     };
   }
 }

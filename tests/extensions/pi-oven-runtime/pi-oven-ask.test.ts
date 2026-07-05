@@ -1,4 +1,7 @@
 import { describe, it, expect } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import * as zod from "zod";
 import {
   OTHER_VALUE,
@@ -8,6 +11,22 @@ import {
   foldLabel,
   registerPiOvenAsk,
 } from "../../../.omp/extensions/pi-oven-runtime/pi-oven-ask";
+
+const DEEP_INTERVIEW_META = {
+  interviewId: "di-1",
+  round: 0,
+  roundId: "topology",
+  questionId: "q-topology",
+  stage: "topology" as const,
+  component: "runtime-routing",
+  dimension: "scope",
+  ambiguity: 1,
+  approvalHandoff: {
+    decisionKey: "approve-option-c",
+    summary: "Implement Option C after approval",
+  },
+};
+
 
 describe("buildSelectItems", () => {
   it("maps each option to {value: label, label, description?}", () => {
@@ -35,6 +54,16 @@ describe("buildSelectItems", () => {
     expect(items[0]!.label).toBe("Dup");
     expect(items[1]!.label).toBe("Dup");
   });
+
+  it("marks the recommended option in the display label without changing the selected value", () => {
+    const items = buildSelectItems([{ label: "JWT" }, { label: "Session cookie" }], 1);
+    expect(items[0]).toEqual({ value: "JWT", label: "JWT" });
+    expect(items[1]).toEqual({
+      value: "Session cookie",
+      label: "Session cookie (Recommended)",
+    });
+  });
+
 });
 
 describe("clampRecommended", () => {
@@ -83,6 +112,21 @@ describe("formatAskResult", () => {
     expect(res.content[0]).toEqual({ type: "text", text: "User cancelled the selection" });
     expect(res.details).toEqual({ mode: "single", question: "Q?" });
   });
+
+  it("carries deep-interview metadata, recommendation, and approval handoff in details", () => {
+    const res = formatAskResult("Q?", "Option A", undefined, {
+      recommended: 0,
+      deepInterview: DEEP_INTERVIEW_META,
+    });
+    expect(res.details).toEqual({
+      mode: "single",
+      question: "Q?",
+      selected: "Option A",
+      recommended: 0,
+      deepInterview: DEEP_INTERVIEW_META,
+    });
+  });
+
 });
 
 describe("foldLabel", () => {
@@ -159,45 +203,55 @@ describe("registerPiOvenAsk", () => {
     expect(component.render(80).join("\n")).toContain("Q?");
   });
 
-  it("execute uses the four-argument ctx.ui.custom extension contract", async () => {
+  it("execute uses the four-argument ctx.ui.custom extension contract and persists under the provided cwd", async () => {
     const tool = capturePiOvenAskTool();
     const theme = makeTheme();
+    const tempDir = mkdtempSync(join(tmpdir(), "pi-oven-ask-"));
 
-    const result = await tool.execute(
-      "tool-call",
-      {
-        question: "Choose auth",
-        options: [{ label: "JWT" }, { label: "Session cookie" }],
-        recommended: 1,
-      },
-      undefined,
-      undefined,
-      {
-        hasUI: true,
-        ui: {
-          async custom(factory: any) {
-            let resolved: string | undefined;
-            const component = await factory({}, theme, {}, (value: string | undefined) => {
-              resolved = value;
-            });
-            const list = component.children?.[1];
-            const selected = list?.getSelectedItem?.();
-            expect(selected?.value).toBe("Session cookie");
-            list?.onSelect?.(selected);
-            return resolved;
-          },
-          async editor() {
-            throw new Error("editor should not be used for direct option selection");
-          },
+    try {
+      const result = await tool.execute(
+        "tool-call",
+        {
+          question: "Choose auth",
+          options: [{ label: "JWT" }, { label: "Session cookie" }],
+          recommended: 1,
+          deepInterview: DEEP_INTERVIEW_META,
         },
-      }
-    );
+        undefined,
+        undefined,
+        {
+          hasUI: true,
+          cwd: tempDir,
+          ui: {
+            async custom(factory: any) {
+              let resolved: string | undefined;
+              const component = await factory({}, theme, {}, (value: string | undefined) => {
+                resolved = value;
+              });
+              const list = component.children?.[1];
+              const selected = list?.getSelectedItem?.();
+              expect(selected?.value).toBe("Session cookie");
+              list?.onSelect?.(selected);
+              return resolved;
+            },
+            async editor() {
+              throw new Error("editor should not be used for direct option selection");
+            },
+          },
+        }
+      );
 
-    expect(result.details).toEqual({
-      mode: "single",
-      question: "Choose auth",
-      selected: "Session cookie",
-    });
-    expect(() => tool.renderResult(result, {}, theme)).not.toThrow();
+      expect(result.details).toEqual({
+        mode: "single",
+        question: "Choose auth",
+        selected: "Session cookie",
+        recommended: 1,
+        deepInterview: DEEP_INTERVIEW_META,
+      });
+      expect(existsSync(join(tempDir, ".pi-oven", "state", "autonomous.json"))).toBe(true);
+      expect(() => tool.renderResult(result, {}, theme)).not.toThrow();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

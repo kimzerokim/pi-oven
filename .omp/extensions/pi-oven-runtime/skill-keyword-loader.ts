@@ -4,6 +4,8 @@ import {
   resolveShippedSkillReadTarget,
   shippedSkillNameFromPath,
 } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
+import { getCapabilitiesByTag } from "./capability-registry";
+
 
 export const PI_OVEN_SKILL_NS = "pi-oven";
 export const KEYWORD_SKILL_DEDUP_KEY = "pi-oven:keyword-skills@v1";
@@ -427,12 +429,26 @@ export function buildKeywordMatchedSkillsPrompt(matchedSkills: MatchedSkill[]): 
     "The latest user message matched these pi-oven skills from the curated keyword whitelist.",
     "You MUST load each listed skill by reading the exact plugin-owned SKILL.md target shown below before taking substantive action in this turn.",
     "This is a hard precondition, NOT a suggestion: do not begin any skill-governed work until the matching skill is loaded and followed.",
+    "These exact reads are the single front door for the skill-gated control plane.",
+    "Runtime proof surface:",
+    "- `requiredSkills` records the matched pi-oven skill names.",
+    "- `ownedSkillReadTargets` records the exact plugin-owned SKILL.md targets that must be read.",
+    "- `skillReads` is the proof log that unlocks code-write once the exact targets above are read.",
+    "- Bootstrap message injection and tool remap are NOT control-plane paths in pi-oven.",
     "Preserve all non-conflicting rules across the matched skills. If two skills conflict, prefer the more specific one.",
     "",
   ];
   for (const skill of matchedSkills) {
     lines.push(
       `- \`${skill.ownedReadTarget}\` — pi-oven skill \`${skill.name}\`, matched by: ${skill.matchedPhrases.join(", ")}`
+    );
+  }
+  if (getCapabilitiesByTag("deep-interview").includes("ask")) {
+    lines.push(
+      "",
+      "### Native deep-interview routing",
+      "- When ambiguity or a user-owned decision remains, route it through `pi-oven_ask`.",
+      "- Supply structured `deepInterview` metadata so approval handoff and resume state persist in the native runtime."
     );
   }
   return lines.join("\n");

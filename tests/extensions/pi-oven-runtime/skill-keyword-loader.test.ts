@@ -163,9 +163,15 @@ describe("skill-keyword-loader", () => {
     expect(prompt).toContain(ownedSkillTarget(repoRoot, "large-task-delegation"));
     expect(prompt).toContain(ownedSkillTarget(repoRoot, "spec-and-review"));
     expect(prompt).toContain("plugin-owned");
+    expect(prompt).toContain("single front door");
+    expect(prompt).toContain("requiredSkills");
+    expect(prompt).toContain("ownedSkillReadTargets");
+    expect(prompt).toContain("skillReads");
+    expect(prompt).toContain("Bootstrap message injection");
+    expect(prompt).toContain("tool remap");
   });
 
-  it("the matched-skills prompt frames exact plugin-owned reads as a hard precondition", () => {
+  it("the matched-skills prompt frames exact plugin-owned reads as the explicit control-plane front door", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
       {
         name: "spec-and-review",
@@ -177,6 +183,26 @@ describe("skill-keyword-loader", () => {
     expect(prompt!).toMatch(/hard precondition/i);
     expect(prompt!).toContain("/plugin/skills/spec-and-review/SKILL.md");
     expect(prompt!).toContain("plugin-owned");
+    expect(prompt!).toContain("single front door");
+    expect(prompt!).toContain("requiredSkills");
+    expect(prompt!).toContain("ownedSkillReadTargets");
+    expect(prompt!).toContain("skillReads");
+    expect(prompt!).toContain("Bootstrap message injection");
+    expect(prompt!).toContain("tool remap");
+  });
+
+  it("adds registry-driven deep-interview routing guidance to the matched-skills prompt", () => {
+    const prompt = buildKeywordMatchedSkillsPrompt([
+      {
+        name: "spec-and-review",
+        matchedPhrases: ["design doc"],
+        ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
+      },
+    ]);
+    expect(prompt).not.toBeNull();
+    expect(prompt!).toContain("pi-oven_ask");
+    expect(prompt!).toContain("deepInterview");
+    expect(prompt!).toMatch(/approval handoff|resume state/i);
   });
 
   it("buildKeywordMatchedSkillsPrompt emits exact SKILL.md file targets, not skill:// aliases", () => {
@@ -191,7 +217,7 @@ describe("skill-keyword-loader", () => {
     expect(prompt!).toContain("/plugin/skills/brainstorming/SKILL.md");
     expect(prompt!).not.toContain("skill://pi-oven:brainstorming");
     const lines = prompt!.split("\n");
-    const skillLines = lines.filter((l) => l.startsWith("- `"));
+    const skillLines = lines.filter((l) => l.startsWith("- `") && l.includes("matched by:"));
     expect(skillLines.every((l) => l.includes("/SKILL.md"))).toBe(true);
   });
 

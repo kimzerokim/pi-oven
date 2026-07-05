@@ -5,6 +5,7 @@ export interface PublishOptions {
   version: string;
   publish: boolean;
   dryRun: boolean;
+  currentBranch?: string;
   spawnFn: SpawnFn;
 }
 
@@ -20,10 +21,14 @@ export function publishRelease(options: PublishOptions): PublishResult {
     return { performed: false, pushes: [] };
   }
 
+  const currentBranch = options.currentBranch?.trim();
+  if (!options.dryRun && !currentBranch) {
+    throw new Error("Refusing release: could not resolve current git branch");
+  }
 
   const commit = createReleaseCommit(options.version, options.dryRun, options.spawnFn);
   const tag = createReleaseTag(options.version, options.dryRun, options.spawnFn);
-  const pushes = pushRelease(options.version, options.dryRun, options.spawnFn);
+  const pushes = pushRelease(options.version, currentBranch, options.dryRun, options.spawnFn);
 
   return {
     performed: true,

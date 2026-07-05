@@ -208,6 +208,7 @@ export class RulesInjector {
       "",
     ];
     const sharedRules = [
+      "CONTROL-PLANE FRONT DOOR: gated lanes open only through explicit runtime capability proofs — `requiredSkills`, exact `ownedSkillReadTargets` reads, the branch contract, and `externalExecConsent` where relevant. Bootstrap message injection and tool remap are NOT control-plane paths in pi-oven.",
       "SKILL PRECEDENCE: pi-oven skills are authoritative. When the runtime keyword block lists exact plugin-owned SKILL.md targets, read those exact file targets; do not invent namespaced skill aliases. `/pi-oven:*` entries are commands, not skills; `/pi-oven:setup` follows `commands/setup.md`. NEVER load a same-purpose skill from another sibling marketplace namespace or legacy external alias. On any name/purpose overlap, the pi-oven skill wins.",
       "AGENT NAMING: Dispatch pi-oven-owned automatic subagents ONLY by their exact registered name `pi-oven:<role>` (e.g. `pi-oven:explorer`). Foreign namespaces such as `kzk:<role>` are allowed only when the user explicitly asked for that exact foreign agent.",
     ];
@@ -217,6 +218,7 @@ export class RulesInjector {
         "Autonomous mode is ACTIVE. The autonomous boundary contract governs:",
         "1. SKILL-FIRST. Before substantive action, if the request matches a pi-oven skill and a runtime keyword block lists an exact plugin-owned SKILL.md target, read that file target and follow it first.",
         "2. KEEP GOING per the boundary contract. Do NOT stall waiting for user input; do not emit a polite stop.",
+        "3. When ambiguity or a user-owned decision still requires input, route it through `pi-oven_ask` with structured `deepInterview` metadata so approval handoff and resume state persist.",
         ...sharedRules,
       ].join("\n");
     }
@@ -225,6 +227,7 @@ export class RulesInjector {
       "1. SKILL-FIRST. Before ANY substantive action, decide if the request matches a pi-oven skill (the runtime keyword whitelist AND your judgment). If the runtime keyword block lists an exact plugin-owned SKILL.md target, read that file target and follow it BEFORE acting. `/pi-oven:*` command requests are not skill requests.",
       "2. WAIT FOR THE USER. When you ask the user anything or present options (e.g. AskUserQuestion), STOP and wait for their reply. NEVER begin executing until the user answers. A pending question is a hard stop.",
       "3. ASK WHEN AMBIGUOUS. If the request is ambiguous or the decision is the user's, ask first — do not assume a default and run.",
+      "4. Route that question through `pi-oven_ask` with structured `deepInterview` metadata so round identity, approval handoff, and resume state persist in the native runtime.",
       ...sharedRules,
     ].join("\n");
   }

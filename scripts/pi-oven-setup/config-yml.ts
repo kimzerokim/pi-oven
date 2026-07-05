@@ -634,9 +634,10 @@ export async function setToolEnablementConfig(opts?: ConfigYmlOpts): Promise<voi
 // ---------------------------------------------------------------------------
 
 /**
- * The sibling marketplace skill globs pi-oven writes into `skills.ignoredSkills`
- * when the user opts in via `--suppress-sibling-skills`. Excludes agentmemory:*
- * by design (D5 decision: non-overlapping memory tools).
+ * The legacy marketplace skill globs pi-oven can write into
+ * `skills.ignoredSkills` when the operator explicitly opts into the
+ * compatibility filter. Excludes agentmemory:* by design (D5 decision:
+ * non-overlapping memory tools).
  */
 export const PI_OVEN_SIBLING_SKILL_GLOBS = [
   "superpowers:*",
@@ -762,30 +763,29 @@ export async function clearPiOvenIgnoredSkills(opts?: ConfigYmlOpts): Promise<st
   return removed;
 }
 
-// ---------------------------------------------------------------------------
-// disabledProviders (ARRAY) — the ~/.claude isolation toggle.
+// disabledProviders (ARRAY) — legacy home-layer compatibility mode.
 // Same transport as the overrides path: omp config get disabledProviders --json
 // → in-memory merge → omp config set disabledProviders '<whole-merged-json>'.
 // ---------------------------------------------------------------------------
 
 /**
- * The discovery provider pi-oven toggles for the "ignore the ~/.claude
- * Claude-Code layer" isolation: `claude` ONLY (~/.claude CLAUDE.md / skills /
- * hooks / commands). It must NOT disable `claude-plugins`: pi-oven's own
+ * The discovery provider pi-oven toggles for the legacy home-layer
+ * compatibility mode: `claude` ONLY (~/.claude CLAUDE.md / skills / hooks /
+ * commands). It must NOT disable `claude-plugins`: pi-oven's own
  * `/pi-oven:*` commands and skills register through that same `claude-plugins`
  * discovery provider (it reads ~/.omp/plugins too, not just ~/.claude/plugins),
  * so disabling it would also kill pi-oven's own commands. Trade-off (by design):
- * sibling marketplace plugin commands that still load through `claude-plugins`
+ * marketplace plugin commands that still load through `claude-plugins`
  * remain visible under omp.
  */
 export const PI_OVEN_MANAGED_PROVIDERS = ["claude"] as const;
 
 /**
- * Legacy providers an earlier (buggy, pre-0.5.3) isolate added to
+ * Legacy providers an earlier (buggy, pre-0.5.3) compatibility toggle added to
  * `disabledProviders`. They are ALWAYS purged on either toggle to heal those
  * configs: disabling `claude-plugins` removed pi-oven's own `/pi-oven:*` commands, so
- * `--isolate` strips it back out and `--no-isolate` removes it alongside the
- * managed set.
+ * the compatibility mode strips it back out on enable and removes it alongside
+ * the managed set on disable.
  */
 export const PI_OVEN_DEPRECATED_PROVIDERS = ["claude-plugins"] as const;
 

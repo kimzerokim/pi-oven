@@ -8,6 +8,46 @@ export const PI_OVEN_NATIVE_MAX_WORKERS = 100;
 
 export type TeamTaskStatus = "pending" | "in_progress" | "completed" | "failed";
 export type WorktreeMode = "disabled" | "detached" | "named";
+export type TeamRuntimeLaneId = "survey" | "research" | "comparison" | "verification" | "documentation" | "owned_write";
+export type TeamRuntimeSharedStatePolicy = "read_only" | "exclusive_write";
+export type TeamRuntimeOutputSchemaId =
+  | "survey_report"
+  | "research_brief"
+  | "comparison_matrix"
+  | "verification_report"
+  | "documentation_patch"
+  | "owned_write_result";
+export type TeamRuntimeReducerId = "append_results" | "merge_comparison" | "apply_document_patch" | "owned_write_commit";
+export type TeamPersistenceSurfaceId =
+  | "team_config"
+  | "startup_failure_sidecar"
+  | "task_file"
+  | "task_failure_sidecar"
+  | "worker_dir"
+  | "worker_inbox"
+  | "worker_ready_marker"
+  | "worker_overlay"
+  | "worker_mailbox"
+  | "team_manifest";
+
+export interface TeamRuntimePersistenceClaim {
+  surface: TeamPersistenceSurfaceId;
+  key?: string;
+}
+
+export interface TeamRuntimeLaneMetadata {
+  kind: TeamRuntimeLaneId;
+  objective: string;
+  independence_reason: string;
+  shared_state_policy: TeamRuntimeSharedStatePolicy;
+  output_schema: TeamRuntimeOutputSchemaId;
+  reducer: TeamRuntimeReducerId;
+  persistence_claims?: TeamRuntimePersistenceClaim[];
+}
+
+export interface TaskFileMetadata extends Record<string, unknown> {
+  lane?: TeamRuntimeLaneMetadata;
+}
 
 export interface TaskFile {
   id: string;
@@ -17,7 +57,7 @@ export interface TaskFile {
   owner: string;
   blocks: string[];
   blockedBy: string[];
-  metadata?: Record<string, unknown>;
+  metadata?: TaskFileMetadata;
   claimedBy?: string;
   claimedAt?: number;
   claimPid?: number;
@@ -40,6 +80,7 @@ export interface TeamTaskInput {
   owner?: string;
   blocked_by?: string[];
   role?: string;
+  lane?: TeamRuntimeLaneMetadata;
 }
 
 export interface WorkerInfo {

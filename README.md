@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from four frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.1.19-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-965%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.23-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-965%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
@@ -12,7 +12,7 @@
 - **23 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, html-spec-decision-maker, git-workflow, aws, bitbucket-pipeline, cloudflare, memory-discipline (mnemopi-backed retain/recall/reflect discipline with curated runtime keyword matching).
 - **`/pi-oven:setup` wizard** — Profile A (release default, heterogeneous cost-optimized), Profile B (openai-codex-only), Profile C (all-Anthropic), or Profile D (opencode-zen-only), with explicit global/project routing layers and `--status` visibility.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
-- **Project `CLAUDE.md` injection + omp isolation** — the runtime extension reads your repo-root `CLAUDE.md` and injects it into the main + sub agent system prompt (omp does not read repo-root `CLAUDE.md` natively). `/pi-oven:setup --isolate` then makes omp ignore the global `~/.claude` context layer (`~/.claude/CLAUDE.md` + sibling skills/hooks), so omp runs as a pi-oven-first environment. It keeps the `claude-plugins` provider enabled (that is how pi-oven's own `/pi-oven:*` commands load), so other marketplace plugin commands may remain visible — the trade-off for not hiding pi-oven's own commands. See [omp isolation & project CLAUDE.md](#omp-isolation--project-claudemd).
+- **Explicit control-plane proofs** — gated work flows through `requiredSkills`, exact plugin-owned `SKILL.md` reads, the branch contract, external execution consent, and the `--status` truth surface. Bootstrap message injection, tool remap, and discovery-layer compatibility toggles are not normal control-plane paths.
 
 ---
 
@@ -37,7 +37,7 @@ omp plugin install pi-oven@kzk --force
 
 # 3. Verify
 omp plugin list | grep pi-oven
-# Expected: pi-oven@kzk (0.1.19)
+# Expected: pi-oven@kzk (0.1.23)
 ```
 
 ### One-shot (install automatic, setup interactive)
@@ -93,10 +93,12 @@ Agents load from the marketplace plugin registry. Their committed frontmatter pr
 
 ### 3. How skills activate
 
-Skills can now activate in two ways:
+Skills activate through explicit control-plane proofs:
 
-1. **Runtime keyword whitelist** — on each `turn_start`, the pi-oven extension matches the latest user message against a curated, code-owned keyword list for each shipped skill. On a match, `before_agent_start` injects a system prompt block that tells the model it **MUST** read the exact plugin-owned `SKILL.md` file targets shown in that block before proceeding.
+1. **Runtime keyword whitelist** — on each `turn_start`, the pi-oven extension matches the latest user message against a curated, code-owned keyword list for each shipped skill. On a match, `before_agent_start` injects a system prompt block that tells the model it **MUST** read the exact plugin-owned `SKILL.md` file targets shown in that block before proceeding. Those exact targets become the `ownedSkillReadTargets` proof surface for the current turn.
 2. **Description-driven discovery** — even without a keyword hit, shipped skills are still surfaced through their `description:` field in the system prompt. If a pi-oven skill is needed, prefer the exact plugin-owned `SKILL.md` target from the runtime keyword block; do not invent namespaced skill aliases. `/pi-oven:*` entries such as `/pi-oven:setup` are commands, not skills.
+
+For gated work, pi-oven uses `requiredSkills`, exact `ownedSkillReadTargets` reads, the branch contract, and external execution consent as the single front door. Bootstrap message injection and tool remap are explicitly out of bounds as control-plane paths.
 
 The autonomous stop-guard still exists as a separate runtime behavior: autonomous-mode keywords keep the agent looping until completion or explicit stop. That guard now complements skill loading instead of being the only keyword-driven behavior.
 
@@ -114,13 +116,13 @@ If the provider-auth check FAILs, authenticate `opencode-zen`, `openai-codex`, o
 
 ### 3.2 Dry-run release automation
 
-Run inside omp:
+Run inside omp from the pi-oven **source repo** checkout:
 
 ```sh
 /pi-oven:release --bump patch --dry-run --update-changelog --sync-label
 ```
 
-The command resolves `PI_OVEN_DIR` before dispatching the release script, so it works from a global marketplace install as well as a development checkout. Default behavior is safe (`--dry-run` unless `--publish` is explicitly set without dry-run). The release script enforces version SoT sync across `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json`.
+Release automation is source-repo only. The **source repo** is the authoring target, the **release artifact** is the version-synced package/tag produced from that checkout, and the **installed cache** is an observation-only consumer snapshot under `~/.omp/plugins/cache/plugins/`. The helper refuses installed-cache roots, keeps local git pushes on the current branch plus the `vX.Y.Z` tag, and prints a `boundary` object in dry-run output so the source repo → release artifact → installed cache contract stays explicit.
 ### 4. Verify before claiming done
 
 The `fresh-verifier` skill enforces a hard rule: **the main agent cannot verify its own work**. When you finish a task and want to confirm completion, the skill auto-dispatches `pi-oven:verifier` (a fresh agent with no memory of the implementation) to run a 4-check audit:
@@ -226,8 +228,6 @@ The wizard accepts subcommands:
 | `/pi-oven:setup --apply --profile B --validate full` | Full 24-role smoke ping (default is 7 MUST-tier); same flag works for `--profile C`, `--profile D` |
 | `/pi-oven:setup --apply --profile A --override executor=openai-codex/gpt-5.4` | Per-role override (repeatable) |
 | `/pi-oven:setup --apply --profile A --scope project` | Write per-project routing (default scope is `global`). See [Per-project routing](#per-project-routing---scope-project) |
-| `/pi-oven:setup --isolate` | Make omp ignore the `~/.claude` context layer (writes `disabledProviders: [claude]`; keeps `claude-plugins` so pi-oven's own `/pi-oven:*` commands survive). Combinable, e.g. `--apply --profile A --isolate` |
-| `/pi-oven:setup --no-isolate` | Re-enable the `~/.claude` layer in omp (removes `claude` + any legacy `claude-plugins`) |
 ### Profile A (release default)
 
 Heterogeneous cost-optimized. Requires **OpenCode Zen + OpenAI Codex subscriptions** — no hard Anthropic dependency.
@@ -296,36 +296,25 @@ omp reads `<repoRoot>/.omp/settings.json` at project level and **deep-merges it 
 
 ---
 
-## omp isolation & project CLAUDE.md
-
-pi-oven installs as an **omp** plugin, but a stock omp also ingests the **Claude Code** layer under `~/.claude/` — `~/.claude/CLAUDE.md`, `~/.claude/skills/*`, Claude hooks, and `~/.claude/plugins/*` (e.g. omc). If you also use Claude Code, that global layer leaks into every omp session. pi-oven gives you two pieces so omp runs as a clean, self-contained environment that still honors each project's own guidance.
+## Project `CLAUDE.md` + control-plane proofs
 
 ### Project `CLAUDE.md` injection (automatic, on by default)
 
-omp's `claude` discovery provider only reads `~/.claude/CLAUDE.md` and `<cwd>/.claude/CLAUDE.md` — it **never reads the repo-root `CLAUDE.md`** that is the Claude Code project-memory convention. The pi-oven runtime extension closes that gap: at load it reads `<repoRoot>/CLAUDE.md` and injects it into the **main and sub** agent system prompt (via the `before_agent_start` hook), so omp honors your project's local instructions in every repo. It is project-local by construction (reads only the repo root), fail-open (a missing/oversized file injects nothing), and capped at 256 KB. Opt out per-project with `.pi-oven/config.json`:
+omp does not read the repo-root `CLAUDE.md` natively. The pi-oven runtime extension closes that gap: at load it reads `<repoRoot>/CLAUDE.md` and injects it into the **main and sub** agent system prompt (via the `before_agent_start` hook), so omp honors your project's local instructions in every repo. It is project-local by construction (reads only the repo root), fail-open (a missing/oversized file injects nothing), and capped at 256 KB. Opt out per-project with `.pi-oven/config.json`:
 
 ```json
 { "projectInstructions": false }
 ```
 
-### omp isolation (`/pi-oven:setup --isolate`)
+### Control-plane front door
 
-To make omp **ignore the `~/.claude` Claude-Code context layer**, run:
+For gated work, pi-oven opens the control plane only through explicit runtime proofs: `requiredSkills`, exact plugin-owned `SKILL.md` reads captured in `ownedSkillReadTargets`/`skillReads`, `.pi-oven/state/branch-contract.json`, and external execution consent where relevant. That is the user-visible contract. Bootstrap message injection, tool remap, and discovery-layer compatibility toggles are not normal control-plane paths.
 
-```
-/pi-oven:setup --isolate          # or combine: /pi-oven:setup --apply --profile A --isolate
-```
+## Temporary compatibility boundary
 
-This writes one user-global setting to `~/.omp/agent/config.yml`:
-
-```yaml
-disabledProviders:
-  - claude          # ~/.claude/CLAUDE.md + skills + hooks + commands
-```
-
-It disables the `claude` discovery provider **only**. It deliberately leaves `claude-plugins` enabled: pi-oven's own `/pi-oven:*` commands and skills register through that very provider (it serves `~/.omp/plugins` too, not just `~/.claude/plugins`), so disabling it would also remove pi-oven's own commands. The accepted trade-off is that other marketplace plugin commands can stay visible. With `claude` disabled, the global `~/.claude/CLAUDE.md`, sibling skills, and Claude hooks/commands stop loading in omp — while pi-oven keeps loading and injects your repo-root `CLAUDE.md`. The write is **omp-only and never touches `~/.claude` on disk**, so genuine Claude Code sessions are completely unaffected. It is a snapshot at startup, so **restart omp** after toggling isolation.
-
-The net effect: in omp you get **pi-oven + your project's `CLAUDE.md`** with the global `~/.claude` context gone, while unrelated marketplace plugin commands may still stay available.
+- Scope: vendored native worker runtime under `scripts/pi-oven-team/*` only.
+- Owner: pi-oven maintainers.
+- Removal condition: remove this boundary once native worker startup/scale is owned end-to-end by the omp-native control plane and no runtime path depends on `scripts/pi-oven-team/*`.
 
 ---
 

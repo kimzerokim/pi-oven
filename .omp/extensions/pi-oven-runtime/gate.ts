@@ -16,12 +16,13 @@
 // ---------------------------------------------------------------------------
 
 import type { NormalizedCommand, ExternalCommandKind } from "./git-normalize";
+import { BRANCH_CONTRACT_STATE_FILE, projectStateMarker } from "./project-state";
 import {
   isTemporaryCredentialWindowActive,
   type BranchContractView,
   type ExternalExecConsent,
 } from "./gate-state";
-
+import type { VerifierDepthDecision } from "./verifier-depth-policy";
 export interface FsmStateData {
   active: boolean;
   gateCache: { commit?: string; regression?: string };
@@ -51,6 +52,7 @@ export interface GateInput {
   ownedSkillReadTargets?: string[];
   skillReads?: string[];
   externalExecConsent?: ExternalExecConsent;
+  verifierDepth?: VerifierDepthDecision;
 }
 
 export type ConsentSource = "env" | "file" | "none";
@@ -73,7 +75,7 @@ function isBypass(env: GateEnv): boolean {
 }
 
 export const CODE_WRITE_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "ast_edit"]);
-const BRANCH_CONTRACT_MARKER = ".pi-oven/state/branch-contract.json";
+export const BRANCH_CONTRACT_BOOTSTRAP_TARGET = projectStateMarker(BRANCH_CONTRACT_STATE_FILE);
 
 function isCodeWriteTool(toolName: string | undefined): boolean {
   return typeof toolName === "string" && CODE_WRITE_TOOLS.has(toolName);
@@ -86,9 +88,9 @@ function isBranchContractBootstrapWrite(
   if (toolName !== "write" || typeof targetPath !== "string") return false;
   const normalized = targetPath.replace(/\\/g, "/");
   return (
-    normalized === BRANCH_CONTRACT_MARKER ||
-    normalized.endsWith(`/${BRANCH_CONTRACT_MARKER}`) ||
-    normalized.endsWith("/branch-contract.json")
+    normalized === BRANCH_CONTRACT_BOOTSTRAP_TARGET ||
+    normalized.endsWith(`/${BRANCH_CONTRACT_BOOTSTRAP_TARGET}`) ||
+    normalized.endsWith(`/${BRANCH_CONTRACT_STATE_FILE.fileName}`)
   );
 }
 
@@ -436,14 +438,16 @@ export function decideGate(input: GateInput): GateDecision {
         return {
           block: true,
           reason:
-            "pi-oven: code-write blocked — .pi-oven/state/branch-contract.json is unreadable. Set PI_OVEN_GATE_BYPASS=1 to recover.",
+            `pi-oven: code-write blocked — ${BRANCH_CONTRACT_BOOTSTRAP_TARGET} is unreadable. ` +
+            "Set PI_OVEN_GATE_BYPASS=1 to recover.",
         };
       }
       if (branchContract.kind === "ABSENT") {
         return {
           block: true,
           reason:
-            "pi-oven: code-write blocked — write .pi-oven/state/branch-contract.json with destination/branch/pr_mode first.",
+            "pi-oven: code-write blocked — the control-plane front door requires " +
+            `${BRANCH_CONTRACT_BOOTSTRAP_TARGET} with destination/branch/pr_mode first.`,
         };
       }
     }
@@ -457,8 +461,9 @@ export function decideGate(input: GateInput): GateDecision {
       return {
         block: true,
         reason:
-          "pi-oven: code-write blocked — owned skill proof targets are missing for required skills: " +
-          `${missingOwnershipSkills.map((name) => `skill://pi-oven:${name}`).join(", ")}. ` +
+          "pi-oven: code-write blocked — capability proof surface is incomplete. " +
+          "`requiredSkills` has entries with no matching `ownedSkillReadTargets`: " +
+          `${missingOwnershipSkills.join(", ")}. ` +
           "Automatic pi-oven skill ownership cannot be proven until the runtime persists exact plugin-owned SKILL.md targets.",
       };
     }
@@ -469,7 +474,8 @@ export function decideGate(input: GateInput): GateDecision {
       return {
         block: true,
         reason:
-          "pi-oven: code-write blocked — owned skill proof targets not yet read: " +
+          "pi-oven: code-write blocked — capability proof surface is not complete yet. " +
+          "`ownedSkillReadTargets` require exact reads before they can enter `skillReads`: " +
           `${required}. Read the exact plugin-owned SKILL.md targets first.`,
       };
     }
@@ -501,12 +507,15 @@ export function decideGate(input: GateInput): GateDecision {
   }
 
   const regressionStatus = fsm.state.gateCache.regression;
-  if (fsm.state.gateCache.commit === "PASS" && (regressionStatus === undefined || regressionStatus === "PASS")) {
+  const requiresRegressionGate = input.verifierDepth?.requiresRegressionGate ?? regressionStatus !== undefined;
+  const regressionPasses = regressionStatus === undefined || regressionStatus === "PASS";
+  if (fsm.state.gateCache.commit === "PASS" && regressionPasses && (!requiresRegressionGate || regressionStatus === "PASS")) {
     return { block: false, consumeExternalExecConsent };
   }
   return {
     block: true,
-    reason:
-      "pi-oven: git commit blocked — pre-commit gate has not PASSED (requires gateCache.commit === PASS and, when the verifier risk matrix selects the heavy path, gateCache.regression === PASS).",
+    reason: input.verifierDepth?.requiresRegressionGate
+      ? `pi-oven: git commit blocked — pre-commit gate has not PASSED (requires gateCache.commit === PASS and gateCache.regression === PASS because verifier depth policy selected ${input.verifierDepth.depth}: ${input.verifierDepth.reason}).`
+      : "pi-oven: git commit blocked — pre-commit gate has not PASSED (requires gateCache.commit === PASS and, when the verifier risk matrix selects the heavy path, gateCache.regression === PASS).",
   };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { readFileSync, rmSync } from "fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
   createInstalledTopologyFixture,
@@ -98,6 +98,14 @@ type PersistedAutonomousState = {
   explicitForeignAgents?: string[];
   ownershipTrace?: OwnershipTraceEntry[];
   externalExecConsent?: PersistedExternalExecConsent;
+  gateCache?: { commit?: string; regression?: string };
+  continuationMarker?: {
+    kind: "autonomous-loop-resume" | "verifier-pending" | "lane-resume" | "halted-by-policy";
+    trigger?: "explicit-continue" | "polite-stop";
+    verifier?: string;
+    lane?: string;
+    policy?: string;
+  };
   consumedExternalExecConsentMessageId?: string;
 };
 
@@ -252,6 +260,8 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
   });
 
   it("turn_end queues hidden continuation when autonomous polite-stop is detected", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
     const pi = makeFakePi();
     piOvenPi(pi as never);
 
@@ -287,6 +297,57 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect((queued.message as { customType?: string }).customType).toBe("pi-oven-autonomous-stop-guard");
     expect((queued.options as { deliverAs?: string; triggerTurn?: boolean }).deliverAs).toBe("nextTurn");
     expect((queued.options as { deliverAs?: string; triggerTurn?: boolean }).triggerTurn).toBe(true);
+
+    const persisted = readAutonomousState(tempDir);
+    expect(persisted.continuationMarker).toEqual({
+      kind: "autonomous-loop-resume",
+      trigger: "explicit-continue",
+    });
+    expect(persisted.gateCache).toEqual({});
+  });
+
+  it("turn_start preserves a persisted continuation marker across a fresh runtime resume", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+
+    const firstPi = makeFakePi();
+    piOvenPi(firstPi as never);
+
+    const branchEntries = [userTextMessage("u1", "자율 실행으로 계속 진행해줘")];
+    const ctx = {
+      sessionManager: {
+        getBranch: () => branchEntries,
+      },
+    };
+
+    await firstPi.handlers["turn_start"]({ type: "turn_start", turnIndex: 1, timestamp: Date.now() }, ctx);
+    await firstPi.handlers["turn_end"]({
+      type: "turn_end",
+      turnIndex: 1,
+      message: {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "좋습니다. 다음 단계가 필요하면 알려주세요." }],
+      },
+      toolResults: [],
+    });
+
+    expect(readAutonomousState(tempDir).continuationMarker).toEqual({
+      kind: "autonomous-loop-resume",
+      trigger: "explicit-continue",
+    });
+
+    const resumedPi = makeFakePi();
+    piOvenPi(resumedPi as never);
+    await resumedPi.handlers["turn_start"](
+      { type: "turn_start", turnIndex: 2, timestamp: Date.now() },
+      ctx
+    );
+
+    expect(readAutonomousState(tempDir).continuationMarker).toEqual({
+      kind: "autonomous-loop-resume",
+      trigger: "explicit-continue",
+    });
   });
 
   it("before_agent_start loads shipped skills from pluginRoot even when cwd is a separate project root", async () => {
@@ -326,6 +387,12 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain(ownedSkillTarget("autonomous-loop"));
     expect(joined).toContain(ownedSkillTarget("large-task-delegation"));
     expect(joined).toContain(ownedSkillTarget("spec-and-review"));
+    expect(joined).toContain("single front door");
+    expect(joined).toContain("requiredSkills");
+    expect(joined).toContain("ownedSkillReadTargets");
+    expect(joined).toContain("skillReads");
+    expect(joined).toContain("Bootstrap message injection");
+    expect(joined).toContain("tool remap");
   });
 
   it("session_start surfaces a keyword-integrity warning when plugin assets reference a missing shipped skill file", async () => {
@@ -593,6 +660,57 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain(".pi-oven/state/branch-contract.json");
     expect(joined).toContain(ownedSkillTarget("autonomous-loop"));
   });
+
+  it("before_agent_start injects native deep-interview resume guidance from persisted state", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+
+    const pi = makeFakePi();
+    piOvenPi(pi as never);
+
+    const store = new GateStateStore(join(tempDir, ".pi-oven"));
+    const seededState = Object.assign(
+      {
+        active: false,
+        gateCache: {},
+        version: 1,
+        schemaVersion: 1,
+        requiredSkills: ["spec-and-review"],
+        skillReads: [],
+        requiredSkillsMessageId: "u1",
+      },
+      {
+        deepInterview: {
+          version: 1,
+          active: true,
+          interviewId: "di-1",
+          phase: "approval_pending",
+          rounds: [],
+          approvalHandoff: {
+            decisionKey: "approve-option-c",
+            summary: "Implement Option C after approval",
+            status: "pending",
+            requestedAt: "2026-07-05T00:00:00.000Z",
+          },
+          lastUpdatedAt: "2026-07-05T00:00:00.000Z",
+        },
+      }
+    );
+    await store.writeState(seededState);
+
+    const onBeforeAgentStart = pi.handlers["before_agent_start"];
+    const res = (await onBeforeAgentStart({
+      type: "before_agent_start",
+      prompt: "let's write a design doc",
+      systemPrompt: ["base"],
+    })) as { systemPrompt: string[] };
+    const joined = res.systemPrompt.join("\n");
+
+    expect(joined).toContain("pi-oven:deep-interview-contract@v1");
+    expect(joined).toContain("pi-oven_ask");
+    expect(joined).toContain("approve-option-c");
+    expect(joined).toContain("Implement Option C after approval");
+  });
   for (const testCase of [
     {
       name: "turn_start persists natural-language local external execution consent with scope access",
@@ -742,6 +860,78 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     const persisted = await runTurnStart(branchEntries, 2);
     expect(persisted.externalExecConsent).toBeUndefined();
     expect(persisted.explicitForeignAgents).toEqual(["kzk:explorer"]);
+  });
+  it("turn_end queues a verifier-pending continuation after an autonomous runtime-contract edit", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+    const pi = makeFakePi();
+    piOvenPi(pi as never);
+
+    const onTurnStart = pi.handlers["turn_start"];
+    const onToolCall = pi.handlers["tool_call"];
+    const onTurnEnd = pi.handlers["turn_end"];
+    const ctx = {
+      sessionManager: {
+        getBranch: () => [userTextMessage("u1", "autopilot")],
+      },
+    };
+
+    await onTurnStart({ type: "turn_start", turnIndex: 1, timestamp: Date.now() }, ctx);
+    mkdirSync(join(tempDir, ".pi-oven", "state"), { recursive: true });
+    writeFileSync(
+      join(tempDir, ".pi-oven", "state", "branch-contract.json"),
+      JSON.stringify({ destination: "worktree", branch: "feature/task7", pr_mode: "direct" })
+    );
+
+    const skillReadResult = (await onToolCall({
+      type: "tool_call",
+      toolCallId: "tc-skill-proof",
+      toolName: "read",
+      input: { path: ownedSkillTarget("autonomous-loop") },
+    })) as { block?: boolean } | void;
+    expect(skillReadResult?.block ?? false).toBe(false);
+
+    const writeResult = (await onToolCall({
+      type: "tool_call",
+      toolCallId: "tc-runtime-write",
+      toolName: "write",
+      input: { path: ".omp/extensions/pi-oven-runtime/gate.ts", content: "// trace" },
+    })) as { block?: boolean; reason?: string } | void;
+    expect(writeResult?.block ?? false).toBe(false);
+
+    await onTurnEnd({
+      type: "turn_end",
+      message: {
+        stopReason: "stop",
+        content: [{ type: "text", text: "All requested deliverables are complete." }],
+      },
+    });
+
+    expect(pi.sentMessages).toHaveLength(1);
+    const queued = pi.sentMessages[0];
+    expect(queued).toBeDefined();
+    if (!queued) throw new Error("expected queued stop-guard continuation");
+    const queuedMessage = queued.message;
+    if (!queuedMessage || typeof queuedMessage !== "object") {
+      throw new Error("expected structured stop-guard message");
+    }
+    expect("details" in queuedMessage && queuedMessage.details).toEqual(
+      expect.objectContaining({ reason: "verifier-pending" })
+    );
+    if (!("content" in queuedMessage) || !Array.isArray(queuedMessage.content)) {
+      throw new Error("expected stop-guard content array");
+    }
+    expect(queuedMessage.content[0]).toEqual(
+      expect.objectContaining({
+        text: expect.stringContaining("Run the deep verifier lane before exit."),
+      })
+    );
+
+    const persisted = readAutonomousState(tempDir);
+    expect(persisted.continuationMarker).toEqual({
+      kind: "verifier-pending",
+      verifier: "pi-oven:verifier/deep",
+    });
   });
   it("keeps mixed registries observable across turn resyncs while automatic task dispatch stays pi-oven-owned", async () => {
     tempDir = makeTempDir();

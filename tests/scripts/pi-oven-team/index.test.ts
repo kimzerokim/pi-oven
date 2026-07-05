@@ -53,6 +53,16 @@ function makeTmux(events: string[]): TeamTmuxController {
   };
 }
 
+function readStartupEvidence(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || !("startup_evidence" in value)) {
+    return null;
+  }
+  const startupEvidence = value.startup_evidence;
+  return startupEvidence && typeof startupEvidence === "object"
+    ? startupEvidence as Record<string, unknown>
+    : null;
+}
+
 beforeEach(() => {
   cwd = join(tmpdir(), `pi-oven-team-index-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   homeDir = join(tmpdir(), `pi-oven-team-home-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -79,6 +89,16 @@ describe("pi-oven-team/index", () => {
     expect(status.maxWorkers).toBe(7);
     expect(status.maxWorkersConfigPath).toBe(join(cwd, ".pi-oven", "config.json"));
     expect(status.maxWorkersSource).toBe("project-local override");
+    expect(status.tracePrimitives).toEqual(
+      expect.arrayContaining([
+        "trace_function",
+        "summarize_failure_path",
+        "set_breakpoint_at_symbol",
+        "list_changed_runtime_state",
+      ])
+    );
+    expect(status.verifierDepth.deepAutoContinueHardCap).toBe(1);
+    expect(status.verifierDepth.deepWhen).toContain("autonomous material edits");
   });
 
   it("starts the vendored runtime through the index control path with the configured worker ceiling", async () => {
@@ -102,7 +122,12 @@ describe("pi-oven-team/index", () => {
     });
 
     expect(runtime.config.max_workers).toBe(7);
-    expect(readTeamConfig("native-team", cwd)?.max_workers).toBe(7);
+    const persisted = readTeamConfig("native-team", cwd);
+    const startupEvidence = readStartupEvidence(persisted);
+    expect(persisted?.max_workers).toBe(7);
+    expect(startupEvidence?.fanoutLatencyMs).toEqual(expect.any(Number));
+    expect(startupEvidence?.sequentialComparableLatencyMs).toEqual(expect.any(Number));
+    expect(startupEvidence?.startupImprovementRatio).toEqual(expect.any(Number));
     expect(events).toContain("dispatch:worker-1:%2");
   });
 

@@ -208,7 +208,9 @@ export async function runApply(
         projectRoot: opts.cwd ?? process.cwd(),
       });
       nativeWorkerRuntimeLine =
-        `✓ native worker runtime: ${describeNativeWorkerRuntime(nativeWorkerRuntime)}\n`;
+        `✓ native worker runtime: ${describeNativeWorkerRuntime(nativeWorkerRuntime)}\n` +
+        `✓ runtime trace primitives: ${nativeWorkerRuntime.tracePrimitives.join(", ")}\n` +
+        `✓ verifier depth policy: ${nativeWorkerRuntime.verifierDepth.deepWhen} (deep hard cap ${nativeWorkerRuntime.verifierDepth.deepAutoContinueHardCap}; light path = ${nativeWorkerRuntime.verifierDepth.lightWhen})\n`;
       workerCeilingLine =
         `✓ native worker ceiling: nativeWorkers.maxWorkers=${nativeWorkerRuntime.maxWorkers} from ${nativeWorkerRuntime.maxWorkersConfigPath} (${nativeWorkerRuntime.maxWorkersSource})\n`;
     }

@@ -21,6 +21,9 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from "@oh-my-pi/pi-coding-agent";
+import { createDeepInterviewRuntime } from "./deep-interview-runtime";
+import { RECOMMENDED_SUFFIX, formatRecommendedLabel } from "./deep-interview-render";
+import type { DeepInterviewAskMetadata } from "./deep-interview-state";
 
 export const OTHER_VALUE = "__pi-oven_other__";
 const OTHER_LABEL = "Other (type your own)";
@@ -35,6 +38,8 @@ export interface PiOvenAskSingleDetails {
   question: string;
   selected?: string;
   customInput?: string;
+  recommended?: number;
+  deepInterview?: DeepInterviewAskMetadata;
 }
 
 export type PiOvenAskDetails = PiOvenAskSingleDetails;
@@ -55,7 +60,6 @@ function getSymbolThemeFor(theme: Theme): SymbolTheme {
     spinnerFrames: theme.getSpinnerFrames("activity"),
   };
 }
-
 
 function getMarkdownThemeFor(theme: Theme): MarkdownTheme {
   const cached = markdownThemes.get(theme);
@@ -99,7 +103,10 @@ function getSelectListThemeFor(theme: Theme): SelectListTheme {
   return selectListTheme;
 }
 
-export function buildSelectItems(options: PiOvenAskOption[]): SelectItem[] {
+export function buildSelectItems(
+  options: PiOvenAskOption[],
+  recommended?: number
+): SelectItem[] {
   const seen = new Set<string>();
   const items: SelectItem[] = options.map((opt, i) => {
     let value = opt.label;
@@ -107,7 +114,10 @@ export function buildSelectItems(options: PiOvenAskOption[]): SelectItem[] {
       value = `${opt.label}#${i}`;
     }
     seen.add(value);
-    const item: SelectItem = { value, label: opt.label };
+    const item: SelectItem = {
+      value,
+      label: formatRecommendedLabel(opt.label, recommended === i),
+    };
     if (opt.description !== undefined) {
       item.description = opt.description;
     }
@@ -130,7 +140,8 @@ export function clampRecommended(
 export function formatAskResult(
   question: string,
   selected: string | undefined,
-  customInput: string | undefined
+  customInput: string | undefined,
+  meta: { recommended?: number; deepInterview?: DeepInterviewAskMetadata } = {}
 ): AgentToolResult<PiOvenAskDetails> {
   let text: string;
   if (selected !== undefined) {
@@ -149,6 +160,8 @@ export function formatAskResult(
   const details: PiOvenAskSingleDetails = { mode: "single", question };
   if (selected !== undefined) details.selected = selected;
   if (customInput !== undefined) details.customInput = customInput;
+  if (meta.recommended !== undefined) details.recommended = meta.recommended;
+  if (meta.deepInterview !== undefined) details.deepInterview = meta.deepInterview;
 
   return {
     content: [{ type: "text" as const, text }],
@@ -178,11 +191,6 @@ class PiOvenAskContainer extends Container {
   handleInput(data: string): void {
     this.#list.handleInput(data);
   }
-  // The SelectList renders only a single truncated description line per option. To
-  // show the FULL rationale, render the focused option's description — wrapped to the
-  // available width, multi-line — in a detail panel below the list. Recomputed each
-  // frame from the live selection, so it follows the cursor. Append-only: the base
-  // question + list render is preserved verbatim.
   render(width: number): string[] {
     const lines = super.render(width);
     const desc = this.#list.getSelectedItem()?.description;
@@ -202,6 +210,7 @@ function renderCall(
     question?: string;
     options?: PiOvenAskOption[];
     recommended?: number;
+    deepInterview?: DeepInterviewAskMetadata;
   },
   _options: ToolRenderResultOptions,
   theme: Theme
@@ -210,15 +219,28 @@ function renderCall(
   const mdTheme = getMarkdownThemeFor(theme);
   container.addChild(new Text(theme.fg("toolTitle", "Ask (pi-oven)"), 0, 0));
 
+  if (args.deepInterview) {
+    container.addChild(
+      new Text(
+        theme.fg(
+          "dim",
+          `Deep interview · round ${args.deepInterview.round} · ${args.deepInterview.stage}`
+        ),
+        0,
+        0
+      )
+    );
+  }
   container.addChild(new Markdown(args.question ?? "", 1, 0, mdTheme));
   const opts = args.options ?? [];
   for (let i = 0; i < opts.length; i++) {
     const opt = opts[i]!;
     const isLast = i === opts.length - 1;
     const branch = isLast ? theme.tree.last : theme.tree.branch;
+    const label = formatRecommendedLabel(opt.label, args.recommended === i);
     container.addChild(
       new Text(
-        ` ${theme.fg("dim", branch)} ${theme.fg("dim", theme.checkbox.unchecked)} ${opt.label}`,
+        ` ${theme.fg("dim", branch)} ${theme.fg("dim", theme.checkbox.unchecked)} ${label}`,
         0,
         0
       )
@@ -248,6 +270,30 @@ function renderResult(
     return container;
   }
 
+  if (details.deepInterview) {
+    container.addChild(
+      new Text(
+        theme.fg(
+          "dim",
+          `Deep interview · round ${details.deepInterview.round} · ${details.deepInterview.stage}`
+        ),
+        0,
+        0
+      )
+    );
+    if (details.deepInterview.approvalHandoff) {
+      container.addChild(
+        new Text(
+          theme.fg(
+            "dim",
+            `Approval handoff · ${details.deepInterview.approvalHandoff.decisionKey}`
+          ),
+          0,
+          0
+        )
+      );
+    }
+  }
   container.addChild(new Markdown(details.question, 1, 0, mdTheme));
 
   if (details.selected !== undefined) {
@@ -292,51 +338,108 @@ type PiOvenAskParams = {
   question: string;
   options: PiOvenAskOption[];
   recommended?: number;
+  deepInterview?: DeepInterviewAskMetadata;
 };
 
 async function askSingle(
   ctx: ExtensionContext,
-  params: { question: string; options: PiOvenAskOption[]; recommended?: number }
+  params: PiOvenAskParams,
+  debugLog?: (message: string) => void
 ): Promise<AgentToolResult<PiOvenAskDetails>> {
-  const { question, options } = params;
+  const { question, options, deepInterview } = params;
+  const recommended = clampRecommended(params.recommended, options.length);
+  const resultMeta = {
+    ...(recommended !== undefined ? { recommended } : {}),
+    ...(deepInterview !== undefined ? { deepInterview } : {}),
+  };
+  const contextState = ctx as unknown as { cwd?: unknown };
+  const projectRoot =
+    typeof contextState.cwd === "string" && contextState.cwd.trim().length > 0
+      ? contextState.cwd
+      : process.cwd();
+  const runtime = deepInterview ? createDeepInterviewRuntime(projectRoot) : undefined;
+  if (runtime && deepInterview) {
+    try {
+      await runtime.seedQuestion({
+        question,
+        recommended,
+        deepInterview,
+      });
+    } catch (err) {
+      debugLog?.(`pi-oven_ask: deep-interview seed skipped: ${err}`);
+    }
+  }
+
+  const persistAnswer = async (
+    selected: string | undefined,
+    customInput: string | undefined
+  ): Promise<void> => {
+    if (!runtime || !deepInterview) return;
+    try {
+      await runtime.recordAnswer({
+        question,
+        selected,
+        customInput,
+        recommended,
+        deepInterview,
+      });
+    } catch (err) {
+      debugLog?.(`pi-oven_ask: deep-interview answer persist skipped: ${err}`);
+    }
+  };
 
   if (!ctx.hasUI || typeof ctx.ui?.custom !== "function") {
     if (typeof ctx.ui?.select === "function") {
-      const folded = options.map(foldLabel);
-      const chosen = await ctx.ui.select(question, folded);
+      const folded = options.map((opt, index) => ({
+        label: formatRecommendedLabel(opt.label, recommended === index),
+        description: opt.description,
+      }));
+      const foldedLabels = folded.map(foldLabel);
+      const chosen = await ctx.ui.select(question, foldedLabels);
       if (chosen === undefined) {
-        return formatAskResult(question, undefined, undefined);
+        await persistAnswer(undefined, undefined);
+        return formatAskResult(question, undefined, undefined, resultMeta);
       }
-      const idx = folded.indexOf(chosen);
-      const selected = idx >= 0 ? options[idx]!.label : chosen;
-      return formatAskResult(question, selected, undefined);
+      const idx = foldedLabels.indexOf(chosen);
+      const selected = idx >= 0 ? options[idx]!.label : chosen.replace(RECOMMENDED_SUFFIX, "");
+      await persistAnswer(selected, undefined);
+      return formatAskResult(question, selected, undefined, resultMeta);
     }
-    return formatAskResult(question, undefined, undefined);
+    await persistAnswer(undefined, undefined);
+    return formatAskResult(question, undefined, undefined, resultMeta);
   }
 
-  const items = buildSelectItems(options);
-  const rec = clampRecommended(params.recommended, options.length);
-
+  const items = buildSelectItems(options, recommended);
   const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _keybindings, done) => {
     const mdTheme = getMarkdownThemeFor(theme);
     const list = new SelectList(items, items.length, getSelectListThemeFor(theme), {
       minPrimaryColumnWidth: 24,
       maxPrimaryColumnWidth: 48,
     });
-    if (rec !== undefined) list.setSelectedIndex(rec);
+    if (recommended !== undefined) list.setSelectedIndex(recommended);
     list.onSelect = (item) => done(item.value);
     list.onCancel = () => done(undefined);
-    return new PiOvenAskContainer(question, list, mdTheme, (s) => theme.fg("dim", s));
+    return new PiOvenAskContainer(question, list, mdTheme, (text) => theme.fg("dim", text));
   });
 
-  if (choice === undefined) return formatAskResult(question, undefined, undefined);
+  if (choice === undefined) {
+    await persistAnswer(undefined, undefined);
+    return formatAskResult(question, undefined, undefined, resultMeta);
+  }
   if (choice === OTHER_VALUE) {
     const custom = await ctx.ui.editor("Enter your response:", undefined, undefined, {
       promptStyle: true,
     });
-    return formatAskResult(question, undefined, custom ?? undefined);
+    const normalizedCustom = custom ?? undefined;
+    if (normalizedCustom === undefined) {
+      await persistAnswer(undefined, undefined);
+      return formatAskResult(question, undefined, undefined, resultMeta);
+    }
+    await persistAnswer(undefined, normalizedCustom);
+    return formatAskResult(question, undefined, normalizedCustom, resultMeta);
   }
-  return formatAskResult(question, choice, undefined);
+  await persistAnswer(choice, undefined);
+  return formatAskResult(question, choice, undefined, resultMeta);
 }
 
 export function registerPiOvenAsk(pi: ExtensionAPI): void {
@@ -352,10 +455,28 @@ export function registerPiOvenAsk(pi: ExtensionAPI): void {
     description: z.string().optional(),
   });
 
+  const deepInterviewSchema = z.object({
+    interviewId: z.string().optional(),
+    round: z.number().int().nonnegative(),
+    roundId: z.string().optional(),
+    questionId: z.string().optional(),
+    stage: z.enum(["topology", "round", "closure", "approval"]),
+    component: z.string().optional(),
+    dimension: z.string().optional(),
+    ambiguity: z.number().min(0).max(1).optional(),
+    approvalHandoff: z
+      .object({
+        decisionKey: z.string().min(1),
+        summary: z.string().min(1),
+      })
+      .optional(),
+  });
+
   const parameters = z.object({
     question: z.string().min(1),
     options: z.array(optionSchema).min(1),
     recommended: z.number().optional(),
+    deepInterview: deepInterviewSchema.optional(),
   });
 
   pi.registerTool({
@@ -372,11 +493,16 @@ export function registerPiOvenAsk(pi: ExtensionAPI): void {
       _onUpdate: unknown,
       ctx: ExtensionContext
     ): Promise<AgentToolResult<PiOvenAskDetails>> {
-      return askSingle(ctx, {
-        question: params.question,
-        options: params.options,
-        recommended: params.recommended,
-      });
+      return askSingle(
+        ctx,
+        {
+          question: params.question,
+          options: params.options,
+          recommended: params.recommended,
+          deepInterview: params.deepInterview,
+        },
+        (message) => pi.logger?.debug?.(message)
+      );
     },
   });
 }

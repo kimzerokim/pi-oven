@@ -38,6 +38,25 @@ import {
   type ExternalExecConsent,
   type OwnershipTraceEntry,
 } from "./pi-oven-runtime/gate-state";
+import {
+  createRuntimeTraceSnapshot,
+  type RuntimeTraceSnapshot,
+} from "./pi-oven-runtime/trace-primitives";
+import {
+  decideVerifierDepth,
+  deriveVerifierRisk,
+  type VerifierDepthDecision,
+} from "./pi-oven-runtime/verifier-depth-policy";
+import { getCapabilitiesByTag } from "./pi-oven-runtime/capability-registry";
+import {
+  DEEP_INTERVIEW_CONTRACT_DEDUP_KEY,
+  buildDeepInterviewContractPrompt,
+} from "./pi-oven-runtime/deep-interview-render";
+import {
+  normalizeDeepInterviewState,
+  type DeepInterviewState,
+} from "./pi-oven-runtime/deep-interview-state";
+
 import { createGateHandler } from "./pi-oven-runtime/gate-handler";
 import { registerPiOvenAsk } from "./pi-oven-runtime/pi-oven-ask";
 import { resolveLanguage } from "./pi-oven-runtime/language";
@@ -814,6 +833,13 @@ export default function piOvenPi(
     pi.logger.warn(installedTopologyNotice.message);
   }
   let stopGuardState = createStopGuardState();
+  let runtimeTrace: RuntimeTraceSnapshot = createRuntimeTraceSnapshot();
+  let verifierDepth: VerifierDepthDecision = decideVerifierDepth({
+    mode: "interactive",
+    risk: deriveVerifierRisk({ mutationScope: "none", materialEdit: false }),
+    mutationScope: "none",
+    materialEdit: false,
+  });
 
   const gateHandler = createGateHandler({
     store,
@@ -821,6 +847,10 @@ export default function piOvenPi(
     getEnv: () => process.env,
     isParentSession,
     roots: { repoRoot, homeDir: os.homedir() },
+    onRuntimeContractUpdate: (update) => {
+      runtimeTrace = update.trace;
+      verifierDepth = update.verifierDepth;
+    },
   });
 
   pi.on("tool_call", async (event) => {
@@ -845,9 +875,24 @@ export default function piOvenPi(
       // (parent-only; false for non-parent sessions). Single definition — never
       // re-declared at the injection point.
       let needsAutonomousReminder = false;
+      let persistedDeepInterviewState: DeepInterviewState | undefined;
 
       if (isParentSession) {
         const fsm = await store.readState();
+        if (fsm.kind === "OK") {
+          const fsmRecord = fsm.state as unknown as Record<string, unknown>;
+          if (fsmRecord.deepInterview !== undefined) {
+            const normalized = normalizeDeepInterviewState(fsmRecord.deepInterview);
+            if (
+              normalized.rounds.length > 0 ||
+              normalized.pendingQuestion !== undefined ||
+              normalized.approvalHandoff !== undefined
+            ) {
+              persistedDeepInterviewState = normalized;
+            }
+          }
+        }
+
         const remainingSkillReadTargets =
           fsm.kind === "OK"
             ? getRemainingOwnedSkillReadTargets(
@@ -863,12 +908,14 @@ export default function piOvenPi(
         if (needsAutonomousReminder) {
           if (branchContract.kind !== "OK") {
             reminders.push(
-              "Before code-write, write `.pi-oven/state/branch-contract.json` with `destination`, `branch`, and `pr_mode`."
+              "Before code-write, satisfy the control-plane front door by writing `.pi-oven/state/branch-contract.json` with `destination`, `branch`, and `pr_mode`."
             );
           }
           if (remainingSkillReadTargets.length > 0) {
             reminders.push(
-              `Before code-write, read ${remainingSkillReadTargets.join(", ")}.`
+              "Before code-write, complete the skill capability proof surface: " +
+                `read ${remainingSkillReadTargets.join(", ")} so ` +
+                "`requiredSkills` + `ownedSkillReadTargets` can be proven through `skillReads`."
             );
           }
         }
@@ -903,6 +950,18 @@ export default function piOvenPi(
           !systemPrompt.some((entry) => entry.includes("[WARN] keyword-skill integrity:"))
         ) {
           systemPrompt = [...systemPrompt, keywordIntegrityNotice.message];
+        }
+        const shouldInjectDeepInterviewContract =
+          getCapabilitiesByTag("deep-interview").includes("ask") &&
+          (effectiveMatchedSkills.length > 0 || persistedDeepInterviewState !== undefined);
+        if (
+          shouldInjectDeepInterviewContract &&
+          !systemPrompt.some((entry) => entry.includes(DEEP_INTERVIEW_CONTRACT_DEDUP_KEY))
+        ) {
+          systemPrompt = [
+            ...systemPrompt,
+            buildDeepInterviewContractPrompt(persistedDeepInterviewState),
+          ];
         }
       }
       return { systemPrompt };
@@ -1017,6 +1076,9 @@ export default function piOvenPi(
         : latestUserMessage
           ? undefined
           : current.consumedExternalExecConsentMessageId;
+      const continuationMarker =
+        stopGuardState.continuationMarker ??
+        (sameUserMessage ? current.continuationMarker : undefined);
       return {
         ...current,
         active: stopGuardState.autonomousActive,
@@ -1036,6 +1098,7 @@ export default function piOvenPi(
         ownedSkillReadTargets,
         externalExecConsent,
         consumedExternalExecConsentMessageId,
+        continuationMarker,
       };
     });
   });
@@ -1047,22 +1110,34 @@ export default function piOvenPi(
     const decision = decideStopGuardOnTurnEnd(stopGuardState, {
       stopReason: message.stopReason,
       assistantText: extractTextFromContent(message.content),
+      runtimeTrace,
+      verifierDepth,
     });
     stopGuardState = decision.state;
+    await store.setContinuationMarker(decision.state.continuationMarker);
 
     if (!decision.shouldQueueContinuation) return;
+
+    const stopGuardMessage =
+      decision.reason === "verifier-pending"
+        ? `${STOP_GUARD_MESSAGE}\nRun the deep verifier lane before exit.`
+        : STOP_GUARD_MESSAGE;
 
     pi.sendMessage(
       {
         customType: "pi-oven-autonomous-stop-guard",
-        content: [{ type: "text", text: STOP_GUARD_MESSAGE }],
+        content: [{ type: "text", text: stopGuardMessage }],
         display: true,
-        details: { reason: decision.reason },
+        details: { reason: decision.reason, note: decision.note },
       },
       { deliverAs: "nextTurn", triggerTurn: true }
     );
 
-    pi.logger.info(`pi-oven: autonomous stop-guard queued continuation (${decision.reason})`);
+    pi.logger.info(
+      `pi-oven: autonomous stop-guard queued continuation (${decision.reason}${
+        decision.note ? ` — ${decision.note}` : ""
+      })`
+    );
   });
 
   try {

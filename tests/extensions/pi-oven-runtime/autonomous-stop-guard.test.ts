@@ -35,6 +35,10 @@ describe("autonomous-stop-guard", () => {
 
     expect(decision.shouldQueueContinuation).toBe(true);
     expect(decision.reason).toBe("explicit-continue");
+    expect(decision.state.continuationMarker).toEqual({
+      kind: "autonomous-loop-resume",
+      trigger: "explicit-continue",
+    });
   });
 
   it("queues continuation on polite-stop text while autonomous is active", () => {
@@ -51,9 +55,13 @@ describe("autonomous-stop-guard", () => {
 
     expect(decision.shouldQueueContinuation).toBe(true);
     expect(decision.reason).toBe("polite-stop");
+    expect(decision.state.continuationMarker).toEqual({
+      kind: "autonomous-loop-resume",
+      trigger: "polite-stop",
+    });
   });
 
-  it("does not queue on branch-contract question", () => {
+  it("persists a halted-by-policy marker on branch-contract question", () => {
     const active = {
       ...createStopGuardState(),
       autonomousActive: true,
@@ -67,13 +75,21 @@ describe("autonomous-stop-guard", () => {
 
     expect(decision.shouldQueueContinuation).toBe(false);
     expect(decision.reason).toBeNull();
+    expect(decision.state.continuationMarker).toEqual({
+      kind: "halted-by-policy",
+      policy: "branch-contract",
+    });
   });
 
-  it("does not queue on terminal completion output", () => {
+  it("clears continuation marker on terminal completion output", () => {
     const active = {
       ...createStopGuardState(),
       autonomousActive: true,
       explicitContinueThisTurn: true,
+      continuationMarker: {
+        kind: "autonomous-loop-resume",
+        trigger: "explicit-continue",
+      } as const,
     };
 
     const decision = decideStopGuardOnTurnEnd(active, {
@@ -83,6 +99,7 @@ describe("autonomous-stop-guard", () => {
 
     expect(decision.shouldQueueContinuation).toBe(false);
     expect(decision.reason).toBeNull();
+    expect(decision.state.continuationMarker).toBeUndefined();
   });
 
   it("stops auto-queueing after max consecutive guard injections", () => {
@@ -100,5 +117,9 @@ describe("autonomous-stop-guard", () => {
 
     expect(decision.shouldQueueContinuation).toBe(false);
     expect(decision.state.consecutiveAutoContinues).toBe(0);
+    expect(decision.state.continuationMarker).toEqual({
+      kind: "halted-by-policy",
+      policy: "max-consecutive-auto-continues",
+    });
   });
 });

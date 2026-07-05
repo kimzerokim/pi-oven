@@ -7,6 +7,13 @@ import {
   fingerprintExternalExecSecret,
   type FsmState,
 } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
+import {
+  AUTONOMOUS_STATE_FILE,
+  BRANCH_CONTRACT_STATE_FILE,
+  PUSH_CONSENT_STATE_FILE,
+  projectStatePath,
+} from "../../../.omp/extensions/pi-oven-runtime/project-state";
+import { createAutonomousLoopResumeMarker } from "../../../.omp/extensions/pi-oven-runtime/continuation-marker";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-gs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -444,6 +451,61 @@ describe("GateStateStore — external execution consent persistence", () => {
   });
 });
 
+describe("GateStateStore — continuation marker persistence", () => {
+  let dir: string;
+  beforeEach(() => { dir = makeTempDir(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("persists continuation markers inside autonomous.json without creating a sibling marker file", async () => {
+    const store = new GateStateStore(dir);
+    await store.writeState({
+      active: true,
+      gateCache: { commit: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+    });
+
+    await store.setContinuationMarker(createAutonomousLoopResumeMarker("explicit-continue"));
+
+    const persisted = JSON.parse(readFileSync(statePath(dir), "utf-8")) as FsmState;
+    expect(persisted.continuationMarker).toEqual(
+      createAutonomousLoopResumeMarker("explicit-continue")
+    );
+    expect(persisted.gateCache).toEqual({ commit: "PASS" });
+    expect(readdirSync(join(dir, "state")).sort()).toEqual(["autonomous.json"]);
+  });
+
+  it("serializes continuation-marker writes through the same writer mutex as mutate()", async () => {
+    const store = new GateStateStore(dir);
+    await store.writeState({
+      active: true,
+      gateCache: { commit: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+    });
+
+    await Promise.all([
+      store.setContinuationMarker(createAutonomousLoopResumeMarker("polite-stop")),
+      store.mutate((current) => ({
+        ...current,
+        version: current.version + 1,
+        gateCache: {
+          ...current.gateCache,
+          regression: "PASS",
+        },
+      })),
+    ]);
+
+    const view = await store.readState();
+    expect(view.kind).toBe("OK");
+    if (view.kind !== "OK") return;
+    expect(view.state.continuationMarker).toEqual(
+      createAutonomousLoopResumeMarker("polite-stop")
+    );
+    expect(view.state.gateCache).toEqual({ commit: "PASS", regression: "PASS" });
+  });
+});
+
 describe("GateStateStore — branch contract marker", () => {
   let dir: string;
   beforeEach(() => { dir = makeTempDir(); });
@@ -472,5 +534,33 @@ describe("GateStateStore — branch contract marker", () => {
     mkdirSync(join(dir, "state"), { recursive: true });
     writeFileSync(branchContractPath(dir), JSON.stringify({ destination: "x", branch: "" }));
     expect(await store.readBranchContract()).toEqual({ kind: "CORRUPT" });
+  });
+});
+
+describe("GateStateStore — project-state migration compatibility", () => {
+  let dir: string;
+  beforeEach(() => { dir = makeTempDir(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("keeps autonomous.json, push-consent.json, and branch-contract.json on their current live paths", () => {
+    expect(projectStatePath(dir, AUTONOMOUS_STATE_FILE)).toBe(statePath(dir));
+    expect(projectStatePath(dir, PUSH_CONSENT_STATE_FILE)).toBe(consentPath(dir));
+    expect(projectStatePath(dir, BRANCH_CONTRACT_STATE_FILE)).toBe(branchContractPath(dir));
+  });
+
+  it("writeState preserves the live autonomous.json top-level shape during the migration", async () => {
+    const store = new GateStateStore(dir);
+    const state: FsmState = {
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 3,
+      schemaVersion: 1,
+      requiredSkills: ["autonomous-loop"],
+      skillReads: ["/plugin/skills/autonomous-loop/SKILL.md"],
+    };
+
+    await store.writeState(state);
+
+    expect(JSON.parse(readFileSync(statePath(dir), "utf-8"))).toEqual(state);
   });
 });

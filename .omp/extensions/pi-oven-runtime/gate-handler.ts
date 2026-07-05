@@ -31,7 +31,20 @@ import {
   type GateEnv,
   type FsmStateView as GateFsmView,
 } from "./gate";
-import type { GateStateStore, OwnershipTraceEntry } from "./gate-state";
+import type { GateStateStore, FsmStateView, OwnershipTraceEntry } from "./gate-state";
+import {
+  attachFailurePath,
+  createRuntimeTraceSnapshot,
+  recordTouchedPath,
+  summarizeFailurePath,
+  traceFunction,
+  type RuntimeTraceSnapshot,
+} from "./trace-primitives";
+import {
+  decideVerifierDepth,
+  deriveVerifierRisk,
+  type VerifierDepthDecision,
+} from "./verifier-depth-policy";
 
 export interface GateLogger {
   info(msg: string): void;
@@ -56,6 +69,10 @@ export interface GateHandlerDeps {
   roots?: NormalizeRoots;
   /** Self-deadline in ms (default 1500). Lower in tests for fault injection. */
   deadlineMs?: number;
+  onRuntimeContractUpdate?: (update: {
+    trace: RuntimeTraceSnapshot;
+    verifierDepth: VerifierDepthDecision;
+  }) => void;
 }
 
 /** Minimal structural view of the parts of a ToolCallEvent we read. */
@@ -69,6 +86,10 @@ interface ToolCallEventLike {
 interface ToolCallResultLike {
   block?: boolean;
   reason?: string;
+}
+
+interface GateRuntimeState {
+  trace: RuntimeTraceSnapshot;
 }
 
 const EMPTY_NORMALIZED_COMMAND: NormalizedCommand = { gitVerbs: [], forbiddenMatches: [], externalMatches: [], inlineSecretMatches: [] };
@@ -91,6 +112,23 @@ export function getSkillReadName(event: ToolCallEventLike): string | null {
   const end = remainder.search(/[:/?#]/);
   const name = (end === -1 ? remainder : remainder.slice(0, end)).trim();
   return name.length > 0 ? name : null;
+}
+
+function decideCurrentVerifierDepth(
+  trace: RuntimeTraceSnapshot,
+  fsm: GateFsmView
+): VerifierDepthDecision {
+  const mode = fsm.kind === "OK" && fsm.state.active ? "autonomous" : "interactive";
+  const risk = deriveVerifierRisk({
+    mutationScope: trace.mutationScope,
+    materialEdit: trace.materialEdit,
+  });
+  return decideVerifierDepth({
+    mode,
+    risk,
+    mutationScope: trace.mutationScope,
+    materialEdit: trace.materialEdit,
+  });
 }
 
 const PI_OVEN_AGENT_PREFIX = "pi-oven:";
@@ -214,57 +252,82 @@ async function decideForTaskDispatch(
   return decision.block ? { block: true, reason: decision.reason } : { block: false };
 }
 
-export function toGateFsmView(view: Awaited<ReturnType<GateStateStore["readState"]>>): GateFsmView {
-  return view.kind === "OK"
-    ? { kind: "OK", state: { active: view.state.active, gateCache: view.state.gateCache } }
-    : view.kind === "CORRUPT"
-      ? { kind: "CORRUPT" }
-      : { kind: "ABSENT" };
+export function toGateFsmView(view: FsmStateView): GateFsmView {
+  if (view.kind === "CORRUPT") return { kind: "CORRUPT" };
+  if (view.kind === "ABSENT") return { kind: "ABSENT" };
+  const { active, gateCache } = view.state;
+  return { kind: "OK", state: { active, gateCache } };
 }
 
 async function observeSkillRead(deps: GateHandlerDeps, skillReadTarget: string): Promise<void> {
   if (!deps.isParentSession) return;
   const currentView = await deps.store.readState();
   if (currentView.kind !== "OK" || !currentView.state.active) return;
-  const allowedTargets = new Set(currentView.state.ownedSkillReadTargets ?? []);
-  if (!allowedTargets.has(skillReadTarget)) return;
+  const allowedProofTargets = new Set(currentView.state.ownedSkillReadTargets ?? []);
+  if (!allowedProofTargets.has(skillReadTarget)) return;
   await deps.store.mutate((current) => {
-    const nextReads = new Set(current.skillReads ?? []);
-    nextReads.add(skillReadTarget);
+    const nextProofReads = new Set(current.skillReads ?? []);
+    nextProofReads.add(skillReadTarget);
     return {
       ...current,
       version: current.version + 1,
-      skillReads: [...nextReads],
+      skillReads: [...nextProofReads],
     };
   });
 }
 
 async function decideForCodeWrite(
   deps: GateHandlerDeps,
+  runtimeState: GateRuntimeState,
   event: ToolCallEventLike
 ): Promise<ToolCallResultLike | void> {
+  const targetPath = getTargetPath(event.input);
+  const traceWithFunction = traceFunction(
+    runtimeState.trace,
+    "decideForCodeWrite",
+    ".omp/extensions/pi-oven-runtime/gate-handler.ts"
+  );
   const env: GateEnv = {
     PI_OVEN_PUSH_CONSENT: deps.getEnv().PI_OVEN_PUSH_CONSENT,
     PI_OVEN_GATE_BYPASS: deps.getEnv().PI_OVEN_GATE_BYPASS,
   };
   const fsmRaw = await deps.store.readState();
+  const fsm = toGateFsmView(fsmRaw);
+  const verifierDepth = decideCurrentVerifierDepth(traceWithFunction, fsm);
   const decision = decideGate({
     normalized: EMPTY_NORMALIZED_COMMAND,
-    fsm: toGateFsmView(fsmRaw),
+    fsm,
     env,
     fileConsentValid: false,
     toolName: event.toolName,
-    targetPath: getTargetPath(event.input),
+    targetPath,
     branchContract: await deps.store.readBranchContract(),
     requiredSkills: fsmRaw.kind === "OK" ? fsmRaw.state.requiredSkills : [],
     ownedSkillReadTargets: fsmRaw.kind === "OK" ? fsmRaw.state.ownedSkillReadTargets : [],
     skillReads: fsmRaw.kind === "OK" ? fsmRaw.state.skillReads : [],
+    verifierDepth,
+  });
+  runtimeState.trace = decision.block
+    ? attachFailurePath(
+        traceWithFunction,
+        summarizeFailurePath({
+          surface: "code-write-gate",
+          message: decision.reason ?? "code-write blocked",
+          functions: ["decideForCodeWrite", "decideGate"],
+          stateKeys: ["requiredSkills", "ownedSkillReadTargets", "skillReads"],
+        })
+      )
+    : recordTouchedPath(traceWithFunction, targetPath);
+  deps.onRuntimeContractUpdate?.({
+    trace: runtimeState.trace,
+    verifierDepth: decideCurrentVerifierDepth(runtimeState.trace, fsm),
   });
   return { block: decision.block, reason: decision.reason };
 }
 
 async function decideForToolCall(
   deps: GateHandlerDeps,
+  runtimeState: GateRuntimeState,
   event: ToolCallEventLike
 ): Promise<ToolCallResultLike | void> {
   const skillReadTarget = event.toolName === "read" ? getTargetPath(event.input) : null;
@@ -279,13 +342,13 @@ async function decideForToolCall(
   }
 
   if (isCodeWriteTool(event.toolName)) {
-    return decideForCodeWrite(deps, event);
+    return decideForCodeWrite(deps, runtimeState, event);
   }
 
   if (event.toolName !== "bash") return undefined;
   const command = event.input?.command;
   if (typeof command !== "string" || command.length === 0) return undefined;
-  return decideForCommand(deps, command);
+  return decideForCommand(deps, runtimeState, command);
 }
 
 
@@ -317,6 +380,9 @@ export function createGateHandler(
   deps: GateHandlerDeps
 ): (event: ToolCallEventLike) => Promise<ToolCallResultLike | void> {
   const deadlineMs = deps.deadlineMs ?? DEFAULT_DEADLINE_MS;
+  const runtimeState: GateRuntimeState = {
+    trace: createRuntimeTraceSnapshot(),
+  };
 
   return async function handler(
     event: ToolCallEventLike
@@ -328,12 +394,13 @@ export function createGateHandler(
       (t as unknown as { unref?: () => void }).unref?.();
     });
 
-    return Promise.race([decideForToolCall(deps, event), deadline]);
+    return Promise.race([decideForToolCall(deps, runtimeState, event), deadline]);
   };
 }
 
 async function decideForCommand(
   deps: GateHandlerDeps,
+  runtimeState: GateRuntimeState,
   command: string
 ): Promise<ToolCallResultLike | void> {
   const normalized = normalizeCommand(command, deps.roots);
@@ -350,7 +417,13 @@ async function decideForCommand(
     return { block: false };
   }
 
+  runtimeState.trace = traceFunction(
+    runtimeState.trace,
+    "decideForCommand",
+    ".omp/extensions/pi-oven-runtime/gate-handler.ts"
+  );
   const wantsPush = normalized.gitVerbs.includes("push");
+  const wantsCommit = normalized.gitVerbs.includes("commit");
   const inlinePushConsent = wantsPush
     ? getLeadingEnvVarForGitVerb(command, "push", "PI_OVEN_PUSH_CONSENT")
     : undefined;
@@ -362,7 +435,7 @@ async function decideForCommand(
   const fsmRaw = await deps.store.readState();
   const fsm = toGateFsmView(fsmRaw);
   const externalExecConsent = fsmRaw.kind === "OK" ? fsmRaw.state.externalExecConsent : undefined;
-
+  const verifierDepth = decideCurrentVerifierDepth(runtimeState.trace, fsm);
   const fileConsent = wantsPush ? await deps.store.readFileConsent() : { valid: false };
   const decision = decideGate({
     normalized,
@@ -370,8 +443,19 @@ async function decideForCommand(
     env,
     fileConsentValid: fileConsent.valid,
     externalExecConsent,
+    verifierDepth,
   });
-
+  if (decision.block && wantsCommit) {
+    runtimeState.trace = attachFailurePath(
+      runtimeState.trace,
+      summarizeFailurePath({
+        surface: "commit-gate",
+        message: decision.reason ?? "git commit blocked",
+        functions: ["decideForCommand", "decideGate", "decideVerifierDepth"],
+        stateKeys: ["gateCache.commit", "gateCache.regression"],
+      })
+    );
+  }
   if (!decision.block && decision.consumeExternalExecConsent && !deps.isParentSession) {
     return {
       block: true,
@@ -448,6 +532,19 @@ async function decideForCommand(
       `pi-oven: external execution ALLOWED — kinds=${externalKinds} source=state command="${truncate(auditCommand)}"`
     );
   }
+  if (
+    wantsCommit &&
+    !decision.block &&
+    verifierDepth.requiresRegressionGate &&
+    fsmRaw.kind === "OK" &&
+    fsmRaw.state.gateCache.regression === "PASS"
+  ) {
+    runtimeState.trace = createRuntimeTraceSnapshot();
+  }
+  deps.onRuntimeContractUpdate?.({
+    trace: runtimeState.trace,
+    verifierDepth: decideCurrentVerifierDepth(runtimeState.trace, fsm),
+  });
 
   return { block: decision.block, reason: decision.reason };
 }

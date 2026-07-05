@@ -164,7 +164,7 @@ describe("RulesInjector — rehydrate (AC3 step 3)", () => {
 // ---------------------------------------------------------------------------
 
 describe("orchestrator conduct block", () => {
-  it("interactive: contains SKILL-FIRST + WAIT-FOR-USER + plugin-owned target wording + dedup marker", () => {
+  it("interactive: contains SKILL-FIRST + WAIT-FOR-USER + plugin-owned target wording + explicit proof surfaces", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
     expect(b).toContain(ORCHESTRATOR_CONDUCT_DEDUP_KEY);
@@ -172,15 +172,29 @@ describe("orchestrator conduct block", () => {
     expect(b).toMatch(/WAIT FOR THE USER|wait for the user/i);
     expect(b).toMatch(/ASK WHEN AMBIGUOUS|ask when ambiguous/i);
     expect(b).toMatch(/exact plugin-owned .*SKILL\.md target/i);
+    expect(b).toMatch(/control-plane front door/i);
+    expect(b).toContain("requiredSkills");
+    expect(b).toContain("ownedSkillReadTargets");
+    expect(b).toMatch(/branch contract/i);
+    expect(b).toContain("externalExecConsent");
+    expect(b).toContain("Bootstrap message injection");
+    expect(b).toContain("tool remap");
   });
 
-  it("autonomous: relaxes WAIT and points to the boundary contract / keep going", () => {
+  it("autonomous: relaxes WAIT and points to the boundary contract / keep going while keeping proof surfaces explicit", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: true });
     expect(b).toContain(ORCHESTRATOR_CONDUCT_DEDUP_KEY);
     expect(b).toMatch(/SKILL-FIRST/);
     expect(b).toMatch(/autonomous/i);
     expect(b).toMatch(/boundary contract|keep going/i);
+    expect(b).toMatch(/control-plane front door/i);
+    expect(b).toContain("requiredSkills");
+    expect(b).toContain("ownedSkillReadTargets");
+    expect(b).toMatch(/branch contract/i);
+    expect(b).toContain("externalExecConsent");
+    expect(b).toContain("Bootstrap message injection");
+    expect(b).toContain("tool remap");
     // the running-loop variant must NOT impose the interactive WAIT-FOR-USER stop
     expect(b).not.toMatch(/WAIT FOR THE USER/);
   });
@@ -241,6 +255,13 @@ describe("orchestrator conduct block", () => {
     expect(b).toContain("kzk:");
     expect(b).toMatch(/pi-oven:<role>|AGENT NAMING/i);
     expect(b).toMatch(/user-explicit|explicitly asked/i);
+  });
+  it("interactive: routes ambiguous decisions through the native deep-interview contract", () => {
+    const inj = new RulesInjector();
+    const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
+    expect(b).toContain("pi-oven_ask");
+    expect(b).toContain("deepInterview");
+    expect(b).toMatch(/approval handoff|resume state/i);
   });
 });
 

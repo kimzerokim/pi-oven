@@ -4,9 +4,21 @@
  * Upstream commit: 50f6ff05eb5d9ebed66f05d8c4580c0b119f37af
  */
 
-import { buildWorkerInfo, readTeamConfig, saveTeamConfig, writeTaskStateFile } from "./team-config";
+import {
+  buildStartupEvidence,
+  buildWorkerInfo,
+  persistTaskStateWrites,
+  readTeamConfig,
+  saveTeamConfigWithStartupEvidence,
+  type TaskStateWrite,
+} from "./team-config";
 import { rollbackStartedWorkers } from "./rollback";
-import { spawnV2Worker } from "./runtime-v2";
+import {
+  executeStartupWorkerBatches,
+  IDLE_BOOTSTRAP_TASK,
+  planStartupWorkerBatches,
+  type StartupWorkerPlan,
+} from "./runtime-v2";
 import { PI_OVEN_NATIVE_MAX_WORKERS, type ScaleError, type ScaleUpOptions, type ScaleUpResult, type StartedWorkerRecord } from "./types";
 
 export async function scaleUp(options: ScaleUpOptions): Promise<ScaleUpResult | ScaleError> {
@@ -36,8 +48,11 @@ export async function scaleUp(options: ScaleUpOptions): Promise<ScaleUpResult | 
   let nextTaskId = initialNextTaskId;
   const addedWorkers: StartedWorkerRecord[] = [];
   const addedNames: string[] = [];
-  const workerPaneIds = config.workers.map((worker) => worker.pane_id).filter((paneId): paneId is string => typeof paneId === "string");
+  const taskWrites: TaskStateWrite[] = [];
+  const plans: StartupWorkerPlan[] = [];
 
+
+  let collisionEvidence: string[] = [];
   try {
     for (let offset = 0; offset < options.count; offset++) {
       while (config.workers.some((worker) => worker.name === `worker-${nextIndex}`)) {
@@ -52,10 +67,6 @@ export async function scaleUp(options: ScaleUpOptions): Promise<ScaleUpResult | 
       const workerInfo = buildWorkerInfo(workerIndex, options.cwd, worktree?.path, worktree?.created);
       const startupTask = options.tasks[offset];
       const allocatedTaskId = startupTask ? String(nextTaskId) : null;
-      const task = startupTask ?? {
-        subject: "Await next claim",
-        description: "Stay ready and claim the next pending owned task once the leader dispatches it.",
-      };
       const taskId = allocatedTaskId ?? String(initialNextTaskId + offset);
       const startedWorker: StartedWorkerRecord = {
         workerName,
@@ -63,57 +74,74 @@ export async function scaleUp(options: ScaleUpOptions): Promise<ScaleUpResult | 
         worktreeCreated: worktree?.created,
         taskId: allocatedTaskId ?? undefined,
       };
-      addedWorkers.push(startedWorker);
+
       if (startupTask && allocatedTaskId) {
-        writeTaskStateFile(options.teamName, options.cwd, allocatedTaskId, startupTask, startupTask.owner ?? workerName);
+        taskWrites.push({
+          taskId: allocatedTaskId,
+          task: startupTask,
+          owner: startupTask.owner ?? workerName,
+        });
         nextTaskId += 1;
       }
-      const spawnResult = await spawnV2Worker({
-        sessionName: config.tmux_session,
-        leaderPaneId: config.leader_pane_id,
-        existingWorkerPaneIds: workerPaneIds,
-        teamName: options.teamName,
+
+      addedWorkers.push(startedWorker);
+      addedNames.push(workerName);
+      plans.push({
         workerName,
         workerIndex,
-        agentType: options.agentType,
         taskId,
-        task,
-        cwd: options.cwd,
-        workerCwd: workerInfo.working_dir ?? options.cwd,
-        worktreePath: workerInfo.worktree_path,
-        tmux: options.tmux,
-        buildWorkerStart: options.buildWorkerStart,
-        dispatchStartup: options.dispatchStartup,
+        task: startupTask ?? IDLE_BOOTSTRAP_TASK,
+        startupTask,
+        workerInfo,
+        startedWorker,
+        persistenceClaims: [
+          { surface: "worker_dir", key: workerName },
+          ...(allocatedTaskId ? [{ surface: "task_file", key: allocatedTaskId } as const] : []),
+        ],
       });
-
-      if (spawnResult.paneId) {
-        startedWorker.paneId = spawnResult.paneId;
-      }
-
-      if (!spawnResult.paneId || spawnResult.startupFailureReason) {
-        throw new Error(
-          spawnResult.startupFailureReason
-            ? `worker_startup_failed:${workerName}:${spawnResult.startupFailureReason}`
-            : `worker_startup_failed:${workerName}:pane_id_missing`
-        );
-      }
-
-      workerInfo.pane_id = spawnResult.paneId;
-      workerInfo.worker_cli = options.agentType;
-      workerInfo.assigned_tasks = startupTask && allocatedTaskId ? [allocatedTaskId] : [];
-      if (spawnResult.outputFile) {
-        workerInfo.output_file = spawnResult.outputFile;
-      }
-
-      config.workers.push(workerInfo);
-      config.worker_count = config.workers.length;
-      config.next_worker_index = workerIndex + 1;
-      saveTeamConfig(config, options.cwd);
-
-      workerPaneIds.push(spawnResult.paneId);
-      addedNames.push(workerName);
       nextIndex = workerIndex + 1;
     }
+    const batchPlan = planStartupWorkerBatches(plans);
+    collisionEvidence = [...batchPlan.collisionEvidence];
+    const taskPersistenceOrder = persistTaskStateWrites(options.teamName, options.cwd, taskWrites);
+    const execution = await executeStartupWorkerBatches({
+      batches: batchPlan.batches,
+      workerPaneIds: config.workers
+        .map((worker) => worker.pane_id)
+        .filter((paneId): paneId is string => typeof paneId === "string"),
+      sessionName: config.tmux_session,
+      leaderPaneId: config.leader_pane_id,
+      teamName: options.teamName,
+      agentType: options.agentType,
+      cwd: options.cwd,
+      tmux: options.tmux,
+      buildWorkerStart: options.buildWorkerStart,
+      dispatchStartup: options.dispatchStartup,
+    });
+
+    for (const plan of plans) {
+      config.workers.push(plan.workerInfo);
+    }
+    config.worker_count = config.workers.length;
+    config.next_worker_index = nextIndex;
+    config.next_task_id = nextTaskId;
+
+    const finalConfigSaveLabel = `team_config:${config.name}:save`;
+    const startupEvidence = buildStartupEvidence({
+      fanoutLatencyMs: execution.fanoutLatencyMs,
+      sequentialComparableLatencyMs: execution.sequentialComparableLatencyMs,
+      collisionEvidence,
+      reducerOrder: batchPlan.reducerOrder,
+      persistenceOrder: [...taskPersistenceOrder, finalConfigSaveLabel],
+    });
+    saveTeamConfigWithStartupEvidence(config, options.cwd, startupEvidence);
+
+    return {
+      ok: true,
+      newWorkerCount: config.workers.length,
+      nextWorkerIndex: config.next_worker_index ?? nextIndex,
+      addedWorkers: addedNames,
+    };
   } catch (error) {
     await rollbackStartedWorkers({
       teamName: options.teamName,
@@ -126,18 +154,8 @@ export async function scaleUp(options: ScaleUpOptions): Promise<ScaleUpResult | 
       config,
       error,
       writeFailureSidecar: true,
+      collisionEvidence,
     });
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
-  if (nextTaskId !== config.next_task_id) {
-    config.next_task_id = nextTaskId;
-    saveTeamConfig(config, options.cwd);
-  }
-
-  return {
-    ok: true,
-    newWorkerCount: config.workers.length,
-    nextWorkerIndex: config.next_worker_index ?? nextIndex,
-    addedWorkers: addedNames,
-  };
 }

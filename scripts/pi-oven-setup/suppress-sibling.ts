@@ -1,9 +1,8 @@
 /**
- * suppress-sibling.ts — `/pi-oven:setup --suppress-sibling-skills` /
- * `--no-suppress-sibling-skills`.
+ * suppress-sibling.ts — legacy skill-visibility compatibility filter toggle.
  *
- * Opt-in toggle that writes `skills.ignoredSkills` in omp's user-global
- * `~/.omp/agent/config.yml` so omp hides the shipped sibling marketplace
+ * Writes `skills.ignoredSkills` in omp's user-global
+ * `~/.omp/agent/config.yml` so omp hides the shipped legacy marketplace
  * skill globs selected by `PI_OVEN_SIBLING_SKILL_GLOBS`
  * from the model. This is
  * GLOBAL-ONLY — it never writes to a project `.omp/settings.json`.
@@ -32,9 +31,9 @@ export async function runSuppressSibling(
       return {
         exitCode: 0,
         output:
-          "omp will now HIDE sibling marketplace skills from the model.\n" +
+          "omp will now apply the legacy skill-visibility compatibility filter.\n" +
           `  skills.ignoredSkills = [${list.join(", ")}] in ~/.omp/agent/config.yml\n` +
-          `  Hidden: ${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}\n` +
+          `  Filtered globs: ${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}\n` +
           "  pi-oven:* skills are unaffected and remain fully available.\n" +
           "  Note (provenance): clearing this later also removes identical user-set globs.\n" +
           "  Restart omp to apply.\n",
@@ -46,13 +45,13 @@ export async function runSuppressSibling(
       exitCode: 0,
       output:
         removed.length > 0
-          ? `Re-enabled sibling skills in omp (removed ${removed.join(", ")} from skills.ignoredSkills). Restart omp to apply.\n`
-          : `No pi-oven-managed skill globs (${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}) were suppressed — nothing to undo.\n`,
+          ? `Cleared the legacy skill-visibility compatibility filter in omp (removed ${removed.join(", ")} from skills.ignoredSkills). Restart omp to apply.\n`
+          : `No pi-oven-managed legacy skill-filter globs (${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}) were active — nothing to undo.\n`,
     };
   } catch (err) {
     return {
       exitCode: 1,
-      output: `Sibling-skill suppression toggle failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      output: `Legacy skill-visibility toggle failed: ${err instanceof Error ? err.message : String(err)}\n`,
     };
   }
 }

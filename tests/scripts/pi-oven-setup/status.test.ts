@@ -442,48 +442,46 @@ describe("runStatus — project layer", () => {
     expect(result.output).not.toContain("missing or mismatched: memory.backend");
   });
 
-  it("surfaces sibling-skill suppression as disabled while pi-oven-first remains the default lane", async () => {
+  it("surfaces the control-plane front door as explicit capability proofs", async () => {
     const spawnFn = makeSpawnFn({ overrides: {}, ignoredSkills: [] });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
-    expect(result.output).toContain("sibling-skill suppression");
-    expect(result.output).toContain("not enabled in ~/.omp/agent/config.yml");
-    expect(result.output).toContain("--suppress-sibling-skills");
-    expect(result.output).toContain("pi-oven-first");
-    expect(result.output).toContain("default");
+    expect(result.output).toContain("control-plane front door");
+    expect(result.output).toContain("requiredSkills");
+    expect(result.output).toContain("branch contract");
+    expect(result.output).toContain("external execution consent");
+    expect(result.output).toContain("Bootstrap message injection");
+    expect(result.output).toContain("tool remap");
   });
-  it("surfaces unreadable sibling-skill suppression state as unknown instead of disabled", async () => {
+
+  it("does not advertise legacy skill-visibility config even when skills.ignoredSkills is unreadable", async () => {
     const baseSpawn = makeSpawnFn({ overrides: {} });
     const spawnFn = (cmd: string, args: string[]) => {
-      if (cmd === "omp" && args[0] === "config" && args[1] === "get" && args[2] === "skills.ignoredSkills") {
+      if (cmd === "omp" && args[0] == "config" && args[1] == "get" && args[2] == "skills.ignoredSkills") {
         return { exitCode: 0, stdout: Buffer.from("{ not json"), stderr: Buffer.from("") };
       }
       return baseSpawn(cmd, args);
     };
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
-    expect(result.output).toContain("sibling-skill suppression");
-    expect(result.output).toContain("state unknown");
-    expect(result.output).toContain("unreadable");
-    expect(result.output).not.toContain("sibling-skill suppression: not enabled");
+    expect(result.output).toContain("control-plane front door");
+    expect(result.output).toContain("native worker runtime");
+    expect(result.output).not.toContain("sibling-skill suppression");
   });
 
-
-  it("shows sibling-skill suppression as enabled when the managed globs are present", async () => {
+  it("does not advertise legacy skill-visibility config even when managed globs are present", async () => {
     const spawnFn = makeSpawnFn({
       overrides: {},
       ignoredSkills: ["superpowers:*", "oh-my-claudecode:*"],
     });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
-    expect(result.output).toContain("sibling-skill suppression");
-    expect(result.output).toContain("enabled in ~/.omp/agent/config.yml");
-    expect(result.output).toContain("superpowers:*");
-    expect(result.output).toContain("oh-my-claudecode:*");
-    expect(result.output).toContain("selective");
+    expect(result.output).toContain("control-plane front door");
+    expect(result.output).toContain("native worker runtime");
+    expect(result.output).not.toContain("sibling-skill suppression");
   });
 
-  it("warns when clean-room isolation is enabled and does not present it as the default fix", async () => {
+  it("treats the vendored native worker runtime as the only temporary adapter boundary", async () => {
     const spawnFn = makeSpawnFn({
       overrides: {},
       ignoredSkills: [],
@@ -493,11 +491,10 @@ describe("runStatus — project layer", () => {
     });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
-    expect(result.output).toContain("clean-room isolation");
-    expect(result.output).toContain("disabledProviders");
-    expect(result.output).toContain("kzk");
-    expect(result.output).toMatch(/not the default/i);
-    expect(result.output).toContain("--suppress-sibling-skills");
+    expect(result.output).toContain("native worker runtime");
+    expect(result.output).toContain("Only temporary adapter boundary remains");
+    expect(result.output).toContain("scripts/pi-oven-team/index.ts");
+    expect(result.output).not.toContain("clean-room isolation");
   });
 
   it("makes the installed topology explicit by naming the plugin root separately from project state", async () => {

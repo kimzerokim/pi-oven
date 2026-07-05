@@ -19,6 +19,14 @@ import {
 } from "fs";
 import { basename, dirname, join, relative, resolve } from "path";
 
+export interface OrderedPersistenceMutation {
+  order: number;
+  surface: string;
+  key: string;
+  action: "save" | "delete";
+  apply: () => void;
+}
+
 export function atomicWriteJson(filePath: string, data: unknown, mode: number = 0o600): void {
   const dir = dirname(filePath);
   if (!existsSync(dir)) {
@@ -62,6 +70,37 @@ export function removeFileIfPresent(path: string): void {
   } catch {
     // best-effort cleanup
   }
+}
+
+export function planOrderedPersistenceMutations(
+  mutations: readonly OrderedPersistenceMutation[]
+): { ordered: OrderedPersistenceMutation[]; labels: string[] } {
+  const ordered = [...mutations].sort((left, right) => {
+    if (left.order !== right.order) {
+      return left.order - right.order;
+    }
+    const surfaceOrder = left.surface.localeCompare(right.surface);
+    if (surfaceOrder !== 0) {
+      return surfaceOrder;
+    }
+    const keyOrder = left.key.localeCompare(right.key, undefined, { numeric: true });
+    if (keyOrder !== 0) {
+      return keyOrder;
+    }
+    return left.action.localeCompare(right.action);
+  });
+  return {
+    ordered,
+    labels: ordered.map((mutation) => `${mutation.surface}:${mutation.key}:${mutation.action}`),
+  };
+}
+
+export function applyOrderedPersistenceMutations(mutations: readonly OrderedPersistenceMutation[]): string[] {
+  const plan = planOrderedPersistenceMutations(mutations);
+  for (const mutation of plan.ordered) {
+    mutation.apply();
+  }
+  return plan.labels;
 }
 
 function safeRealpath(path: string): string {

@@ -1048,7 +1048,7 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     expect(result.output).toContain(projectSettingsPath(cwd));
   });
 
-  it("project-scope output tells the user that global prerequisites and sibling suppression still need a separate global step", async () => {
+  it("project-scope output tells the user that global prerequisites still need a separate global step and shows the explicit control-plane contract", async () => {
     const { mockSpawnFn } = makeRecordingSpawn();
     const result = await runApply({
       profile: "A",
@@ -1064,7 +1064,8 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     expect(result.output).toContain("memory.backend");
     expect(result.output).toContain("async.enabled");
     expect(result.output).toContain("/pi-oven:setup --repair-prereqs");
-    expect(result.output).toContain("--suppress-sibling-skills");
+    expect(result.output).toContain("control-plane front door");
+    expect(result.output).toContain("Only temporary adapter boundary remains");
   });
 
   it("scope:global (default) still writes via omp config and does NOT create a project file", async () => {

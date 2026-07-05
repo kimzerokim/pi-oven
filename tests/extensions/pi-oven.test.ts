@@ -289,7 +289,7 @@ describe("applyOrchestratorConduct", () => {
     expect(out).toEqual(["a", "b"]);
   });
 
-  it("autonomous parent injects the autonomous conduct variant", () => {
+  it("autonomous parent injects the autonomous conduct variant with explicit control-plane proofs", () => {
     const inj = new RulesInjector();
     const out = applyOrchestratorConduct([], inj, {
       isParentSession: true,
@@ -297,6 +297,10 @@ describe("applyOrchestratorConduct", () => {
     });
     expect(out[0].includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY)).toBe(true);
     expect(out[0]).toMatch(/boundary contract|keep going/i);
+    expect(out[0]).toMatch(/control-plane front door/i);
+    expect(out[0]).toContain("requiredSkills");
+    expect(out[0]).toContain("ownedSkillReadTargets");
+    expect(out[0]).toContain("externalExecConsent");
   });
 });
 

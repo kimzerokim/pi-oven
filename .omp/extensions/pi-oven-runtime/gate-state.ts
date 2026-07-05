@@ -14,9 +14,20 @@
 //  - File push-consent: read/validate (TTL) + consume-on-use (single-use).
 // ---------------------------------------------------------------------------
 
-import { createHash, randomUUID } from "crypto";
+import { createHash } from "crypto";
 import { promises as fs } from "fs";
-import { join, dirname } from "path";
+import {
+  AUTONOMOUS_STATE_FILE,
+  BRANCH_CONTRACT_STATE_FILE,
+  PUSH_CONSENT_STATE_FILE,
+  atomicWriteProjectState,
+  projectStatePath,
+  readProjectState,
+} from "./project-state";
+import {
+  isValidContinuationMarker,
+  type ContinuationMarker,
+} from "./continuation-marker";
 
 export interface OwnershipTraceEntry {
   origin: "pi-oven-auto" | "user-explicit" | "foreign-auto";
@@ -69,8 +80,10 @@ export interface FsmState {
   ownershipTrace?: OwnershipTraceEntry[];
   explicitForeignAgents?: string[];
   ownedSkillReadTargets?: string[];
+  continuationMarker?: ContinuationMarker;
   externalExecConsent?: ExternalExecConsent;
   consumedExternalExecConsentMessageId?: string;
+  deepInterview?: unknown;
 }
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -211,9 +224,6 @@ function isValidBranchContract(v: unknown): v is BranchContract {
   );
 }
 
-const STATE_FILE = "autonomous.json";
-const CONSENT_FILE = "push-consent.json";
-const BRANCH_CONTRACT_FILE = "branch-contract.json";
 
 function isValidState(v: unknown): v is FsmState {
   if (typeof v !== "object" || v === null) return false;
@@ -270,6 +280,12 @@ function isValidState(v: unknown): v is FsmState {
   ) {
     return false;
   }
+  if (
+    o.continuationMarker !== undefined &&
+    !isValidContinuationMarker(o.continuationMarker)
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -294,9 +310,9 @@ export class GateStateStore {
 
   constructor(root: string) {
     this.root = root;
-    this.statePath = join(root, "state", STATE_FILE);
-    this.consentPath = join(root, "state", CONSENT_FILE);
-    this.branchContractPath = join(root, "state", BRANCH_CONTRACT_FILE);
+    this.statePath = projectStatePath(root, AUTONOMOUS_STATE_FILE);
+    this.consentPath = projectStatePath(root, PUSH_CONSENT_STATE_FILE);
+    this.branchContractPath = projectStatePath(root, BRANCH_CONTRACT_STATE_FILE);
   }
 
   private async persistSanitizedRead(
@@ -385,16 +401,8 @@ export class GateStateStore {
 
   /** Atomically write the FSM state (temp + rename). Invalidates the cache. */
   async writeState(state: FsmState): Promise<void> {
-    await fs.mkdir(dirname(this.statePath), { recursive: true });
-    const tmp = join(dirname(this.statePath), `${STATE_FILE}.${randomUUID()}.tmp`);
-    try {
-      await fs.writeFile(tmp, JSON.stringify(state, null, 2), "utf-8");
-      await fs.rename(tmp, this.statePath);
-      this.cache = null; // force re-read (next readState re-stats)
-    } catch (error) {
-      await fs.rm(tmp, { force: true }).catch(() => {});
-      throw error;
-    }
+    await atomicWriteProjectState(this.root, AUTONOMOUS_STATE_FILE, state);
+    this.cache = null; // force re-read (next readState re-stats)
   }
 
   /**
@@ -420,7 +428,9 @@ export class GateStateStore {
               explicitForeignAgents: [],
               ownedSkillReadTargets: [],
               externalExecConsent: undefined,
+              continuationMarker: undefined,
               consumedExternalExecConsentMessageId: undefined,
+              deepInterview: undefined,
             };
       const next = updater(current);
       await this.writeState(next);
@@ -440,6 +450,14 @@ export class GateStateStore {
     return run;
   }
 
+  async setContinuationMarker(marker: ContinuationMarker | undefined): Promise<void> {
+    await this.mutate((current) => ({
+      ...current,
+      version: current.version + 1,
+      continuationMarker: marker,
+    }));
+  }
+
   async readBranchContract(): Promise<BranchContractView> {
     let stat: { mtimeMs: number };
     try {
@@ -453,22 +471,16 @@ export class GateStateStore {
       return this.branchContractCache.view;
     }
 
-    let raw: string;
-    try {
-      raw = await fs.readFile(this.branchContractPath, "utf-8");
-    } catch {
-      return { kind: "CORRUPT" };
-    }
+    const projectStateView = await readProjectState(
+      this.root,
+      BRANCH_CONTRACT_STATE_FILE,
+      isValidBranchContract
+    );
 
-    let view: BranchContractView;
-    try {
-      const parsed = JSON.parse(raw);
-      view = isValidBranchContract(parsed)
-        ? { kind: "OK", contract: parsed }
+    const view: BranchContractView =
+      projectStateView.kind === "OK"
+        ? { kind: "OK", contract: projectStateView.envelope.state }
         : { kind: "CORRUPT" };
-    } catch {
-      view = { kind: "CORRUPT" };
-    }
 
     this.branchContractCache = { mtimeMs: stat.mtimeMs, view };
     return view;

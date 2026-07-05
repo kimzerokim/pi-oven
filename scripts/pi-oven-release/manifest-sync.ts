@@ -1,4 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, relative, resolve } from "node:path";
 
 export interface ManifestSyncOptions {
   version: string;
@@ -6,10 +8,28 @@ export interface ManifestSyncOptions {
   syncLabel: boolean;
 }
 
+export interface ReleaseInstallBoundary {
+  sourceRepo: {
+    root: string;
+    versionFiles: string[];
+  };
+  releaseArtifact: {
+    version: string;
+    manifestFiles: string[];
+    labelFile: string | null;
+  };
+  installedCache: {
+    mode: "observation-only";
+    patchTarget: false;
+    touchedByReleaseHelper: false;
+  };
+}
+
 export interface ManifestSyncResult {
   filesChecked: string[];
   filesUpdated: string[];
   labelUpdated: boolean;
+  boundary: ReleaseInstallBoundary;
 }
 
 const VERSION_FILES = [
@@ -17,6 +37,8 @@ const VERSION_FILES = [
   ".claude-plugin/plugin.json",
   ".claude-plugin/marketplace.json",
 ] as const;
+const LABEL_FILE = ".omp/extensions/pi-oven.ts";
+const INSTALLED_CACHE_ROOT = resolve(homedir(), ".omp/plugins/cache/plugins");
 
 function readJson(path: string): unknown {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -55,7 +77,49 @@ function updateMarketplaceVersion(raw: unknown, version: string): { changed: boo
   return { changed: true, next: root };
 }
 
+function isInstalledCachePath(root: string): boolean {
+  const resolvedRoot = resolve(root);
+  const rel = relative(INSTALLED_CACHE_ROOT, resolvedRoot);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+export function assertReleaseRunsFromSourceRepo(root: string = process.cwd()): string {
+  const resolvedRoot = resolve(root);
+  if (isInstalledCachePath(resolvedRoot)) {
+    throw new Error(
+      `Refusing release manifest sync from installed cache snapshot: ${resolvedRoot}. Run the helper from the source repo instead.`
+    );
+  }
+  return resolvedRoot;
+}
+
+export function buildReleaseInstallBoundary(options: {
+  version: string;
+  syncLabel: boolean;
+  root?: string;
+}): ReleaseInstallBoundary {
+  const root = assertReleaseRunsFromSourceRepo(options.root);
+  const versionFiles = [...VERSION_FILES];
+  return {
+    sourceRepo: {
+      root,
+      versionFiles,
+    },
+    releaseArtifact: {
+      version: options.version,
+      manifestFiles: versionFiles,
+      labelFile: options.syncLabel ? LABEL_FILE : null,
+    },
+    installedCache: {
+      mode: "observation-only",
+      patchTarget: false,
+      touchedByReleaseHelper: false,
+    },
+  };
+}
+
 export function readCurrentVersionFromSoT(): string {
+  assertReleaseRunsFromSourceRepo();
   const pkg = assertObject(readJson("package.json"), "package.json");
   const plugin = assertObject(readJson(".claude-plugin/plugin.json"), ".claude-plugin/plugin.json");
 
@@ -114,19 +178,22 @@ function syncVersionFile(path: string, version: string, dryRun: boolean): boolea
 }
 
 function syncLabelVersion(version: string, dryRun: boolean): boolean {
-  const path = ".omp/extensions/pi-oven.ts";
-  const source = readFileSync(path, "utf8");
+  const source = readFileSync(LABEL_FILE, "utf8");
   const next = source.replace(/pi\.setLabel\("pi-oven v[^"]+"\);/, `pi.setLabel("pi-oven v${version}");`);
   if (next === source) {
     return false;
   }
   if (!dryRun) {
-    writeFileSync(path, next, "utf8");
+    writeFileSync(LABEL_FILE, next, "utf8");
   }
   return true;
 }
 
 export function syncReleaseManifests(options: ManifestSyncOptions): ManifestSyncResult {
+  const boundary = buildReleaseInstallBoundary({
+    version: options.version,
+    syncLabel: options.syncLabel,
+  });
   const filesChecked = [...VERSION_FILES];
   const filesUpdated: string[] = [];
 
@@ -142,5 +209,6 @@ export function syncReleaseManifests(options: ManifestSyncOptions): ManifestSync
     filesChecked,
     filesUpdated,
     labelUpdated,
+    boundary,
   };
 }

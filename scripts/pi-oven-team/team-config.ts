@@ -7,9 +7,15 @@
  * Upstream commit: 50f6ff05eb5d9ebed66f05d8c4580c0b119f37af
  */
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { existsSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import { atomicWriteJson, ensureDirWithMode, readJsonFile, removeFileIfPresent } from "./fs-utils";
+import {
+  atomicWriteJson,
+  applyOrderedPersistenceMutations,
+  ensureDirWithMode,
+  readJsonFile,
+  removeFileIfPresent,
+} from "./fs-utils";
 import { TeamPaths, absPath, teamStateRoot } from "./state-paths";
 import {
   PI_OVEN_NATIVE_MAX_WORKERS,
@@ -19,6 +25,35 @@ import {
   type TeamTaskInput,
   type WorkerInfo,
 } from "./types";
+
+export interface TaskStateWrite {
+  taskId: string;
+  task: TeamTaskInput;
+  owner: string;
+}
+
+export interface TeamStartupEvidence {
+  fanoutLatencyMs: number;
+  sequentialComparableLatencyMs: number;
+  startupImprovementRatio: number;
+  collisionEvidence: string[];
+  reducerOrder: string[];
+  persistenceOrder: string[];
+  recordedAt: string;
+}
+
+function buildTaskStatePayload(taskId: string, task: TeamTaskInput, owner: string): TaskFile {
+  return {
+    id: taskId,
+    subject: task.subject,
+    description: task.description,
+    status: "pending",
+    owner,
+    blocks: [],
+    blockedBy: task.blocked_by ?? [],
+    ...(task.lane ? { metadata: { lane: task.lane } } : {}),
+  } satisfies TaskFile;
+}
 
 export function buildWorkerInfo(workerIndex: number, cwd: string, worktreePath?: string, worktreeCreated?: boolean): WorkerInfo {
   const workerName = `worker-${workerIndex}`;
@@ -87,32 +122,80 @@ export function writeTaskStateFile(
   task: TeamTaskInput,
   owner: string
 ): void {
-  atomicWriteJson(absPath(cwd, TeamPaths.taskFile(teamName, taskId)), {
-    id: taskId,
-    subject: task.subject,
-    description: task.description,
-    status: "pending",
-    owner,
-    blocks: [],
-    blockedBy: task.blocked_by ?? [],
-  } satisfies TaskFile);
+  atomicWriteJson(
+    absPath(cwd, TeamPaths.taskFile(teamName, taskId)),
+    buildTaskStatePayload(taskId, task, owner)
+  );
+}
+
+export function persistTaskStateWrites(teamName: string, cwd: string, writes: readonly TaskStateWrite[]): string[] {
+  return applyOrderedPersistenceMutations(
+    writes.map((write, index) => ({
+      order: index,
+      surface: "task_file",
+      key: write.taskId,
+      action: "save" as const,
+      apply: () => writeTaskStateFile(teamName, cwd, write.taskId, write.task, write.owner),
+    }))
+  );
 }
 
 export function removeTaskStateFile(teamName: string, cwd: string, taskId: string): void {
   removeFileIfPresent(absPath(cwd, TeamPaths.taskFile(teamName, taskId)));
 }
 
-export function seedTeamTasks(teamName: string, cwd: string, workerCount: number, tasks: TeamTaskInput[]): void {
-  for (let index = 0; index < tasks.length; index++) {
-    const taskId = String(index + 1);
-    const task = tasks[index]!;
-    const owner = task.owner ?? `worker-${(index % Math.max(workerCount, 1)) + 1}`;
-    writeTaskStateFile(teamName, cwd, taskId, task, owner);
-  }
+export function seedTeamTasks(teamName: string, cwd: string, workerCount: number, tasks: TeamTaskInput[]): string[] {
+  return persistTaskStateWrites(
+    teamName,
+    cwd,
+    tasks.map((task, index) => ({
+      taskId: String(index + 1),
+      task,
+      owner: task.owner ?? `worker-${(index % Math.max(workerCount, 1)) + 1}`,
+    }))
+  );
 }
 
 export function saveTeamConfig(config: TeamConfig, cwd: string): void {
   atomicWriteJson(absPath(cwd, TeamPaths.config(config.name)), config);
+}
+
+export function saveTeamConfigWithStartupEvidence(
+  config: TeamConfig,
+  cwd: string,
+  startupEvidence?: TeamStartupEvidence
+): string {
+  const nextConfig = config as TeamConfig & { startup_evidence?: TeamStartupEvidence };
+  if (startupEvidence) {
+    nextConfig.startup_evidence = startupEvidence;
+  }
+  saveTeamConfig(nextConfig, cwd);
+  return `team_config:${config.name}:save`;
+}
+
+export function buildStartupEvidence(args: {
+  fanoutLatencyMs: number;
+  sequentialComparableLatencyMs: number;
+  collisionEvidence: readonly string[];
+  reducerOrder: readonly string[];
+  persistenceOrder: readonly string[];
+}): TeamStartupEvidence {
+  const fanoutLatencyMs = Math.max(1, Math.round(args.fanoutLatencyMs));
+  const sequentialComparableLatencyMs = Math.max(
+    fanoutLatencyMs,
+    Math.round(args.sequentialComparableLatencyMs)
+  );
+  return {
+    fanoutLatencyMs,
+    sequentialComparableLatencyMs,
+    startupImprovementRatio: Number(
+      (sequentialComparableLatencyMs / fanoutLatencyMs).toFixed(3)
+    ),
+    collisionEvidence: [...args.collisionEvidence],
+    reducerOrder: [...args.reducerOrder],
+    persistenceOrder: [...args.persistenceOrder],
+    recordedAt: new Date().toISOString(),
+  };
 }
 
 export function readTeamConfig(teamName: string, cwd: string): TeamConfig | null {
@@ -124,7 +207,8 @@ export function writeStartupFailureSidecar(
   cwd: string,
   error: unknown,
   workers: StartedWorkerRecord[],
-  rollbackError?: unknown
+  rollbackError?: unknown,
+  metadata?: { collisionEvidence?: readonly string[]; rollbackPersistenceOrder?: readonly string[] }
 ): void {
   const payload: Record<string, unknown> = {
     reason: "startup_failed",
@@ -139,6 +223,12 @@ export function writeStartupFailureSidecar(
   };
   if (rollbackError !== undefined) {
     payload.rollback_error = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+  }
+  if (metadata?.collisionEvidence?.length) {
+    payload.collision_evidence = [...metadata.collisionEvidence];
+  }
+  if (metadata?.rollbackPersistenceOrder?.length) {
+    payload.rollback_persistence_order = [...metadata.rollbackPersistenceOrder];
   }
   atomicWriteJson(absPath(cwd, TeamPaths.startupFailure(teamName)), payload);
 }

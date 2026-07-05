@@ -3,13 +3,13 @@ skill: fresh-verifier
 tag: smoke
 input:
   - turn: 1
-    user: "Cycle complete. Verify before exit."
+    user: "Cycle complete. Verify before exit on the light path."
 expected:
   - skill_read_required: "fresh-verifier"
   - agent_response_must_contain:
       - "VERDICT:"
       - "pi-oven:verifier"
-      - "no-self-verification"
+      - "light"
       - "fresh"
     agent_response_must_contain_match: any
   - tool_calls_required: ["task"]

@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
 import { bumpVersion, parseSemver, type BumpType } from "./version-bumper";
-import { readCurrentVersionFromSoT, syncReleaseManifests } from "./manifest-sync";
+import {
+  buildReleaseInstallBoundary,
+  readCurrentVersionFromSoT,
+  syncReleaseManifests,
+} from "./manifest-sync";
 import { updateChangelog } from "./changelog-generator";
-import { ensureGitClean, getCurrentTag } from "./git-ops";
+import { ensureGitClean, getCurrentBranch, getCurrentTag } from "./git-ops";
 import { publishRelease } from "./release-publisher";
 
-type Values = {
+export type Values = {
   bump?: string;
   version?: string;
   "from-tag"?: string;
@@ -59,57 +63,103 @@ function spawnFn(cmd: string, args: string[]) {
   };
 }
 
-async function main() {
-  const values = parseCli();
+const defaultReleaseDeps = {
+  readCurrentVersionFromSoT,
+  getCurrentBranch: () => getCurrentBranch(spawnFn),
+  getCurrentTag: () => getCurrentTag(spawnFn),
+  ensureGitClean: () => ensureGitClean(spawnFn),
+  syncReleaseManifests,
+  updateChangelog: (options: {
+    version: string;
+    fromTag: string | undefined;
+    dryRun: boolean;
+    updateChangelog: boolean;
+  }) => updateChangelog({ ...options, spawnFn }),
+  publishRelease: (options: {
+    version: string;
+    publish: boolean;
+    dryRun: boolean;
+    currentBranch?: string;
+  }) => publishRelease({ ...options, spawnFn }),
+  buildReleaseInstallBoundary,
+};
+
+export function runRelease(values: Values, deps = defaultReleaseDeps) {
   const dryRun = values["dry-run"] ?? !values.publish;
   const updateChangelogFlag = values["update-changelog"] ?? false;
   const syncLabel = values["sync-label"] ?? false;
   const publish = values.publish ?? false;
+
+  const currentVersion = deps.readCurrentVersionFromSoT();
+  const targetVersion = resolveTargetVersion(values, currentVersion);
+  const currentBranch = deps.getCurrentBranch();
+  const fromTag = values["from-tag"] ?? deps.getCurrentTag();
+
+  if (publish && !dryRun && !currentBranch?.trim()) {
+    throw new Error("Refusing release: could not resolve current git branch");
+  }
   if (publish) {
-    ensureGitClean(spawnFn);
+    deps.ensureGitClean();
   }
 
-  const currentVersion = readCurrentVersionFromSoT();
-  const targetVersion = resolveTargetVersion(values, currentVersion);
-  const fromTag = values["from-tag"] ?? getCurrentTag(spawnFn);
-
-  const syncResult = syncReleaseManifests({
+  const syncResult = deps.syncReleaseManifests({
     version: targetVersion,
     dryRun,
     syncLabel,
   });
 
-  const changelog = updateChangelog({
+  const changelog = deps.updateChangelog({
     version: targetVersion,
     fromTag,
     dryRun,
     updateChangelog: updateChangelogFlag,
-    spawnFn,
   });
 
-  const publishResult = publishRelease({
+  const publishResult = deps.publishRelease({
     version: targetVersion,
     publish,
     dryRun,
-    spawnFn,
+    currentBranch,
   });
 
-  const output = {
+  const boundary = {
+    ...deps.buildReleaseInstallBoundary({
+      version: targetVersion,
+      syncLabel,
+    }),
+    sourceRepo: {
+      ...syncResult.boundary.sourceRepo,
+      currentBranch: currentBranch ?? null,
+    },
+    releaseArtifact: {
+      ...syncResult.boundary.releaseArtifact,
+      fromTag: fromTag ?? null,
+      gitTag: `v${targetVersion}`,
+    },
+  };
+
+  return {
     safeByDefault: dryRun,
     publish,
     currentVersion,
     targetVersion,
     fromTag,
+    boundary,
     sync: syncResult,
     changelog,
     publishResult,
   };
+}
 
+async function main() {
+  const output = runRelease(parseCli());
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 }
 
-main().catch((err: unknown) => {
-  const msg = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`${msg}\n`);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`${msg}\n`);
+    process.exit(1);
+  });
+}

@@ -44,6 +44,16 @@ function makeTmuxController(events: string[]): TeamTmuxController {
   };
 }
 
+function readStartupEvidence(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || !("startup_evidence" in value)) {
+    return null;
+  }
+  const startupEvidence = value.startup_evidence;
+  return startupEvidence && typeof startupEvidence === "object"
+    ? startupEvidence as Record<string, unknown>
+    : null;
+}
+
 beforeEach(() => {
   cwd = join(tmpdir(), `pi-oven-team-runtime-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 });
@@ -102,5 +112,48 @@ describe("pi-oven-team/runtime-v2", () => {
     expect(sidecar.workers.length).toBe(2);
     expect(events).toContain("kill-pane:%2");
     expect(events).toContain("kill-pane:%3");
+  });
+
+  it("fans out independent startup lanes before the first dispatch and emits latency evidence", async () => {
+    const events: string[] = [];
+    const verificationLane = {
+      kind: "verification",
+      objective: "verify startup batch independence",
+      independence_reason: "verification lanes read state only",
+      shared_state_policy: "read_only",
+      output_schema: "verification_report",
+      reducer: "append_results",
+    } as const;
+
+    const runtime = await startTeamV2({
+      teamName: "native-team",
+      workerCount: 2,
+      agentType: "claude",
+      tasks: [
+        { subject: "Task A", description: "Do A", lane: verificationLane },
+        { subject: "Task B", description: "Do B", lane: verificationLane },
+      ],
+      cwd,
+      tmux: makeTmuxController(events),
+      buildWorkerStart: ({ workerName }) => ({ command: `run-${workerName}` }),
+      dispatchStartup: async ({ workerName, paneId }) => {
+        events.push(`dispatch:${workerName}:${paneId}`);
+        return { ok: true };
+      },
+    });
+
+    const persisted = readTeamConfig("native-team", cwd);
+    const runtimeEvidence = readStartupEvidence(runtime.config);
+    const persistedEvidence = readStartupEvidence(persisted);
+    expect(events.indexOf("split:%2:down:%3")).toBeGreaterThan(-1);
+    expect(events.indexOf("split:%2:down:%3")).toBeLessThan(events.indexOf("dispatch:worker-1:%2"));
+    expect(runtimeEvidence).toMatchObject({
+      fanoutLatencyMs: expect.any(Number),
+      sequentialComparableLatencyMs: expect.any(Number),
+      startupImprovementRatio: expect.any(Number),
+    });
+    expect(Number(persistedEvidence?.fanoutLatencyMs)).toBeGreaterThanOrEqual(0);
+    expect(Number(persistedEvidence?.sequentialComparableLatencyMs)).toBeGreaterThan(0);
+    expect(Number(persistedEvidence?.startupImprovementRatio)).toBeGreaterThan(1);
   });
 });

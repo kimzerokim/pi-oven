@@ -1,5 +1,10 @@
 import { describe, it, expect } from "bun:test";
-import { decideGate, type GateInput, type FsmStateView } from "../../../.omp/extensions/pi-oven-runtime/gate";
+import {
+  BRANCH_CONTRACT_BOOTSTRAP_TARGET,
+  decideGate,
+  type GateInput,
+  type FsmStateView,
+} from "../../../.omp/extensions/pi-oven-runtime/gate";
 import { normalizeCommand } from "../../../.omp/extensions/pi-oven-runtime/git-normalize";
 import { fingerprintExternalExecSecret } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
 
@@ -566,10 +571,11 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
   });
 
   it("allows bootstrap write of the branch-contract marker before the marker exists", () => {
+    expect(BRANCH_CONTRACT_BOOTSTRAP_TARGET).toBe(".pi-oven/state/branch-contract.json");
     const r = decideGate(
       input("", {
         toolName: "write",
-        targetPath: ".pi-oven/state/branch-contract.json",
+        targetPath: BRANCH_CONTRACT_BOOTSTRAP_TARGET,
         branchContract: { kind: "ABSENT" },
         requiredSkills: [],
         skillReads: [],
@@ -607,7 +613,7 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
       })
     );
     expect(r.block).toBe(true);
-    expect(r.reason).toMatch(/owned skill proof/i);
+    expect(r.reason).toMatch(/capability proof|owned skill proof/i);
     expect(r.reason).toContain(delegationTarget);
   });
 

@@ -16,6 +16,14 @@ import type {
   TeamRuntimeHandle,
   TeamTmuxController,
 } from "./types";
+import {
+  RUNTIME_TRACE_PRIMITIVES,
+  type RuntimeTracePrimitiveId,
+} from "../../.omp/extensions/pi-oven-runtime/trace-primitives";
+import {
+  decideVerifierDepth,
+  deriveVerifierRisk,
+} from "../../.omp/extensions/pi-oven-runtime/verifier-depth-policy";
 
 export const PI_OVEN_NATIVE_RUNTIME_CONTROL_PATH = "scripts/pi-oven-team/index.ts";
 export const PI_OVEN_NATIVE_RUNTIME_IMPL_PATH = "scripts/pi-oven-team/runtime-v2.ts";
@@ -34,6 +42,12 @@ export interface NativeWorkerRuntimeStatus {
   maxWorkersConfigPath: string;
   maxWorkersSource: NativeWorkerRuntimeConfigSource;
   degradedReason?: string;
+  tracePrimitives: readonly RuntimeTracePrimitiveId[];
+  verifierDepth: {
+    lightWhen: string;
+    deepWhen: string;
+    deepAutoContinueHardCap: number;
+  };
 }
 
 export interface ResolveNativeWorkerRuntimeStatusOptions {
@@ -105,6 +119,12 @@ export async function resolveNativeWorkerRuntimeStatus(
         : `missing vendored runtime files ${missing.join(", ")}`;
   }
 
+  const defaultDeepVerifierDepth = decideVerifierDepth({
+    mode: "autonomous",
+    risk: deriveVerifierRisk({ mutationScope: "runtime_contract", materialEdit: true }),
+    mutationScope: "runtime_contract",
+    materialEdit: true,
+  });
   return {
     active,
     owner: "pi-oven-vendored",
@@ -114,6 +134,12 @@ export async function resolveNativeWorkerRuntimeStatus(
     maxWorkersConfigPath,
     maxWorkersSource,
     degradedReason,
+    tracePrimitives: [...RUNTIME_TRACE_PRIMITIVES],
+    verifierDepth: {
+      lightWhen: "interactive docs-only or non-material flows",
+      deepWhen: "autonomous material edits or high-risk runtime/team mutations",
+      deepAutoContinueHardCap: defaultDeepVerifierDepth.hardCap.maxConsecutiveAutoContinues,
+    },
   };
 }
 
@@ -121,9 +147,12 @@ export function describeNativeWorkerRuntime(status: NativeWorkerRuntimeStatus): 
   const base =
     `vendored launcher ${status.controlPath} → ${status.implementationPath} ` +
     (status.active ? "is ACTIVE" : "is INACTIVE");
+  const policySummary =
+    `Trace primitives: ${status.tracePrimitives.join(", ")}. ` +
+    `Verifier depth: ${status.verifierDepth.deepWhen} (deep hard cap ${status.verifierDepth.deepAutoContinueHardCap}; light path = ${status.verifierDepth.lightWhen}).`;
   return status.active
-    ? `${base}; pi-oven owns native worker startup and scale decisions through this path.`
-    : `${base}; ${status.degradedReason ?? "runtime files unavailable"}.`;
+    ? `${base}; pi-oven owns native worker startup and scale decisions through this path. ${policySummary}`
+    : `${base}; ${status.degradedReason ?? "runtime files unavailable"}. ${policySummary}`;
 }
 
 function resolveTmuxController(opts: {

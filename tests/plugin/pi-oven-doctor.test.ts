@@ -399,23 +399,21 @@ describe("renderReport", () => {
         },
         {
           level: "INFO",
+          name: "control-plane front door",
+          detail:
+            "automatic pi-oven routing enters gated lanes only through explicit capability proofs: `requiredSkills`, exact plugin-owned SKILL.md reads, the branch contract, and external execution consent where relevant.",
+        },
+        {
+          level: "INFO",
           name: "native worker runtime",
           detail:
-            "vendored launcher scripts/pi-oven-team/index.ts → scripts/pi-oven-team/runtime-v2.ts is ACTIVE; pi-oven owns native worker startup and scale decisions through this path.",
+            "Only temporary adapter boundary remains: vendored launcher scripts/pi-oven-team/index.ts → scripts/pi-oven-team/runtime-v2.ts is ACTIVE; pi-oven owns native worker startup and scale decisions through this path.",
         },
         {
           level: "INFO",
           name: "native worker ceiling",
           detail:
-            "dependency-ready wave target remains 8-12 siblings. Effective native worker ceiling is nativeWorkers.maxWorkers=100 from ~/.pi-oven/config.json (machine-global config); the vendored pi-oven launcher enforces this ceiling when it starts or scales native workers.",
-        },
-        {
-          level: "INFO",
-          name: "sibling-skill suppression",
-          detail:
-            "not enabled in ~/.omp/agent/config.yml; sibling marketplace skills remain visible.",
-          fix:
-            "Optional global-only step: /pi-oven:setup --suppress-sibling-skills",
+            "dependency-ready wave target remains 8-12 siblings. Effective native worker ceiling is nativeWorkers.maxWorkers=100 from ~/.pi-oven/config.json (machine-global config); the vendored pi-oven launcher enforces this ceiling while that temporary adapter boundary remains.",
         },
       ]
     );
@@ -423,13 +421,14 @@ describe("renderReport", () => {
     expect(report).toContain("Standalone truth surface:");
     expect(report).toContain("[WARN] project-scope remediation:");
     expect(report).toContain("task.enableLsp");
+    expect(report).toContain("[INFO] control-plane front door:");
+    expect(report).toContain("requiredSkills");
     expect(report).toContain("[INFO] native worker runtime:");
+    expect(report).toContain("Only temporary adapter boundary remains");
     expect(report).toContain("scripts/pi-oven-team/index.ts");
     expect(report).toContain("[INFO] native worker ceiling:");
     expect(report).toContain("nativeWorkers.maxWorkers=100");
     expect(report).toContain("8-12");
-    expect(report).toContain("[INFO] sibling-skill suppression:");
-    expect(report).toContain("--suppress-sibling-skills");
   });
 });
 
@@ -487,7 +486,9 @@ describe("gather", () => {
   });
 
   it("separates plugin assets from project-local state in an installed topology", async () => {
-    const facts = await gather(pluginRoot, projectRoot);
+    const pluginRootSnapshot = pluginRoot;
+    const projectRootSnapshot = projectRoot;
+    const facts = await gather(pluginRootSnapshot, projectRootSnapshot);
 
     expect(facts.skills.skillMdCount).toBe(4);
     expect(facts.skills.pluginSkillsCount).toBe(1);
@@ -495,7 +496,7 @@ describe("gather", () => {
     expect(facts.evalRunner.runnerPresent).toBe(true);
     expect(facts.evalRunner.smokeScenarioCount).toBe(1);
     expect(facts.opsConnector.credentialFile).toBe(".external-credentials");
-    expect(facts.stateDir.path).toBe(join(projectRoot, ".pi-oven"));
+    expect(facts.stateDir.path).toBe(join(projectRootSnapshot, ".pi-oven"));
     expect(typeof facts.memory.taskEnableLsp).toBe("boolean");
     expect(facts.skills.keywordIndexLoadedCount).toBe(0);
     expect(facts.skills.keywordIndexIssueCount).toBe(1);
@@ -505,13 +506,15 @@ describe("gather", () => {
   it("records missing shipped skill files from plugin assets without confusing project-root state", async () => {
     writePluginSkillsManifest(pluginRoot, ["./skills/missing-skill/SKILL.md"]);
 
-    const facts = await gather(pluginRoot, projectRoot);
+    const pluginRootSnapshot = pluginRoot;
+    const projectRootSnapshot = projectRoot;
+    const facts = await gather(pluginRootSnapshot, projectRootSnapshot);
 
     expect(facts.skills.pluginSkillsCount).toBe(1);
     expect(facts.skills.keywordIndexLoadedCount).toBe(0);
     expect(facts.skills.keywordIndexIssueCount).toBe(1);
     expect(facts.skills.keywordIndexIssues[0]).toContain("missing-skill");
-    expect(facts.stateDir.path).toBe(join(projectRoot, ".pi-oven"));
+    expect(facts.stateDir.path).toBe(join(projectRootSnapshot, ".pi-oven"));
     expect(facts.opsConnector.credentialFile).toBe(".external-credentials");
   });
 });

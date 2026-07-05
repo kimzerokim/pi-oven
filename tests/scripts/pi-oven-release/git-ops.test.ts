@@ -3,6 +3,7 @@ import {
   createReleaseCommit,
   createReleaseTag,
   ensureGitClean,
+  getCurrentBranch,
   getCurrentTag,
   pushRelease,
 } from "../../../scripts/pi-oven-release/git-ops";
@@ -28,6 +29,16 @@ describe("git-ops", () => {
     expect(getCurrentTag(spawn)).toBe("v1.2.3");
   });
 
+  it("getCurrentBranch trims branch output", () => {
+    const spawn = makeSpawn({ "branch --show-current": { exitCode: 0, stdout: "feature/harness-overhaul\n" } });
+    expect(getCurrentBranch(spawn)).toBe("feature/harness-overhaul");
+  });
+
+  it("getCurrentBranch returns undefined when git branch lookup fails", () => {
+    const spawn = makeSpawn({ "branch --show-current": { exitCode: 1 } });
+    expect(getCurrentBranch(spawn)).toBeUndefined();
+  });
+
   it("ensureGitClean throws when working tree is dirty", () => {
     const spawn = makeSpawn({ "status --porcelain": { exitCode: 0, stdout: " M package.json\n" } });
     expect(() => ensureGitClean(spawn)).toThrow("working tree is dirty");
@@ -37,19 +48,24 @@ describe("git-ops", () => {
     const spawn = makeSpawn({});
     expect(createReleaseCommit("0.5.0", true, spawn)).toBeUndefined();
     expect(createReleaseTag("0.5.0", true, spawn)).toBeUndefined();
-    expect(pushRelease("0.5.0", true, spawn)).toEqual([]);
+    expect(pushRelease("0.5.0", "feature/harness-overhaul", true, spawn)).toEqual([]);
+  });
+
+  it("pushRelease refuses to guess a branch outside dry-run", () => {
+    const spawn = makeSpawn({});
+    expect(() => pushRelease("0.5.0", undefined, false, spawn)).toThrow("current git branch");
   });
 
   it("createReleaseCommit/createReleaseTag/pushRelease emit expected git commands", () => {
     const spawn = makeSpawn({});
     const commit = createReleaseCommit("0.5.0", false, spawn);
     const tag = createReleaseTag("0.5.0", false, spawn);
-    const pushes = pushRelease("0.5.0", false, spawn);
+    const pushes = pushRelease("0.5.0", "feature/harness-overhaul", false, spawn);
 
     expect(commit).toEqual({ command: "git", args: ["commit", "-am", "release: v0.5.0"] });
     expect(tag).toEqual({ command: "git", args: ["tag", "v0.5.0"] });
     expect(pushes).toEqual([
-      { command: "git", args: ["push", "origin", "main"] },
+      { command: "git", args: ["push", "origin", "feature/harness-overhaul"] },
       { command: "git", args: ["push", "origin", "v0.5.0"] },
     ]);
   });

@@ -9,6 +9,22 @@ import {
 
 const ROOT = path.resolve(__dirname, "../../");
 const SKILLS_ROOT = path.join(ROOT, "skills");
+const AGENTS_ROOT = path.join(ROOT, "agents");
+const README_PATH = path.join(ROOT, "README.md");
+const SETUP_COMMAND_PATH = path.join(ROOT, "commands", "setup.md");
+const ROOT_CLAUDE_PATH = path.join(ROOT, "CLAUDE.md");
+
+const RELEASE_DEFAULT_AGENT_MODELS = {
+  critic: "openai-codex/gpt-5.5",
+  planner: "openai-codex/gpt-5.5",
+  "document-specialist": "openai-codex/gpt-5.4",
+  designer: "openai-codex/gpt-5.4",
+  "code-reviewer": "openai-codex/gpt-5.5",
+  "git-master": "openai-codex/gpt-5.4",
+  "multimodal-looker": "openai-codex/gpt-5.4",
+  oracle: "openai-codex/gpt-5.5",
+  analyst: "openai-codex/gpt-5.5",
+} as const;
 
 async function readFrontmatterDescription(skill: string): Promise<string> {
   const skillPath = path.join(SKILLS_ROOT, skill, "SKILL.md");
@@ -16,6 +32,15 @@ async function readFrontmatterDescription(skill: string): Promise<string> {
   const match = content.match(/^description:\s*"(.+)"$/m);
   expect(match).not.toBeNull();
   return match![1];
+}
+
+
+async function readAgentPrimaryModel(role: string): Promise<string> {
+  const agentPath = path.join(AGENTS_ROOT, `pi-oven-${role}.md`);
+  const content = await readFile(agentPath, "utf-8");
+  const match = content.match(/^model:\s*\n\s*-\s*(.+)$/m);
+  expect(match).not.toBeNull();
+  return match![1].trim();
 }
 
 async function readPluginSkillNames(): Promise<string[]> {
@@ -48,6 +73,33 @@ describe("skill activation metadata contract", () => {
       const phrases = SKILL_KEYWORD_WHITELIST[skill];
       expect(Array.isArray(phrases)).toBe(true);
       expect(phrases.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("release-default routing public contract", () => {
+  it("advertises Profile A as the openai-codex-only release default across README/setup/CLAUDE", async () => {
+    const [readme, setup, claude] = await Promise.all([
+      readFile(README_PATH, "utf-8"),
+      readFile(SETUP_COMMAND_PATH, "utf-8"),
+      readFile(ROOT_CLAUDE_PATH, "utf-8"),
+    ]);
+
+    expect(readme).toContain("Profile A (release default, openai-codex-only)");
+    expect(readme).not.toContain("Profile A (release default, heterogeneous");
+
+    expect(setup).toContain("Profile A (release default, openai-codex-only)");
+    expect(setup).not.toContain(
+      "Profile A (release default, opencode-zen + openai-codex + anthropic advisory roles)"
+    );
+
+    expect(claude).toContain("Profile A writes all 24 per-role `task.agentModelOverrides`");
+    expect(claude).not.toContain("Profile A remains orchestrator-only");
+  });
+
+  it("ships the selected release-default agents on codex-family primaries", async () => {
+    for (const [role, expectedModel] of Object.entries(RELEASE_DEFAULT_AGENT_MODELS)) {
+      expect(await readAgentPrimaryModel(role)).toBe(expectedModel);
     }
   });
 });

@@ -302,6 +302,9 @@ describe("clearPiOvenIgnoredSkills", () => {
 // runSuppressSibling — the toggle wrapper (mirrors runIsolate shape)
 // ---------------------------------------------------------------------------
 
+const LEGACY_FRONT_DOOR_BOUNDARY_LINE =
+  "global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.";
+
 describe("runSuppressSibling — enable", () => {
   it("writes skills.ignoredSkills with managed globs and reports what was hidden", async () => {
     const { fn, calls } = makeSpawnFn([
@@ -317,6 +320,7 @@ describe("runSuppressSibling — enable", () => {
     expect(result.output.toLowerCase()).toMatch(/restart/);
     // Should note provenance-loss
     expect(result.output).toMatch(/provenance|also removes|identical/i);
+    expect(result.output).toContain(LEGACY_FRONT_DOOR_BOUNDARY_LINE);
     expect(JSON.parse(calls[1][4])).toEqual([...PI_OVEN_SIBLING_SKILL_GLOBS]);
   });
 

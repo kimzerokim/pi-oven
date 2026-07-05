@@ -31,6 +31,8 @@ Before writing any draft, confirm a valid survey exists via 3-tier lookup (in or
 
 If none of the three tiers match, dispatch `codebase-survey` first and wait for its report before proceeding. Survey and draft are **never parallelized**. Step 0 MUST use `ast_grep` to analyze existing patterns before drafting.
 
+For remediation-wave survey/research inputs, the accepted artifact standard is validator-backed rather than reviewer taste: surveys need `## Scope`, an implementation-facing evidence section (for example `## Findings`), explicit unknowns, exact implementation-file anchors plus at least one `tests/` anchor; research memos need `## Scope`, `## Executive summary`, a `## Local evidence` or equivalent local change-surface section, explicit unknowns, exact local `file:line` anchors, and official-source links whenever external guidance is cited.
+
 ## Step -1 — brainstorming default ON
 
 Brainstorming runs before the first draft unless one of two skip conditions holds:

@@ -54,6 +54,14 @@ export async function scaleUp(options: ScaleUpOptions): Promise<ScaleUpResult | 
 
   let collisionEvidence: string[] = [];
   try {
+    const plannedWorkers: Array<{
+      workerIndex: number;
+      workerName: string;
+      startupTask: ScaleUpOptions["tasks"][number] | undefined;
+      allocatedTaskId: string | null;
+      taskId: string;
+    }> = [];
+
     for (let offset = 0; offset < options.count; offset++) {
       while (config.workers.some((worker) => worker.name === `worker-${nextIndex}`)) {
         nextIndex += 1;
@@ -61,45 +69,95 @@ export async function scaleUp(options: ScaleUpOptions): Promise<ScaleUpResult | 
 
       const workerIndex = nextIndex;
       const workerName = `worker-${workerIndex}`;
-      const worktree = options.worktrees && config.worktree_mode !== "disabled"
-        ? await options.worktrees.ensureWorkerWorktree(options.teamName, workerName, options.cwd, { mode: config.worktree_mode })
-        : null;
-      const workerInfo = buildWorkerInfo(workerIndex, options.cwd, worktree?.path, worktree?.created);
       const startupTask = options.tasks[offset];
       const allocatedTaskId = startupTask ? String(nextTaskId) : null;
       const taskId = allocatedTaskId ?? String(initialNextTaskId + offset);
-      const startedWorker: StartedWorkerRecord = {
+      plannedWorkers.push({
+        workerIndex,
         workerName,
+        startupTask,
+        allocatedTaskId,
+        taskId,
+      });
+      if (startupTask && allocatedTaskId) {
+        nextTaskId += 1;
+      }
+      nextIndex = workerIndex + 1;
+    }
+
+    const worktreeResults = await Promise.allSettled(
+      plannedWorkers.map(({ workerName }) =>
+        options.worktrees && config.worktree_mode !== "disabled"
+          ? options.worktrees.ensureWorkerWorktree(options.teamName, workerName, options.cwd, { mode: config.worktree_mode })
+          : Promise.resolve(null)
+      )
+    );
+
+    const rollbackPreparedWorkers: StartedWorkerRecord[] = [];
+    let worktreeFailure: unknown = null;
+    for (const [index, plannedWorker] of plannedWorkers.entries()) {
+      const worktreeResult = worktreeResults[index]!;
+      if (worktreeResult.status === "rejected") {
+        worktreeFailure ??= worktreeResult.reason;
+        continue;
+      }
+      const worktree = worktreeResult.value;
+      if (worktree) {
+        rollbackPreparedWorkers.push({
+          workerName: plannedWorker.workerName,
+          worktreePath: worktree.path,
+          worktreeCreated: worktree.created,
+          taskId: plannedWorker.allocatedTaskId ?? undefined,
+        });
+      }
+    }
+    if (worktreeFailure) {
+      addedWorkers.push(...rollbackPreparedWorkers);
+      throw worktreeFailure;
+    }
+
+    for (const [index, plannedWorker] of plannedWorkers.entries()) {
+      const worktreeResult = worktreeResults[index]!;
+      if (worktreeResult.status !== "fulfilled") {
+        continue;
+      }
+      const worktree = worktreeResult.value;
+      const workerInfo = buildWorkerInfo(
+        plannedWorker.workerIndex,
+        options.cwd,
+        worktree?.path,
+        worktree?.created
+      );
+      const startedWorker: StartedWorkerRecord = {
+        workerName: plannedWorker.workerName,
         worktreePath: worktree?.path,
         worktreeCreated: worktree?.created,
-        taskId: allocatedTaskId ?? undefined,
+        taskId: plannedWorker.allocatedTaskId ?? undefined,
       };
 
-      if (startupTask && allocatedTaskId) {
+      if (plannedWorker.startupTask && plannedWorker.allocatedTaskId) {
         taskWrites.push({
-          taskId: allocatedTaskId,
-          task: startupTask,
-          owner: startupTask.owner ?? workerName,
+          taskId: plannedWorker.allocatedTaskId,
+          task: plannedWorker.startupTask,
+          owner: plannedWorker.startupTask.owner ?? plannedWorker.workerName,
         });
-        nextTaskId += 1;
       }
 
       addedWorkers.push(startedWorker);
-      addedNames.push(workerName);
+      addedNames.push(plannedWorker.workerName);
       plans.push({
-        workerName,
-        workerIndex,
-        taskId,
-        task: startupTask ?? IDLE_BOOTSTRAP_TASK,
-        startupTask,
+        workerName: plannedWorker.workerName,
+        workerIndex: plannedWorker.workerIndex,
+        taskId: plannedWorker.taskId,
+        task: plannedWorker.startupTask ?? IDLE_BOOTSTRAP_TASK,
+        startupTask: plannedWorker.startupTask,
         workerInfo,
         startedWorker,
         persistenceClaims: [
-          { surface: "worker_dir", key: workerName },
-          ...(allocatedTaskId ? [{ surface: "task_file", key: allocatedTaskId } as const] : []),
+          { surface: "worker_dir", key: plannedWorker.workerName },
+          ...(plannedWorker.allocatedTaskId ? [{ surface: "task_file", key: plannedWorker.allocatedTaskId } as const] : []),
         ],
       });
-      nextIndex = workerIndex + 1;
     }
     const batchPlan = planStartupWorkerBatches(plans);
     collisionEvidence = [...batchPlan.collisionEvidence];

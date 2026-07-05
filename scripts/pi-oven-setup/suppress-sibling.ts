@@ -19,6 +19,7 @@ import {
   setPiOvenIgnoredSkills,
   clearPiOvenIgnoredSkills,
   PI_OVEN_SIBLING_SKILL_GLOBS,
+  LEGACY_FRONT_DOOR_BOUNDARY_LINE,
   type ConfigYmlOpts,
 } from "./config-yml";
 
@@ -36,6 +37,7 @@ export async function runSuppressSibling(
           `  Filtered globs: ${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}\n` +
           "  pi-oven:* skills are unaffected and remain fully available.\n" +
           "  Note (provenance): clearing this later also removes identical user-set globs.\n" +
+          `  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n` +
           "  Restart omp to apply.\n",
       };
     }
@@ -45,8 +47,8 @@ export async function runSuppressSibling(
       exitCode: 0,
       output:
         removed.length > 0
-          ? `Cleared the legacy skill-visibility compatibility filter in omp (removed ${removed.join(", ")} from skills.ignoredSkills). Restart omp to apply.\n`
-          : `No pi-oven-managed legacy skill-filter globs (${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}) were active — nothing to undo.\n`,
+          ? `Cleared the legacy skill-visibility compatibility filter in omp (removed ${removed.join(", ")} from skills.ignoredSkills).\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n  Restart omp to apply.\n`
+          : `No pi-oven-managed legacy skill-filter globs (${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}) were active — nothing to undo.\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n`,
     };
   } catch (err) {
     return {

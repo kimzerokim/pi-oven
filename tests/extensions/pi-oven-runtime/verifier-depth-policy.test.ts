@@ -43,4 +43,30 @@ describe("verifier-depth-policy", () => {
     expect(decision.depth).toBe("deep");
     expect(decision.requiresFreshEvidence).toBe(true);
   });
+
+  it("explains remediation-specific verifier evidence for final release-coherence sweeps", () => {
+    const decision = decideVerifierDepth({
+      mode: "autonomous",
+      risk: deriveVerifierRisk({ mutationScope: "runtime_contract", materialEdit: true }),
+      mutationScope: "runtime_contract",
+      materialEdit: true,
+    });
+
+    expect(decision.reason).toContain("release-default routing");
+    expect(decision.reason).toContain("approval state");
+    expect(decision.reason).toContain("documentation-quality");
+  });
+
+  it("keeps remediation evidence reasons specific for autonomous survey and research edits", () => {
+    const decision = decideVerifierDepth({
+      mode: "autonomous",
+      risk: deriveVerifierRisk({ mutationScope: "remediation_evidence", materialEdit: true }),
+      mutationScope: "remediation_evidence",
+      materialEdit: true,
+    });
+
+    expect(decision.reason).toContain("release-default routing");
+    expect(decision.reason).toContain("approval state");
+    expect(decision.reason).toContain("documentation-quality");
+  });
 });

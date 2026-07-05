@@ -2,8 +2,8 @@
 name: pi-oven:writer
 description: Technical documentation — README, API docs, changelogs, inline comments, user guides
 model:
-  - opencode-zen/minimax-m2.5
-  - opencode-zen/glm-5.1
+  - openai-codex/gpt-5.4
+  - opencode-zen/gpt-5.4
 thinkingLevel: medium
 mode: subagent
 tools: ["read","search","find","write","edit","web_search"]

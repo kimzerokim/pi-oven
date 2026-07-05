@@ -643,6 +643,9 @@ export const PI_OVEN_SIBLING_SKILL_GLOBS = [
   "superpowers:*",
   "oh-my-claudecode:*",
 ] as const;
+export const LEGACY_FRONT_DOOR_BOUNDARY_LINE =
+  "Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.";
+
 
 /**
  * Generic STRICT read for any array-typed omp setting (the WRITE path, fail-closed).

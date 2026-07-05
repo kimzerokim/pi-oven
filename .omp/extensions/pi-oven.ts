@@ -238,25 +238,19 @@ export function countProjectRoutingRoles(settingsPath: string): number {
 // getAllowedPrefixes (dynamic — option c from Spec B §10.5)
 // ---------------------------------------------------------------------------
 
+const RELEASE_DEFAULT_ALLOWED_PREFIXES = [
+  "openai-codex",
+  "opencode-zen",
+] as const;
+
 /**
- * Compute ALLOWED_PREFIXES from loaded agent files.
- * Returns unique prefixes (everything before the first hyphen) from all
- * pi-oven-*.md agent files.
+ * Compute ALLOWED_PREFIXES for the shipped release-default registry.
+ * Load-time validation is intentionally locked to the codex-only baseline:
+ * openai-codex primaries plus opencode-zen mirrors. Stale anthropic entries are
+ * treated as drift instead of widening the allowlist.
  */
-export function getAllowedPrefixes(agentFiles: AgentFileEntry[]): string[] {
-  const KNOWN_ALLOWED = ["opencode-zen", "openai-codex", "anthropic"];
-  const present = new Set<string>();
-  for (const agent of agentFiles) {
-    for (const modelId of agent.modelArray) {
-      const slashIdx = modelId.indexOf("/");
-      if (slashIdx === -1) continue;
-      const prefix = modelId.substring(0, slashIdx);
-      if (KNOWN_ALLOWED.includes(prefix)) {
-        present.add(prefix);
-      }
-    }
-  }
-  return Array.from(present).sort();
+export function getAllowedPrefixes(_agentFiles: AgentFileEntry[]): string[] {
+  return [...RELEASE_DEFAULT_ALLOWED_PREFIXES].sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +333,7 @@ export function validateAgentRegistry(
   }
   const allowed = getAllowedPrefixes(agentFiles);
   const ABSOLUTE_BLACKLIST = ["google"];
+  let hasOpenAICodex = false;
   for (const agent of agentFiles) {
     if (agent.modelArray.length === 0) {
       logger.error(
@@ -350,6 +345,7 @@ export function validateAgentRegistry(
       const slashIdx = modelId.indexOf("/");
       if (slashIdx === -1) continue;
       const prefix = modelId.substring(0, slashIdx);
+      if (prefix === "openai-codex") hasOpenAICodex = true;
       if (ABSOLUTE_BLACKLIST.includes(prefix)) {
         logger.error(
           `pi-oven: agent registry contains WHITELIST VIOLATION: unallowed provider prefix "${prefix}" (model: ${modelId}). Allowed: ${allowed.join(", ")}`
@@ -361,17 +357,11 @@ export function validateAgentRegistry(
       }
     }
   }
-}
-
-/**
- * Mirror all pi-oven-*.md agent files from sourceDir to two targets:
- * 1. Project-local: `<projectDir>/.omp/agents/` (for repo-root reference)
- * 2. User-global: `<homeDir>/.omp/agent/agents/` (for machine-global resolution)
- *
- * Removes stale pi-oven-*.md files from targets that no longer exist in source.
- * Leaves non-pi-oven files (e.g. user custom agents) untouched.
-
-  return result;
+  if (agentFiles.length > 0 && !hasOpenAICodex) {
+    logger.error(
+      `Profile A guarantee broken — agent registry missing required "openai-codex/" model.`
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -833,7 +823,8 @@ export default function piOvenPi(
     pi.logger.warn(installedTopologyNotice.message);
   }
   let stopGuardState = createStopGuardState();
-  let runtimeTrace: RuntimeTraceSnapshot = createRuntimeTraceSnapshot();
+  let runtimeTraceState = { trace: createRuntimeTraceSnapshot() };
+  let runtimeTrace: RuntimeTraceSnapshot = runtimeTraceState.trace;
   let verifierDepth: VerifierDepthDecision = decideVerifierDepth({
     mode: "interactive",
     risk: deriveVerifierRisk({ mutationScope: "none", materialEdit: false }),
@@ -841,15 +832,34 @@ export default function piOvenPi(
     materialEdit: false,
   });
 
+  const syncRuntimeTrace = (
+    trace: RuntimeTraceSnapshot,
+    nextVerifierDepth?: VerifierDepthDecision
+  ) => {
+    runtimeTraceState.trace = trace;
+    runtimeTrace = trace;
+    verifierDepth =
+      nextVerifierDepth ??
+      decideVerifierDepth({
+        mode: stopGuardState.autonomousActive ? "autonomous" : "interactive",
+        risk: deriveVerifierRisk({
+          mutationScope: trace.mutationScope,
+          materialEdit: trace.materialEdit,
+        }),
+        mutationScope: trace.mutationScope,
+        materialEdit: trace.materialEdit,
+      });
+  };
+
   const gateHandler = createGateHandler({
     store,
     logger: pi.logger,
     getEnv: () => process.env,
     isParentSession,
     roots: { repoRoot, homeDir: os.homedir() },
+    runtimeTraceState,
     onRuntimeContractUpdate: (update) => {
-      runtimeTrace = update.trace;
-      verifierDepth = update.verifierDepth;
+      syncRuntimeTrace(update.trace, update.verifierDepth);
     },
   });
 
@@ -1141,7 +1151,7 @@ export default function piOvenPi(
   });
 
   try {
-    registerPiOvenAsk(pi);
+    registerPiOvenAsk(pi, { onRuntimeTrace: syncRuntimeTrace });
   } catch (err) {
     pi.logger.debug(`pi-oven: pi-oven_ask registration skipped: ${err}`);
   }

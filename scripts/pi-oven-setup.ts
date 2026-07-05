@@ -323,22 +323,14 @@ if (repairPrereqs) {
 // on its success, so e.g. `--profile A --isolate` applies the profile first.
 if (hasIsolate && result.exitCode === 0) {
   const iso = await runIsolate({ enable: wantIsolate, spawnFn });
-  const legacyNote =
-    wantIsolate && iso.exitCode === 0
-      ? "  Legacy compatibility note: this maintenance mode is outside the normal pi-oven control plane and is surfaced only as a bounded compatibility path.\n"
-      : "";
-  result = { exitCode: iso.exitCode, output: result.output + iso.output + legacyNote };
+  result = { exitCode: iso.exitCode, output: result.output + iso.output };
 }
 
 // Marketplace skill-visibility compatibility toggle runs after isolate (if
 // any), also only on success.
 if (hasSuppressSibling && result.exitCode === 0) {
   const suppress = await runSuppressSibling({ enable: wantSuppressSibling, spawnFn });
-  const legacyNote =
-    wantSuppressSibling && suppress.exitCode === 0
-      ? "  Legacy compatibility note: this maintenance mode is outside the normal pi-oven control plane and is surfaced only as a bounded compatibility path.\n"
-      : "";
-  result = { exitCode: suppress.exitCode, output: result.output + suppress.output + legacyNote };
+  result = { exitCode: suppress.exitCode, output: result.output + suppress.output };
 }
 
 // ---------------------------------------------------------------------------

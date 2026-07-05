@@ -219,7 +219,7 @@ describe("runApply", () => {
     return { spawnCalls, mockSpawnFn };
   }
 
-  it("runApply WITHOUT agentsDir writes exactly ONE whole-record `modelRoles` (default+title merged, NOT dotted) and ZERO task.agentModelOverrides", async () => {
+  it("runApply WITHOUT agentsDir writes exactly ONE whole-record `modelRoles` and ONE 24-role codex override record for release-default profile A", async () => {
     const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
 
     await runApply({
@@ -229,13 +229,11 @@ describe("runApply", () => {
       // agentsDir intentionally omitted → user setup path
     });
 
-    // Exactly ONE atomic whole-record write, keyed `modelRoles` (NOT dotted).
     const modelRoleSets = spawnCalls.filter(
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
     );
     expect(modelRoleSets.length).toBe(1);
 
-    // No dotted modelRoles.* write may exist (omp rejects undeclared dotted keys).
     const dottedSets = spawnCalls.filter(
       (c) =>
         c.args[0] === "config" &&
@@ -245,47 +243,44 @@ describe("runApply", () => {
     );
     expect(dottedSets.length).toBe(0);
 
-    // Merged whole-record contains the new default+title AND preserves the sibling.
     const merged = JSON.parse(modelRoleSets[0].args[3]);
-    expect(merged.default).toBe("openai-codex/gpt-5.4:high");
-    expect(merged.title).toBe("gpt-5.4-mini:low");
+    expect(merged.default).toBe(PROFILE_B_ORCHESTRATOR.default);
+    expect(merged.title).toBe(PROFILE_B_ORCHESTRATOR.title);
     expect(merged.someSibling).toBe("keep");
 
-    // Anti-Spec-E regression: NO task.agentModelOverrides may be written.
     const overrideWrites = spawnCalls.filter(
       (c) =>
         c.args[0] === "config" &&
         c.args[1] === "set" &&
         c.args[2] === "task.agentModelOverrides"
     );
-    expect(overrideWrites.length).toBe(0);
+    expect(overrideWrites.length).toBe(1);
+    const written = JSON.parse(overrideWrites[0].args[3]);
+    for (const role of ROLES) {
+      expect(written[`pi-oven:${role}`]).toBe(`${PROFILE_B[role].primary}:${PROFILE_B[role].thinkingLevel}`);
+    }
   });
 
-  it("runApply WITHOUT agentsDir writes PROFILE_A orchestrator values for profile A", async () => {
+  it("runApply WITHOUT agentsDir writes codex-only release-default orchestrator values + empty runtime fallbacks for profile A", async () => {
     const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
 
     await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
 
-    const setCall = spawnCalls.find(
+    const modelRolesCall = spawnCalls.find(
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "modelRoles"
     );
-    const merged = JSON.parse(setCall!.args[3]);
-    expect(merged.default).toBe("openai-codex/gpt-5.4:high");
-    expect(merged.title).toBe("gpt-5.4-mini:low");
-  });
+    expect(modelRolesCall).toBeDefined();
+    const mergedRoles = JSON.parse(modelRolesCall!.args[3]);
+    expect(mergedRoles.default).toBe(PROFILE_B_ORCHESTRATOR.default);
+    expect(mergedRoles.title).toBe(PROFILE_B_ORCHESTRATOR.title);
 
-  it("runApply WITHOUT agentsDir writes retry.fallbackChains for profile A", async () => {
-    const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
-
-    await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
-
-    const setCall = spawnCalls.find(
+    const fallbackCall = spawnCalls.find(
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "retry.fallbackChains"
     );
-    expect(setCall).toBeDefined();
-    const merged = JSON.parse(setCall!.args[3]);
-    expect(merged.default).toEqual(["opencode-zen/kimi-k2.6"]);
-    expect(merged.title).toEqual(["opencode-zen/gpt-5.4-mini"]);
+    expect(fallbackCall).toBeDefined();
+    const mergedChains = JSON.parse(fallbackCall!.args[3]);
+    expect(mergedChains.default).toEqual(PROFILE_B_FALLBACK_CHAINS.default);
+    expect(mergedChains.title).toEqual(PROFILE_B_FALLBACK_CHAINS.title);
   });
 
   it("runApply WITHOUT agentsDir writes PROFILE_B orchestrator values for profile B", async () => {
@@ -573,7 +568,7 @@ describe("runApply", () => {
     expect(written["pi-oven:qa-tester"]).toBe("anthropic/claude-opus-4-8");
   });
 
-  it("runApply profile A still writes ZERO task.agentModelOverrides (A non-regression)", async () => {
+  it("runApply profile A WITHOUT agentsDir writes all 24 task.agentModelOverrides entries with codex selectors", async () => {
     const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
 
     await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
@@ -581,7 +576,13 @@ describe("runApply", () => {
     const overrideWrites = spawnCalls.filter(
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
     );
-    expect(overrideWrites.length).toBe(0);
+    expect(overrideWrites.length).toBe(1);
+
+    const written = JSON.parse(overrideWrites[0].args[3]);
+    expect(written["pi-oven:critic"]).toBe("openai-codex/gpt-5.5:xhigh");
+    expect(written["pi-oven:document-specialist"]).toBe("openai-codex/gpt-5.4:medium");
+    expect(written["pi-oven:git-master"]).toBe("openai-codex/gpt-5.4:medium");
+    expect(written["pi-oven:multimodal-looker"]).toBe("openai-codex/gpt-5.4:medium");
   });
 
   // -------------------------------------------------------------------------
@@ -808,7 +809,7 @@ describe("runApply", () => {
     }
   });
 
-  it("runApply profile A still writes ZERO task.agentModelOverrides after D support added (non-regression)", async () => {
+  it("runApply profile A still writes the 24-role codex override record after D support added (non-regression)", async () => {
     const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
 
     await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
@@ -816,7 +817,7 @@ describe("runApply", () => {
     const overrideWrites = spawnCalls.filter(
       (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
     );
-    expect(overrideWrites.length).toBe(0);
+    expect(overrideWrites.length).toBe(1);
   });
 
   // -------------------------------------------------------------------------
@@ -913,7 +914,7 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     return { spawnCalls, mockSpawnFn };
   }
 
-  it("profile A writes all 24 overrides to the project file (NOT global), with NO omp config set", async () => {
+  it("profile A writes all 24 codex selector overrides to the project file (NOT global), with NO omp config set", async () => {
     const { spawnCalls, mockSpawnFn } = makeRecordingSpawn();
 
     const result = await runApply({
@@ -925,10 +926,11 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     });
     expect(result.exitCode).toBe(0);
 
-    // All 24 per-role overrides land in the project file for Profile A.
     const overrides = await readProjectAgentModelOverrides({ cwd });
     for (const role of ROLES) {
-      expect(overrides[`pi-oven:${role}`]).toBe(PROFILE_A[role].primary);
+      expect(overrides[`pi-oven:${role}`]).toBe(
+        `${PROFILE_A[role].primary}:${PROFILE_A[role].thinkingLevel}`
+      );
     }
 
     const configSetCalls = spawnCalls.filter((c) => c.args[0] === "config" && c.args[1] === "set");

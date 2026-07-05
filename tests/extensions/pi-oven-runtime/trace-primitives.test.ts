@@ -43,6 +43,69 @@ describe("trace-primitives", () => {
     ]);
   });
 
+  it("tracks nested routing approval state as first-class runtime evidence", () => {
+    const changes = listChangedRuntimeState(
+      {
+        deepInterview: {
+          approvalHandoff: { status: "pending" },
+          routingApproval: {
+            approvals: {
+              executor: {
+                selectedSelector: undefined,
+              },
+            },
+          },
+        },
+      },
+      {
+        deepInterview: {
+          approvalHandoff: { status: "approved" },
+          routingApproval: {
+            approvals: {
+              executor: {
+                selectedSelector: "openai-codex/gpt-5.5:high",
+              },
+            },
+          },
+        },
+      },
+      [
+        "deepInterview.approvalHandoff.status",
+        "deepInterview.routingApproval.approvals.executor.selectedSelector",
+      ]
+    );
+
+    expect(changes).toEqual([
+      expect.objectContaining({
+        key: "deepInterview.approvalHandoff.status",
+        before: "pending",
+        after: "approved",
+      }),
+      expect.objectContaining({
+        key: "deepInterview.routingApproval.approvals.executor.selectedSelector",
+        before: undefined,
+        after: "openai-codex/gpt-5.5:high",
+      }),
+    ]);
+  });
+
+  it("treats remediation survey and research artifacts as verifier-relevant material evidence", () => {
+    const trace = recordTouchedPath(
+      recordTouchedPath(
+        createRuntimeTraceSnapshot(),
+        "docs/harness/surveys/2026-07-05-pi-oven-remediation-detailed-survey.md"
+      ),
+      "docs/research/2026-07-05-pi-oven-codex-only-routing-research.md"
+    );
+
+    expect(trace.touchedPaths).toEqual([
+      "docs/harness/surveys/2026-07-05-pi-oven-remediation-detailed-survey.md",
+      "docs/research/2026-07-05-pi-oven-codex-only-routing-research.md",
+    ]);
+    expect(trace.mutationScope).not.toBe("docs_only");
+    expect(trace.materialEdit).toBe(true);
+  });
+
   it("summarizes failure paths with function, symbol, and state focus", () => {
     const failure = summarizeFailurePath({
       surface: "completion-gate",

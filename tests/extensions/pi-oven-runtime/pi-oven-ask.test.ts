@@ -11,6 +11,7 @@ import {
   foldLabel,
   registerPiOvenAsk,
 } from "../../../.omp/extensions/pi-oven-runtime/pi-oven-ask";
+import { PROFILE_B, ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
 
 const DEEP_INTERVIEW_META = {
   interviewId: "di-1",
@@ -24,6 +25,48 @@ const DEEP_INTERVIEW_META = {
   approvalHandoff: {
     decisionKey: "approve-option-c",
     summary: "Implement Option C after approval",
+  },
+};
+const APPROVAL_META = {
+  ...DEEP_INTERVIEW_META,
+  round: 1,
+  roundId: "approval",
+  questionId: "q-approval",
+  stage: "approval" as const,
+  dimension: "approval",
+  ambiguity: 0.25,
+};
+function buildRecommendedByRole(): Record<Role, string> {
+  return Object.fromEntries(
+    ROLES.map((role) => {
+      const entry = PROFILE_B[role];
+      return [role, `${entry.primary}:${entry.thinkingLevel}`];
+    })
+  ) as Record<Role, string>;
+}
+
+const ROUTING_APPROVAL_PAYLOAD = {
+  recommendedByRole: buildRecommendedByRole(),
+  buckets: [
+    {
+      bucketKey: "openai-codex/gpt-5.5:high",
+      recommendedSelector: "openai-codex/gpt-5.5:high",
+      roles: ["executor", "test-engineer", "metis"],
+    },
+    {
+      bucketKey: "openai-codex/gpt-5.5:xhigh",
+      recommendedSelector: "openai-codex/gpt-5.5:xhigh",
+      roles: ["planner"],
+    },
+  ],
+  approvals: {
+    executor: {
+      role: "executor",
+      bucketKey: "openai-codex/gpt-5.5:high",
+      status: "approved",
+      recommendedSelector: "openai-codex/gpt-5.5:high",
+      selectedSelector: "openai-codex/gpt-5.5:high",
+    },
   },
 };
 
@@ -203,6 +246,226 @@ describe("registerPiOvenAsk", () => {
     expect(component.render(80).join("\n")).toContain("Q?");
   });
 
+  it("accepts routing approval payloads in deepInterview metadata without stripping resume state", () => {
+    const tool = capturePiOvenAskTool();
+    const parsed = tool.parameters.parse({
+      question: "Approve the codex routing bucket",
+      options: [{ label: "Approve" }, { label: "Override per role" }],
+      recommended: 0,
+      deepInterview: {
+        ...DEEP_INTERVIEW_META,
+        round: 1,
+        roundId: "approval-bucket-gpt-5-5-high",
+        questionId: "q-approval-bucket-gpt-5-5-high",
+        stage: "approval",
+        dimension: "routing-approval",
+        routingApproval: ROUTING_APPROVAL_PAYLOAD,
+      },
+    }) as unknown as {
+      deepInterview?: { routingApproval?: unknown };
+    };
+
+    expect(parsed.deepInterview?.routingApproval).toEqual(
+      expect.objectContaining({
+        approvals: expect.objectContaining({
+          executor: expect.objectContaining({
+            status: "approved",
+            selectedSelector: "openai-codex/gpt-5.5:high",
+          }),
+        }),
+        buckets: expect.arrayContaining([
+          expect.objectContaining({
+            bucketKey: "openai-codex/gpt-5.5:high",
+            roles: expect.arrayContaining(["executor", "test-engineer", "metis"]),
+          }),
+        ]),
+      })
+    );
+  });
+  it("routes headless approval questions through workflowGate instead of persisting a synthetic cancel", async () => {
+    const tool = capturePiOvenAskTool();
+    const tempDir = mkdtempSync(join(tmpdir(), "pi-oven-ask-headless-"));
+    const gateCalls: unknown[] = [];
+
+    try {
+      const result = await tool.execute(
+        "tool-call",
+        {
+          question: "Approve the implementation handoff.",
+          options: [{ label: "Proceed" }, { label: "Refine further" }],
+          recommended: 0,
+          deepInterview: APPROVAL_META,
+        },
+        undefined,
+        undefined,
+        {
+          hasUI: false,
+          cwd: tempDir,
+          workflowGate: {
+            async emitGate(question: unknown) {
+              gateCalls.push(question);
+              return { selectedOptions: ["Proceed"] };
+            },
+          },
+          ui: {},
+        }
+      );
+
+      expect(gateCalls).toEqual([
+        expect.objectContaining({
+          question: "Approve the implementation handoff.",
+          recommended: 0,
+          deepInterview: expect.objectContaining({
+            stage: "approval",
+            roundId: "approval",
+          }),
+        }),
+      ]);
+      expect(result.details).toEqual({
+        mode: "single",
+        question: "Approve the implementation handoff.",
+        selected: "Proceed",
+        recommended: 0,
+        deepInterview: APPROVAL_META,
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not emit remediation trace updates for plain approval handoff answers", async () => {
+    type CapturedPiOvenAskTool = {
+      execute(
+        toolCallId: string,
+        params: unknown,
+        signal: AbortSignal | undefined,
+        onUpdate: unknown,
+        ctx: unknown
+      ): Promise<{ details?: unknown }>;
+    };
+
+    let captured: CapturedPiOvenAskTool | undefined;
+    const traces: unknown[] = [];
+    registerPiOvenAsk(
+      {
+        zod,
+        registerTool(tool: unknown) {
+          captured = tool as CapturedPiOvenAskTool;
+        },
+        logger: {},
+      } as unknown as Parameters<typeof registerPiOvenAsk>[0],
+      {
+        onRuntimeTrace: (trace) => {
+          traces.push(trace);
+        },
+      }
+    );
+    expect(captured).toBeDefined();
+    const tool = captured!;
+    const tempDir = mkdtempSync(join(tmpdir(), "pi-oven-ask-headless-approval-"));
+
+    try {
+      const result = await tool.execute(
+        "tool-call",
+        {
+          question: "Approve the implementation handoff.",
+          options: [{ label: "Proceed" }, { label: "Refine further" }],
+          recommended: 0,
+          deepInterview: APPROVAL_META,
+        },
+        undefined,
+        undefined,
+        {
+          hasUI: false,
+          cwd: tempDir,
+          workflowGate: {
+            async emitGate() {
+              return { selectedOptions: ["Proceed"] };
+            },
+          },
+          ui: {},
+        }
+      );
+
+      expect(result.details).toEqual({
+        mode: "single",
+        question: "Approve the implementation handoff.",
+        selected: "Proceed",
+        recommended: 0,
+        deepInterview: APPROVAL_META,
+      });
+      expect(traces).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not emit a material runtime trace for deferred headless approval prompts", async () => {
+    type CapturedPiOvenAskTool = {
+      execute(
+        toolCallId: string,
+        params: unknown,
+        signal: AbortSignal | undefined,
+        onUpdate: unknown,
+        ctx: unknown
+      ): Promise<{ details?: unknown }>;
+    };
+
+    let captured: CapturedPiOvenAskTool | undefined;
+    const traces: unknown[] = [];
+    registerPiOvenAsk(
+      {
+        zod,
+        registerTool(tool: unknown) {
+          captured = tool as CapturedPiOvenAskTool;
+        },
+        logger: {},
+      } as unknown as Parameters<typeof registerPiOvenAsk>[0],
+      {
+        onRuntimeTrace: (trace) => {
+          traces.push(trace);
+        },
+      }
+    );
+    expect(captured).toBeDefined();
+    const tool = captured!;
+    const tempDir = mkdtempSync(join(tmpdir(), "pi-oven-ask-headless-deferred-"));
+
+    try {
+      const result = await tool.execute(
+        "tool-call",
+        {
+          question: "Approve the implementation handoff.",
+          options: [{ label: "Proceed" }, { label: "Refine further" }],
+          recommended: 0,
+          deepInterview: APPROVAL_META,
+        },
+        undefined,
+        undefined,
+        {
+          hasUI: false,
+          cwd: tempDir,
+          workflowGate: {
+            async emitGate() {
+              return undefined;
+            },
+          },
+          ui: {},
+        }
+      );
+
+      expect(result.details).toEqual({
+        mode: "single",
+        question: "Approve the implementation handoff.",
+        deferred: true,
+        recommended: 0,
+        deepInterview: APPROVAL_META,
+      });
+      expect(traces).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
   it("execute uses the four-argument ctx.ui.custom extension contract and persists under the provided cwd", async () => {
     const tool = capturePiOvenAskTool();
     const theme = makeTheme();

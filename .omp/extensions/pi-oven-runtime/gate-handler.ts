@@ -73,6 +73,7 @@ export interface GateHandlerDeps {
     trace: RuntimeTraceSnapshot;
     verifierDepth: VerifierDepthDecision;
   }) => void;
+  runtimeTraceState?: { trace: RuntimeTraceSnapshot };
 }
 
 /** Minimal structural view of the parts of a ToolCallEvent we read. */
@@ -380,7 +381,7 @@ export function createGateHandler(
   deps: GateHandlerDeps
 ): (event: ToolCallEventLike) => Promise<ToolCallResultLike | void> {
   const deadlineMs = deps.deadlineMs ?? DEFAULT_DEADLINE_MS;
-  const runtimeState: GateRuntimeState = {
+  const runtimeState: GateRuntimeState = deps.runtimeTraceState ?? {
     trace: createRuntimeTraceSnapshot(),
   };
 

@@ -11,6 +11,11 @@ import {
   type GateHandlerDeps,
 } from "../../../.omp/extensions/pi-oven-runtime/gate-handler";
 import {
+  createRuntimeTraceSnapshot,
+  recordTouchedPath,
+  traceFunction,
+} from "../../../.omp/extensions/pi-oven-runtime/trace-primitives";
+import {
   GateStateStore,
   fingerprintExternalExecSecret,
   type FsmState,
@@ -163,6 +168,48 @@ describe("gateHandler — commit gate (AC1)", () => {
     expect(writeResult?.block ?? false).toBe(false);
 
     const commitResult = await h(bashEvent("git commit -m x", "tc-commit-deep"));
+    expect(commitResult?.block).toBe(true);
+    expect(commitResult?.reason).toMatch(/verifier depth policy selected deep/i);
+  });
+
+  it("reuses a shared runtime trace state so later commits see approval-trace evidence", async () => {
+    writeState(dir, {
+      active: true,
+      gateCache: { commit: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: [],
+      skillReads: [],
+      requiredSkillsMessageId: "u1",
+    });
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(
+      join(dir, "state", "branch-contract.json"),
+      JSON.stringify({ destination: "worktree", branch: "feature/task7", pr_mode: "direct" })
+    );
+    const sharedTrace = { trace: createRuntimeTraceSnapshot() };
+    const h = createGateHandler({ ...(await deps(dir)), runtimeTraceState: sharedTrace });
+
+    sharedTrace.trace = {
+      ...recordTouchedPath(
+        traceFunction(
+          createRuntimeTraceSnapshot(),
+          "recordAnswer",
+          ".omp/extensions/pi-oven-runtime/deep-interview-runtime.ts"
+        ),
+        ".omp/extensions/pi-oven-runtime/deep-interview-runtime.ts"
+      ),
+      stateChanges: [
+        {
+          primitive: "list_changed_runtime_state",
+          key: "deepInterview.routingApproval.approvals.executor.selectedSelector",
+          before: undefined,
+          after: "openai-codex/gpt-5.5:high",
+        },
+      ],
+    };
+
+    const commitResult = await h(bashEvent("git commit -m x", "tc-shared-trace"));
     expect(commitResult?.block).toBe(true);
     expect(commitResult?.reason).toMatch(/verifier depth policy selected deep/i);
   });

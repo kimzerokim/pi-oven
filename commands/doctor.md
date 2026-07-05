@@ -81,6 +81,7 @@ Relay the report to the user, then walk each non-PASS line. The script still pri
 - Scope: vendored native worker runtime under `scripts/pi-oven-team/*` only.
 - Owner: pi-oven maintainers.
 - Removal condition: remove this boundary once native worker startup/scale is owned end-to-end by the omp-native control plane and no runtime path depends on `scripts/pi-oven-team/*`.
+- Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.
 
 - **FAIL** — a hard blocker. Surface the `fix:` hint from that line and tell the user this must be resolved before pi-oven works correctly. If multiple checks FAIL, list them in priority order (binaries/git first, then skills/agents, then eval).
 - **WARN** — non-blocking, but worth noting. Explain what is degraded (e.g. eval cannot run live, project-scope routing still needs a separate global setup step) and the optional remediation.
@@ -97,7 +98,7 @@ The `provider auth` check FAILs when no whitelisted provider (`opencode-zen` / `
 Live eval (bun "${PI_OVEN_DIR%/}/scripts/run-eval.ts") needs a provider API key.
 No whitelisted provider is currently authed, so provider-backed dispatch and live
 eval execution will fail until the user authenticates one. To enable live eval:
-authenticate a provider in omp (opencode-zen is the release default), then re-run
+authenticate a provider in omp (openai-codex is the release default), then re-run
 /pi-oven:doctor.
 ```
 

@@ -11,6 +11,7 @@ export type RuntimeMutationScope =
   | "none"
   | "docs_only"
   | "other_code"
+  | "remediation_evidence"
   | "agent_surface"
   | "eval_surface"
   | "setup_surface"
@@ -62,11 +63,12 @@ const SCOPE_PRECEDENCE: Record<RuntimeMutationScope, number> = {
   none: 0,
   docs_only: 1,
   other_code: 2,
-  agent_surface: 3,
-  eval_surface: 4,
-  setup_surface: 5,
-  team_runtime: 6,
-  runtime_contract: 7,
+  remediation_evidence: 3,
+  agent_surface: 4,
+  eval_surface: 5,
+  setup_surface: 6,
+  team_runtime: 7,
+  runtime_contract: 8,
 };
 
 function normalizePath(path: string): string {
@@ -76,6 +78,7 @@ function normalizePath(path: string): string {
 function isDocsOnlyPath(path: string): boolean {
   return /\.md$/i.test(path);
 }
+
 
 function isCodeLikePath(path: string): boolean {
   return /\.(?:[cm]?tsx?|jsx?|mjs|cjs|py|rb|go|rs|java|kt|swift|php|yaml|yml|json)$/i.test(path);
@@ -100,6 +103,7 @@ function stableStringify(value: unknown): string {
   });
 }
 
+
 function dominantMutationScope(
   left: RuntimeMutationScope,
   right: RuntimeMutationScope
@@ -116,6 +120,12 @@ export function classifyMutationScope(path: string | null | undefined): RuntimeM
   if (normalized.startsWith("scripts/pi-oven-setup/")) return "setup_surface";
   if (normalized.startsWith("agents/")) return "agent_surface";
   if (normalized.startsWith("evals/")) return "eval_surface";
+  if (
+    /\.md$/i.test(normalized) &&
+    (normalized.startsWith("docs/harness/surveys/") || normalized.startsWith("docs/research/"))
+  ) {
+    return "remediation_evidence";
+  }
   if (isDocsOnlyPath(normalized)) return "docs_only";
   if (isCodeLikePath(normalized)) return "other_code";
   return "other_code";
@@ -203,12 +213,25 @@ export function listChangedRuntimeState(
 ): RuntimeStateChange[] {
   const changes: RuntimeStateChange[] = [];
   for (const key of keys) {
-    if (stableStringify(before[key]) === stableStringify(after[key])) continue;
+    const segments = key.split(".");
+    let beforeValue: unknown = before;
+    let afterValue: unknown = after;
+    for (const segment of segments) {
+      beforeValue =
+        typeof beforeValue === "object" && beforeValue !== null && !Array.isArray(beforeValue)
+          ? (beforeValue as Record<string, unknown>)[segment]
+          : undefined;
+      afterValue =
+        typeof afterValue === "object" && afterValue !== null && !Array.isArray(afterValue)
+          ? (afterValue as Record<string, unknown>)[segment]
+          : undefined;
+    }
+    if (stableStringify(beforeValue) === stableStringify(afterValue)) continue;
     changes.push({
       primitive: "list_changed_runtime_state",
       key,
-      before: before[key],
-      after: after[key],
+      before: beforeValue,
+      after: afterValue,
     });
   }
   return changes;

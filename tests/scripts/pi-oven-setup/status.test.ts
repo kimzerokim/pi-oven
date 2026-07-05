@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 import { tmpdir } from "os";
 import {
   writePluginSkillsManifest,
@@ -8,6 +8,8 @@ import {
 } from "../../helpers/installed-topology";
 import { runStatus } from "../../../scripts/pi-oven-setup/status";
 import { ROLES, PROFILE_A } from "../../../scripts/pi-oven-setup/profiles";
+
+const REPO_AGENTS_DIR = resolve(__dirname, "../../../agents");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -253,6 +255,20 @@ describe("runStatus", () => {
     // All roles should show default source since omp failed
     expect(result.output).toContain("default");
     expect(result.output).not.toContain("override(config.yml)");
+  });
+  it("status truth surface reflects the codex-only release-default shipped baseline", async () => {
+    const spawnFn = makeSpawnFn({ overrides: {} });
+    const result = await runStatus({ spawnFn, agentsDir: REPO_AGENTS_DIR });
+
+    expect(result.exitCode).toBe(0);
+
+    const criticLine = result.output.split("\n").find((line) => /^\s*critic\s/.test(line))!;
+    const plannerLine = result.output.split("\n").find((line) => /^\s*planner\s/.test(line))!;
+
+    expect(criticLine).toContain("openai-codex/gpt-5.5");
+    expect(criticLine).toContain("default(frontmatter)");
+    expect(plannerLine).toContain("openai-codex/gpt-5.5");
+    expect(plannerLine).toContain("default(frontmatter)");
   });
 });
 

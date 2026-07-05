@@ -37,6 +37,8 @@ Run all steps in order inside the `explore` subagent. Do not skip steps.
 8. **Step 7 — Env vars**: search for `process.env` and `import.meta.env`. Cross-reference against `.env.example`. Flag any used-but-undocumented vars.
 9. **Step 8 — Report**: Write a structured markdown report to `docs/harness/surveys/<YYYY-MM-DD>-<topic>-survey.md`. Include a verbatim `code-review-graph status` block if CRG is configured.
 
+For remediation-wave survey outputs, Step 8 is not complete until the report is validator-grade: `## Scope`, an implementation-facing evidence section such as `## Findings`, explicit unknowns, exact implementation-file anchors plus at least one `tests/` anchor, and no metadata-only summaries. Review against that contract before handing the survey back.
+
 ## Delegate to explore subagent
 
 Main agent role: dispatch only. Do not perform the 8 steps inline.

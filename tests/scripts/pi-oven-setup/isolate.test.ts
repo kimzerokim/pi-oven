@@ -30,6 +30,9 @@ function okSetResult(): SpawnResult {
   return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
 }
 
+const LEGACY_FRONT_DOOR_BOUNDARY_LINE =
+  "global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.";
+
 describe("runIsolate — enable", () => {
   it("writes disabledProviders = [claude] and reports the legacy home-layer compatibility mode", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult([]), okSetResult()]);
@@ -39,6 +42,7 @@ describe("runIsolate — enable", () => {
     expect(result.output).toContain("claude");
     // claude-plugins must NOT be disabled — pi-oven's own /pi-oven:* commands load through it
     expect(result.output).toContain("claude-plugins");
+    expect(result.output).toContain(LEGACY_FRONT_DOOR_BOUNDARY_LINE);
     expect(JSON.parse(calls[1][4])).toEqual(["claude"]);
   });
 

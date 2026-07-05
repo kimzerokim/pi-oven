@@ -1,4 +1,10 @@
 import { createHash } from "crypto";
+import { ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
+import {
+  type ModelRoutingApprovalBucket,
+  type ModelRoutingApprovalPayload,
+  type ModelRoutingApprovalRecord,
+} from "./model-routing-approval";
 
 export type DeepInterviewStage = "topology" | "round" | "closure" | "approval";
 export type DeepInterviewPhase = "idle" | "interviewing" | "approval_pending" | "ready_to_resume";
@@ -20,6 +26,7 @@ export interface DeepInterviewAskMetadata {
   dimension?: string;
   ambiguity?: number;
   approvalHandoff?: DeepInterviewApprovalHandoffMeta;
+  routingApproval?: ModelRoutingApprovalPayload;
 }
 
 export interface DeepInterviewApprovalHandoff extends DeepInterviewApprovalHandoffMeta {
@@ -48,6 +55,7 @@ export interface DeepInterviewRoundRecord {
   askedAt: string;
   answeredAt?: string;
   approvalHandoff?: DeepInterviewApprovalHandoff;
+  routingApproval?: ModelRoutingApprovalPayload;
 }
 
 export interface DeepInterviewPendingQuestion {
@@ -66,6 +74,7 @@ export interface DeepInterviewState {
   rounds: DeepInterviewRoundRecord[];
   pendingQuestion?: DeepInterviewPendingQuestion;
   approvalHandoff?: DeepInterviewApprovalHandoff;
+  routingApproval?: ModelRoutingApprovalPayload;
   lastUpdatedAt?: string;
 }
 
@@ -79,6 +88,10 @@ function asString(value: unknown): string | undefined {
 
 function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function asRole(value: unknown): Role | undefined {
+  return typeof value === "string" && ROLES.includes(value as Role) ? (value as Role) : undefined;
 }
 
 function asStage(value: unknown): DeepInterviewStage | undefined {
@@ -121,6 +134,84 @@ function normalizeApprovalHandoff(value: unknown): DeepInterviewApprovalHandoff 
   };
 }
 
+function normalizeRoutingApprovalBucket(value: unknown): ModelRoutingApprovalBucket | undefined {
+  if (!isRecord(value)) return undefined;
+  const bucketKey = asString(value.bucketKey);
+  const recommendedSelector = asString(value.recommendedSelector);
+  const roles = Array.isArray(value.roles)
+    ? value.roles.map((role) => asRole(role)).filter((role): role is Role => role !== undefined)
+    : [];
+  if (!bucketKey || !recommendedSelector || roles.length === 0) return undefined;
+  return {
+    bucketKey,
+    recommendedSelector,
+    roles,
+  };
+}
+
+function normalizeRoutingApprovalRecord(
+  value: unknown,
+  fallbackRole?: Role
+): ModelRoutingApprovalRecord | undefined {
+  if (!isRecord(value)) return undefined;
+  const role = asRole(value.role) ?? fallbackRole;
+  const bucketKey = asString(value.bucketKey);
+  const status =
+    value.status === "pending" || value.status === "approved" || value.status === "overridden"
+      ? value.status
+      : undefined;
+  const recommendedSelector = asString(value.recommendedSelector);
+  const selectedSelector = asString(value.selectedSelector);
+  if (!role || !bucketKey || !status || !recommendedSelector || !selectedSelector) return undefined;
+  return {
+    role,
+    bucketKey,
+    status,
+    recommendedSelector,
+    selectedSelector,
+  };
+}
+
+function normalizeRoutingApprovalPayload(value: unknown): ModelRoutingApprovalPayload | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const recommendedByRole = {} as Partial<Record<Role, string>>;
+  if (isRecord(value.recommendedByRole)) {
+    for (const role of ROLES) {
+      const selector = asString(value.recommendedByRole[role]);
+      if (selector) recommendedByRole[role] = selector;
+    }
+  }
+
+  const buckets = Array.isArray(value.buckets)
+    ? value.buckets
+        .map((entry) => normalizeRoutingApprovalBucket(entry))
+        .filter((entry): entry is ModelRoutingApprovalBucket => entry !== undefined)
+    : [];
+
+  const approvals = {} as Partial<Record<Role, ModelRoutingApprovalRecord>>;
+  if (isRecord(value.approvals)) {
+    for (const role of ROLES) {
+      const record = normalizeRoutingApprovalRecord(value.approvals[role], role);
+      if (record) approvals[role] = record;
+    }
+  }
+
+  if (
+    Object.keys(recommendedByRole).length === 0 &&
+    buckets.length === 0 &&
+    Object.keys(approvals).length === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    recommendedByRole,
+    buckets,
+    approvals,
+  };
+}
+
 function normalizeAskMetadata(value: unknown): DeepInterviewAskMetadata | undefined {
   if (!isRecord(value)) return undefined;
   const round = asNumber(value.round);
@@ -140,6 +231,7 @@ function normalizeAskMetadata(value: unknown): DeepInterviewAskMetadata | undefi
         return { decisionKey, summary } satisfies DeepInterviewApprovalHandoffMeta;
       })()
     : undefined;
+  const routingApproval = normalizeRoutingApprovalPayload(value.routingApproval);
   return {
     ...(interviewId ? { interviewId } : {}),
     round,
@@ -150,6 +242,7 @@ function normalizeAskMetadata(value: unknown): DeepInterviewAskMetadata | undefi
     ...(dimension ? { dimension } : {}),
     ...(ambiguity !== undefined ? { ambiguity } : {}),
     ...(approval ? { approvalHandoff: approval } : {}),
+    ...(routingApproval ? { routingApproval } : {}),
   };
 }
 
@@ -206,6 +299,7 @@ function normalizeRoundRecord(
   const recommended = asNumber(value.recommended);
   const answeredAt = asString(value.answeredAt);
   const approvalHandoff = normalizeApprovalHandoff(value.approvalHandoff);
+  const routingApproval = normalizeRoutingApprovalPayload(value.routingApproval);
   return {
     roundKey,
     interviewId,
@@ -226,6 +320,7 @@ function normalizeRoundRecord(
     ...(recommended !== undefined ? { recommended } : {}),
     ...(answeredAt ? { answeredAt } : {}),
     ...(approvalHandoff ? { approvalHandoff } : {}),
+    ...(routingApproval ? { routingApproval } : {}),
   };
 }
 
@@ -272,6 +367,7 @@ export function normalizeDeepInterviewState(value: unknown): DeepInterviewState 
     : [];
   const pendingQuestion = normalizePendingQuestion(value.pendingQuestion);
   const approvalHandoff = normalizeApprovalHandoff(value.approvalHandoff);
+  const routingApproval = normalizeRoutingApprovalPayload(value.routingApproval);
   const lastUpdatedAt = asString(value.lastUpdatedAt);
   return {
     version: 1,
@@ -281,6 +377,7 @@ export function normalizeDeepInterviewState(value: unknown): DeepInterviewState 
     rounds,
     ...(pendingQuestion ? { pendingQuestion } : {}),
     ...(approvalHandoff ? { approvalHandoff } : {}),
+    ...(routingApproval ? { routingApproval } : {}),
     ...(lastUpdatedAt ? { lastUpdatedAt } : {}),
   };
 }
@@ -296,7 +393,51 @@ function mergeApprovalHandoff(
     summary: incoming.summary,
     status: incoming.status,
     requestedAt: incoming.requestedAt,
-    ...(incoming.resolvedAt ? { resolvedAt: incoming.resolvedAt } : existing.resolvedAt ? { resolvedAt: existing.resolvedAt } : {}),
+    ...(incoming.resolvedAt
+      ? { resolvedAt: incoming.resolvedAt }
+      : existing.resolvedAt
+        ? { resolvedAt: existing.resolvedAt }
+        : {}),
+  };
+}
+
+function mergeRoutingApprovalPayload(
+  existing: ModelRoutingApprovalPayload | undefined,
+  incoming: ModelRoutingApprovalPayload | undefined
+): ModelRoutingApprovalPayload | undefined {
+  if (!existing) return incoming;
+  if (!incoming) return existing;
+
+  const mergedBuckets = [...existing.buckets];
+  const byBucketKey = new Map<string, number>();
+  for (let i = 0; i < mergedBuckets.length; i++) {
+    byBucketKey.set(mergedBuckets[i]!.bucketKey, i);
+  }
+  for (const bucket of incoming.buckets) {
+    const index = byBucketKey.get(bucket.bucketKey);
+    if (index === undefined) {
+      byBucketKey.set(bucket.bucketKey, mergedBuckets.length);
+      mergedBuckets.push(bucket);
+      continue;
+    }
+    const existingBucket = mergedBuckets[index]!;
+    mergedBuckets[index] = {
+      ...existingBucket,
+      ...bucket,
+      roles: Array.from(new Set([...existingBucket.roles, ...bucket.roles])),
+    };
+  }
+
+  return {
+    recommendedByRole: {
+      ...existing.recommendedByRole,
+      ...incoming.recommendedByRole,
+    },
+    buckets: mergedBuckets,
+    approvals: {
+      ...existing.approvals,
+      ...incoming.approvals,
+    },
   };
 }
 
@@ -326,6 +467,7 @@ function mergeRoundRecord(
     question: incoming.question || existing.question,
     askedAt: existing.askedAt,
     approvalHandoff: mergeApprovalHandoff(existing.approvalHandoff, incoming.approvalHandoff),
+    routingApproval: mergeRoutingApprovalPayload(existing.routingApproval, incoming.routingApproval),
   };
   if (!incoming.answeredAt && existing.answeredAt) {
     merged.answeredAt = existing.answeredAt;
@@ -357,10 +499,17 @@ export function mergeDeepInterviewState(existing: unknown, incoming: unknown): D
 
   const hasPendingQuestion = Object.hasOwn(incomingRecord, "pendingQuestion");
   const hasApprovalHandoff = Object.hasOwn(incomingRecord, "approvalHandoff");
+  const hasRoutingApproval = Object.hasOwn(incomingRecord, "routingApproval");
   const hasPhase = Object.hasOwn(incomingRecord, "phase");
   const hasActive = Object.hasOwn(incomingRecord, "active");
   const hasInterviewId = Object.hasOwn(incomingRecord, "interviewId");
   const hasLastUpdatedAt = Object.hasOwn(incomingRecord, "lastUpdatedAt");
+  const incomingTouchesInterview =
+    incomingState.rounds.length > 0 || hasPendingQuestion || hasApprovalHandoff || hasPhase || hasActive;
+  const incomingCarriesRoutingApproval =
+    incomingState.routingApproval !== undefined ||
+    incomingState.pendingQuestion?.meta.routingApproval !== undefined ||
+    incomingState.rounds.some((round) => round.routingApproval !== undefined);
 
   return {
     version: 1,
@@ -382,6 +531,20 @@ export function mergeDeepInterviewState(existing: unknown, incoming: unknown): D
       : existingState.approvalHandoff
         ? { approvalHandoff: existingState.approvalHandoff }
         : {}),
+    ...(hasRoutingApproval
+      ? incomingState.routingApproval
+        ? {
+            routingApproval: mergeRoutingApprovalPayload(
+              existingState.routingApproval,
+              incomingState.routingApproval
+            ),
+          }
+        : {}
+      : incomingTouchesInterview && !incomingCarriesRoutingApproval
+        ? {}
+        : existingState.routingApproval
+          ? { routingApproval: existingState.routingApproval }
+          : {}),
     ...(hasLastUpdatedAt
       ? incomingState.lastUpdatedAt
         ? { lastUpdatedAt: incomingState.lastUpdatedAt }

@@ -2,9 +2,9 @@
 name: pi-oven:code-reviewer
 description: Spec-first code review — severity-rated findings, logic correctness, SOLID checks, security, and regression surface
 model:
-  - opencode-zen/kimi-k2.6
-  - opencode-zen/glm-5.1
-thinkingLevel: high
+  - openai-codex/gpt-5.5
+  - opencode-zen/gpt-5.5
+thinkingLevel: xhigh
 mode: subagent
 tools: ["read","search","find","bash","lsp","ast_grep","recall","report_finding"]
 blocked_tools: ["write","edit","apply_patch","task"]
@@ -58,9 +58,9 @@ You are NOT responsible for: implementing fixes (executor), architecture design,
 - You MUST keep going until the review is complete.
 </critical>
 
-## Execution Context — opencode-zen/glm-5.1
+## Execution Context — openai-codex/gpt-5.5
 
-GLM-5.1: agentic, structured-output-native, you decide your own tool calls. Optimize for
+GPT-5.5: tool-using, structured-output-native, you decide your own tool calls. Optimize for
 DECISIVE execution, not deliberation. These rules override everything below:
 
 - **Fill the skeleton, then stop.** Your visible answer is the Output Format structure

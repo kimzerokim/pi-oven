@@ -18,11 +18,10 @@ import {
 } from "../../../scripts/pi-oven-setup/profiles";
 
 /**
- * profiles.test.ts — structural invariants only.
- * Model IDs and per-role assignments are tuning territory; they MUST NOT be
- * pinned here, or every routing experiment breaks the test suite. The rules
- * below describe the policy shape (provider prefixes, fallback wrapper,
- * thinking-level domain) rather than which model a specific role uses.
+ * profiles.test.ts — routing invariants for the shipped release baseline.
+ * The release-default cutover intentionally pins PROFILE_A to the codex-only
+ * matrix; the non-default profiles keep their own provider-family invariants
+ * below.
  */
 
 describe("profiles", () => {
@@ -43,193 +42,45 @@ describe("profiles", () => {
       }
     });
 
-    it("all primaries use opencode-zen/, openai-codex/, or anthropic/ prefix", () => {
+    it("all primaries use openai-codex/ prefix (release-default codex-only baseline)", () => {
       for (const role of ROLES) {
-        const p = PROFILE_A[role].primary;
-        const ok =
-          p.startsWith("opencode-zen/") ||
-          p.startsWith("openai-codex/") ||
-          p.startsWith("anthropic/");
-        expect(ok).toBe(true);
+        expect(PROFILE_A[role].primary.startsWith("openai-codex/")).toBe(true);
       }
     });
 
-    it("all registry_alternates use opencode-zen/, openai-codex/, or anthropic/ prefix", () => {
-      // Default fallback policy is opencode-zen/ wrapper of the same model;
-      // a small number of roles (planner) intentionally cross-route to openai-codex/.
-      // Vision roles (multimodal-looker, qa-tester) use anthropic/claude-sonnet-4-6 as
-      // alternate for vision capability + enabled status.
+    it("all registry_alternates use opencode-zen/ prefix (release-default fallback wrapper)", () => {
       for (const role of ROLES) {
-        const p = PROFILE_A[role].registry_alternate;
-        const ok =
-          p.startsWith("opencode-zen/") ||
-          p.startsWith("openai-codex/") ||
-          p.startsWith("anthropic/");
-        expect(ok).toBe(true);
+        expect(PROFILE_A[role].registry_alternate.startsWith("opencode-zen/")).toBe(true);
       }
     });
 
-    // Retired-model invariants: kimi-k2.6 and gpt-5.3-codex were swapped out of
-    // PROFILE_A (kimi→glm-5.1 reasoning roles; gpt-5.3-codex→gpt-5.4 codex roles).
-    // These pin the swap so a regression that reintroduces either id fails CI.
-    it("executor/debugger/test-engineer primary is openai-codex/gpt-5.4", () => {
-      for (const role of ["executor", "debugger", "test-engineer"] as const) {
-        expect(PROFILE_A[role].primary).toBe("openai-codex/gpt-5.4");
-      }
-    });
-
-    // openai-codex primary + opencode-zen fallback on the SAME gpt-5.4 (not the
-    // -pro variant): both providers carry gpt-5.4, so the frontmatter model array
-    // resolves openai-codex-first with opencode-zen fallback.
-    it("executor/debugger/test-engineer alternate is opencode-zen/gpt-5.4", () => {
-      for (const role of ["executor", "debugger", "test-engineer"] as const) {
-        expect(PROFILE_A[role].registry_alternate).toBe("opencode-zen/gpt-5.4");
-      }
-    });
-
-    // PROFILE_A model routing — new assignments (v0.1.7+)
-    it("explorer primary is opencode-zen/minimax-m2.5", () => {
-      expect(PROFILE_A["explorer"].primary).toBe("opencode-zen/minimax-m2.5");
-    });
-
-    it("explorer registry_alternate is opencode-zen/glm-5.1", () => {
-      expect(PROFILE_A["explorer"].registry_alternate).toBe("opencode-zen/glm-5.1");
-    });
-
-    it("code-reviewer primary is opencode-zen/kimi-k2.6", () => {
-      expect(PROFILE_A["code-reviewer"].primary).toBe("opencode-zen/kimi-k2.6");
-    });
-
-    it("verifier primary is opencode-zen/kimi-k2.6", () => {
-      expect(PROFILE_A["verifier"].primary).toBe("opencode-zen/kimi-k2.6");
-    });
-
-    it("analyst primary is opencode-zen/kimi-k2.6", () => {
-      expect(PROFILE_A["analyst"].primary).toBe("opencode-zen/kimi-k2.6");
-    });
-
-    it("tracer primary is opencode-zen/kimi-k2.6", () => {
-      expect(PROFILE_A["tracer"].primary).toBe("opencode-zen/kimi-k2.6");
-    });
-
-    it("verifier/code-reviewer/analyst/tracer registry_alternate is opencode-zen/glm-5.1", () => {
-      for (const role of ["verifier", "code-reviewer", "analyst", "tracer"] as const) {
-        expect(PROFILE_A[role].registry_alternate).toBe("opencode-zen/glm-5.1");
-      }
-    });
-
-    it("multimodal-looker primary is openai-codex/gpt-5.4-mini", () => {
-      expect(PROFILE_A["multimodal-looker"].primary).toBe("openai-codex/gpt-5.4-mini");
-    });
-
-    it("multimodal-looker registry_alternate is anthropic/claude-sonnet-4-6", () => {
-      expect(PROFILE_A["multimodal-looker"].registry_alternate).toBe("anthropic/claude-sonnet-4-6");
-    });
-
-    it("qa-tester primary is openai-codex/gpt-5.4-mini", () => {
-      expect(PROFILE_A["qa-tester"].primary).toBe("openai-codex/gpt-5.4-mini");
-    });
-
-    it("qa-tester registry_alternate is anthropic/claude-sonnet-4-6", () => {
-      expect(PROFILE_A["qa-tester"].registry_alternate).toBe("anthropic/claude-sonnet-4-6");
-    });
-
-    it("git-master primary is opencode-zen/minimax-m2.5", () => {
-      expect(PROFILE_A["git-master"].primary).toBe("opencode-zen/minimax-m2.5");
-    });
-
-    it("git-master registry_alternate is opencode-zen/glm-5.1", () => {
-      expect(PROFILE_A["git-master"].registry_alternate).toBe("opencode-zen/glm-5.1");
-    });
-
-    it("code-simplifier primary is opencode-zen/glm-5.1", () => {
-      expect(PROFILE_A["code-simplifier"].primary).toBe("opencode-zen/glm-5.1");
-    });
-
-    it("code-simplifier registry_alternate is opencode-zen/minimax-m2.5", () => {
-      expect(PROFILE_A["code-simplifier"].registry_alternate).toBe("opencode-zen/minimax-m2.5");
-    });
-
-    it("librarian primary is opencode-zen/minimax-m2.5", () => {
-      expect(PROFILE_A["librarian"].primary).toBe("opencode-zen/minimax-m2.5");
-    });
-
-    it("librarian registry_alternate is opencode-zen/glm-5.1", () => {
-      expect(PROFILE_A["librarian"].registry_alternate).toBe("opencode-zen/glm-5.1");
-    });
-
-    it("designer primary is opencode-zen/glm-5.1", () => {
-      expect(PROFILE_A["designer"].primary).toBe("opencode-zen/glm-5.1");
-    });
-
-    it("designer registry_alternate is opencode-zen/minimax-m2.5", () => {
-      expect(PROFILE_A["designer"].registry_alternate).toBe("opencode-zen/minimax-m2.5");
-    });
-
-    it("writer primary is opencode-zen/minimax-m2.5", () => {
-      expect(PROFILE_A["writer"].primary).toBe("opencode-zen/minimax-m2.5");
-    });
-
-    it("document-specialist primary is opencode-zen/minimax-m2.5", () => {
-      expect(PROFILE_A["document-specialist"].primary).toBe("opencode-zen/minimax-m2.5");
-    });
-
-    it("deep-researcher primary is opencode-zen/minimax-m2.5", () => {
-      expect(PROFILE_A["deep-researcher"].primary).toBe("opencode-zen/minimax-m2.5");
-    });
-
-    it("contains no gpt-5.3-codex anywhere", () => {
+    it("mirrors the codex-only release-default role matrix", () => {
       for (const role of ROLES) {
-        const { primary, registry_alternate } = PROFILE_A[role];
-        for (const id of [primary, registry_alternate]) {
-          expect(id).not.toContain("gpt-5.3-codex");
-        }
+        expect(PROFILE_A[role].primary).toBe(PROFILE_B[role].primary);
+        expect(PROFILE_A[role].registry_alternate).toBe(PROFILE_B[role].registry_alternate);
+        expect(PROFILE_A[role].thinkingLevel).toBe(PROFILE_B[role].thinkingLevel);
       }
     });
 
-    // Disabled-model invariants: no PROFILE_A primary or alternate may use a disabled model
-    it("no primary or registry_alternate is a disabled model", () => {
-      const DISABLED = new Set([
-        "opencode-zen/qwen3.5-plus",
-        "opencode-zen/qwen3.6-plus",
-        "opencode-zen/glm-5",
-        "opencode-zen/claude-opus-4-8",
-        "opencode-zen/claude-sonnet-4-6",
-        "opencode-zen/claude-haiku-4-5",
-      ]);
+    it("does not use mini or nano models in the release-default baseline", () => {
       for (const role of ROLES) {
-        const { primary, registry_alternate } = PROFILE_A[role];
-        expect(DISABLED.has(primary)).toBe(false);
-        expect(DISABLED.has(registry_alternate)).toBe(false);
-      }
-    });
-
-    // Advisory (anthropic) roles whose alternate was previously opencode-zen/claude-opus-4-8
-    // now use openai-codex/gpt-5.5
-    it("critic/security-reviewer/oracle registry_alternate is openai-codex/gpt-5.5", () => {
-      for (const role of ["critic", "security-reviewer", "oracle"] as const) {
-        expect(PROFILE_A[role].registry_alternate).toBe("openai-codex/gpt-5.5");
+        expect(PROFILE_A[role].primary).not.toContain("mini");
+        expect(PROFILE_A[role].primary).not.toContain("nano");
+        expect(PROFILE_A[role].registry_alternate).not.toContain("mini");
+        expect(PROFILE_A[role].registry_alternate).not.toContain("nano");
       }
     });
   });
 
-  describe("PROFILE_A_ORCHESTRATOR new assignments", () => {
-    it("default is openai-codex/gpt-5.4:high", () => {
-      expect(PROFILE_A_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.4:high");
-    });
-
-    it("title is unchanged gpt-5.4-mini:low", () => {
-      expect(PROFILE_A_ORCHESTRATOR.title).toBe("gpt-5.4-mini:low");
+  describe("PROFILE_A_ORCHESTRATOR release-default assignments", () => {
+    it("matches the codex-only release-default session + title models", () => {
+      expect(PROFILE_A_ORCHESTRATOR).toEqual(PROFILE_B_ORCHESTRATOR);
     });
   });
 
-  describe("PROFILE_A_FALLBACK_CHAINS new assignments", () => {
-    it("default chain is opencode-zen/kimi-k2.6", () => {
-      expect(PROFILE_A_FALLBACK_CHAINS.default).toEqual(["opencode-zen/kimi-k2.6"]);
-    });
-
-    it("title chain is unchanged opencode-zen/gpt-5.4-mini", () => {
-      expect(PROFILE_A_FALLBACK_CHAINS.title).toEqual(["opencode-zen/gpt-5.4-mini"]);
+  describe("PROFILE_A_FALLBACK_CHAINS release-default assignments", () => {
+    it("matches the codex-only release-default runtime fallback policy", () => {
+      expect(PROFILE_A_FALLBACK_CHAINS).toEqual(PROFILE_B_FALLBACK_CHAINS);
     });
   });
 
@@ -291,6 +142,7 @@ describe("profiles", () => {
     });
   });
 
+
   describe("PROFILE_B_ORCHESTRATOR new assignments", () => {
     it("default is openai-codex/gpt-5.4:high for the 1M OpenAI window", () => {
       expect(PROFILE_B_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.4:high");
@@ -332,9 +184,9 @@ describe("profiles", () => {
   });
 
   describe("orchestrator models", () => {
-    it("PROFILE_A_ORCHESTRATOR sets the main session + title models", () => {
+    it("PROFILE_A_ORCHESTRATOR now shares the codex-only release-default session + title models", () => {
       expect(PROFILE_A_ORCHESTRATOR.default).toBe("openai-codex/gpt-5.4:high");
-      expect(PROFILE_A_ORCHESTRATOR.title).toBe("gpt-5.4-mini:low");
+      expect(PROFILE_A_ORCHESTRATOR.title).toBe("openai-codex/gpt-5.4:medium");
     });
 
     it("PROFILE_B_ORCHESTRATOR uses openai-codex/gpt-5.4 high as default and gpt-5.4 medium for title", () => {

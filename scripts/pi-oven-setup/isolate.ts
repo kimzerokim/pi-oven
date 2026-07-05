@@ -20,6 +20,7 @@ import {
   clearPiOvenDisabledProviders,
   PI_OVEN_MANAGED_PROVIDERS,
   PI_OVEN_DEPRECATED_PROVIDERS,
+  LEGACY_FRONT_DOOR_BOUNDARY_LINE,
   type ConfigYmlOpts,
 } from "./config-yml";
 
@@ -37,6 +38,7 @@ export async function runIsolate(
           "  This mode hides the ~/.claude home layer from omp while leaving claude-plugins enabled so pi-oven still loads.\n" +
           "  Note: marketplace plugin commands that still load via claude-plugins remain visible.\n" +
           "  pi-oven injects the repo-root CLAUDE.md in place of the global one.\n" +
+          `  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n` +
           "  Restart omp to apply. Real Claude Code sessions are unaffected.\n",
       };
     }
@@ -47,8 +49,8 @@ export async function runIsolate(
       exitCode: 0,
       output:
         removed.length > 0
-          ? `Cleared the legacy home-layer compatibility mode in omp (removed ${removed.join(", ")} from disabledProviders). Restart omp to apply.\n`
-          : `No pi-oven-managed legacy home-layer providers (${undoSet.join(", ")}) were disabled — nothing to undo.\n`,
+          ? `Cleared the legacy home-layer compatibility mode in omp (removed ${removed.join(", ")} from disabledProviders).\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n  Restart omp to apply.\n`
+          : `No pi-oven-managed legacy home-layer providers (${undoSet.join(", ")}) were disabled — nothing to undo.\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n`,
     };
   } catch (err) {
     return {

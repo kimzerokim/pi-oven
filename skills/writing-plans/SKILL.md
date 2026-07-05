@@ -41,6 +41,8 @@ Every plan file opens with this exact header block:
 
 No plan is valid without all three sections populated with concrete content.
 
+If the approved spec depends on remediation-wave survey/research artifacts, the plan MUST preserve the validator-backed evidence contract: surveys need `## Scope`, an implementation-facing evidence section, explicit unknowns, exact implementation-file anchors plus at least one `tests/` anchor; research memos need `## Scope`, `## Executive summary`, a `## Local evidence` or equivalent local change-surface section, explicit unknowns, exact local `file:line` anchors, and official-source links for external guidance claims.
+
 ## Bite-sized step granularity
 
 Each step = one action a developer can complete in 2–5 minutes. Steps are never compound.

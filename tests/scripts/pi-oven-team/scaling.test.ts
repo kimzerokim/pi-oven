@@ -78,6 +78,15 @@ function readStartupEvidence(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
+
 beforeEach(() => {
   cwd = join(tmpdir(), `pi-oven-team-scaling-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 });
@@ -165,6 +174,87 @@ describe("pi-oven-team/scaling", () => {
     expect(readTask("native-team", "3", { cwd })).toBeNull();
   });
 
+  it("starts independent scale-up worktree preparation before the first worktree resolves and persists batch evidence", async () => {
+    saveTeamConfig(makeConfig({ worktree_mode: "named" }), cwd);
+    const tmux = makeTmux();
+    const verificationLane: TeamRuntimeLaneMetadata = {
+      kind: "verification",
+      objective: "verify scale-up worktree fanout",
+      independence_reason: "read-only verification lanes are independent",
+      shared_state_policy: "read_only",
+      output_schema: "verification_report",
+      reducer: "append_results",
+    };
+    const firstEnsureStarted = createDeferred<void>();
+    const firstEnsure = createDeferred<{ path: string; created: boolean } | null>();
+    let secondEnsureStarted = false;
+
+    const resultPromise = scaleUp({
+      teamName: "native-team",
+      count: 2,
+      agentType: "claude",
+      tasks: [
+        { subject: "Task B", description: "Do B", lane: verificationLane },
+        { subject: "Task C", description: "Do C", lane: verificationLane },
+      ],
+      cwd,
+      tmux,
+      worktrees: {
+        async ensureWorkerWorktree(_teamName: string, workerName: string) {
+          if (workerName === "worker-2") {
+            firstEnsureStarted.resolve();
+            return firstEnsure.promise;
+          }
+          secondEnsureStarted = true;
+          return { path: join(cwd, ".worktrees", workerName), created: true };
+        },
+        async removeWorkerWorktree() {},
+        inspectTeamWorktreeCleanupSafety() {
+          return { hasEvidence: false };
+        },
+        cleanupTeamWorktrees() {
+          return { removed: [], preserved: [] };
+        },
+      },
+      buildWorkerStart: ({ workerName }) => ({ command: `run-${workerName}` }),
+      dispatchStartup: async ({ workerName, paneId }) => {
+        tmux.calls.push(`dispatch:${workerName}:${paneId}`);
+        return { ok: true };
+      },
+    });
+
+    await firstEnsureStarted.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    let assertionError: unknown;
+    try {
+      expect(secondEnsureStarted).toBe(true);
+    } catch (error) {
+      assertionError = error;
+    } finally {
+      firstEnsure.resolve({ path: join(cwd, ".worktrees", "worker-2"), created: true });
+    }
+
+    const result = await resultPromise;
+    if (assertionError) {
+      throw assertionError;
+    }
+
+    expect(result.ok).toBe(true);
+    const persisted = readTeamConfig("native-team", cwd);
+    const startupEvidence = readStartupEvidence(persisted);
+    expect(startupEvidence?.collisionEvidence).toEqual([
+      "worker_dir:worker-2",
+      "task_file:2",
+      "worker_dir:worker-3",
+      "task_file:3",
+    ]);
+    expect(startupEvidence?.reducerOrder).toEqual([
+      "append_results",
+      "append_results",
+    ]);
+  });
   it("fans out independent scale-up lanes and persists latency evidence", async () => {
     saveTeamConfig(makeConfig(), cwd);
     const tmux = makeTmux();

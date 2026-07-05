@@ -27,6 +27,8 @@ import {
   type DoctorFacts,
 } from "../../scripts/pi-oven-doctor";
 
+const DOCTOR_COMMAND_PATH = join(__dirname, "../../commands/doctor.md");
+
 // ---------------------------------------------------------------------------
 // (1) omp version evaluator — PASS / FAIL / WARN
 // ---------------------------------------------------------------------------
@@ -112,6 +114,14 @@ describe("evalAuth", () => {
     const r = evalAuth({ opencode_zen: false, openai_codex: false, anthropic: false });
     expect(r.status).toBe("FAIL");
     expect(r.fix).toBeDefined();
+  });
+});
+
+describe("doctor command public contract", () => {
+  it("documents openai-codex as the release-default provider hint", async () => {
+    const doctorCommand = await Bun.file(DOCTOR_COMMAND_PATH).text();
+    expect(doctorCommand).toContain("openai-codex is the release default");
+    expect(doctorCommand).not.toContain("opencode-zen is the release default");
   });
 });
 

@@ -54,6 +54,15 @@ function readStartupEvidence(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
+
 beforeEach(() => {
   cwd = join(tmpdir(), `pi-oven-team-runtime-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 });
@@ -114,6 +123,129 @@ describe("pi-oven-team/runtime-v2", () => {
     expect(events).toContain("kill-pane:%3");
   });
 
+  it("starts independent pane reservations before the first reservation resolves and persists batch evidence", async () => {
+    const firstReservationStarted = createDeferred<void>();
+    const firstReservation = createDeferred<string>();
+    const events: string[] = [];
+    let nextPane = 2;
+    let secondReservationStarted = false;
+    const verificationLane = {
+      kind: "verification",
+      objective: "verify startup reservation fanout",
+      independence_reason: "verification lanes read state only",
+      shared_state_policy: "read_only",
+      output_schema: "verification_report",
+      reducer: "append_results",
+    } as const;
+    const tmux = ({
+      async createTeamSession(teamName: string) {
+        events.push(`create:${teamName}`);
+        return { sessionName: `${teamName}:0`, leaderPaneId: "%1", workerPaneIds: [] };
+      },
+      async splitWorkerPane(splitTarget: string, direction: "right" | "down") {
+        const paneId = `%${nextPane++}`;
+        events.push(`split-start:${splitTarget}:${direction}:${paneId}`);
+        if (paneId === "%2") {
+          firstReservationStarted.resolve();
+          return firstReservation.promise;
+        }
+        secondReservationStarted = true;
+        events.push(`split-resolve:${splitTarget}:${direction}:${paneId}`);
+        return paneId;
+      },
+      async splitWorkerPaneOptimistic(
+        actualTarget: string | Promise<string>,
+        splitTarget: string,
+        direction: "right" | "down"
+      ) {
+        const optimisticReservation = tmux.splitWorkerPane(splitTarget, direction, cwd);
+        return Promise.resolve(actualTarget).then((resolvedTarget) =>
+          resolvedTarget === splitTarget
+            ? optimisticReservation
+            : tmux.splitWorkerPane(resolvedTarget, direction, cwd)
+        );
+      },
+      async spawnWorkerInPane(paneId: string, spec: { teamName: string; workerName: string; command: string }) {
+        events.push(`spawn:${paneId}:${spec.workerName}:${spec.command}`);
+      },
+      async capturePane(paneId: string) {
+        events.push(`capture:${paneId}`);
+        return "❯ \n";
+      },
+      async sendPaneKey(paneId: string, key: string) {
+        events.push(`send-key:${paneId}:${key}`);
+      },
+      async killPane(paneId: string) {
+        events.push(`kill-pane:${paneId}`);
+      },
+      async killSession(sessionName: string) {
+        events.push(`kill-session:${sessionName}`);
+      },
+    }) as TeamTmuxController & {
+      splitWorkerPaneOptimistic: (
+        actualTarget: string | Promise<string>,
+        splitTarget: string,
+        direction: "right" | "down"
+      ) => Promise<string>;
+    };
+    const runtimePromise = startTeamV2({
+      teamName: "native-team",
+      workerCount: 2,
+      agentType: "claude",
+      tasks: [
+        { subject: "Task A", description: "Do A", lane: verificationLane },
+        { subject: "Task B", description: "Do B", lane: verificationLane },
+      ],
+      cwd,
+      tmux,
+      buildWorkerStart: ({ workerName }) => ({ command: `run-${workerName}` }),
+      dispatchStartup: async ({ workerName, paneId }) => {
+        events.push(`dispatch:${workerName}:${paneId}`);
+        return { ok: true };
+      },
+    });
+
+    await firstReservationStarted.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    let assertionError: unknown;
+    try {
+      expect(secondReservationStarted).toBe(true);
+    } catch (error) {
+      assertionError = error;
+    } finally {
+      firstReservation.resolve("%2");
+    }
+
+    const runtime = await runtimePromise;
+    if (assertionError) {
+      throw assertionError;
+    }
+
+    const persistedEvidence = readStartupEvidence(readTeamConfig("native-team", cwd));
+    const runtimeEvidence = readStartupEvidence(runtime.config);
+    expect(runtimeEvidence?.collisionEvidence).toEqual([
+      "worker_dir:worker-1",
+      "task_file:1",
+      "worker_dir:worker-2",
+      "task_file:2",
+    ]);
+    expect(runtimeEvidence?.reducerOrder).toEqual([
+      "append_results",
+      "append_results",
+    ]);
+    expect(persistedEvidence?.collisionEvidence).toEqual([
+      "worker_dir:worker-1",
+      "task_file:1",
+      "worker_dir:worker-2",
+      "task_file:2",
+    ]);
+    expect(persistedEvidence?.reducerOrder).toEqual([
+      "append_results",
+      "append_results",
+    ]);
+  });
   it("fans out independent startup lanes before the first dispatch and emits latency evidence", async () => {
     const events: string[] = [];
     const verificationLane = {

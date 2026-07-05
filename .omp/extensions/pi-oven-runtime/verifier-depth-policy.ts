@@ -58,9 +58,18 @@ export function decideVerifierDepth(
       ? "deep"
       : "light";
 
+  const remediationEvidence =
+    context.materialEdit &&
+    (context.mutationScope === "runtime_contract" || context.mutationScope === "remediation_evidence")
+      ? "release-default routing approval state + documentation-quality evidence"
+      : context.materialEdit && context.mutationScope === "team_runtime"
+        ? "release-default routing team-runtime coherence"
+        : null;
+
   const reason =
     depth === "deep"
       ? [
+          remediationEvidence,
           deepBecauseRisk ? `risk=${context.risk}` : null,
           deepBecauseAutonomousMaterial ? `mode=${context.mode}+material_edit` : null,
           deepBecauseRuntimeContract ? `scope=${context.mutationScope}` : null,

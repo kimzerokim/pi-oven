@@ -2,8 +2,8 @@
 name: pi-oven:code-simplifier
 description: Deletion-first code simplifier — removes dead code, AI slop, and unnecessary complexity while preserving exact behavior
 model:
-  - opencode-zen/glm-5.1
-  - opencode-zen/minimax-m2.5
+  - openai-codex/gpt-5.5
+  - opencode-zen/gpt-5.5
 thinkingLevel: xhigh
 mode: subagent
 tools: ["read", "search", "find", "write", "edit", "lsp", "ast_grep", "eval", "bash"]
@@ -41,9 +41,9 @@ This agent merges the code-simplifier and ai-slop-cleaner roles into one unified
 - You MUST keep going until the task is complete.
 </critical>
 
-## Execution Context — opencode-zen/glm-5.1
+## Execution Context — openai-codex/gpt-5.5
 
-GLM-5.1: agentic, structured-output-native, you decide your own tool calls. Optimize for
+GPT-5.5: tool-using, structured-output-native, you decide your own tool calls. Optimize for
 decisive execution, not deliberation. Operate accordingly:
 
 - **Decisive execution.** Pick the next pass and act — do not narrate "let me think"

@@ -10,7 +10,7 @@
 
 - **24 self-contained agents** under the `pi-oven:` namespace — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis, deep-researcher, data-runner. All 24 are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier use `report_finding` for structured findings. Each is a markdown file in `agents/` with locked model + tool whitelist.
 - **23 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, html-spec-decision-maker, git-workflow, aws, bitbucket-pipeline, cloudflare, memory-discipline (mnemopi-backed retain/recall/reflect discipline with curated runtime keyword matching).
-- **`/pi-oven:setup` wizard** — Profile A (release default, heterogeneous cost-optimized), Profile B (openai-codex-only), Profile C (all-Anthropic), or Profile D (opencode-zen-only), with explicit global/project routing layers and `--status` visibility.
+- **`/pi-oven:setup` wizard** — Profile A (release default, openai-codex-only), Profile B (explicit openai-codex override profile), Profile C (all-Anthropic), or Profile D (opencode-zen-only), with explicit global/project routing layers and `--status` visibility.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
 - **Explicit control-plane proofs** — gated work flows through `requiredSkills`, exact plugin-owned `SKILL.md` reads, the branch contract, external execution consent, and the `--status` truth surface. Bootstrap message injection, tool remap, and discovery-layer compatibility toggles are not normal control-plane paths.
 
@@ -24,8 +24,8 @@ Prerequisites:
 - **bun** ≥ 1.3.14
 - **git**
 - At least one provider authenticated in your omp environment:
-  - OpenCode Zen subscription (recommended — covers minimax / glm / kimi / gemini wrappers; enables Profile A and Profile D)
-  - OpenAI Codex / ChatGPT subscription (5.3+; enables Profile B)
+  - OpenAI Codex / ChatGPT subscription (5.3+; required for Profile A release default and Profile B)
+  - OpenCode Zen subscription (optional — enables Profile D and the shipped registry alternates)
   - Anthropic Pro/Max (optional — enables Profile C)
 
 ```sh
@@ -75,10 +75,10 @@ The wizard will:
 
 0. Ask your **default response language** first (Step 0) — pick `한국어 (Korean)`, `English`, or type your OWN language (e.g. `Español`, `日本語`, `Français`). This choice is persisted **globally** to `~/.pi-oven/config.json` as the default response language for all future sessions (with an optional per-project override in `.pi-oven/config.json`). The wizard conducts the rest of setup in that language and the pi-oven extension injects it at runtime so agents respond accordingly; if no config is set, the ambient project/global language preference is respected.
 1. Detect which providers are authenticated (`opencode-zen`, `openai-codex`, `anthropic`).
-2. Offer Profile A (release default), Profile B (openai-codex-only), Profile C (all-Anthropic, if available), or Profile D (opencode-zen-only).
+2. Offer Profile A (release default, openai-codex-only), Profile B (explicit openai-codex override profile), Profile C (all-Anthropic, if available), or Profile D (opencode-zen-only).
 3. Ask the setup scope: global machine config or this project's `.omp/settings.json`.
 4. Optionally let you override individual agent roles.
-5. Persist routing to the selected layer: global writes `modelRoles`/`retry.fallbackChains` and B/C/D per-role `task.agentModelOverrides`; project scope writes all 24 per-role overrides plus `modelRoles`/`retry.fallbackChains` to `.omp/settings.json`. User setup does not rewrite committed agent files.
+5. Persist routing to the selected layer: global writes all 24 per-role `task.agentModelOverrides` for Profiles A/B/C/D plus `modelRoles`/`retry.fallbackChains`; project scope writes the same 24-role override surface plus `modelRoles`/`retry.fallbackChains` to `.omp/settings.json`. User setup does not rewrite committed agent files.
 6. Run a smoke validation (7 MUST-tier roles pinged) and report the result.
 
 ### 2. Dispatch agents directly
@@ -112,7 +112,7 @@ Run inside omp:
 /pi-oven:doctor
 ```
 
-If the provider-auth check FAILs, authenticate `opencode-zen`, `openai-codex`, or `anthropic` in omp first, then rerun the command.
+If the provider-auth check FAILs, authenticate `openai-codex` (release default), `opencode-zen`, or `anthropic` in omp first, then rerun the command.
 
 ### 3.2 Dry-run release automation
 
@@ -138,7 +138,7 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 
 ## Agent roster
 
-24 agents, grouped by purpose. All agents are omp-native (read/search/find/bash/web_search + killer tools debug/eval/browser/retain/recall/reflect/lsp/ast_grep; irc auto-injected). Each agent's `model:` field locks the committed baseline LLM choice; setup-selected routing can override per-role models through omp settings. The validator at plugin load rejects any agent whose model prefix is outside the prefixes present in the committed pi-oven agent files (`opencode-zen/`, `openai-codex/`, and `anthropic/` in the current Profile A baseline).
+24 agents, grouped by purpose. All agents are omp-native (read/search/find/bash/web_search + killer tools debug/eval/browser/retain/recall/reflect/lsp/ast_grep; irc auto-injected). Each agent's `model:` field locks the committed baseline LLM choice; setup-selected routing can override per-role models through omp settings. The validator at plugin load rejects any agent whose model prefix is outside the committed pi-oven frontmatter contract: `openai-codex/` primaries plus `opencode-zen/` registry alternates. Anthropic remains setup/override compatibility only, not a committed-agent prefix.
 
 ### MUST tier (always available, core workflow)
 
@@ -226,36 +226,23 @@ The wizard accepts subcommands:
 | `/pi-oven:setup --import <file>` | Apply a JSON config (validated against the 24-role schema + provider whitelist) |
 | `/pi-oven:setup --apply --profile A\|B\|C\|D` | Non-interactive apply with explicit profile |
 | `/pi-oven:setup --apply --profile B --validate full` | Full 24-role smoke ping (default is 7 MUST-tier); same flag works for `--profile C`, `--profile D` |
-| `/pi-oven:setup --apply --profile A --override executor=openai-codex/gpt-5.4` | Per-role override (repeatable) |
+| `/pi-oven:setup --apply --profile A --override executor=openai-codex/gpt-5.5` | Per-role override (repeatable) |
 | `/pi-oven:setup --apply --profile A --scope project` | Write per-project routing (default scope is `global`). See [Per-project routing](#per-project-routing---scope-project) |
-### Profile A (release default)
+### Profile A (release default, openai-codex-only)
 
-Heterogeneous cost-optimized. Requires **OpenCode Zen + OpenAI Codex subscriptions** — no hard Anthropic dependency.
+Requires **OpenAI Codex / ChatGPT subscription** for the shipped primaries. The committed frontmatter pairs those primaries with matching `opencode-zen/gpt-5.5` / `opencode-zen/gpt-5.4` registry alternates for spawn-time availability fallback.
 
-- Codex roles (executor, debugger, test-engineer, architect, metis, data-runner): `openai-codex/gpt-5.4` (alternate: `opencode-zen/gpt-5.4`)
-- Vision (multimodal-looker, qa-tester): `openai-codex/gpt-5.4-mini`
-- Explorer / docs / librarian / git (explorer, writer, document-specialist, deep-researcher, librarian, git-master): `opencode-zen/minimax-m2.5`
-- Design / simplify (designer, code-simplifier): `opencode-zen/glm-5.1`
-- Reasoning-heavy (critic, planner, security-reviewer, oracle): `anthropic/claude-opus-4-8` (advisory; no hard Anthropic auth required — falls back to `opencode-zen/kimi-k2.6` if unavailable)
-- Structured review (code-reviewer, verifier, analyst, tracer): `opencode-zen/kimi-k2.6`
+- `openai-codex/gpt-5.5`: executor, verifier, critic, planner, code-reviewer, debugger, test-engineer, security-reviewer, code-simplifier, tracer, analyst, architect, oracle, metis, deep-researcher
+- `openai-codex/gpt-5.4`: explorer, writer, designer, qa-tester, git-master, document-specialist, librarian, multimodal-looker, data-runner
 
-Beyond the 24 subagent roles, `/pi-oven:setup --profile` also sets the **main orchestrator** model — omp `modelRoles.default` = `openai-codex/gpt-5.4:high` with retry fallback to `opencode-zen/kimi-k2.6`. The 23 skills enforce subagent dispatch so the orchestrator routes work to the right agent instead of doing it inline.
+Profile A also sets the main orchestrator to `openai-codex/gpt-5.4:high`, sets the title role to `openai-codex/gpt-5.4:medium`, keeps runtime retry fallback chains empty, and writes all 24 per-role `task.agentModelOverrides` on both global and project scope.
+### Profile B (explicit openai-codex override profile)
 
-### Profile B (openai-codex-only)
+Same Codex family as Profile A, but setup always writes model selectors with reasoning-effort suffixes (for example `openai-codex/gpt-5.5:xhigh`) into config so the active install is pinned even when the committed frontmatter already defaults to Codex.
 
-Requires **OpenAI Codex / ChatGPT subscription** — no OpenCode Zen or Anthropic dependency. Profile B is now performance-first for Codex Pro/20x-style usage:
-
-- `openai-codex/gpt-5.5:high`: executor, test-engineer, metis.
-- `openai-codex/gpt-5.5:xhigh`: verifier, critic, planner, code-reviewer, debugger, security-reviewer, code-simplifier, tracer, analyst, architect, oracle, deep-researcher.
-- `openai-codex/gpt-5.4:high`: designer, qa-tester, data-runner.
-- `openai-codex/gpt-5.4:medium`: explorer, writer, git-master, document-specialist, librarian, multimodal-looker, plus the title model role.
-
-Profile B sets the main orchestrator to `openai-codex/gpt-5.4:high` so OpenAI-subscription users get the 1M context window. Runtime retry fallback chains for Profile B are empty, so setup does not route usage-limit retries through OpenCode Zen.
-
-Profile B intentionally avoids `gpt-5.4-mini` and `gpt-5.4-nano`. Setup writes Profile B subagent overrides as model selectors with reasoning-effort suffixes (for example `openai-codex/gpt-5.5:xhigh`), so the install path carries both model and thinking-level routing.
+Use Profile B when you want override-driven Codex routing rather than the shipped release-default baseline.
 
 If your OpenAI Codex credential changes, re-run `/pi-oven:setup --apply --profile B` on the same scope to refresh routing and validation.
-
 ### Profile C (all-Anthropic)
 
 Activates only when your omp environment is authenticated with native Anthropic (Pro/Max). All roles use Anthropic models tiered by task weight.
@@ -283,7 +270,7 @@ By default, setup applies **globally** — model routing, language, and the setu
 
 | | `--scope global` (default) | `--scope project` |
 |---|---|---|
-| Per-role overrides | global `config.yml` — profiles B/C/D only (A stays orchestrator-only) | `<repoRoot>/.omp/settings.json` — **all 24 roles for EVERY profile, including A** |
+| Per-role overrides | global `config.yml` — profiles A/B/C/D all write all 24 roles | `<repoRoot>/.omp/settings.json` — **all 24 roles for EVERY profile, including A** |
 | `modelRoles` + `retry.fallbackChains` | global `config.yml` | `<repoRoot>/.omp/settings.json` |
 | language + setup marker | global `~/.pi-oven/config.json` | `<repoRoot>/.pi-oven/config.json` |
 | memory/async infra | global `config.yml` (`/pi-oven:setup --repair-prereqs` repairs just this layer) | global-only (not written under project scope) |
@@ -315,6 +302,7 @@ For gated work, pi-oven opens the control plane only through explicit runtime pr
 - Scope: vendored native worker runtime under `scripts/pi-oven-team/*` only.
 - Owner: pi-oven maintainers.
 - Removal condition: remove this boundary once native worker startup/scale is owned end-to-end by the omp-native control plane and no runtime path depends on `scripts/pi-oven-team/*`.
+- Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.
 
 ---
 
@@ -324,9 +312,9 @@ Three providers allowed:
 
 | Provider | Status | Typical use |
 |---|---|---|
-| `opencode-zen` | Allowed by committed agents | Default for Profile A exploration/docs/review/design roles; wraps minimax / kimi / glm and others. |
-| `openai-codex` | Allowed by committed agents | ChatGPT subscription, codex variants (5.4, 5.4-mini, 5.5) |
-| `anthropic` | Allowed by committed agents | Profile A advisory roles and Profile C; Pro / Max subscription only. |
+| `opencode-zen` | Allowed by committed agents | Registry alternates for the Codex release default and the primary provider for Profile D. |
+| `openai-codex` | Allowed by committed agents | Release-default Profile A primaries, explicit Profile B overrides, and codex variants (5.4 / 5.5). |
+| `anthropic` | Setup/override compatibility only | Profile C writes Anthropic overrides for users with direct Anthropic auth; committed agent frontmatter stays codex/zen-only. |
 
 Any other provider prefix (`bedrock/`, `gemini/`, `cerebras/`, `github-copilot/`, ...) is **hard-blocked** at plugin load. The validator logs a `WHITELIST VIOLATION` error with the offending agent file path.
 

@@ -73,6 +73,13 @@ export const IDLE_BOOTSTRAP_TASK: TeamTaskInput = {
   subject: "Await next claim",
   description: "Stay ready and claim the next pending owned task once the leader dispatches it.",
 };
+function predictNextPaneId(lastPaneId: string): string | null {
+  const match = /^%(\d+)$/.exec(lastPaneId.trim());
+  if (!match) {
+    return null;
+  }
+  return `%${Number(match[1]) + 1}`;
+}
 
 export async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnWorkerResult> {
   const paneId = opts.paneId ?? await opts.tmux.splitWorkerPane(
@@ -179,25 +186,83 @@ export async function executeStartupWorkerBatches(args: {
   let sequentialComparableLatencyMs = 0;
 
   for (const batch of args.batches) {
-    const reservations: Array<{ plan: StartupWorkerPlan; paneId: string; splitLatencyMs: number }> = [];
-    for (const plan of batch) {
-      const splitTarget = workerPaneIds.length === 0
-        ? args.leaderPaneId
-        : workerPaneIds[workerPaneIds.length - 1]!;
-      const splitDirection = workerPaneIds.length === 0 ? "right" : "down";
-      const splitStartedAt = Date.now();
-      const paneId = await args.tmux.splitWorkerPane(
-        splitTarget,
-        splitDirection,
-        plan.workerInfo.working_dir ?? args.cwd
+    const reservationPromises: Array<Promise<{ plan: StartupWorkerPlan; paneId: string; splitLatencyMs: number }>> = [];
+    const tmux = args.tmux as StartTeamV2Options["tmux"] & {
+      splitWorkerPaneOptimistic?: (
+        splitTarget: string | Promise<string>,
+        optimisticTarget: string,
+        direction: "right" | "down",
+        cwd: string
+      ) => Promise<string | null>;
+    };
+    let actualSplitTarget: string | Promise<string> = workerPaneIds.length === 0
+      ? args.leaderPaneId
+      : workerPaneIds[workerPaneIds.length - 1]!;
+    let predictedSplitTarget =
+      typeof actualSplitTarget === "string"
+        ? actualSplitTarget
+        : args.leaderPaneId;
+    let splitReadyAt = Promise.resolve(Date.now());
+    let predictedPaneId = predictNextPaneId(predictedSplitTarget);
+    const firstSplitDirection = workerPaneIds.length === 0 ? "right" : "down";
+
+    for (const [index, plan] of batch.entries()) {
+      const splitDirection = index === 0 ? firstSplitDirection : "down";
+      const reservationReadyAt = splitReadyAt;
+      const optimisticTarget = predictedSplitTarget;
+      const paneIdPromise: Promise<string | null> =
+        typeof tmux.splitWorkerPaneOptimistic === "function"
+          ? tmux.splitWorkerPaneOptimistic(
+            actualSplitTarget,
+            optimisticTarget,
+            splitDirection,
+            plan.workerInfo.working_dir ?? args.cwd
+          )
+          : Promise.resolve(actualSplitTarget).then((actualTarget) =>
+            tmux.splitWorkerPane(
+              actualTarget,
+              splitDirection,
+              plan.workerInfo.working_dir ?? args.cwd
+            )
+          );
+      reservationPromises.push(
+        Promise.all([paneIdPromise, reservationReadyAt]).then(([paneId, readyAt]) => {
+          if (!paneId) {
+            throw new Error(`worker_startup_failed:${plan.workerName}:pane_id_missing`);
+          }
+          return {
+            plan,
+            paneId,
+            splitLatencyMs: Math.max(1, Date.now() - readyAt),
+          };
+        })
       );
-      if (!paneId) {
-        throw new Error(`worker_startup_failed:${plan.workerName}:pane_id_missing`);
+      const nextTargetLabel = predictedPaneId ?? optimisticTarget;
+      predictedSplitTarget = nextTargetLabel;
+      predictedPaneId = predictNextPaneId(nextTargetLabel);
+      actualSplitTarget = paneIdPromise.then((paneId: string | null) => {
+        if (!paneId) {
+          throw new Error(`worker_startup_failed:${plan.workerName}:pane_id_missing`);
+        }
+        return paneId;
+      });
+      splitReadyAt = Promise.resolve(actualSplitTarget).then(() => Date.now());
+    }
+
+    const reservationResults = await Promise.allSettled(reservationPromises);
+    const reservations: Array<{ plan: StartupWorkerPlan; paneId: string; splitLatencyMs: number }> = [];
+    let reservationFailure: unknown = null;
+    for (const reservationResult of reservationResults) {
+      if (reservationResult.status === "rejected") {
+        reservationFailure ??= reservationResult.reason;
+        continue;
       }
-      const splitLatencyMs = Math.max(1, Date.now() - splitStartedAt);
-      plan.startedWorker.paneId = paneId;
-      workerPaneIds.push(paneId);
-      reservations.push({ plan, paneId, splitLatencyMs });
+      reservations.push(reservationResult.value);
+      reservationResult.value.plan.startedWorker.paneId = reservationResult.value.paneId;
+      workerPaneIds.push(reservationResult.value.paneId);
+    }
+    if (reservationFailure) {
+      throw reservationFailure;
     }
 
     const batchResults = await Promise.all(
@@ -283,41 +348,104 @@ export async function startTeamV2(options: StartTeamV2Options): Promise<TeamRunt
   const taskWrites: TaskStateWrite[] = [];
   const plans: StartupWorkerPlan[] = [];
 
+  const plannedWorkers: Array<{
+    workerIndex: number;
+    workerName: string;
+    taskId: string;
+    startupTask: StartTeamV2Options["tasks"][number] | undefined;
+  }> = [];
+
   for (let index = 0; index < options.workerCount; index++) {
     const workerIndex = index + 1;
-    const workerName = `worker-${workerIndex}`;
-    const worktree = options.worktrees && options.worktreeMode !== "disabled"
-      ? await options.worktrees.ensureWorkerWorktree(options.teamName, workerName, options.cwd, { mode: options.worktreeMode })
-      : null;
-    const workerInfo = buildWorkerInfo(workerIndex, options.cwd, worktree?.path, worktree?.created);
+    plannedWorkers.push({
+      workerIndex,
+      workerName: `worker-${workerIndex}`,
+      taskId: String(index + 1),
+      startupTask: options.tasks[index],
+    });
+  }
+
+  const worktreeResults = await Promise.allSettled(
+    plannedWorkers.map(({ workerName }) =>
+      options.worktrees && options.worktreeMode !== "disabled"
+        ? options.worktrees.ensureWorkerWorktree(options.teamName, workerName, options.cwd, { mode: options.worktreeMode })
+        : Promise.resolve(null)
+    )
+  );
+
+  const rollbackPreparedWorkers: typeof startedWorkers = [];
+  let worktreeFailure: unknown = null;
+  for (const [index, plannedWorker] of plannedWorkers.entries()) {
+    const worktreeResult = worktreeResults[index]!;
+    if (worktreeResult.status === "rejected") {
+      worktreeFailure ??= worktreeResult.reason;
+      continue;
+    }
+    const worktree = worktreeResult.value;
+    if (worktree) {
+      rollbackPreparedWorkers.push({
+        workerName: plannedWorker.workerName,
+        worktreePath: worktree.path,
+        worktreeCreated: worktree.created,
+        taskId: plannedWorker.startupTask ? plannedWorker.taskId : undefined,
+      });
+    }
+  }
+  if (worktreeFailure) {
+    await rollbackStartedWorkers({
+      teamName: options.teamName,
+      cwd: options.cwd,
+      sessionName: session.sessionName,
+      leaderPaneId: session.leaderPaneId,
+      workers: rollbackPreparedWorkers,
+      tmux: options.tmux,
+      worktrees: options.worktrees,
+      error: worktreeFailure,
+      writeFailureSidecar: true,
+      killSession: true,
+    });
+    throw worktreeFailure;
+  }
+
+  for (const [index, plannedWorker] of plannedWorkers.entries()) {
+    const worktreeResult = worktreeResults[index]!;
+    if (worktreeResult.status !== "fulfilled") {
+      continue;
+    }
+    const worktree = worktreeResult.value;
+    const workerInfo = buildWorkerInfo(
+      plannedWorker.workerIndex,
+      options.cwd,
+      worktree?.path,
+      worktree?.created
+    );
     const startedWorker = {
-      workerName,
+      workerName: plannedWorker.workerName,
       worktreePath: worktree?.path,
       worktreeCreated: worktree?.created,
-      taskId: options.tasks[index] ? String(index + 1) : undefined,
+      taskId: plannedWorker.startupTask ? plannedWorker.taskId : undefined,
     };
-    const startupTask = options.tasks[index];
-    const task = startupTask ?? IDLE_BOOTSTRAP_TASK;
-    if (startupTask) {
+    const task = plannedWorker.startupTask ?? IDLE_BOOTSTRAP_TASK;
+    if (plannedWorker.startupTask) {
       taskWrites.push({
-        taskId: String(index + 1),
-        task: startupTask,
-        owner: startupTask.owner ?? workerName,
+        taskId: plannedWorker.taskId,
+        task: plannedWorker.startupTask,
+        owner: plannedWorker.startupTask.owner ?? plannedWorker.workerName,
       });
     }
     workersInfo.push(workerInfo);
     startedWorkers.push(startedWorker);
     plans.push({
-      workerName,
-      workerIndex,
-      taskId: String(index + 1),
+      workerName: plannedWorker.workerName,
+      workerIndex: plannedWorker.workerIndex,
+      taskId: plannedWorker.taskId,
       task,
-      startupTask,
+      startupTask: plannedWorker.startupTask,
       workerInfo,
       startedWorker,
       persistenceClaims: [
-        { surface: "worker_dir", key: workerName },
-        ...(startupTask ? [{ surface: "task_file", key: String(index + 1) } as const] : []),
+        { surface: "worker_dir", key: plannedWorker.workerName },
+        ...(plannedWorker.startupTask ? [{ surface: "task_file", key: plannedWorker.taskId } as const] : []),
       ],
     });
   }
@@ -336,12 +464,14 @@ export async function startTeamV2(options: StartTeamV2Options): Promise<TeamRunt
   teamConfig.task = options.tasks.map((task) => task.subject).join("; ");
   teamConfig.next_task_id = options.tasks.length + 1;
 
-  const batchPlan = planStartupWorkerBatches(plans);
-  const taskPersistenceOrder = persistTaskStateWrites(options.teamName, options.cwd, taskWrites);
-  const initialConfigSaveLabel = saveTeamConfigWithStartupEvidence(teamConfig, options.cwd);
-
+  let batchPlan: StartupWorkerBatchPlan | null = null;
+  let taskPersistenceOrder: string[] = [];
+  let initialConfigSaveLabel = "";
   let execution: StartupBatchExecutionResult;
   try {
+    batchPlan = planStartupWorkerBatches(plans);
+    taskPersistenceOrder = persistTaskStateWrites(options.teamName, options.cwd, taskWrites);
+    initialConfigSaveLabel = saveTeamConfigWithStartupEvidence(teamConfig, options.cwd);
     execution = await executeStartupWorkerBatches({
       batches: batchPlan.batches,
       workerPaneIds: [...session.workerPaneIds],
@@ -366,9 +496,14 @@ export async function startTeamV2(options: StartTeamV2Options): Promise<TeamRunt
       error,
       writeFailureSidecar: true,
       killSession: true,
-      collisionEvidence: batchPlan.collisionEvidence,
+      collisionEvidence: batchPlan?.collisionEvidence ?? [],
     });
     throw error;
+  }
+
+  const resolvedBatchPlan = batchPlan;
+  if (!resolvedBatchPlan) {
+    throw new Error("worker_startup_failed:startup_batch_plan_missing");
   }
 
   teamConfig.workers = workersInfo;
@@ -376,8 +511,8 @@ export async function startTeamV2(options: StartTeamV2Options): Promise<TeamRunt
   const startupEvidence = buildStartupEvidence({
     fanoutLatencyMs: execution.fanoutLatencyMs,
     sequentialComparableLatencyMs: execution.sequentialComparableLatencyMs,
-    collisionEvidence: batchPlan.collisionEvidence,
-    reducerOrder: batchPlan.reducerOrder,
+    collisionEvidence: resolvedBatchPlan.collisionEvidence,
+    reducerOrder: resolvedBatchPlan.reducerOrder,
     persistenceOrder: [...taskPersistenceOrder, initialConfigSaveLabel, finalConfigSaveLabel],
   });
   saveTeamConfigWithStartupEvidence(teamConfig, options.cwd, startupEvidence);

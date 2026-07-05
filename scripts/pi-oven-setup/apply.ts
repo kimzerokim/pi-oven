@@ -78,7 +78,9 @@ export interface ApplyOptions {
 }
 
 function modelOverrideValue(profile: ApplyOptions["profile"], entry: ModelEntry): string {
-  return profile === "B" ? `${entry.primary}:${entry.thinkingLevel}` : entry.primary;
+  return profile === "A" || profile === "B"
+    ? `${entry.primary}:${entry.thinkingLevel}`
+    : entry.primary;
 }
 
 /**
@@ -86,12 +88,11 @@ function modelOverrideValue(profile: ApplyOptions["profile"], entry: ModelEntry)
  * 1. Resolve profileMap = PROFILE_A/B/C/D.
  * 2. WITH agentsDir → maintainer generate path: rewrite agent files
  *    (model array + thinkingLevel); write NO config.
- * 3. WITHOUT agentsDir + global scope → write modelRoles + retry.fallbackChains;
- *    profiles B/C/D also write all 24 `task.agentModelOverrides`.
- *    Profile A remains orchestrator-only globally.
+ * 3. WITHOUT agentsDir + global scope → write modelRoles + retry.fallbackChains
+ *    and all 24 `task.agentModelOverrides`.
  * 4. WITHOUT agentsDir + project scope → write all 24 per-role overrides,
  *    modelRoles, and retry.fallbackChains to `<cwd>/.omp/settings.json`.
- *    Profile B per-role values include `:<thinkingLevel>` selector suffixes.
+ *    Profiles A/B per-role values include `:<thinkingLevel>` selector suffixes.
  * 5. runValidate per validateMode (default smoke).
  * 6. Return exit 0 if all ok; exit 1 if validation fails.
  */
@@ -141,16 +142,18 @@ export async function runApply(
     if (scope === "project") {
       // PROJECT setup: write the model routing into <cwd>/.omp/settings.json
       // (the omp project layer), which deep-merges OVER global. EVERY profile
-      // (incl. A) writes ALL 24 per-role overrides here — agent-file frontmatter
-      // is the global plugin default, so a project that wants different models
-      // must carry explicit overrides for all 24 roles to actually diverge. This
-      // is a DIFFERENT layer than the global config.yml, so Spec E's per-role
-      // global ban for Profile A is not violated. NO global config-yml writer
-      // runs and the memory/async infra is NOT written (configure once globally).
+      // writes ALL 24 per-role overrides here — agent-file frontmatter is the
+      // shipped plugin default, so a project that wants different models must
+      // carry explicit overrides for all 24 roles to actually diverge. NO global
+      // config-yml writer runs and the memory/async infra is NOT written
+      // (configure once globally).
       const cwd = opts.cwd ?? process.cwd();
       const overrideRecord: Record<string, string> = {};
       for (const role of ROLES) {
-        overrideRecord[`pi-oven:${role}`] = modelOverrideValue(opts.profile, profileMap[role]);
+        overrideRecord[`pi-oven:${role}`] = modelOverrideValue(
+          opts.profile,
+          profileMap[role]
+        );
       }
       await setProjectAgentModelOverrides(overrideRecord, { cwd });
       await setProjectModelRoles(
@@ -163,7 +166,7 @@ export async function runApply(
         projectRoot: cwd,
         spawnFn: opts.spawnFn,
       });
-      scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles pinned + modelRoles + retry.fallbackChains; Profile B includes reasoning-effort suffixes)\n`;
+      scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles pinned + modelRoles + retry.fallbackChains; Profiles A/B include reasoning-effort suffixes)\n`;
       projectRemediationLine =
         "Project scope kept ~/.omp/agent/config.yml untouched.\n" +
         formatStandaloneTruthSignals(standaloneSignals).join("\n") +
@@ -174,25 +177,25 @@ export async function runApply(
       // default + title) in ONE atomic whole-record merge-write. omp's schema
       // declares `modelRoles` as a record, so dotted `modelRoles.default` writes
       // are rejected — setModelRoles read-merge-writes the whole record,
-      // preserving sibling roles. Never task.agentModelOverrides for A (anti-Spec-E).
+      // preserving sibling roles.
       await setModelRoles(
         { default: orchestrator.default, title: orchestrator.title },
         { spawnFn: opts.spawnFn }
       );
       await setRetryFallbackChains(fallbackChains, { spawnFn: opts.spawnFn });
 
-      // Profile B + C + D: bulk-write all 24 per-role task.agentModelOverrides.
-      // Profile B values include :<thinkingLevel> model-selector suffixes.
-      if (opts.profile === "B" || opts.profile === "C" || opts.profile === "D") {
-        const overrideRecord: Record<string, string> = {};
-        for (const role of ROLES) {
-          overrideRecord[`pi-oven:${role}`] = modelOverrideValue(opts.profile, profileMap[role]);
-        }
-        await setAgentModelOverrides(overrideRecord, { spawnFn: opts.spawnFn });
+      // Bulk-write all 24 per-role task.agentModelOverrides. Profiles A/B values
+      // include :<thinkingLevel> model-selector suffixes.
+      const overrideRecord: Record<string, string> = {};
+      for (const role of ROLES) {
+        overrideRecord[`pi-oven:${role}`] = modelOverrideValue(
+          opts.profile,
+          profileMap[role]
+        );
       }
+      await setAgentModelOverrides(overrideRecord, { spawnFn: opts.spawnFn });
 
       // Write mnemopi memory backend + async.enabled for native memory/irc.
-      // Does NOT touch task.agentModelOverrides for A (Spec E boundary preserved).
       await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });
       memoryConfigLine =
         "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled for subagent coordination\n";

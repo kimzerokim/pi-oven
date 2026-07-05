@@ -24,6 +24,7 @@ import type {
 import { createDeepInterviewRuntime } from "./deep-interview-runtime";
 import { RECOMMENDED_SUFFIX, formatRecommendedLabel } from "./deep-interview-render";
 import type { DeepInterviewAskMetadata } from "./deep-interview-state";
+import type { RuntimeTraceSnapshot } from "./trace-primitives";
 
 export const OTHER_VALUE = "__pi-oven_other__";
 const OTHER_LABEL = "Other (type your own)";
@@ -38,11 +39,16 @@ export interface PiOvenAskSingleDetails {
   question: string;
   selected?: string;
   customInput?: string;
+  deferred?: boolean;
   recommended?: number;
   deepInterview?: DeepInterviewAskMetadata;
 }
 
 export type PiOvenAskDetails = PiOvenAskSingleDetails;
+
+export interface PiOvenAskRegistrationOptions {
+  onRuntimeTrace?: (trace: RuntimeTraceSnapshot) => void;
+}
 
 const markdownThemes = new WeakMap<Theme, MarkdownTheme>();
 const selectListThemes = new WeakMap<Theme, SelectListTheme>();
@@ -316,6 +322,14 @@ function renderResult(
     for (let i = 1; i < lines.length; i++) {
       container.addChild(new Text(`     ${theme.fg("toolOutput", lines[i]!)}`, 0, 0));
     }
+  } else if (details.deferred) {
+    container.addChild(
+      new Text(
+        ` ${theme.fg("dim", theme.tree.last)} ${theme.styledSymbol("status.info", "accent")} ${theme.fg("dim", "Deferred")}`,
+        0,
+        0
+      )
+    );
   } else {
     container.addChild(
       new Text(
@@ -344,7 +358,8 @@ type PiOvenAskParams = {
 async function askSingle(
   ctx: ExtensionContext,
   params: PiOvenAskParams,
-  debugLog?: (message: string) => void
+  debugLog?: (message: string) => void,
+  registration: PiOvenAskRegistrationOptions = {}
 ): Promise<AgentToolResult<PiOvenAskDetails>> {
   const { question, options, deepInterview } = params;
   const recommended = clampRecommended(params.recommended, options.length);
@@ -352,12 +367,17 @@ async function askSingle(
     ...(recommended !== undefined ? { recommended } : {}),
     ...(deepInterview !== undefined ? { deepInterview } : {}),
   };
-  const contextState = ctx as unknown as { cwd?: unknown };
+  const contextState = ctx as unknown as {
+    cwd?: unknown;
+    workflowGate?: {
+      emitGate?: (question: unknown) => Promise<{ selectedOptions?: string[]; customInput?: string } | undefined>;
+    };
+  };
   const projectRoot =
     typeof contextState.cwd === "string" && contextState.cwd.trim().length > 0
       ? contextState.cwd
       : process.cwd();
-  const runtime = deepInterview ? createDeepInterviewRuntime(projectRoot) : undefined;
+  const runtime = deepInterview ? createDeepInterviewRuntime(projectRoot, { onRuntimeTrace: registration.onRuntimeTrace }) : undefined;
   if (runtime && deepInterview) {
     try {
       await runtime.seedQuestion({
@@ -389,6 +409,30 @@ async function askSingle(
   };
 
   if (!ctx.hasUI || typeof ctx.ui?.custom !== "function") {
+    if (
+      deepInterview?.stage === "approval" &&
+      typeof contextState.workflowGate?.emitGate === "function"
+    ) {
+      const gateResult = await contextState.workflowGate.emitGate({
+        question,
+        options,
+        recommended,
+        deepInterview,
+      });
+      const selected =
+        Array.isArray(gateResult?.selectedOptions) && typeof gateResult.selectedOptions[0] === "string"
+          ? gateResult.selectedOptions[0]
+          : undefined;
+      const customInput = typeof gateResult?.customInput === "string" ? gateResult.customInput : undefined;
+      if (selected === undefined && customInput === undefined) {
+        return {
+          content: [{ type: "text", text: "Workflow gate deferred approval." }],
+          details: { mode: "single", question, deferred: true, ...resultMeta },
+        };
+      }
+      await persistAnswer(selected, customInput);
+      return formatAskResult(question, selected, customInput, resultMeta);
+    }
     if (typeof ctx.ui?.select === "function") {
       const folded = options.map((opt, index) => ({
         label: formatRecommendedLabel(opt.label, recommended === index),
@@ -442,7 +486,7 @@ async function askSingle(
   return formatAskResult(question, choice, undefined, resultMeta);
 }
 
-export function registerPiOvenAsk(pi: ExtensionAPI): void {
+export function registerPiOvenAsk(pi: ExtensionAPI, options: PiOvenAskRegistrationOptions = {}): void {
   if (typeof pi.registerTool !== "function") {
     pi.logger?.debug?.("pi-oven_ask: registerTool unavailable; skipping registration");
     return;
@@ -470,6 +514,7 @@ export function registerPiOvenAsk(pi: ExtensionAPI): void {
         summary: z.string().min(1),
       })
       .optional(),
+    routingApproval: z.unknown().optional(),
   });
 
   const parameters = z.object({
@@ -501,7 +546,8 @@ export function registerPiOvenAsk(pi: ExtensionAPI): void {
           recommended: params.recommended,
           deepInterview: params.deepInterview,
         },
-        (message) => pi.logger?.debug?.(message)
+        (message) => pi.logger?.debug?.(message),
+        options
       );
     },
   });

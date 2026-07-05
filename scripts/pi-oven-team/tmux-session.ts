@@ -140,7 +140,55 @@ export async function waitForPaneReady(
 }
 
 export function createProcessTmuxController(binary: string = "tmux"): TeamTmuxController {
-  return {
+  const splitPane = async (
+    splitTarget: Promise<string>,
+    _optimisticTarget: string,
+    direction: "right" | "down",
+    cwd: string
+  ) => {
+    const resolvedSplitTarget = await splitTarget;
+    const splitFlag = direction === "right" ? "-h" : "-v";
+    const retryDeadline = Date.now() + 1_000;
+    while (true) {
+      try {
+        const { stdout } = await execFileAsync(binary, [
+          "split-window",
+          splitFlag,
+          "-t",
+          resolvedSplitTarget,
+          "-d",
+          "-P",
+          "-F",
+          "#{pane_id}",
+          "-c",
+          cwd,
+        ]);
+        const paneId = stdout.trim().split("\n")[0]?.trim();
+        if (!paneId) {
+          return null;
+        }
+        return paneId;
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !/can't find pane|no such pane/i.test(error.message) ||
+          Date.now() >= retryDeadline
+        ) {
+          throw error;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      }
+    }
+  };
+
+  const controller: TeamTmuxController & {
+    splitWorkerPaneOptimistic: (
+      splitTarget: string | Promise<string>,
+      optimisticTarget: string,
+      direction: "right" | "down",
+      cwd: string
+    ) => Promise<string | null>;
+  } = {
     async createTeamSession(teamName: string, _workerCount: number, cwd: string, options?: { newWindow?: boolean }) {
       const targetName = `pi-oven-team-${teamName}`;
       const args = options?.newWindow
@@ -154,24 +202,15 @@ export function createProcessTmuxController(binary: string = "tmux"): TeamTmuxCo
       return { sessionName, leaderPaneId, workerPaneIds: [] };
     },
     async splitWorkerPane(splitTarget: string, direction: "right" | "down", cwd: string) {
-      const splitFlag = direction === "right" ? "-h" : "-v";
-      const { stdout } = await execFileAsync(binary, [
-        "split-window",
-        splitFlag,
-        "-t",
-        splitTarget,
-        "-d",
-        "-P",
-        "-F",
-        "#{pane_id}",
-        "-c",
-        cwd,
-      ]);
-      const paneId = stdout.trim().split("\n")[0]?.trim();
-      if (!paneId) {
-        return null;
-      }
-      return paneId;
+      return splitPane(Promise.resolve(splitTarget), splitTarget, direction, cwd);
+    },
+    async splitWorkerPaneOptimistic(
+      splitTarget: string | Promise<string>,
+      optimisticTarget: string,
+      direction: "right" | "down",
+      cwd: string
+    ) {
+      return splitPane(Promise.resolve(splitTarget), optimisticTarget, direction, cwd);
     },
     async spawnWorkerInPane(paneId: string, spec: { teamName: string; workerName: string; command: string; envVars?: Record<string, string> }) {
       const launchLine = `${renderEnvPrefix(spec.envVars)}${spec.command}`;
@@ -192,4 +231,5 @@ export function createProcessTmuxController(binary: string = "tmux"): TeamTmuxCo
       await execFileAsync(binary, ["kill-session", "-t", sessionName]);
     },
   };
+  return controller;
 }

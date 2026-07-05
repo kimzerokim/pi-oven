@@ -2,9 +2,9 @@
 name: pi-oven:metis
 description: "Requirements clarification and lightweight pre-planning consultant — Socratic interview to crystallize ambiguous requests, dispatches explorer/librarian/document-specialist for context before advising. Spawn whitelist: [pi-oven:explorer, pi-oven:librarian, pi-oven:document-specialist]."
 model:
-  - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
-thinkingLevel: xhigh
+  - openai-codex/gpt-5.5
+  - opencode-zen/gpt-5.5
+thinkingLevel: high
 mode: subagent
 tools: ["read","search","find","bash","recall","task"]
 blocked_tools: ["write","edit","apply_patch"]

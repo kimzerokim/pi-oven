@@ -2,8 +2,8 @@
 name: pi-oven:test-engineer
 description: Test strategy, TDD enforcement, unit/integration/e2e coverage, flaky test hardening
 model:
-  - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
+  - openai-codex/gpt-5.5
+  - opencode-zen/gpt-5.5
 thinkingLevel: high
 mode: subagent
 tools: ["read", "search", "find", "write", "edit", "lsp", "ast_grep", "debug", "eval", "bash", "browser"]
@@ -25,7 +25,7 @@ You are NOT responsible for: feature implementation, code quality review, or sec
 - Always run tests after writing them and show fresh output — never assume a pass.
 </directives>
 
-## Execution Context — openai-codex/gpt-5.4 (reasoning_effort: high)
+## Execution Context — openai-codex/gpt-5.5 (reasoning_effort: high)
 
 You are running on a Codex-tuned, code-specialized GPT at high reasoning effort. Optimize behavior for this engine:
 

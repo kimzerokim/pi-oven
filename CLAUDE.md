@@ -8,7 +8,7 @@
 
 **Goal: build the optimal agentic workflow that runs natively on omp.** Not a Claude Code plugin — Claude Code interop is a by-product, not maintained.
 
-**Core design principle — heterogeneous models.** Agents do NOT all run on Anthropic. PROFILE_A spreads 24 roles across ~5 models / 4 providers (anthropic opus · openai-codex gpt-5.4 · opencode-zen minimax/glm/kimi). Each agent's body must inject an **execution context optimized for its specific model**, not a generic prompt. Model-fit is a first-class concern.
+**Core design principle — codex-first release default, opt-in alternate profiles.** The shipped PROFILE_A baseline is the old PROFILE_B Codex map: all 24 roles default to `openai-codex` primaries, with matching `opencode-zen/gpt-5.5` / `opencode-zen/gpt-5.4` registry alternates for spawn-time availability fallback. Profiles B/C/D remain explicit setup-time alternatives. Each agent's body must inject an **execution context optimized for its specific model**, not a generic prompt. Model-fit is a first-class concern.
 
 ## Layout
 
@@ -49,27 +49,18 @@ bun run release:pi-oven -- --bump patch --dry-run  # release automation (safe de
 
 | Model | thinkingLevel | Roles |
 |---|---|---|
-| `anthropic/claude-opus-4-8` | xhigh / high | critic, planner, security-reviewer, oracle |
-| `openai-codex/gpt-5.4` | high / xhigh | executor, debugger, test-engineer, architect, metis, data-runner (+ planner alt) |
-| `openai-codex/gpt-5.4-mini` | medium | multimodal-looker, qa-tester (vision) |
-| `opencode-zen/minimax-m2.5` | medium / high | explorer, writer, document-specialist, deep-researcher, librarian, git-master |
-| `opencode-zen/glm-5.1` | high | designer, code-simplifier |
-| `opencode-zen/kimi-k2.6` | med→xhigh | code-reviewer, verifier, analyst, tracer |
+| `openai-codex/gpt-5.5` | high / xhigh | executor, verifier, critic, planner, code-reviewer, debugger, test-engineer, security-reviewer, code-simplifier, tracer, analyst, architect, oracle, metis, deep-researcher |
+| `openai-codex/gpt-5.4` | medium / high | explorer, writer, designer, qa-tester, git-master, document-specialist, librarian, multimodal-looker, data-runner |
 
-`/pi-oven:setup --profile` now also sets the main orchestrator model (`modelRoles.default` + `modelRoles.title`), separate from the 24 subagent roles. PROFILE_A pins these to `openai-codex/gpt-5.4:high` and `gpt-5.4-mini:low`; retry fallback chains provide `default → opencode-zen/kimi-k2.6` and `title → opencode-zen/gpt-5.4-mini`. **Profile A writes orchestrator-only overrides** (`modelRoles.default` + `modelRoles.title`); the 24 per-role `task.agentModelOverrides` live in committed agent frontmatter, not written by global `--profile A`.
+`/pi-oven:setup --profile` also sets the main orchestrator model (`modelRoles.default` + `modelRoles.title`) to `openai-codex/gpt-5.4:high` and `openai-codex/gpt-5.4:medium`. Runtime `retry.fallbackChains` for Profile A are empty, so setup does not route usage-limit retries through OpenCode Zen. **Profile A writes all 24 per-role `task.agentModelOverrides`** plus the orchestrator roles on both global and project scope; committed agent frontmatter remains the release-default SoT.
 
-**Rate-limit failover (`retry.fallbackChains`).** A frontmatter `model:` array is **resolution-time only** (omp picks the first available; the second entry is an auth/availability fallback at spawn, plus parent-active-model auth fallback). It is **NOT** a runtime rate-limit failover chain. Runtime failover on `usage_limit`/429 is driven by the `retry.fallbackChains` setting (`Record<modelRoleName, string[]>`, consumed in `agent-session.ts` `#tryRetryModelFallback`); when the provider asks to wait longer than `retry.maxDelayMs` with no model/credential switch, omp fails fast. `/pi-oven:setup --apply` now writes `retry.fallbackChains` for the orchestrator roles (PROFILE_A: `default → [opencode-zen/kimi-k2.6]`, `title → [opencode-zen/gpt-5.4-mini]`; SoT = `PROFILE_A_FALLBACK_CHAINS`/`PROFILE_B_FALLBACK_CHAINS`/`PROFILE_C_FALLBACK_CHAINS`/`PROFILE_D_FALLBACK_CHAINS` in `profiles.ts`, kept OUTSIDE `ProfileMap`). **Limitation:** chains are keyed by **modelRole** and matched against the active model's base selector, so a codex subagent benefits only when its base equals a configured `modelRoles.<role>` (e.g. `openai-codex/gpt-5.4` ↔ `modelRoles.default`); subagents pinned via `task.agentModelOverrides` to a non-matching model are not covered (omp has no agent-keyed fallback chains).
-
-Provider whitelist (enforced at load + CI lint): `opencode-zen/`, `openai-codex/` always; `anthropic/` only if an agent file already declares an `anthropic/*` model.
-
-**PROFILE_B** (openai-codex-only, performance-first Codex Pro/20x profile): setup writes subagent overrides as model selectors with reasoning-effort suffixes, and sets the main orchestrator to `openai-codex/gpt-5.4:high` so subscription users get the 1M context window. Runtime `retry.fallbackChains` for Profile B are empty, so setup does not route usage-limit retries through OpenCode Zen. `openai-codex/gpt-5.5:high` handles executor, test-engineer, and metis; `openai-codex/gpt-5.5:xhigh` handles verifier, critic, planner, code-reviewer, debugger, security-reviewer, code-simplifier, tracer, analyst, architect, oracle, and deep-researcher; `openai-codex/gpt-5.4:high` handles designer, qa-tester, and data-runner; `openai-codex/gpt-5.4:medium` handles explorer, writer, git-master, document-specialist, librarian, multimodal-looker, and title. It intentionally avoids `gpt-5.4-mini`/nano.
+**PROFILE_B** (explicit openai-codex-only override profile): same Codex family as Profile A, but setup always writes selectors with reasoning-effort suffixes into config so the active install is pinned even when committed frontmatter already defaults to Codex.
 
 **PROFILE_C** (tier-appropriate all-Anthropic): `anthropic/claude-opus-4-8` for high/xhigh roles, `anthropic/claude-sonnet-4-6` for medium roles and for git-master + orchestrator title (haiku-4-5 is unavailable); opencode-zen anthropic equivalents serve as `registry_alternate` in each entry.
 
-**PROFILE_D** (opencode-zen-only): `opencode-zen/kimi-k2.6` for heavy coding and reasoning roles; `opencode-zen/minimax-m2.5` for mid and low-weight roles; `opencode-zen/gemini-3-flash` for vision roles (multimodal-looker, qa-tester). No Anthropic or OpenAI Codex auth required. Writes all 24 per-role `task.agentModelOverrides` on `--profile D`.
+**PROFILE_D** (opencode-zen-only): `opencode-zen/kimi-k2.6` for heavy coding and reasoning roles; `opencode-zen/minimax-m2.5` for mid and low-weight roles; `opencode-zen/gemini-3-flash` for vision roles (multimodal-looker, qa-tester). No Anthropic or OpenAI Codex auth required.
 
-**Profiles B, C, and D all write all 24 per-role `task.agentModelOverrides`** on `--profile B/C/D` — a Spec E relaxation covering all non-A profiles. Profile A remains orchestrator-only (its 24 subagent models live in committed frontmatter). Use `--reset` to clear written overrides.
-
+**Profiles A, B, C, and D all write all 24 per-role `task.agentModelOverrides`** on `--profile A/B/C/D`; Profile A additionally refreshes the orchestrator roles to the release-default Codex pair. Use `--reset` to clear written overrides.
 ## Agent tool discipline + orchestrator conduct
 
 **Every agent body mandates its omp native tools** in omp-official `<directives>`/`<procedure>` MUST/SHOULD/NEVER style. Three tool-class mandates enforced across all 24 agents:

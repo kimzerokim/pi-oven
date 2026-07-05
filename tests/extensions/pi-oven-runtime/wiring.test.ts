@@ -692,6 +692,29 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
             status: "pending",
             requestedAt: "2026-07-05T00:00:00.000Z",
           },
+          routingApproval: {
+            recommendedByRole: {
+              executor: "openai-codex/gpt-5.5:high",
+              "test-engineer": "openai-codex/gpt-5.5:high",
+              metis: "openai-codex/gpt-5.5:high",
+            },
+            buckets: [
+              {
+                bucketKey: "openai-codex/gpt-5.5:high",
+                recommendedSelector: "openai-codex/gpt-5.5:high",
+                roles: ["executor", "test-engineer", "metis"],
+              },
+            ],
+            approvals: {
+              executor: {
+                role: "executor",
+                bucketKey: "openai-codex/gpt-5.5:high",
+                status: "approved",
+                recommendedSelector: "openai-codex/gpt-5.5:high",
+                selectedSelector: "openai-codex/gpt-5.5:high",
+              },
+            },
+          },
           lastUpdatedAt: "2026-07-05T00:00:00.000Z",
         },
       }
@@ -710,6 +733,9 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain("pi-oven_ask");
     expect(joined).toContain("approve-option-c");
     expect(joined).toContain("Implement Option C after approval");
+    expect(joined).toContain("openai-codex/gpt-5.5:high");
+    expect(joined).toContain("executor");
+    expect(joined).toContain("test-engineer");
   });
   for (const testCase of [
     {

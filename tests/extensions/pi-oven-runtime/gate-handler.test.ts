@@ -413,8 +413,8 @@ describe("gateHandler — external execution consent", () => {
     await expectStoredConsent(dir, consent("read", { sourceMessageId: "u2" }));
   });
 
-  it("allows matching temporary AWS credential consent in non-parent sessions until expiry", async () => {
-    const storedConsent = tempConsent("read");
+  it("allows matching temporary AWS access-scope consent in non-parent sessions for read commands until expiry", async () => {
+    const storedConsent = tempConsent("access");
     writeState(dir, activeState(storedConsent));
     const d = await deps(dir);
     const handler = createGateHandler({ ...d, isParentSession: false });
@@ -428,8 +428,8 @@ describe("gateHandler — external execution consent", () => {
     expect(result?.block ?? false).toBe(false);
     await expectStoredConsent(dir, storedConsent);
   });
-  it("blocks external-read commands when temporary consent would fall back to ambient credentials", async () => {
-    const storedConsent = tempConsent("read");
+  it("blocks external-read commands when temporary access-scope consent would fall back to ambient credentials", async () => {
+    const storedConsent = tempConsent("access");
     writeState(dir, activeState(storedConsent));
     const d = await deps(dir);
     const handler = createGateHandler({ ...d, isParentSession: false });

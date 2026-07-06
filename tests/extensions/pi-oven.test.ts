@@ -24,6 +24,7 @@ const {
   countProjectRoutingRoles,
   applyOrchestratorConduct,
   readProjectInstructions,
+  extractExternalExecConsent,
 } = ext;
 const SHIPPED_AGENTS_DIR = resolve(__dirname, "../../agents");
 function makeTempDir(): string {
@@ -641,6 +642,49 @@ describe("countProjectRoutingRoles", () => {
     const p = join(dir, "settings.json");
     writeFileSync(p, "{ not json");
     expect(countProjectRoutingRoles(p)).toBe(0);
+  });
+});
+describe("extractExternalExecConsent", () => {
+  function makeBundle() {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    return {
+      expiresAt,
+      text: [
+        "AccessKeyId: ASIA1234567890ABCD",
+        "SecretAccessKey: secret-key",
+        "SessionToken: session-token",
+        `ExpiresAt: ${expiresAt}`,
+      ].join("\n"),
+    };
+  }
+
+  it("returns no consent for bundle-only explicit denial text", () => {
+    const { text } = makeBundle();
+    expect(extractExternalExecConsent(`Do not use this.\n${text}`, "msg-deny")).toBeUndefined();
+  });
+
+  it("returns no consent for bundle-bearing inspect denial text", () => {
+    const { text } = makeBundle();
+    expect(
+      extractExternalExecConsent(
+        `Please do not inspect with this temporary AWS credential bundle before it expires:\n${text}`,
+        "msg-deny-inspect"
+      )
+    ).toBeUndefined();
+  });
+
+  it("auto-authorizes read/access for a valid future-dated temporary bundle without denial", () => {
+    const { text, expiresAt } = makeBundle();
+    expect(extractExternalExecConsent(text, "msg-allow")).toMatchObject({
+      sourceMessageId: "msg-allow",
+      scope: "access",
+      remainingUses: 1,
+      tempCredentials: {
+        provider: "aws",
+        accessKeyId: "ASIA1234567890ABCD",
+        expiresAt: Date.parse(expiresAt),
+      },
+    });
   });
 });
 // ---------------------------------------------------------------------------

@@ -191,7 +191,8 @@ function matchesExternalConsent(
   switch (match.kind) {
     case "external-read":
       return (
-        (consent.scope === "read" || consent.scope === "all") &&
+        ((consent.scope === "read" || consent.scope === "all") ||
+          (consent.tempCredentials !== undefined && consent.scope === "access")) &&
         (!consent.tempCredentials ||
           tempInlineCredentialsAllowed(inlineSecretMatches, consent, true, match.segment))
       );
@@ -294,7 +295,7 @@ function inlineSecretBlockReason(
   if (!consent?.tempCredentials) {
     return (
       `pi-oven: inline secret literal blocked (${rules}). ` +
-      "Pasted AWS temporary credentials require matching explicit consent with the same session token and expiresAt."
+      "Pasted AWS temporary credentials require matching latest-message consent with the same session token and expiresAt."
     );
   }
   if (consent.tempCredentials.accessKeyId !== awsCredentials.accessKeyId) {
@@ -331,7 +332,7 @@ function inlineSecretBlockReason(
   }
   return (
     `pi-oven: inline secret literal blocked (${rules}). ` +
-    "Pasted credentials stay forbidden unless they are explicitly consented, unexpired AWS temporary credentials."
+    "Pasted credentials stay forbidden unless they match an unexpired AWS temporary bundle accepted from the latest user message."
   );
 }
 
@@ -353,7 +354,7 @@ function externalConsentBlockReason(
   const scope = requiredConsentScope(kind);
   if (consent?.tempCredentials) {
     return (
-      `pi-oven: ${kind} command blocked — matching explicit external execution consent is required. ` +
+      `pi-oven: ${kind} command blocked — matching latest-message AWS temporary bundle consent is required. ` +
       "The latest consented AWS temporary credentials only authorize commands that carry the exact same unexpired inline bundle on the same shell segment; ambient or local credentials cannot be reused."
     );
   }
@@ -367,7 +368,7 @@ function externalConsentBlockReason(
   return (
     `pi-oven: ${kind} command blocked — matching explicit external execution consent is required. ` +
     `Ask the user to say something like "You may use my local credentials for one direct external ${scope} command." ` +
-    `They may instead consent an unexpired AWS temporary bundle in the latest message for that same direct external ${scope} scope.`
+    "They may instead paste a full unexpired AWS temporary bundle in the latest message; that auto-authorizes matching direct external read/access commands, while mutation still needs explicit mutation/all wording."
   );
 }
 

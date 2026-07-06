@@ -827,6 +827,14 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       ),
       expected: tempConsent("mutation", "u2"),
     },
+    {
+      name: "turn_start auto-accepts a still-valid temporary AWS bundle from the latest message without extra approval wording",
+      entry: userTextMessage(
+        "u12",
+        `Please inspect with this temporary AWS credential bundle before it expires: AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 expiresAt=${TEMP_CONSENT_EXPIRES_AT}`
+      ),
+      expected: tempConsent("access", "u12"),
+    },
   ] as const) {
     it(testCase.name, async () => {
       tempDir = makeTempDir();
@@ -853,6 +861,14 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       ),
       userTextMessage("u10", "Please issue no direct external access commands using my local credentials."),
       userTextMessage("u11", "직접 실행해도 돼, 그런데 외부 접근 명령에 로컬 자격증명은 사용하지 마."),
+      userTextMessage(
+        "u12",
+        `scope=mutation temporary AWS credential bundle AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 expiresAt=${TEMP_CONSENT_EXPIRES_AT}`
+      ),
+      userTextMessage(
+        "u13",
+        `Please do not inspect with this temporary AWS credential bundle before it expires: AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 expiresAt=${TEMP_CONSENT_EXPIRES_AT}`
+      ),
     ]) {
       const persisted = await runTurnStart([entry], 1);
       expect(persisted.externalExecConsent).toBeUndefined();

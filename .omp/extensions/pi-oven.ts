@@ -632,7 +632,7 @@ const EXTERNAL_EXEC_APPROVAL_PATTERNS: ReadonlyArray<RegExp> = [
   /(?:^|[\n.!?]\s*)(?:직접 실행해|직접 돌려|실행해도 돼|실행해줘)/u,
 ];
 const EXTERNAL_EXEC_DENIAL_PATTERNS: ReadonlyArray<RegExp> = [
-  /\b(?:don't|dont|do not|never)\b[^.!?\n]{0,80}\b(?:run|execute|use|allow|approve)\b/i,
+  /\b(?:don't|dont|do not|never)\b[^.!?\n]{0,80}\b(?:run|execute|use|inspect|read|access|allow|approve)\b/i,
   /\bno\b[^.!?\n]{0,80}\b(?:direct|external|local credentials?|temporary aws|aws credential bundle)\b/i,
   /(?:직접|외부|로컬 자격증명|로컬 인증|임시 AWS)[^.!?\n]{0,40}(?:하지\s*마|하지마|쓰지\s*마|쓰지마|사용하지\s*마|사용하지마|실행하지\s*마|실행하지마|안\s*돼|안돼|허용하지\s*마|허용하지마|허용하지\s*않|승인하지\s*마|승인하지마|승인하지\s*않|금지)/u,
   /(?:하지\s*마|하지마|쓰지\s*마|쓰지마|사용하지\s*마|사용하지마|실행하지\s*마|실행하지마|안\s*돼|안돼|허용하지\s*마|허용하지마|허용하지\s*않|승인하지\s*마|승인하지마|승인하지\s*않|금지)[^.!?\n]{0,40}(?:직접|외부|로컬 자격증명|로컬 인증|임시 AWS)/u,
@@ -687,32 +687,33 @@ export function extractExternalExecConsent(
       : detectNaturalExternalExecScope(text);
   const hasStructuredApproval = /^\s*PI_OVEN_EXTERNAL_EXEC:/im.test(text);
   const mentionsDirectExternalTarget = DIRECT_EXTERNAL_TARGET_PATTERNS.some((pattern) => pattern.test(text));
+  const hasExplicitDenial = EXTERNAL_EXEC_DENIAL_PATTERNS.some((pattern) => pattern.test(text));
   const hasNaturalApproval =
     mentionsDirectExternalTarget &&
     EXTERNAL_EXEC_APPROVAL_PATTERNS.some((pattern) => pattern.test(text));
-  const hasNaturalDenial =
-    mentionsDirectExternalTarget &&
-    EXTERNAL_EXEC_DENIAL_PATTERNS.some((pattern) => pattern.test(text));
-
-  if (!scope || (!hasStructuredApproval && (!hasNaturalApproval || hasNaturalDenial))) {
-    return undefined;
-  }
-
+  const hasNaturalDenial = mentionsDirectExternalTarget && hasExplicitDenial;
   const accessKeyId = getStructuredFieldValue(text, TEMP_ACCESS_KEY_FIELD_NAMES);
   const secretAccessKey = getStructuredFieldValue(text, TEMP_SECRET_ACCESS_KEY_FIELD_NAMES);
   const sessionToken = getStructuredFieldValue(text, TEMP_SESSION_TOKEN_FIELD_NAMES);
   const expiresAt = parseExternalExecExpiry(getStructuredFieldValue(text, TEMP_EXPIRY_FIELD_NAMES));
-  if (
-    accessKeyId &&
+  const hasValidTemporaryAwsBundle =
+    accessKeyId !== undefined &&
     /^ASIA[0-9A-Z]{12,}$/i.test(accessKeyId) &&
-    secretAccessKey &&
-    sessionToken &&
+    secretAccessKey !== undefined &&
+    sessionToken !== undefined &&
     expiresAt != null &&
-    Date.now() < expiresAt
+    Date.now() < expiresAt;
+  const hasBundleAutoAcceptDenial = hasValidTemporaryAwsBundle && hasExplicitDenial;
+  const tempScope = scope ?? "access";
+  const tempScopeAutoAllowed = tempScope === "read" || tempScope === "access";
+  if (
+    hasValidTemporaryAwsBundle &&
+    !hasBundleAutoAcceptDenial &&
+    (tempScopeAutoAllowed || hasStructuredApproval || hasNaturalApproval)
   ) {
     return {
       sourceMessageId,
-      scope,
+      scope: tempScope,
       remainingUses: 1,
       tempCredentials: {
         provider: "aws",
@@ -722,6 +723,10 @@ export function extractExternalExecConsent(
         expiresAt,
       },
     };
+  }
+
+  if (!scope || (!hasStructuredApproval && (!hasNaturalApproval || hasNaturalDenial))) {
+    return undefined;
   }
 
   const creds = getStructuredFieldValue(text, EXTERNAL_EXEC_CREDS_FIELD_NAMES)?.toLowerCase();

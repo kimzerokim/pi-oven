@@ -320,10 +320,10 @@ describe("decideGate — external execution consent", () => {
     expect(allowed.consumeExternalExecConsent).toBe(true);
   });
 
-  it("allows matching AWS temporary credentials until expiresAt without consuming parent-only consent", () => {
+  it("allows matching AWS temporary credentials at access scope for read commands until expiresAt without consuming parent-only consent", () => {
     const allowed = decideGate(
       input(tempCommand, {
-        externalExecConsent: tempConsent("read"),
+        externalExecConsent: tempConsent("access"),
       })
     );
     expect(allowed.block).toBe(false);

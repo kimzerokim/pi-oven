@@ -74,6 +74,15 @@ describe("RulesInjector — inject (AC3 step 1)", () => {
     expect(block).toContain("pre-commit gate has PASSED");
     expect(block).toContain("verifier risk matrix");
   });
+
+  it("documents pasted AWS temporary bundle auto-accept only for matching read/access use", () => {
+    const inj = new RulesInjector();
+    inj.setPhase("BUILD");
+    const block = inj.buildSystemPromptBlock();
+    expect(block).toContain("still-valid pasted AWS temporary bundle");
+    expect(block).toContain("matching read/access use");
+    expect(block).toContain("mutation/all still require explicit");
+  });
 });
 
 describe("RulesInjector — preserve (AC3 step 2)", () => {

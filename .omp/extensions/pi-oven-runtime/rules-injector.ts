@@ -246,14 +246,15 @@ export class RulesInjector {
       "- Destructive `rm -rf` of repo/HOME roots and inline secret literals are",
       "  always blocked (this floor is never lifted).",
       "- External infra/production commands are blocked unless the latest user",
-      "  message explicitly approves a direct external read/access/mutation/all",
-      "  command in natural language.",
+      "  message explicitly approves a direct external mutation/all command in",
+      "  natural language, or provides a still-valid pasted AWS temporary bundle",
+      "  for matching read/access use.",
       "- Local credential files already on the machine may be used only while",
       "  that latest-message consent is active, and only for read/access scopes.",
-      "- Pasted credentials stay blocked unless the latest user message also",
-      "  explicitly approves mutation/all scope and includes the full unexpired",
-      "  AWS temporary bundle (`ASIA...` + secret access key + session token +",
-      "  matching fingerprints + `expiresAt`).",
+      "- Pasted AWS temporary bundles auto-authorize only matching direct",
+      "  external read/access commands; mutation/all still require explicit",
+      "  scope wording plus the full unexpired bundle (`ASIA...` + secret access",
+      "  key + session token + matching fingerprints + `expiresAt`).",
     ];
     if (this.reminder !== null) {
       lines.push("", "Current autonomous reminder:", `- ${this.reminder}`);

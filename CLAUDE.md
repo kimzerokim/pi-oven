@@ -88,7 +88,7 @@ bun run release:pi-oven -- --bump patch --dry-run  # release automation (safe de
 
 ## Status
 
-**Current: v0.1.19** — routes runtime skill-first guidance through exact plugin-owned `SKILL.md` targets instead of unresolved namespaced skill aliases, treats `/pi-oven:setup` as command-only via `commands/setup.md`, and removes stale `@oh-my-pi/pi-tui` test mocks so the full suite runs cleanly with the installed package API.
+**Current: v0.1.24** — routes runtime skill-first guidance through exact plugin-owned `SKILL.md` targets instead of unresolved namespaced skill aliases, treats `/pi-oven:setup` as command-only via `commands/setup.md`, and removes stale `@oh-my-pi/pi-tui` test mocks so the full suite runs cleanly with the installed package API.
 
 **Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@kzk (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 

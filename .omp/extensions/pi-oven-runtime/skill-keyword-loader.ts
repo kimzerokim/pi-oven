@@ -240,7 +240,7 @@ export interface SkillKeywordIndexEntry {
 
 export interface MatchedSkill {
   name: string;
-  matchedPhrases: string[];
+  rawMatchedPhrases: string[];
   ownedReadTarget: string;
 }
 
@@ -307,11 +307,11 @@ export function matchSkillsForText(
   const normalizedText = normalizeText(text);
   return index
     .map((entry) => {
-      const matchedPhrases = entry.phrases.filter((phrase) =>
+      const rawMatchedPhrases = entry.phrases.filter((phrase) =>
         normalizedText.includes(normalizeText(phrase))
       );
-      return matchedPhrases.length > 0
-        ? { name: entry.name, matchedPhrases, ownedReadTarget: entry.ownedReadTarget }
+      return rawMatchedPhrases.length > 0
+        ? { name: entry.name, rawMatchedPhrases, ownedReadTarget: entry.ownedReadTarget }
         : null;
     })
     .filter((entry): entry is MatchedSkill => entry !== null)
@@ -419,6 +419,7 @@ export function updateSkillKeywordLoaderOnTurnStart(
   return { lastUserMessageId: latestUserId, matchedSkills };
 }
 
+
 export function buildKeywordMatchedSkillsPrompt(matchedSkills: MatchedSkill[]): string | null {
   if (matchedSkills.length === 0) return null;
 
@@ -436,11 +437,12 @@ export function buildKeywordMatchedSkillsPrompt(matchedSkills: MatchedSkill[]): 
     "- `skillReads` is the proof log that unlocks code-write once the exact targets above are read.",
     "- Bootstrap message injection and tool remap are NOT control-plane paths in pi-oven.",
     "Preserve all non-conflicting rules across the matched skills. If two skills conflict, prefer the more specific one.",
+    "Interpret provider/model wording inside the raw matched phrases below as debugging evidence only; the normative rule remains the symbolic current-session-provider-family policy.",
     "",
   ];
   for (const skill of matchedSkills) {
     lines.push(
-      `- \`${skill.ownedReadTarget}\` — pi-oven skill \`${skill.name}\`, matched by: ${skill.matchedPhrases.join(", ")}`
+      `- \`${skill.ownedReadTarget}\` — pi-oven skill \`${skill.name}\`, matched by: ${Array.from(new Set(skill.rawMatchedPhrases)).join(", ")}`
     );
   }
   if (getCapabilitiesByTag("deep-interview").includes("ask")) {
@@ -448,7 +450,7 @@ export function buildKeywordMatchedSkillsPrompt(matchedSkills: MatchedSkill[]): 
       "",
       "### Native deep-interview routing",
       "- When ambiguity or a user-owned decision remains, route it through `pi-oven_ask`.",
-      "- Supply structured `deepInterview` metadata so approval handoff and resume state persist in the native runtime."
+      "- Supply structured `deepInterview` metadata so topology confirmation, milestone bands, weakest-target selection, threshold tracking, spec persistence, approval handoff, and resume state persist in the native runtime."
     );
   }
   return lines.join("\n");

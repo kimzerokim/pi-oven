@@ -118,12 +118,11 @@ Any response that does not match this pattern triggers `Q-VERIFIER-INVALID`.
 
 ---
 
-## Model routing
+## Provider-family routing
 
-- **Sonnet baseline** — targeted implementation verifier on non-UI, non-release, non-high-risk changes.
-- **Opus** — heavy 4-sub-check verifier for UI-heavy, cycle-exit, release-like, or high-risk-domain changes.
-
-The `agents/pi-oven-verifier.md` profile defaults to `model: sonnet`. Promote to Opus whenever the risk matrix selects the heavy path.
+- Default verifier dispatch stays inside the current session provider family.
+- Heavy-path verification may widen to a stronger verifier configuration only within that same provider family.
+- Do not require a cross-provider handoff just to satisfy the matrix. If the current family cannot supply the needed verifier after retry, report BLOCK rather than inventing a different-family requirement.
 
 ---
 

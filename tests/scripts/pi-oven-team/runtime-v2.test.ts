@@ -4,7 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { readTeamConfig } from "../../../scripts/pi-oven-team/team-config";
 import { startTeamV2 } from "../../../scripts/pi-oven-team/runtime-v2";
-import type { TeamTmuxController } from "../../../scripts/pi-oven-team/types";
+import type { TeamRuntimeLaneMetadata, TeamTmuxController } from "../../../scripts/pi-oven-team/types";
 
 let cwd = "";
 
@@ -273,19 +273,102 @@ describe("pi-oven-team/runtime-v2", () => {
         return { ok: true };
       },
     });
-
     const persisted = readTeamConfig("native-team", cwd);
     const runtimeEvidence = readStartupEvidence(runtime.config);
     const persistedEvidence = readStartupEvidence(persisted);
     expect(events.indexOf("split:%2:down:%3")).toBeGreaterThan(-1);
     expect(events.indexOf("split:%2:down:%3")).toBeLessThan(events.indexOf("dispatch:worker-1:%2"));
     expect(runtimeEvidence).toMatchObject({
-      fanoutLatencyMs: expect.any(Number),
-      sequentialComparableLatencyMs: expect.any(Number),
-      startupImprovementRatio: expect.any(Number),
+      fanoutLatencyMs: 4,
+      sequentialComparableLatencyMs: 7,
+      startupImprovementRatio: 1.75,
+      benchmark: {
+        model: "synthetic-barrier-units-v1",
+        reservation: {
+          sequentialUnits: 2,
+          criticalPathUnits: 1,
+          overlapUnits: 1,
+        },
+        persistence: {
+          sequentialUnits: 3,
+          criticalPathUnits: 2,
+          overlapUnits: 1,
+        },
+        spawn: {
+          sequentialUnits: 2,
+          criticalPathUnits: 1,
+          overlapUnits: 1,
+        },
+        totalSequentialUnits: 7,
+        totalCriticalPathUnits: 4,
+      },
     });
-    expect(Number(persistedEvidence?.fanoutLatencyMs)).toBeGreaterThanOrEqual(0);
-    expect(Number(persistedEvidence?.sequentialComparableLatencyMs)).toBeGreaterThan(0);
-    expect(Number(persistedEvidence?.startupImprovementRatio)).toBeGreaterThan(1);
+    expect(persistedEvidence).toMatchObject({
+      fanoutLatencyMs: 4,
+      sequentialComparableLatencyMs: 7,
+      startupImprovementRatio: 1.75,
+    });
+  });
+
+  it("keeps dependency-bearing writer lanes behind independent verification startup lanes", async () => {
+    const events: string[] = [];
+    const verificationLane = {
+      kind: "verification",
+      objective: "verify startup batch independence",
+      independence_reason: "verification lanes read state only",
+      shared_state_policy: "read_only",
+      output_schema: "verification_report",
+      reducer: "append_results",
+    } as const;
+    const ownedWriteLane: TeamRuntimeLaneMetadata = {
+      kind: "owned_write",
+      objective: "apply startup overlay",
+      independence_reason: "writer owns a unique overlay target",
+      shared_state_policy: "exclusive_write",
+      output_schema: "owned_write_result",
+      reducer: "owned_write_commit",
+      persistence_claims: [{ surface: "worker_overlay", key: "overlay-a" }],
+    };
+
+    const runtime = await startTeamV2({
+      teamName: "native-team",
+      workerCount: 3,
+      agentType: "claude",
+      tasks: [
+        { subject: "Task A", description: "Do A", lane: ownedWriteLane },
+        { subject: "Task B", description: "Do B", blocked_by: ["1"], lane: verificationLane },
+        { subject: "Task C", description: "Do C", lane: verificationLane },
+      ],
+      cwd,
+      tmux: makeTmuxController(events),
+      buildWorkerStart: ({ workerName }) => ({ command: `run-${workerName}` }),
+      dispatchStartup: async ({ workerName, paneId }) => {
+        events.push(`dispatch:${workerName}:${paneId}`);
+        return { ok: true };
+      },
+    });
+
+    const startupEvidence = readStartupEvidence(runtime.config);
+    expect(events.indexOf("dispatch:worker-3:%3")).toBeGreaterThan(-1);
+    expect(events.indexOf("dispatch:worker-3:%3")).toBeLessThan(events.indexOf("dispatch:worker-2:%4"));
+    expect(startupEvidence).toMatchObject({
+      fanoutLatencyMs: 7,
+      sequentialComparableLatencyMs: 10,
+      startupImprovementRatio: 1.429,
+      collisionEvidence: [
+        "worker_dir:worker-1",
+        "task_file:1",
+        "worker_overlay:overlay-a",
+        "worker_dir:worker-3",
+        "task_file:3",
+        "worker_dir:worker-2",
+        "task_file:2",
+      ],
+      reducerOrder: [
+        "owned_write_commit",
+        "append_results",
+        "append_results",
+      ],
+    });
   });
 });

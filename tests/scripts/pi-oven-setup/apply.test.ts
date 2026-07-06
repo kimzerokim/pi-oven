@@ -261,7 +261,7 @@ describe("runApply", () => {
     }
   });
 
-  it("runApply WITHOUT agentsDir writes codex-only release-default orchestrator values + empty runtime fallbacks for profile A", async () => {
+  it("runApply WITHOUT agentsDir writes codex-only release-default orchestrator values + empty visibility fallback chains for profile A", async () => {
     const { spawnCalls, mockSpawnFn } = makeUserPathSpawn();
 
     await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
@@ -414,9 +414,12 @@ describe("runApply", () => {
     expect(result.exitCode).toBe(1);
   });
 
-  it("output message references profile letter on success", async () => {
-    const mockSpawnFn = (_cmd: string, _args: string[]) =>
-      ({ exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any);
+  it("output marks setup as applied, not runtime-active", async () => {
+    const mockSpawnFn = (_cmd: string, _args: string[]) => ({
+      exitCode: 0,
+      stdout: Buffer.from("ok"),
+      stderr: Buffer.from(""),
+    });
 
     populateAgents(agentsDir, PROFILE_A);
 
@@ -426,7 +429,8 @@ describe("runApply", () => {
       spawnFn: mockSpawnFn,
       agentsDir,
     });
-    expect(result.output).toContain("B");
+    expect(result.output).toContain("Profile B setup applied.");
+    expect(result.output).not.toContain("Profile B active.");
   });
 
   it("output message references profile letter on validation failure", async () => {
@@ -1050,7 +1054,7 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     expect(result.output).toContain(projectSettingsPath(cwd));
   });
 
-  it("project-scope output tells the user that global prerequisites still need a separate global step and shows the explicit control-plane contract", async () => {
+  it("project-scope output says setup/status are visibility/guard layers and still shows the explicit control-plane contract", async () => {
     const { mockSpawnFn } = makeRecordingSpawn();
     const result = await runApply({
       profile: "A",
@@ -1068,6 +1072,8 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     expect(result.output).toContain("/pi-oven:setup --repair-prereqs");
     expect(result.output).toContain("control-plane front door");
     expect(result.output).toContain("Only temporary adapter boundary remains");
+    expect(result.output).toContain("visibility/guard layers only");
+    expect(result.output).toContain("runtime still owns current-session provider-family choice");
   });
 
   it("scope:global (default) still writes via omp config and does NOT create a project file", async () => {

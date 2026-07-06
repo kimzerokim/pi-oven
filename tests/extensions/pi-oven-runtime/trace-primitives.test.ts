@@ -36,18 +36,17 @@ describe("trace-primitives", () => {
       ["active", "gateCache", "continuationMarker"]
     );
 
-    expect(changes.map((entry) => entry.key)).toEqual([
-      "active",
-      "gateCache",
-      "continuationMarker",
-    ]);
+    expect(changes.map((entry) => entry.key)).toEqual(["active", "gateCache", "continuationMarker"]);
   });
 
-  it("tracks nested routing approval state as first-class runtime evidence", () => {
+  it("tracks approvalFlow and spec receipt changes as first-class runtime evidence", () => {
     const changes = listChangedRuntimeState(
       {
         deepInterview: {
-          approvalHandoff: { status: "pending" },
+          spec: undefined,
+        },
+        approvalFlow: {
+          status: "pending",
           routingApproval: {
             approvals: {
               executor: {
@@ -59,7 +58,12 @@ describe("trace-primitives", () => {
       },
       {
         deepInterview: {
-          approvalHandoff: { status: "approved" },
+          spec: {
+            path: "docs/specs/2026-07-06-workflow-optimization-design.md",
+          },
+        },
+        approvalFlow: {
+          status: "approved",
           routingApproval: {
             approvals: {
               executor: {
@@ -70,21 +74,27 @@ describe("trace-primitives", () => {
         },
       },
       [
-        "deepInterview.approvalHandoff.status",
-        "deepInterview.routingApproval.approvals.executor.selectedSelector",
+        "approvalFlow.status",
+        "approvalFlow.routingApproval.approvals.executor.selectedSelector",
+        "deepInterview.spec.path",
       ]
     );
 
     expect(changes).toEqual([
       expect.objectContaining({
-        key: "deepInterview.approvalHandoff.status",
+        key: "approvalFlow.status",
         before: "pending",
         after: "approved",
       }),
       expect.objectContaining({
-        key: "deepInterview.routingApproval.approvals.executor.selectedSelector",
+        key: "approvalFlow.routingApproval.approvals.executor.selectedSelector",
         before: undefined,
         after: "openai-codex/gpt-5.5:high",
+      }),
+      expect.objectContaining({
+        key: "deepInterview.spec.path",
+        before: undefined,
+        after: "docs/specs/2026-07-06-workflow-optimization-design.md",
       }),
     ]);
   });
@@ -119,5 +129,4 @@ describe("trace-primitives", () => {
     expect(failure.summary).toContain("symbols=pi-oven:verifier");
     expect(failure.summary).toContain("state=gateCache.commit,gateCache.regression");
   });
-
 });

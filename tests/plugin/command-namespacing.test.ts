@@ -4,6 +4,7 @@ import path from "node:path";
 
 const COMMANDS_DIR = path.resolve(__dirname, "../../commands");
 const README_PATH = path.resolve(__dirname, "../../README.md");
+const CLAUDE_PATH = path.resolve(__dirname, "../../CLAUDE.md");
 const commandFiles = fs.readdirSync(COMMANDS_DIR).filter((file) => file.endsWith(".md"));
 function findForbiddenResolverPatterns(text: string): string[] {
   return [
@@ -39,17 +40,28 @@ describe("command file namespacing", () => {
     expect(findForbiddenResolverPatterns(fs.readFileSync(README_PATH, "utf8"))).toEqual([]);
   });
 
-  it("doctor and setup docs reflect the current auth and prerequisite contract", () => {
+  it("doctor, setup, README, and CLAUDE docs reflect the current runtime-owned routing contract", () => {
     const doctorText = fs.readFileSync(path.join(COMMANDS_DIR, "doctor.md"), "utf8");
     const setupText = fs.readFileSync(path.join(COMMANDS_DIR, "setup.md"), "utf8");
     const readmeText = fs.readFileSync(README_PATH, "utf8");
+    const claudeText = fs.readFileSync(CLAUDE_PATH, "utf8");
 
     expect(doctorText).toContain("The `provider auth` check FAILs");
     expect(doctorText).not.toContain("The `provider auth` check WARNs");
     expect(doctorText).toContain("/pi-oven:setup --repair-prereqs");
+    expect(doctorText).toContain("runtime still owns the current-session provider-family choice");
+
     expect(setupText).toContain("--repair-prereqs");
     expect(setupText).toContain("This path is **global-only**");
+    expect(setupText).toContain("affordances: { other: false, askAboutChoices: true }");
+    expect(setupText).not.toContain("It takes no other arguments");
+
     expect(readmeText).toContain("/pi-oven:doctor");
     expect(readmeText).toContain("/pi-oven:release --bump patch --dry-run --update-changelog --sync-label");
+    expect(readmeText).toContain("approvalFlow");
+    expect(readmeText).toContain("Ask about these choices");
+
+    expect(claudeText).toContain("approvalFlow");
+    expect(claudeText).toContain("askAboutChoices");
   });
 });

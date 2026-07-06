@@ -151,7 +151,7 @@ describe("runStatus", () => {
     expect(result.output).toContain("override");
   });
 
-  it("status warns on unresolved override (미해소 fallback warning)", async () => {
+  it("status warns on unresolved override without claiming runtime fallback", async () => {
     for (const role of ROLES) {
       makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
     }
@@ -171,8 +171,9 @@ describe("runStatus", () => {
       { id: "opencode-zen/claude-opus-4-8" },
     ]) });
     expect(result.exitCode).toBe(0);
-    // Should warn about unresolvable override
-    expect(result.output).toMatch(/미해소|fallback|unresolved/i);
+    expect(result.output).toMatch(/미해소|unresolved/i);
+    expect(result.output).toMatch(/runtime.*(refuse|diagnose)|거부|진단/i);
+    expect(result.output).not.toMatch(/session default.*fallback/i);
   });
 
   it("status resolves model selectors with reasoning effort suffixes by base model id", async () => {
@@ -306,7 +307,7 @@ describe("runStatus — project layer", () => {
     );
   }
 
-  it("header names both files + precedence note + project-file presence", async () => {
+  it("header names both files + precedence note + visibility-layer ownership boundary", async () => {
     seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } } });
     const spawnFn = makeSpawnFn({ overrides: {} });
 
@@ -315,6 +316,8 @@ describe("runStatus — project layer", () => {
     expect(result.output).toContain("config.yml");
     expect(result.output).toMatch(/project wins per role/i);
     expect(result.output).toMatch(/present/i);
+    expect(result.output).toMatch(/visibility\/guard only/i);
+    expect(result.output).toMatch(/runtime owns current-session provider-family choice/i);
   });
 
   it("header reports the project file ABSENT when there is none", async () => {

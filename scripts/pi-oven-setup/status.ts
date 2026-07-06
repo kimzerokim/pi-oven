@@ -45,11 +45,11 @@ export async function runStatus(
       ? "absent"
       : "present but unreadable/corrupt";
 
-  lines.push("Effective model overrides — two layers, project wins per role:");
+  lines.push("Configured model layers — visibility/guard only; project wins per role:");
   lines.push(`  project: ${projectState.file} (${projectFileLabel})`);
   lines.push("  override: machine-global (~/.omp/agent/config.yml)");
   lines.push("  default:  agent-file frontmatter");
-  lines.push("");
+  lines.push("  note: runtime owns current-session provider-family choice");
 
   const overrides = await readAgentModelOverrides(opts);
   const projectOverrides = extractProjectOverrides(projectState);
@@ -84,7 +84,7 @@ export async function runStatus(
 
       if (opts?.listModelsOutput !== undefined && !isModelInList(projectModel, opts.listModelsOutput)) {
         unresolvedWarnings.push(
-          `  WARNING: project override ${role}=${projectModel} 미해소 — session default 로 fallback 중`
+          `  WARNING: project override ${role}=${projectModel} 미해소 — visibility layer only; runtime must diagnose/refuse unsupported mapping`
         );
       }
     } else if (overrideModel !== undefined) {
@@ -93,7 +93,7 @@ export async function runStatus(
 
       if (opts?.listModelsOutput !== undefined && !isModelInList(overrideModel, opts.listModelsOutput)) {
         unresolvedWarnings.push(
-          `  WARNING: override ${role}=${overrideModel} 미해소 — session default 로 fallback 중`
+          `  WARNING: override ${role}=${overrideModel} 미해소 — visibility layer only; runtime must diagnose/refuse unsupported mapping`
         );
       }
     } else if (frontmatterModel !== undefined) {

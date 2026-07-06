@@ -8,9 +8,9 @@ Source: spec-and-review (harness-share.md §22 + §22.5), ported to pi-oven omp 
 
 | Cycle | Draft agent | Critic dispatch | Synthesize | Gate |
 |---|---|---|---|---|
-| 1 | `task(model="sonnet")` — full draft | Fan-out: Codex + Zen simultaneously | Merge + categorize | PASS / CONTINUE / HALT |
-| 2 | `task(model="sonnet")` — revise with cycle-1 verdict | Fan-out: Codex + Zen simultaneously | Merge + categorize | PASS / CONTINUE / HALT |
-| N ≥ 2 | Same as cycle 2; include cycle N-1 verdict in prompt | Fan-out: Codex + Zen simultaneously | Merge + categorize | PASS / CONTINUE / HALT |
+| 1 | `task(...)` — full draft by a fresh draft subagent | Default: one fresh same-provider-family critic; high-risk exception: widen to same-family critics in parallel | Merge + categorize | PASS / CONTINUE / HALT |
+| 2 | `task(...)` — revise with cycle-1 verdict | Default: one fresh same-provider-family critic; high-risk exception: widen to same-family critics in parallel | Merge + categorize | PASS / CONTINUE / HALT |
+| N ≥ 2 | Same as cycle 2; include cycle N-1 verdict in prompt | Default: one fresh same-provider-family critic; high-risk exception: widen to same-family critics in parallel | Merge + categorize | PASS / CONTINUE / HALT |
 | ≥ 5 | Same | Same | Same | HALT if BLOCKERs remain |
 
 Main agent role in all cycles: dispatch and collect only. Main does not write draft content inline beyond ≤5 LoC exceptions.
@@ -21,8 +21,7 @@ Main agent role in all cycles: dispatch and collect only. Main does not write dr
 
 ```
 task(
-  prompt: "Draft a spec for <topic>. Survey report: <path>. Write to docs/plans/<name>.md.",
-  model: "sonnet"
+  prompt: "Draft a spec for <topic>. Survey report: <path>. Write to docs/plans/<name>.md."
 )
 ```
 
@@ -51,8 +50,7 @@ Required resolutions (BLOCKERs from cycle N-1):
   B-2: <description> → <required resolution>
 
 Write the revised spec in-place. Do not change the filename.
-""",
-  model: "sonnet"
+"""
 )
 ```
 
@@ -62,10 +60,10 @@ Do not pass the full cycle N-1 document verbatim into the prompt — pass the pa
 
 ## Critic prompt skeleton
 
-Send this prompt to both providers (Codex and Zen GLM/Qwen). Substitute `<...>` fields. Do not truncate the IMPORTANT directive.
+Send this prompt to the fresh critic dispatched by default, or to each critic in the widened same-provider-family lane. Substitute `<...>` fields. Do not truncate the IMPORTANT directive.
 
 ```
-IMPORTANT: You are a brutally honest cross-vendor critic. Your job is to find
+IMPORTANT: You are a brutally honest design critic. Your job is to find
 flaws, not to validate. If the design is good, say so briefly and move on.
 Do not soften findings to be polite. Do not invent praise.
 
@@ -109,24 +107,24 @@ Do not add a summary paragraph. Do not add a preamble. Start with item 1.
                                  │
               ┌──────────────────▼──────────────────┐
               │         draft subagent               │
-              │   task(model="sonnet") — cycle 1     │
+              │        task(...) — cycle 1           │
               │   writes docs/plans/<name>.md        │
               └──────────────────┬──────────────────┘
                                  │  draft complete
               ┌──────────────────▼──────────────────┐
-              │       parallel critic fan-out        │
+              │       same-family critic lane        │
               │                                      │
-              │  task(model="codex")  task(model="zen") │
-              │        ↓                    ↓        │
-              │  Codex findings      Zen GLM/Qwen    │
-              │                      findings        │
+              │   default: critic A                 │
+              │   high-risk widen: critic A + B     │
+              │                                      │
+              │      findings from required lane(s) │
               └──────────────────┬──────────────────┘
-                                 │  both complete
+                                 │  required lane(s) complete
               ┌──────────────────▼──────────────────┐
               │            synthesize                │
               │  merge findings → 🔴 / 🟡 / ⚪      │
-              │  write docs/plans/<name>-critic-     │
-              │  review[-N].md                       │
+              │  write docs/plans/<name>-critic-    │
+              │  review[-N].md                      │
               └──────────────────┬──────────────────┘
                                  │
               ┌──────────────────▼──────────────────┐
@@ -139,14 +137,13 @@ Do not add a summary paragraph. Do not add a preamble. Start with item 1.
 
 ---
 
-## Single-provider fallback rule
+## Optional widened-lane fallback rule
 
-If one provider's `task` call fails after one retry:
+If a high-risk widened critic route is requested and the second critic task fails after one retry, or the current session provider family cannot supply a second independent critic:
 
-- Do not treat a single-provider result as a full PASS.
-- Mark the verdict file header: `Critic: single-provider (fallback)`.
-- Gate outcome is capped at CONTINUE regardless of BLOCKER count.
-- Log the failure reason in the verdict file under `## Provider failures`.
+- Collapse back to the same-family single-critic path and synthesize the surviving verdict.
+- Mark the verdict file header: `Critic route: same-family single critic (fallback from widened route)`.
+- Log the failure reason in the verdict file under `## Critic route failures`.
 
 ---
 
@@ -158,7 +155,7 @@ Cycle 1:
 
 Cycle: 1
 Date: <YYYY-MM-DD>
-Critic: codex + zen
+Critic route: same-family single critic
 BLOCKERs resolved since N-1: n/a
 ```
 
@@ -168,10 +165,12 @@ Cycle N ≥ 2:
 
 Cycle: N
 Date: <YYYY-MM-DD>
-Critic: codex + zen
+Critic route: same-family single critic
 Previous: docs/plans/<name>-critic-review-<N-1>.md
 BLOCKERs resolved since N-1: <count>
 ```
+
+When the high-risk widened route is used, replace the route line with `Critic route: same-family parallel critics (high-risk disagreement check)` or the fallback variant above.
 
 ---
 
@@ -179,7 +178,7 @@ BLOCKERs resolved since N-1: <count>
 
 | # | Pattern | Why it fails |
 |---|---|---|
-| 1 | **Single-provider PASS** | One model's blind spots are another's obvious finding. Fan-out is mandatory. |
+| 1 | **Mandatory parallel fan-out** | The approved contract defaults to one fresh same-family critic. Widen only when the review is high-risk and needs an explicit disagreement check. |
 | 2 | **Main drafts inline** | Main conflates orchestration and authorship. Subagent isolation keeps context clean. |
 | 3 | **Soft critic prompt** | "Please review and suggest improvements" produces validation, not critique. Use the brutally honest skeleton verbatim. |
 | 4 | **PUSH-BACK re-litigation** | Acting on ⚪ PUSH-BACK overrides locked decisions. Log it, do not resolve it. |

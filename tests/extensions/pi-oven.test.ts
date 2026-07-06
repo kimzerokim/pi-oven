@@ -18,6 +18,7 @@ const {
   validateAgentRegistry,
   getAllowedPrefixes,
   captureSessionModel,
+  resolveSessionProviderFamily,
   buildSetupChecklistNotice,
   readSetupComplete,
   countProjectRoutingRoles,
@@ -318,6 +319,20 @@ describe("applyOrchestratorConduct", () => {
     expect(out[0]).toContain("ownedSkillReadTargets");
     expect(out[0]).toContain("externalExecConsent");
   });
+
+  it("parent conduct help stays provider-family symbolic and omits named-model workflow lore", () => {
+    const inj = new RulesInjector();
+    const out = applyOrchestratorConduct([], inj, {
+      isParentSession: true,
+      autonomousActive: false,
+    });
+    expect(out[0]).toContain("pi-oven_ask");
+    expect(out[0]).toContain("deepInterview");
+    expect(out[0]).not.toMatch(/\bcodex\b/i);
+    expect(out[0]).not.toMatch(/\bzen\b/i);
+    expect(out[0]).not.toMatch(/\bopus\b/i);
+    expect(out[0]).not.toMatch(/\bsonnet\b/i);
+  });
 });
 
 describe("extractExplicitForeignAgents", () => {
@@ -345,12 +360,15 @@ describe("captureSessionModel", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("writes pi-oven-session-model.json when model is provided", async () => {
+  it("writes pi-oven-session-model.json with the governing provider family when model is provided", async () => {
     const targetPath = join(tempDir, "pi-oven-session-model.json");
     await captureSessionModel("anthropic/claude-sonnet-4-6", targetPath);
 
     const content = JSON.parse(readFileSync(targetPath, "utf-8")) as SessionModelCapture;
     expect(content.model).toBe("anthropic/claude-sonnet-4-6");
+    expect(content.sessionProviderFamily).toBe("anthropic");
+    expect(content.supportedForRouting).toBe(true);
+    expect(content.diagnostic).toBeUndefined();
     expect(typeof content.capturedAt).toBe("number");
     expect(content.capturedAt).toBeGreaterThan(0);
   });
@@ -364,10 +382,41 @@ describe("captureSessionModel", () => {
     expect(content.model).toBe("opencode-zen/gpt-5.3-codex");
   });
 
+  it("records unsupported runtime provider families with an explicit diagnostic instead of failing open", async () => {
+    const targetPath = join(tempDir, "pi-oven-session-model.json");
+    await captureSessionModel("google/gemini-2.5-pro", targetPath);
+
+    const content = JSON.parse(readFileSync(targetPath, "utf-8")) as SessionModelCapture;
+    expect(content.sessionProviderFamily).toBe("google");
+    expect(content.supportedForRouting).toBe(false);
+    expect(content.diagnostic).toContain('Current session provider family "google" is unsupported');
+  });
+
   it("is safe when targetPath directory does not exist — recursive:true ensures success", async () => {
     const badPath = join(tempDir, "nonexistent-subdir", "pi-oven-session-model.json");
     await captureSessionModel("anthropic/claude-sonnet-4-6", badPath);
     expect(existsSync(badPath)).toBe(true);
+  });
+});
+
+describe("resolveSessionProviderFamily", () => {
+  it("derives the current-session provider family from the captured parent model id", () => {
+    expect(resolveSessionProviderFamily("opencode-zen/kimi-k2.6")).toEqual(
+      expect.objectContaining({
+        sessionProviderFamily: "opencode-zen",
+        supportedForRouting: true,
+      })
+    );
+  });
+
+  it("returns an explicit diagnostic when the parent session model id cannot be parsed", () => {
+    expect(resolveSessionProviderFamily("gpt-5.5")).toEqual(
+      expect.objectContaining({
+        sessionProviderFamily: null,
+        supportedForRouting: false,
+        diagnostic: 'Could not derive current session provider family from session model "gpt-5.5".',
+      })
+    );
   });
 });
 

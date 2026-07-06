@@ -45,6 +45,38 @@ describe("pi-oven-team/lane-policy", () => {
     ).toThrow(/collision/i);
   });
 
+  it("allows mixed owned-write and read-only lanes when the writer claims a unique target", () => {
+    expect(() =>
+      assertLaneBatchIsIndependent([
+        ownedWriteClaim("task-7"),
+        {
+          kind: "verification",
+          objective: "verify after write",
+          independence_reason: "verification lanes read state only",
+          shared_state_policy: "read_only",
+          output_schema: "verification_report",
+          reducer: "append_results",
+        },
+      ])
+    ).not.toThrow();
+  });
+
+  it("rejects read-only lanes that try to claim mutable persistence", () => {
+    expect(() =>
+      assertLaneBatchIsIndependent([
+        {
+          kind: "verification",
+          objective: "verify after write",
+          independence_reason: "verification lanes read state only",
+          shared_state_policy: "read_only",
+          output_schema: "verification_report",
+          reducer: "append_results",
+          persistence_claims: [{ surface: "task_file", key: "task-7" }],
+        },
+      ])
+    ).toThrow(/must not claim mutable persistence surfaces/i);
+  });
+
   it("freezes the current persistence surfaces before scheduler refactors", () => {
     expect(TEAM_RUNTIME_PERSISTENCE_CONTRACT.team_config).toMatchObject({
       path_template: ".pi-oven/state/team/<teamName>/config.json",

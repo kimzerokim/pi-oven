@@ -335,6 +335,48 @@ describe("GateStateStore — mtime stale-cache invalidation (AC8c)", () => {
       expect(a.state.gateCache.commit).toBe(b.state.gateCache.commit);
     }
   });
+
+  it("writeState refreshes the in-memory cache with the written state", async () => {
+    const store = new GateStateStore(dir);
+    await store.writeState({ active: true, gateCache: { commit: "PASS" }, version: 1, schemaVersion: 1 });
+
+    const cacheValue = Reflect.get(store, "cache");
+    expect(cacheValue).not.toBeNull();
+    expect(cacheValue && typeof cacheValue === "object").toBe(true);
+    if (!cacheValue || typeof cacheValue !== "object" || !("view" in cacheValue)) return;
+    const view = cacheValue.view;
+    expect(view && typeof view === "object").toBe(true);
+    if (!view || typeof view !== "object" || !("kind" in view) || !("state" in view)) return;
+    expect(view.kind).toBe("OK");
+    expect(view.state && typeof view.state === "object" && "gateCache" in view.state).toBe(true);
+  });
+
+  it("writeState caches an immutable snapshot instead of the caller-owned object", async () => {
+    const store = new GateStateStore(dir);
+    const input: FsmState = {
+      active: true,
+      gateCache: { commit: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      skillReads: [],
+    };
+
+    await store.writeState(input);
+    input.gateCache.commit = "FAIL";
+    input.skillReads?.push("/plugin/skills/autonomous-loop/SKILL.md");
+
+    const view = await store.readState();
+    expect(view.kind).toBe("OK");
+    if (view.kind !== "OK") return;
+
+    expect(view.state).not.toBe(input);
+    expect(view.state.gateCache.commit).toBe("PASS");
+    expect(view.state.skillReads ?? []).toEqual([]);
+    expect(JSON.parse(readFileSync(statePath(dir), "utf-8"))).toMatchObject({
+      gateCache: { commit: "PASS" },
+      skillReads: [],
+    });
+  });
 });
 
 describe("GateStateStore — file push-consent (AC5 file source single-use)", () => {

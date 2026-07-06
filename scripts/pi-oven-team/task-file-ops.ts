@@ -32,6 +32,12 @@ export interface LockHandle {
   path: string;
 }
 
+export interface DependencyAwareBarrierBenchmark {
+  sequentialUnits: number;
+  criticalPathUnits: number;
+  overlapUnits: number;
+}
+
 export interface DependencyAwareBatchItem<T = undefined> {
   id: string;
   blockedBy: string[];
@@ -42,6 +48,7 @@ export interface DependencyAwareBatchItem<T = undefined> {
 
 export interface DependencyAwareBatchPlan<T = undefined> {
   batches: Array<Array<DependencyAwareBatchItem<T>>>;
+  barrierBenchmark: DependencyAwareBarrierBenchmark;
   reducerOrder: string[];
   collisionEvidence: string[];
 }
@@ -142,7 +149,13 @@ export function buildDependencyAwareBatches<T>(
     }
   }
 
-  return { batches, reducerOrder, collisionEvidence };
+  const barrierBenchmark: DependencyAwareBarrierBenchmark = {
+    sequentialUnits: items.length,
+    criticalPathUnits: batches.length,
+    overlapUnits: Math.max(0, items.length - batches.length),
+  };
+
+  return { batches, barrierBenchmark, reducerOrder, collisionEvidence };
 }
 
 export function acquireTaskLock(

@@ -1,14 +1,14 @@
 ---
 name: receiving-code-review
 version: 0.1.0
-description: "Read this skill when code review feedback arrives and you are about to act on it, including PR comments and cross-vendor review output. Evaluate before implementing: verify each item against this codebase, push back with technical reasoning when wrong, and YAGNI-check 'do it properly' suggestions."
+description: "Read this skill when code review feedback arrives and you are about to act on it, including PR comments and structured critic review output. Evaluate before implementing: verify each item against this codebase, push back with technical reasoning when wrong, and YAGNI-check 'do it properly' suggestions."
 ---
 
 # receiving-code-review
 
 ## When to use
 
-Whenever review feedback arrives and you are about to act on it — from the user, an external reviewer, a GitHub PR thread, or a cross-vendor `codex` review produced by `spec-and-review`. The obligation is the same in interactive and autonomous mode: feedback is input to **evaluate**, not a queue to **execute**.
+Whenever review feedback arrives and you are about to act on it — from the user, an external reviewer, a GitHub PR thread, or structured critic review produced by `spec-and-review`. The obligation is the same in interactive and autonomous mode: feedback is input to **evaluate**, not a queue to **execute**.
 
 **Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
 
@@ -45,9 +45,9 @@ Right: "I understand 1,2,3,6. Need clarification on 4 and 5 before implementing.
 
 **From the user** — trusted; implement after understanding. Still ask if scope is unclear. No performative agreement — skip to action or a one-line technical acknowledgment.
 
-**From external reviewers / cross-vendor codex** — these are suggestions, not orders. Before implementing, check: (1) technically correct for THIS codebase? (2) breaks existing functionality? (3) is there a reason the current implementation exists? (4) works on all targeted platforms/versions? (5) does the reviewer have full context? If a suggestion seems wrong, push back with technical reasoning. If you cannot verify, say so: "I can't verify this without [X]. Investigate / ask / proceed?" If it conflicts with the user's prior architectural decisions, stop and discuss first.
+**From external reviewers / structured critic output** — these are suggestions, not orders. Before implementing, check: (1) technically correct for THIS codebase? (2) breaks existing functionality? (3) is there a reason the current implementation exists? (4) works on all targeted platforms/versions? (5) does the reviewer have full context? If a suggestion seems wrong, push back with technical reasoning. If you cannot verify, say so: "I can't verify this without [X]. Investigate / ask / proceed?" If it conflicts with the user's prior architectural decisions, stop and discuss first.
 
-Cross-vendor codex from `spec-and-review` arrives triaged as 🔴 BLOCKER / 🟡 NIT / ⚪ push-back — the ⚪ tier is explicitly reasoned disagreement and is a valid outcome, not a failure to comply.
+Critic output from `spec-and-review` arrives triaged as 🔴 BLOCKER / 🟡 NIT / ⚪ push-back — the ⚪ tier is explicitly reasoned disagreement and is a valid outcome, not a failure to comply.
 
 ## YAGNI check for "do it properly"
 
@@ -89,8 +89,8 @@ In an omp session, route the evaluate-then-implement passes to the right agent i
 - **IMPLEMENT accepted items** (multi-file or non-trivial) → dispatch `pi-oven:executor`; keep authoring and reviewing in separate lanes (model routing per `large-task-delegation`).
 - **Re-review after implementing review feedback** (separate pass, never self-approve) → dispatch `pi-oven:code-reviewer` to confirm the fixes are sound and introduced no regressions.
 
-Cross-vendor codex review feedback originates from `spec-and-review`; this skill governs how to receive and act on it. Outside omp, the main agent runs the same evaluate → verify → implement passes inline.
+Structured critic review feedback from `spec-and-review` originates there; this skill governs how to receive and act on it. Outside omp, the main agent runs the same evaluate → verify → implement passes inline.
 
 ---
 
-Sources: `superpowers:receiving-code-review` (evaluate-don't-obey principle, forbidden-response list, YAGNI check). Adapted for pi-oven omp heterogeneous-model dispatch + cross-vendor codex 🔴/🟡/⚪ triage from `spec-and-review`.
+Sources: `superpowers:receiving-code-review` (evaluate-don't-obey principle, forbidden-response list, YAGNI check). Adapted for pi-oven omp dispatch + structured critic 🔴/🟡/⚪ triage from `spec-and-review`.

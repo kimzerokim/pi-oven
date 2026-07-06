@@ -289,19 +289,11 @@ describe("pi-oven-team/scaling", () => {
     expect(tmux.calls.indexOf("split:%2:down:%3")).toBeLessThan(tmux.calls.indexOf("dispatch:worker-2:%2"));
     const persisted = readTeamConfig("native-team", cwd);
     const startupEvidence = readStartupEvidence(persisted);
-    const startupImprovementRatio =
-      startupEvidence && "startupImprovementRatio" in startupEvidence
-        ? startupEvidence.startupImprovementRatio
-        : null;
     expect(startupEvidence).toMatchObject({
-      fanoutLatencyMs: expect.any(Number),
-      sequentialComparableLatencyMs: expect.any(Number),
-      startupImprovementRatio: expect.any(Number),
+      fanoutLatencyMs: 2,
+      sequentialComparableLatencyMs: 4,
+      startupImprovementRatio: 2,
     });
-    expect(typeof startupImprovementRatio).toBe("number");
-    if (typeof startupImprovementRatio === "number") {
-      expect(startupImprovementRatio).toBeGreaterThan(1);
-    }
   });
 
   it("rejects colliding owned-write scale-up lanes before spawning workers", async () => {

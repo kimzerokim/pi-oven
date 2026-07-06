@@ -318,10 +318,10 @@ export const PROFILE_B_ORCHESTRATOR: OrchestratorModels =
   PROFILE_CODEX_RELEASE_DEFAULT_ORCHESTRATOR;
 
 /**
- * Rate-limit failover chains for the orchestrator model roles, keyed by
+ * Visibility/guard fallback records for the orchestrator model roles, keyed by
  * modelRole name. Written to `retry.fallbackChains` by the user-setup apply
  * path. Empty arrays intentionally keep the codex-only release default from
- * routing usage-limit retries through opencode-zen.
+ * advertising alternate fallbacks through setup/status.
  */
 const PROFILE_CODEX_RELEASE_DEFAULT_FALLBACK_CHAINS: Record<string, string[]> = {
   default: [],
@@ -347,7 +347,7 @@ export const PROFILE_C_FALLBACK_CHAINS: Record<string, string[]> = {
 /**
  * Profile B — explicit codex-only selector profile.
  * Kept as a named profile even though the release default now shares the same
- * routing matrix and orchestrator/fallback policy.
+ * routing matrix and orchestrator/fallback records.
  */
 export const PROFILE_B: ProfileMap = PROFILE_CODEX_RELEASE_DEFAULT;
 

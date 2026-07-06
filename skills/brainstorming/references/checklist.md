@@ -33,6 +33,17 @@ Source: superpowers:brainstorming (ported to pi-oven)
 - **Convergence gate + question budget:** continue until every design dimension (Goals, Non-goals, Constraints, Data model, API surface, Open questions) is resolved or explicitly deferred by the user. Do not stop because you "feel" you have enough — track each dimension and keep questioning the unresolved ones. Ask **at least 15 and at most 100 questions** (one per turn): never present for approval before the 15-question floor, keep going until the gate is met, and hard-stop at the 100-question ceiling (mark any remaining dimensions OPEN)
 - **Stall rule:** if a dimension stops converging after a few rounds, surface the stall and ask the user to decide it directly or mark it OPEN
 
+### gajae-style interview semantics
+
+- **Round 0 topology confirmation:** first question confirms the component map, ownership boundaries, and where the requested change lands in the existing flow
+- **Weakest-target selection:** after Round 0, always question the weakest unresolved component first, then its weakest dimension (`goal`, `constraints`, `criteria`, `context`)
+- **Ambiguity math stays prompt-owned:** the interview prompt may compute ambiguity / confidence / weakest-target formulas, but runtime must only persist the resulting metadata and receipts
+- **Trigger taxonomy:** label why each question exists — topology, contradiction repair, scope collapse, edge-case forcing, ontology repair, weakest-target follow-up, closure/restate, or approval handoff
+- **Milestone bands:** advance only through `initial` → `progress` → `refined` → `ready`; `ready` requires the weakest unresolved target to be addressed
+- **Ontology rules:** maintain canonical terms + exclusions; challenge overloaded language immediately and restate the accepted ontology in the user's words
+- **Closure / restate gate:** before the final spec write, restate topology + chosen approach + constraints + exclusions + approval transition in one closure question
+- **Mutation boundary:** while brainstorming is active, do not write implementation files; the only sanctioned write is the final spec-persistence completion action under `docs/specs/`, immediately followed by approval handoff
+
 ## Step 4 — 2–3 approaches
 
 - Each approach gets: name, 1-sentence summary, pros, cons

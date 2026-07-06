@@ -22,6 +22,7 @@ import {
   type BranchContractView,
   type ExternalExecConsent,
 } from "./gate-state";
+import type { ApprovalFlowState, DeepInterviewState } from "./deep-interview-state";
 import type { VerifierDepthDecision } from "./verifier-depth-policy";
 export interface FsmStateData {
   active: boolean;
@@ -53,6 +54,8 @@ export interface GateInput {
   skillReads?: string[];
   externalExecConsent?: ExternalExecConsent;
   verifierDepth?: VerifierDepthDecision;
+  deepInterview?: DeepInterviewState;
+  approvalFlow?: ApprovalFlowState;
 }
 
 export type ConsentSource = "env" | "file" | "none";
@@ -118,6 +121,50 @@ function getRemainingSkillProofs(
     }
   }
   return { missingOwnershipSkills, unreadProofTargets };
+}
+
+function hasSanctionedSpecPersistenceReceipt(
+  deepInterview: DeepInterviewState | undefined,
+  approvalFlow: ApprovalFlowState | undefined
+): boolean {
+  const spec = deepInterview?.spec;
+  return (
+    deepInterview?.active === false &&
+    deepInterview.phase === "complete" &&
+    spec?.stage === "final" &&
+    approvalFlow?.resumedFrom?.interviewId === deepInterview.interviewId &&
+    approvalFlow.resumedFrom?.specPath === spec.path
+  );
+}
+
+function hasPendingBrainstormingApproval(
+  deepInterview: DeepInterviewState | undefined,
+  approvalFlow: ApprovalFlowState | undefined
+): boolean {
+  return (
+    approvalFlow?.status === "pending" &&
+    !hasSanctionedSpecPersistenceReceipt(deepInterview, approvalFlow) &&
+    (approvalFlow.source === "brainstorming" ||
+      approvalFlow.resumedFrom?.interviewId !== undefined ||
+      approvalFlow.resumedFrom?.specPath?.startsWith("docs/specs/") === true)
+  );
+}
+
+function decideBrainstormingMutationGuard(
+  deepInterview: DeepInterviewState | undefined,
+  approvalFlow: ApprovalFlowState | undefined
+): GateDecision | undefined {
+  const pendingApproval = hasPendingBrainstormingApproval(deepInterview, approvalFlow);
+  if (!deepInterview?.active && !pendingApproval) return undefined;
+  const stateHint = pendingApproval
+    ? `approval handoff is ${approvalFlow?.status ?? "pending"}`
+    : `interview phase is ${deepInterview?.phase ?? "interviewing"}`;
+  return {
+    block: true,
+    reason:
+      "pi-oven: code-write blocked — active brainstorming/deep-interview owns the write lane while " +
+      `${stateHint}. Only the runtime-owned sanctioned completion action may persist the final docs/specs artifact and seed the paired deepInterview -> approvalFlow receipt before approval resolves.`,
+  };
 }
 
 function hasActiveTemporaryCredentialConsent(consent: ExternalExecConsent | undefined): boolean {
@@ -427,6 +474,12 @@ export function decideGate(input: GateInput): GateDecision {
     };
   }
   // kind === "OK"
+  if (wantsCodeWrite) {
+    const brainstormingGuard = decideBrainstormingMutationGuard(input.deepInterview, input.approvalFlow);
+    if (brainstormingGuard?.block) {
+      return brainstormingGuard;
+    }
+  }
   if (!fsm.state.active) {
     // no autonomous run in progress → gate inactive
     return { block: false, consumeExternalExecConsent };

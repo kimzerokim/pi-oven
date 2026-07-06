@@ -652,3 +652,155 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
     expect(r.block).toBe(false);
   });
 });
+
+describe("decideGate — brainstorming mutation guard", () => {
+  const specPath = "docs/specs/2026-07-06-workflow-optimization-design.md";
+  const branchContract = {
+    kind: "OK" as const,
+    contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
+  };
+
+  it("blocks code-write while deep-interview is actively converging", () => {
+    const r = decideGate(
+      input("", {
+        toolName: "write",
+        targetPath: "src/example.ts",
+        branchContract,
+        deepInterview: {
+          version: 2,
+          interviewId: "di-1",
+          active: true,
+          phase: "interviewing",
+          threshold: 0.35,
+          thresholdSource: "session",
+          pendingQuestion: {
+            roundKey: "di-1::rid:round-1",
+            question: "What is the weakest unresolved dimension?",
+            askedAt: "2026-07-06T00:00:00.000Z",
+            meta: {
+              interviewId: "di-1",
+              round: 1,
+              roundId: "round-1",
+              questionId: "q-round-1",
+              stage: "round",
+              component: "runtime-routing",
+              dimension: "criteria",
+              milestone: "refined",
+            },
+          },
+          state: {
+            rounds: [],
+            establishedFacts: [],
+            ontologySnapshots: [],
+            milestone: "refined",
+            nextTarget: {
+              componentId: "runtime-routing",
+              dimension: "criteria",
+              rationale: "Resolve the weakest unresolved dimension.",
+            },
+          },
+        },
+      })
+    );
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/brainstorming|deep-interview|docs\/specs/i);
+  });
+
+  it("blocks direct docs/specs writes during handoff; only the runtime-owned sanctioned completion path may persist them", () => {
+    const r = decideGate(
+      input("", {
+        toolName: "write",
+        targetPath: specPath,
+        branchContract,
+        deepInterview: {
+          version: 2,
+          interviewId: "di-1",
+          active: true,
+          phase: "handoff",
+          pendingQuestion: {
+            roundKey: "di-1::rid:closure",
+            question: "Can we restate the final spec and move into approval?",
+            askedAt: "2026-07-06T00:03:00.000Z",
+            meta: {
+              interviewId: "di-1",
+              round: 3,
+              roundId: "closure",
+              questionId: "q-closure",
+              stage: "closure",
+              milestone: "ready",
+            },
+          },
+          state: {
+            rounds: [
+              {
+                roundKey: "di-1::rid:closure",
+                interviewId: "di-1",
+                round: 3,
+                roundId: "closure",
+                questionId: "q-closure",
+                stage: "closure",
+                question: "Can we restate the final spec and move into approval?",
+                questionHash: "qhash-closure",
+                lifecycle: "answered",
+                askedAt: "2026-07-06T00:02:00.000Z",
+                answeredAt: "2026-07-06T00:03:00.000Z",
+                selected: "Yes",
+                answerHash: "ahash-closure",
+                milestone: "ready",
+              },
+            ],
+            establishedFacts: [],
+            ontologySnapshots: [],
+            milestone: "ready",
+          },
+        },
+      })
+    );
+    expect(r.block).toBe(true);
+    expect(r.reason).toMatch(/runtime-owned|sanctioned completion action|docs\/specs/i);
+  });
+
+  it("lifts the deep-interview guard once sanctioned spec persistence completed even if approvalFlow is still pending", () => {
+    const r = decideGate(
+      input("", {
+        toolName: "edit",
+        targetPath: "src/example.ts",
+        branchContract,
+        deepInterview: {
+          version: 2,
+          interviewId: "di-1",
+          active: false,
+          phase: "complete",
+          spec: {
+            path: specPath,
+            sha256: "abc123",
+            persistedAt: "2026-07-06T00:04:00.000Z",
+            stage: "final",
+          },
+          state: {
+            rounds: [],
+            establishedFacts: [],
+            ontologySnapshots: [],
+            milestone: "ready",
+          },
+        },
+        approvalFlow: {
+          version: 1,
+          active: true,
+          kind: "spec-handoff",
+          source: "brainstorming",
+          decisionKey: "approve-workflow-optimization-spec-v1",
+          summary:
+            "Approve workflow optimization + gajae-style deep-interview redesign direction for spec/plan drafting",
+          status: "pending",
+          requestedAt: "2026-07-06T00:04:00.000Z",
+          resumedFrom: {
+            interviewId: "di-1",
+            specPath,
+          },
+        },
+      })
+    );
+    expect(r.block).toBe(false);
+  });
+});

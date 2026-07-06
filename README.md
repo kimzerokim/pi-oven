@@ -228,6 +228,10 @@ The wizard accepts subcommands:
 | `/pi-oven:setup --apply --profile B --validate full` | Full 24-role smoke ping (default is 7 MUST-tier); same flag works for `--profile C`, `--profile D` |
 | `/pi-oven:setup --apply --profile A --override executor=openai-codex/gpt-5.5` | Per-role override (repeatable) |
 | `/pi-oven:setup --apply --profile A --scope project` | Write per-project routing (default scope is `global`). See [Per-project routing](#per-project-routing---scope-project) |
+
+### Interactive prompt semantics
+
+The interactive wizard uses `pi-oven_ask` rather than ad-hoc prose parsing. `Other (type your own)` is intentionally valid only when free text is a real next action (for example the language step); closed-set questions such as scope or profile selection suppress it. Routing clarification branches use the dedicated `Ask about these choices` affordance instead of inventing nested approval prose.
 ### Profile A (release default, openai-codex-only)
 
 Requires **OpenAI Codex / ChatGPT subscription** for the shipped primaries. The committed frontmatter pairs those primaries with matching `opencode-zen/gpt-5.5` / `opencode-zen/gpt-5.4` registry alternates for spawn-time availability fallback.
@@ -296,6 +300,10 @@ omp does not read the repo-root `CLAUDE.md` natively. The pi-oven runtime extens
 ### Control-plane front door
 
 For gated work, pi-oven opens the control plane only through explicit runtime proofs: `requiredSkills`, exact plugin-owned `SKILL.md` reads captured in `ownedSkillReadTargets`/`skillReads`, `.pi-oven/state/branch-contract.json`, and external execution consent where relevant. That is the user-visible contract. Bootstrap message injection, tool remap, and discovery-layer compatibility toggles are not normal control-plane paths.
+
+- `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` are **visibility/guard layers only**. They report and persist routing configuration, but the runtime still owns the current-session provider-family choice.
+- The sanctioned deep-interview completion path persists the final spec and seeds the paired root-level `approvalFlow` receipt. After that receipt exists, approval may remain pending while `deepInterview.phase` is already `complete`; approval ownership no longer lives nested under `deepInterview`.
+- `pi-oven_ask` affordances are semantic: expect `Ask about these choices` for approval/routing clarification branches, and expect `Other (type your own)` only when free text is actually valid.
 
 ## Temporary compatibility boundary
 

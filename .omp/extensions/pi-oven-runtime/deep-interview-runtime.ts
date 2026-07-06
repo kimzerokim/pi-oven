@@ -1,16 +1,25 @@
-import { join } from "path";
+import { existsSync, lstatSync, mkdirSync, writeFileSync } from "fs";
+import { dirname, isAbsolute, join, posix, relative, resolve } from "path";
 import { GateStateStore } from "./gate-state";
 import { applyBucketApprovalDecision, type ModelRoutingApprovalPayload } from "./model-routing-approval";
 import {
   answerHash,
   deriveRoundKey,
+  hashContent,
+  mergeApprovalFlowState,
   mergeDeepInterviewState,
+  normalizeApprovalFlowState,
   normalizeDeepInterviewState,
   questionHash,
+  type ApprovalFlowAskMetadata,
+  type ApprovalFlowKind,
+  type ApprovalFlowSource,
+  type ApprovalFlowState,
   type DeepInterviewAskMetadata,
   type DeepInterviewApprovalHandoff,
   type DeepInterviewRoundLifecycle,
   type DeepInterviewRoundRecord,
+  type DeepInterviewSpecReceipt,
   type DeepInterviewState,
 } from "./deep-interview-state";
 import {
@@ -25,6 +34,7 @@ export interface DeepInterviewQuestionInput {
   question: string;
   recommended?: number;
   deepInterview: DeepInterviewAskMetadata;
+  approval?: ApprovalFlowAskMetadata;
 }
 
 export interface DeepInterviewAnswerInput extends DeepInterviewQuestionInput {
@@ -32,10 +42,26 @@ export interface DeepInterviewAnswerInput extends DeepInterviewQuestionInput {
   customInput?: string;
 }
 
+interface PersistFinalSpecAndSeedApprovalFlowInput {
+  specPath: string;
+  content: string;
+  decisionKey: string;
+  summary: string;
+  question?: string;
+  recommended?: number;
+  source?: ApprovalFlowSource;
+}
+
 export interface DeepInterviewRuntime {
   readState(): Promise<DeepInterviewState | undefined>;
+  readApprovalFlow(): Promise<ApprovalFlowState | undefined>;
   seedQuestion(input: DeepInterviewQuestionInput): Promise<DeepInterviewState>;
   recordAnswer(input: DeepInterviewAnswerInput): Promise<DeepInterviewState>;
+}
+interface DeepInterviewCompletionRuntime extends DeepInterviewRuntime {
+  persistFinalSpecAndSeedApprovalFlow(
+    input: PersistFinalSpecAndSeedApprovalFlowInput
+  ): Promise<{ deepInterview: DeepInterviewState; approvalFlow: ApprovalFlowState }>;
 }
 
 interface DeepInterviewRuntimeDeps {
@@ -48,8 +74,9 @@ function readDeepInterviewFromUnknown(value: unknown): DeepInterviewState | unde
   if (value === undefined) return undefined;
   const normalized = normalizeDeepInterviewState(value);
   const hasActivity =
-    normalized.rounds.length > 0 ||
+    normalized.state.rounds.length > 0 ||
     normalized.pendingQuestion !== undefined ||
+    normalized.spec !== undefined ||
     normalized.approvalHandoff !== undefined ||
     normalized.routingApproval !== undefined;
   return hasActivity ? normalized : undefined;
@@ -62,17 +89,88 @@ function resolveInterviewId(
   return meta.interviewId ?? existing?.interviewId ?? "pi-oven-default";
 }
 
+function sanitizeRuntimeDeepInterview(deepInterview: DeepInterviewState | undefined): DeepInterviewState | undefined {
+  if (!deepInterview) return undefined;
+  const { approvalHandoff: _approvalHandoff, routingApproval: _routingApproval, pendingQuestion, ...rest } =
+    deepInterview;
+  if (!pendingQuestion) {
+    return rest;
+  }
+  const { approvalHandoff: _pendingApprovalHandoff, routingApproval: _pendingRoutingApproval, ...meta } =
+    pendingQuestion.meta;
+  return {
+    ...rest,
+    pendingQuestion: {
+      ...pendingQuestion,
+      meta,
+    },
+  };
+}
+
+function assertNoSymlinkTraversal(projectRoot: string, targetPath: string, specPath: string): void {
+  const resolvedProjectRoot = resolve(projectRoot);
+  const relativeToProjectRoot = relative(resolvedProjectRoot, targetPath);
+  if (
+    relativeToProjectRoot.length === 0 ||
+    relativeToProjectRoot.startsWith("..") ||
+    isAbsolute(relativeToProjectRoot)
+  ) {
+    throw new Error(`Final spec persistence path must stay under docs/specs/: ${specPath}`);
+  }
+  let current = resolvedProjectRoot;
+  for (const segment of relativeToProjectRoot.split(/[/\\]+/).filter(Boolean)) {
+    current = join(current, segment);
+    if (!existsSync(current)) break;
+    if (lstatSync(current).isSymbolicLink()) {
+      throw new Error(`Final spec persistence path must not traverse symlinks under docs/specs/: ${specPath}`);
+    }
+  }
+}
+
+function resolveFinalSpecPersistenceTarget(
+  projectRoot: string,
+  specPath: string
+): { normalizedSpecPath: string; targetPath: string } {
+  const normalizedSpecPath = posix.normalize(specPath.replaceAll("\\", "/"));
+  const specsRoot = resolve(projectRoot, "docs/specs");
+  const targetPath = resolve(projectRoot, normalizedSpecPath);
+  const relativeToSpecsRoot = relative(specsRoot, targetPath);
+  if (
+    normalizedSpecPath.startsWith("/") ||
+    !normalizedSpecPath.startsWith("docs/specs/") ||
+    relativeToSpecsRoot.length === 0 ||
+    relativeToSpecsRoot.startsWith("..") ||
+    isAbsolute(relativeToSpecsRoot)
+  ) {
+    throw new Error(`Final spec persistence path must stay under docs/specs/: ${specPath}`);
+  }
+  assertNoSymlinkTraversal(projectRoot, targetPath, specPath);
+  return { normalizedSpecPath, targetPath };
+}
+
 function buildApprovalHandoff(
-  meta: DeepInterviewAskMetadata,
+  approval: ApprovalFlowAskMetadata | undefined,
   now: string,
   existing: DeepInterviewApprovalHandoff | undefined
 ): DeepInterviewApprovalHandoff | undefined {
-  if (!meta.approvalHandoff) return undefined;
+  const handoff = approval ?? existing;
+  if (!handoff) return undefined;
   return {
-    decisionKey: meta.approvalHandoff.decisionKey,
-    summary: meta.approvalHandoff.summary,
+    decisionKey: handoff.decisionKey,
+    summary: handoff.summary,
     status: "pending",
     requestedAt: existing?.status === "pending" ? existing.requestedAt : now,
+  };
+}
+
+function buildApprovalHandoffFromFlow(flow: ApprovalFlowState | undefined): DeepInterviewApprovalHandoff | undefined {
+  if (!flow) return undefined;
+  return {
+    decisionKey: flow.decisionKey,
+    summary: flow.summary,
+    status: flow.status,
+    requestedAt: flow.requestedAt,
+    ...(flow.resolvedAt ? { resolvedAt: flow.resolvedAt } : {}),
   };
 }
 
@@ -83,6 +181,7 @@ function mergeRoutingApprovalPayload(
   if (!existing) return incoming;
   if (!incoming) return existing;
   return {
+    sessionProviderFamily: incoming.sessionProviderFamily ?? existing.sessionProviderFamily,
     recommendedByRole: {
       ...existing.recommendedByRole,
       ...incoming.recommendedByRole,
@@ -121,7 +220,9 @@ function resolveRoutingApprovalPayload(
     : payload.buckets.length === 1
       ? payload.buckets[0]
       : undefined;
-  if (!bucket || selected.trim().toLowerCase() !== "approve") return payload;
+  if (!bucket) return payload;
+  const normalizedSelection = selected.trim().toLowerCase();
+  if (normalizedSelection !== "approve") return payload;
 
   return applyBucketApprovalDecision(payload, {
     bucketKey: bucket.bucketKey,
@@ -134,24 +235,26 @@ function isRoutingApprovalResolved(payload: ModelRoutingApprovalPayload): boolea
 }
 
 function buildRuntimeTraceSnapshot(
-  phase: "seedQuestion" | "recordAnswer",
-  before: DeepInterviewState | undefined,
-  after: DeepInterviewState
+  phase: "seedQuestion" | "recordAnswer" | "persistFinalSpecAndSeedApprovalFlow",
+  beforeDeepInterview: DeepInterviewState | undefined,
+  afterDeepInterview: DeepInterviewState,
+  beforeApprovalFlow: ApprovalFlowState | undefined,
+  afterApprovalFlow: ApprovalFlowState | undefined
 ): RuntimeTraceSnapshot {
   const approvalRoles = new Set<string>([
-    ...Object.keys(before?.routingApproval?.approvals ?? {}),
-    ...Object.keys(after.routingApproval?.approvals ?? {}),
+    ...Object.keys(beforeApprovalFlow?.routingApproval?.approvals ?? {}),
+    ...Object.keys(afterApprovalFlow?.routingApproval?.approvals ?? {}),
   ]);
-  const stateKeys = ["deepInterview.approvalHandoff.status"];
+  const stateKeys = ["approvalFlow.status", "deepInterview.spec.path", "deepInterview.phase"];
   for (const role of approvalRoles) {
     stateKeys.push(
-      `deepInterview.routingApproval.approvals.${role}.status`,
-      `deepInterview.routingApproval.approvals.${role}.selectedSelector`
+      `approvalFlow.routingApproval.approvals.${role}.status`,
+      `approvalFlow.routingApproval.approvals.${role}.selectedSelector`
     );
   }
   const stateChanges = listChangedRuntimeState(
-    { deepInterview: before ?? {} },
-    { deepInterview: after },
+    { deepInterview: beforeDeepInterview ?? {}, approvalFlow: beforeApprovalFlow ?? {} },
+    { deepInterview: afterDeepInterview, approvalFlow: afterApprovalFlow ?? {} },
     stateKeys
   );
   return {
@@ -195,8 +298,19 @@ function buildRoundRecord(
     ...(input.customInput ? { customInput: input.customInput } : {}),
     ...(input.deepInterview.component ? { component: input.deepInterview.component } : {}),
     ...(input.deepInterview.dimension ? { dimension: input.deepInterview.dimension } : {}),
+    ...(input.deepInterview.ambiguityAtAsk !== undefined
+      ? { ambiguityAtAsk: input.deepInterview.ambiguityAtAsk }
+      : input.deepInterview.ambiguity !== undefined
+        ? { ambiguityAtAsk: input.deepInterview.ambiguity }
+        : {}),
     ...(input.deepInterview.ambiguity !== undefined ? { ambiguity: input.deepInterview.ambiguity } : {}),
     ...(input.recommended !== undefined ? { recommended: input.recommended } : {}),
+    ...(input.deepInterview.scores ? { scores: input.deepInterview.scores } : {}),
+    ...(input.deepInterview.triggers ? { triggers: input.deepInterview.triggers } : {}),
+    ...(input.deepInterview.topologySummary ? { topologySummary: input.deepInterview.topologySummary } : {}),
+    ...(input.deepInterview.ontologySummary ? { ontologySummary: input.deepInterview.ontologySummary } : {}),
+    ...(input.deepInterview.milestone ? { milestone: input.deepInterview.milestone } : {}),
+    ...(input.deepInterview.nextTarget ? { nextTarget: input.deepInterview.nextTarget } : {}),
     ...(lifecycle !== "pending"
       ? {
           answeredAt: now,
@@ -208,6 +322,176 @@ function buildRoundRecord(
   };
 }
 
+function buildDeepInterviewStatePatch(
+  existing: DeepInterviewState | undefined,
+  input: DeepInterviewQuestionInput | DeepInterviewAnswerInput,
+  interviewId: string,
+  now: string,
+  phase: DeepInterviewState["phase"],
+  lifecycle: DeepInterviewRoundLifecycle,
+  pendingQuestion: DeepInterviewState["pendingQuestion"] | null,
+  approvalHandoff: DeepInterviewApprovalHandoff | undefined,
+  routingApproval: ModelRoutingApprovalPayload | undefined,
+  overrides: Partial<DeepInterviewState> = {}
+): DeepInterviewState {
+  const existingState = existing?.state;
+  const establishedFacts = [
+    ...(existingState?.establishedFacts ?? []),
+    ...(input.deepInterview.establishedFacts ?? []),
+  ];
+  const ontologySnapshots = [
+    ...(existingState?.ontologySnapshots ?? []),
+    ...(input.deepInterview.ontologySnapshot ? [input.deepInterview.ontologySnapshot] : []),
+  ];
+  const nextState: DeepInterviewState = {
+    version: 2,
+    interviewId,
+    active: phase !== "complete",
+    phase,
+    ...(input.deepInterview.threshold !== undefined
+      ? { threshold: input.deepInterview.threshold }
+      : existing?.threshold !== undefined
+        ? { threshold: existing.threshold }
+        : {}),
+    ...(input.deepInterview.thresholdSource
+      ? { thresholdSource: input.deepInterview.thresholdSource }
+      : existing?.thresholdSource
+        ? { thresholdSource: existing.thresholdSource }
+        : {}),
+    ...(existing?.spec ? { spec: existing.spec } : {}),
+    state: {
+      rounds: [buildRoundRecord(interviewId, input as DeepInterviewAnswerInput, now, lifecycle, approvalHandoff, routingApproval)],
+      establishedFacts,
+      ontologySnapshots,
+      ...(input.deepInterview.topology ? { topology: input.deepInterview.topology } : existingState?.topology ? { topology: existingState.topology } : {}),
+      ...(input.deepInterview.currentAmbiguity !== undefined
+        ? { currentAmbiguity: input.deepInterview.currentAmbiguity }
+        : input.deepInterview.ambiguity !== undefined
+          ? { currentAmbiguity: input.deepInterview.ambiguity }
+          : existingState?.currentAmbiguity !== undefined
+            ? { currentAmbiguity: existingState.currentAmbiguity }
+            : {}),
+      ...(input.deepInterview.milestone
+        ? { milestone: input.deepInterview.milestone }
+        : existingState?.milestone
+          ? { milestone: existingState.milestone }
+          : {}),
+      ...(input.deepInterview.nextTarget
+        ? { nextTarget: input.deepInterview.nextTarget }
+        : existingState?.nextTarget
+          ? { nextTarget: existingState.nextTarget }
+          : {}),
+      ...(input.deepInterview.initialIdea
+        ? { initialIdea: input.deepInterview.initialIdea }
+        : existingState?.initialIdea
+          ? { initialIdea: existingState.initialIdea }
+          : {}),
+    },
+    ...(pendingQuestion ? { pendingQuestion } : {}),
+    ...(overrides.lastUpdatedAt ? { lastUpdatedAt: overrides.lastUpdatedAt } : { lastUpdatedAt: now }),
+    ...overrides,
+  };
+  return nextState;
+}
+
+function buildApprovalFlowSeed(
+  question: string,
+  recommended: number | undefined,
+  interviewId: string,
+  now: string,
+  approval: ApprovalFlowAskMetadata | undefined,
+  existingApprovalFlow: ApprovalFlowState | undefined,
+  deepInterview: DeepInterviewState | undefined,
+  routingApproval: ModelRoutingApprovalPayload | undefined
+): ApprovalFlowState {
+  const kind: ApprovalFlowKind = approval?.kind ?? (routingApproval ? "routing-bucket" : "spec-handoff");
+  const source: ApprovalFlowSource = approval?.source ?? (routingApproval ? "setup" : "brainstorming");
+  const resumedFrom = {
+    ...(approval?.resumedFrom ?? {}),
+    interviewId: approval?.resumedFrom?.interviewId ?? interviewId,
+    ...(approval?.resumedFrom?.specPath
+      ? { specPath: approval.resumedFrom.specPath }
+      : deepInterview?.spec?.path
+        ? { specPath: deepInterview.spec.path }
+        : {}),
+  };
+  return {
+    version: 1,
+    active: true,
+    kind,
+    source,
+    decisionKey:
+      approval?.decisionKey ??
+      existingApprovalFlow?.decisionKey ??
+      (routingApproval ? "approve-routing-bucket" : "approve-deep-interview-spec"),
+    summary:
+      approval?.summary ??
+      existingApprovalFlow?.summary ??
+      (routingApproval
+        ? "Approve the current routing bucket recommendations before resuming execution."
+        : "Approve the finalized deep-interview spec handoff before continuing."),
+    status: "pending",
+    ...(recommended !== undefined ? { recommended: { index: recommended } } : {}),
+    pendingQuestion: {
+      question,
+      askedAt: now,
+      ...(recommended !== undefined ? { recommended } : {}),
+    },
+    resumedFrom,
+    requestedAt: existingApprovalFlow?.status === "pending" ? existingApprovalFlow.requestedAt : now,
+    ...(routingApproval ? { routingApproval } : {}),
+  };
+}
+
+function buildApprovalFlowResolution(
+  current: ApprovalFlowState,
+  input: DeepInterviewAnswerInput,
+  now: string,
+  routingApproval: ModelRoutingApprovalPayload | undefined
+): ApprovalFlowState {
+  const normalizedSelection = input.selected?.trim().toLowerCase();
+  const routingResolved = routingApproval ? isRoutingApprovalResolved(routingApproval) : true;
+  const cancelledWithPendingRoutingApproval =
+    !input.selected &&
+    !input.customInput &&
+    current.kind !== "spec-handoff" &&
+    routingApproval !== undefined &&
+    !routingResolved;
+
+  let status: ApprovalFlowState["status"];
+  if (cancelledWithPendingRoutingApproval) {
+    status = "pending";
+  } else if (!input.selected && !input.customInput) {
+    status = "cancelled";
+  } else if (
+    normalizedSelection === "approve" ||
+    normalizedSelection === "proceed" ||
+    normalizedSelection === "override per role"
+  ) {
+    status = routingResolved ? "approved" : "pending";
+  } else if (normalizedSelection === "ask about these choices") {
+    status = "pending";
+  } else {
+    status = "rejected";
+  }
+
+  return {
+    ...current,
+    active: status === "pending",
+    status,
+    pendingQuestion: undefined,
+    ...(routingApproval ? { routingApproval } : {}),
+    resolved:
+      input.selected || input.customInput
+        ? {
+            selected: input.selected ?? null,
+            customInput: input.customInput ?? null,
+          }
+        : current.resolved,
+    ...(status === "pending" ? {} : { resolvedAt: now }),
+  };
+}
+
 export function createDeepInterviewRuntime(
   projectRoot: string,
   deps: DeepInterviewRuntimeDeps = {}
@@ -215,215 +499,277 @@ export function createDeepInterviewRuntime(
   const store = deps.store ?? new GateStateStore(join(projectRoot, ".pi-oven"));
   const now = deps.now ?? (() => new Date().toISOString());
 
-  const readCurrent = async (): Promise<DeepInterviewState | undefined> => {
+  const readSnapshot = async (): Promise<{
+    deepInterview: DeepInterviewState | undefined;
+    approvalFlow: ApprovalFlowState | undefined;
+  }> => {
     const view = await store.readState();
-    if (view.kind !== "OK") return undefined;
-    const current = view.state as unknown as { deepInterview?: unknown };
-    return readDeepInterviewFromUnknown(current.deepInterview);
+    if (view.kind !== "OK") return { deepInterview: undefined, approvalFlow: undefined };
+    const current = view.state as unknown as { deepInterview?: unknown; approvalFlow?: unknown };
+    const persistedDeepInterview = readDeepInterviewFromUnknown(current.deepInterview);
+    const approvalFlow = normalizeApprovalFlowState(current.approvalFlow, persistedDeepInterview);
+    const deepInterview = sanitizeRuntimeDeepInterview(persistedDeepInterview);
+    return { deepInterview, approvalFlow };
   };
 
   const persist = async (
-    previous: DeepInterviewState | undefined,
-    next: unknown,
-    phase: "seedQuestion" | "recordAnswer"
-  ): Promise<DeepInterviewState> => {
+    previousDeepInterview: DeepInterviewState | undefined,
+    previousApprovalFlow: ApprovalFlowState | undefined,
+    nextDeepInterviewInput: unknown,
+    nextApprovalFlow: unknown,
+    phase: "seedQuestion" | "recordAnswer" | "persistFinalSpecAndSeedApprovalFlow",
+    replaceApprovalFlow: boolean = false
+  ): Promise<{ deepInterview: DeepInterviewState; approvalFlow: ApprovalFlowState | undefined }> => {
     await store.mutate((current) => {
-      const currentState = current as unknown as { deepInterview?: unknown };
+      const currentState = current as unknown as { deepInterview?: unknown; approvalFlow?: unknown };
+      const currentDeepInterview = normalizeDeepInterviewState(currentState.deepInterview);
       return {
         ...current,
-        deepInterview: mergeDeepInterviewState(currentState.deepInterview, next),
+        deepInterview: mergeDeepInterviewState(currentState.deepInterview, nextDeepInterviewInput),
+        approvalFlow: replaceApprovalFlow
+          ? nextApprovalFlow
+          : mergeApprovalFlowState(currentState.approvalFlow, nextApprovalFlow, currentDeepInterview),
       };
     });
-    const nextState = (await readCurrent()) ?? normalizeDeepInterviewState(next);
-    const trace = buildRuntimeTraceSnapshot(phase, previous, nextState);
-    const hasRoutingApprovalEvidence = nextState.routingApproval !== undefined;
-    if (
-      hasRoutingApprovalEvidence &&
-      trace.stateChanges.some((change) => {
-        if (change.key === "deepInterview.approvalHandoff.status") {
-          return change.after === "approved" || change.after === "rejected";
-        }
-        return (
-          (change.key.endsWith(".selectedSelector") &&
-            typeof change.after === "string" &&
-            change.after.length > 0) ||
-          (change.key.endsWith(".status") &&
-            (change.after === "approved" || change.after === "overridden"))
-        );
-      })
-    ) {
+    const next = await readSnapshot();
+    const persistedDeepInterview =
+      next.deepInterview ?? normalizeDeepInterviewState(nextDeepInterviewInput);
+    const trace = buildRuntimeTraceSnapshot(
+      phase,
+      previousDeepInterview,
+      persistedDeepInterview,
+      previousApprovalFlow,
+      next.approvalFlow
+    );
+    if (trace.stateChanges.length > 0) {
       deps.onRuntimeTrace?.(trace);
     }
-    return nextState;
+    return {
+      deepInterview: persistedDeepInterview,
+      approvalFlow: next.approvalFlow,
+    };
   };
 
-  return {
+  const runtime: DeepInterviewCompletionRuntime = {
     async readState() {
-      return readCurrent();
+      return (await readSnapshot()).deepInterview;
+    },
+
+    async readApprovalFlow() {
+      return (await readSnapshot()).approvalFlow;
     },
 
     async seedQuestion(input) {
-      const existing = await readCurrent();
+      const existing = await readSnapshot();
       const currentNow = now();
-      const interviewId = resolveInterviewId(input.deepInterview, existing);
+      const interviewId = resolveInterviewId(input.deepInterview, existing.deepInterview);
       const roundKey = deriveRoundKey(interviewId, {
         round: input.deepInterview.round,
         roundId: input.deepInterview.roundId,
         questionId: input.deepInterview.questionId,
       });
-      const routingApproval = input.deepInterview.routingApproval
-        ? mergeRoutingApprovalPayload(existing?.routingApproval, input.deepInterview.routingApproval)
+      const isApprovalQuestion = input.approval !== undefined || input.deepInterview.stage === "approval";
+      const {
+        approvalHandoff: _ignoredApprovalHandoff,
+        routingApproval: _ignoredRoutingApproval,
+        ...canonicalMeta
+      } = {
+        ...input.deepInterview,
+        interviewId,
+      };
+      const routingApproval = mergeRoutingApprovalPayload(existing.approvalFlow?.routingApproval, input.approval?.routingApproval);
+      const approvalHandoff = isApprovalQuestion
+        ? buildApprovalHandoff(input.approval, currentNow, buildApprovalHandoffFromFlow(existing.approvalFlow))
         : undefined;
-      const approvalHandoff = buildApprovalHandoff(input.deepInterview, currentNow, existing?.approvalHandoff);
-      const phase =
-        input.deepInterview.stage === "approval" && (approvalHandoff !== undefined || routingApproval !== undefined)
-          ? "approval_pending"
-          : "interviewing";
-      const roundApprovalHandoff =
-        input.deepInterview.stage === "approval"
-          ? approvalHandoff ?? existing?.approvalHandoff
-          : undefined;
-      return persist(
-        existing,
+      const nextDeepInterview = buildDeepInterviewStatePatch(
+        existing.deepInterview,
+        input,
+        interviewId,
+        currentNow,
+        isApprovalQuestion
+          ? existing.deepInterview?.spec?.stage === "final"
+            ? "complete"
+            : "handoff"
+          : existing.deepInterview?.phase === "complete"
+            ? "complete"
+            : "interviewing",
+        "pending",
         {
-          interviewId,
-          active: true,
-          phase,
-          rounds: [
-            buildRoundRecord(
-              interviewId,
-              { ...input, selected: undefined, customInput: undefined },
-              currentNow,
-              "pending",
-              roundApprovalHandoff,
-              routingApproval
-            ),
-          ],
-          pendingQuestion: {
-            roundKey,
-            question: input.question,
-            askedAt: currentNow,
-            meta: {
-              ...input.deepInterview,
-              interviewId,
-              ...(routingApproval ? { routingApproval } : {}),
-            },
-            ...(input.recommended !== undefined ? { recommended: input.recommended } : {}),
-          },
-          ...(input.deepInterview.stage === "approval"
-            ? roundApprovalHandoff
-              ? { approvalHandoff: roundApprovalHandoff }
-              : {}
-            : { approvalHandoff: null }),
-          ...(routingApproval ? { routingApproval } : {}),
-          lastUpdatedAt: currentNow,
+          roundKey,
+          question: input.question,
+          askedAt: currentNow,
+          meta: canonicalMeta,
+          ...(input.recommended !== undefined ? { recommended: input.recommended } : {}),
         },
-        "seedQuestion"
+        approvalHandoff,
+        routingApproval,
+        { lastUpdatedAt: currentNow }
       );
+      const nextApprovalFlow = isApprovalQuestion
+        ? buildApprovalFlowSeed(
+            input.question,
+            input.recommended,
+            interviewId,
+            currentNow,
+            input.approval,
+            existing.approvalFlow,
+            existing.deepInterview,
+            routingApproval
+          )
+        : undefined;
+      return (
+        await persist(
+          existing.deepInterview,
+          existing.approvalFlow,
+          nextDeepInterview,
+          nextApprovalFlow,
+          "seedQuestion"
+        )
+      ).deepInterview;
     },
 
     async recordAnswer(input) {
-      const existing = await readCurrent();
+      const existing = await readSnapshot();
       const currentNow = now();
-      const interviewId = resolveInterviewId(input.deepInterview, existing);
+      const interviewId = resolveInterviewId(input.deepInterview, existing.deepInterview);
       const lifecycle: DeepInterviewRoundLifecycle =
         input.selected || input.customInput ? "answered" : "cancelled";
+      const isApprovalQuestion = input.approval !== undefined || input.deepInterview.stage === "approval";
       const routingApproval = resolveRoutingApprovalPayload(
-        existing?.routingApproval,
-        input.deepInterview.routingApproval,
+        existing.approvalFlow?.routingApproval,
+        input.approval?.routingApproval,
         input.deepInterview.roundId,
         input.selected
       );
-      const routingApprovalResolved = routingApproval ? isRoutingApprovalResolved(routingApproval) : true;
-      const cancelledWithPendingRoutingApproval =
-        lifecycle === "cancelled" &&
-        input.deepInterview.stage === "approval" &&
-        routingApproval !== undefined &&
-        !routingApprovalResolved;
-      const baseApprovalHandoff = cancelledWithPendingRoutingApproval
-        ? buildApprovalHandoff(input.deepInterview, currentNow, existing?.approvalHandoff)
-        : lifecycle === "cancelled"
-          ? undefined
-          : buildApprovalHandoff(input.deepInterview, currentNow, existing?.approvalHandoff);
-      const normalizedSelection = input.selected?.trim().toLowerCase();
-      const approvalHandoff =
-        baseApprovalHandoff &&
-        input.deepInterview.stage === "approval" &&
-        lifecycle === "answered"
-          ? normalizedSelection === "approve" || normalizedSelection === "proceed"
-            ? routingApprovalResolved
-              ? {
-                  ...baseApprovalHandoff,
-                  status: "approved" as const,
-                  resolvedAt: currentNow,
-                }
-              : {
-                  decisionKey: baseApprovalHandoff.decisionKey,
-                  summary: baseApprovalHandoff.summary,
-                  status: "pending" as const,
-                  requestedAt: baseApprovalHandoff.requestedAt,
-                }
-            : normalizedSelection === "override per role"
-              ? routingApprovalResolved
-                ? {
-                    ...baseApprovalHandoff,
-                    status: "approved" as const,
-                    resolvedAt: currentNow,
-                  }
-                : {
-                    decisionKey: baseApprovalHandoff.decisionKey,
-                    summary: baseApprovalHandoff.summary,
-                    status: "pending" as const,
-                    requestedAt: baseApprovalHandoff.requestedAt,
-                  }
-              : {
-                  decisionKey: baseApprovalHandoff.decisionKey,
-                  summary: baseApprovalHandoff.summary,
-                  status: "rejected" as const,
-                  requestedAt: baseApprovalHandoff.requestedAt,
-                  resolvedAt: currentNow,
-                }
-          : baseApprovalHandoff;
-      return persist(
-        existing,
-        {
+      const nextApprovalFlow = isApprovalQuestion
+        ? buildApprovalFlowResolution(
+            existing.approvalFlow ??
+              buildApprovalFlowSeed(
+                input.question,
+                input.recommended,
+                interviewId,
+                currentNow,
+                input.approval,
+                undefined,
+                existing.deepInterview,
+                routingApproval
+              ),
+            input,
+            currentNow,
+            routingApproval
+          )
+        : undefined;
+      const approvalHandoff = isApprovalQuestion
+        ? buildApprovalHandoffFromFlow(nextApprovalFlow) ??
+          buildApprovalHandoff(input.approval, currentNow, buildApprovalHandoffFromFlow(existing.approvalFlow))
+        : undefined;
+      const phase =
+        existing.deepInterview?.spec?.stage === "final"
+          ? "complete"
+          : isApprovalQuestion
+            ? "handoff"
+            : "interviewing";
+      const nextDeepInterview = {
+        ...buildDeepInterviewStatePatch(
+          existing.deepInterview,
+          input,
           interviewId,
-          active: true,
-          phase:
-            lifecycle === "cancelled"
-              ? cancelledWithPendingRoutingApproval
-                ? "approval_pending"
-                : "interviewing"
-              : approvalHandoff?.status === "approved"
-                ? "ready_to_resume"
-                : approvalHandoff || (routingApproval && !routingApprovalResolved)
-                  ? "approval_pending"
-                  : "interviewing",
-          rounds: [
-            buildRoundRecord(
-              interviewId,
-              input,
-              currentNow,
-              lifecycle,
-              approvalHandoff,
-              routingApproval
-            ),
-          ],
-          pendingQuestion: null,
-          ...(lifecycle === "cancelled"
-            ? cancelledWithPendingRoutingApproval
-              ? approvalHandoff
-                ? { approvalHandoff }
-                : {}
-              : { approvalHandoff: null }
-            : approvalHandoff
-              ? { approvalHandoff }
-              : {}),
-          ...(routingApproval ? { routingApproval } : {}),
-          lastUpdatedAt: currentNow,
+          currentNow,
+          phase,
+          lifecycle,
+          null,
+          approvalHandoff,
+          routingApproval,
+          {
+            lastUpdatedAt: currentNow,
+          }
+        ),
+        pendingQuestion: null,
+      };
+      return (
+        await persist(
+          existing.deepInterview,
+          existing.approvalFlow,
+          nextDeepInterview,
+          nextApprovalFlow,
+          "recordAnswer"
+        )
+      ).deepInterview;
+    },
+
+    async persistFinalSpecAndSeedApprovalFlow(input) {
+      const { normalizedSpecPath, targetPath } = resolveFinalSpecPersistenceTarget(projectRoot, input.specPath);
+      const existing = await readSnapshot();
+      const currentNow = now();
+      mkdirSync(dirname(targetPath), { recursive: true });
+      writeFileSync(targetPath, input.content, "utf-8");
+      const specReceipt: DeepInterviewSpecReceipt = {
+        path: normalizedSpecPath,
+        sha256: hashContent(input.content),
+        persistedAt: currentNow,
+        stage: "final",
+      };
+      const interviewId = existing.deepInterview?.interviewId ?? "pi-oven-default";
+      const nextDeepInterview = {
+        version: 2,
+        interviewId,
+        active: false,
+        phase: "complete",
+        ...(existing.deepInterview?.threshold !== undefined ? { threshold: existing.deepInterview.threshold } : {}),
+        ...(existing.deepInterview?.thresholdSource
+          ? { thresholdSource: existing.deepInterview.thresholdSource }
+          : {}),
+        spec: specReceipt,
+        state: {
+          rounds: [],
+          establishedFacts: existing.deepInterview?.state.establishedFacts ?? [],
+          ontologySnapshots: existing.deepInterview?.state.ontologySnapshots ?? [],
+          ...(existing.deepInterview?.state.topology ? { topology: existing.deepInterview.state.topology } : {}),
+          ...(existing.deepInterview?.state.currentAmbiguity !== undefined
+            ? { currentAmbiguity: existing.deepInterview.state.currentAmbiguity }
+            : {}),
+          ...(existing.deepInterview?.state.milestone ? { milestone: existing.deepInterview.state.milestone } : {}),
+          ...(existing.deepInterview?.state.nextTarget ? { nextTarget: existing.deepInterview.state.nextTarget } : {}),
+          ...(existing.deepInterview?.state.initialIdea ? { initialIdea: existing.deepInterview.state.initialIdea } : {}),
         },
-        "recordAnswer"
-      );
+        pendingQuestion: null,
+        approvalHandoff: null,
+        routingApproval: null,
+        lastUpdatedAt: currentNow,
+      };
+      const nextApprovalFlow: ApprovalFlowState = {
+        version: 1,
+        active: true,
+        kind: "spec-handoff",
+        source: input.source ?? "brainstorming",
+        decisionKey: input.decisionKey,
+        summary: input.summary,
+        status: "pending",
+        ...(input.recommended !== undefined ? { recommended: { index: input.recommended } } : {}),
+        ...(input.question
+          ? {
+              pendingQuestion: {
+                question: input.question,
+                askedAt: currentNow,
+                ...(input.recommended !== undefined ? { recommended: input.recommended } : {}),
+              },
+            }
+          : {}),
+        resumedFrom: {
+          interviewId,
+          specPath: normalizedSpecPath,
+        },
+        requestedAt: currentNow,
+      };
+      return persist(
+        existing.deepInterview,
+        existing.approvalFlow,
+        nextDeepInterview,
+        nextApprovalFlow,
+        "persistFinalSpecAndSeedApprovalFlow",
+        true
+      ) as Promise<{ deepInterview: DeepInterviewState; approvalFlow: ApprovalFlowState }>;
     },
   };
+  return runtime;
 }

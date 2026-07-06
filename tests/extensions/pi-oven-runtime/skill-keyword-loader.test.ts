@@ -175,7 +175,7 @@ describe("skill-keyword-loader", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
       {
         name: "spec-and-review",
-        matchedPhrases: ["write a spec"],
+        rawMatchedPhrases: ["write a spec"],
         ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
       },
     ]);
@@ -195,21 +195,61 @@ describe("skill-keyword-loader", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
       {
         name: "spec-and-review",
-        matchedPhrases: ["design doc"],
+        rawMatchedPhrases: ["design doc"],
         ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
       },
     ]);
     expect(prompt).not.toBeNull();
     expect(prompt!).toContain("pi-oven_ask");
     expect(prompt!).toContain("deepInterview");
-    expect(prompt!).toMatch(/approval handoff|resume state/i);
+    expect(prompt!).toMatch(/approval handoff|resume state|topology|milestone|threshold|spec persistence/i);
   });
 
+  it("renders raw matched phrases while keeping provider policy symbolic", () => {
+    const prompt = buildKeywordMatchedSkillsPrompt([
+      {
+        name: "spec-and-review",
+        rawMatchedPhrases: ["codex review", "design doc"],
+        ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
+      },
+      {
+        name: "receiving-code-review",
+        rawMatchedPhrases: ["codex review 결과 반영"],
+        ownedReadTarget: "/plugin/skills/receiving-code-review/SKILL.md",
+      },
+    ]);
+    expect(prompt).not.toBeNull();
+    expect(prompt!).toContain("matched by: codex review, design doc");
+    expect(prompt!).toContain("matched by: codex review 결과 반영");
+    expect(prompt!).toContain("current-session-provider-family policy");
+  });
+
+  it("retains raw matched phrases for debugging while keeping injected provider policy symbolic", () => {
+    const matched = matchSkillsForText("Please do a codex review before we lock this in.", [
+      {
+        name: "spec-and-review",
+        description: "critic-gated spec loop",
+        phrases: ["codex review"],
+        ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
+      },
+    ]);
+    expect(matched).toEqual([
+      {
+        name: "spec-and-review",
+        rawMatchedPhrases: ["codex review"],
+        ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
+      },
+    ]);
+    const prompt = buildKeywordMatchedSkillsPrompt(matched);
+    expect(prompt).not.toBeNull();
+    expect(prompt!).toContain("matched by: codex review");
+    expect(prompt!).toContain("current-session-provider-family policy");
+  });
   it("buildKeywordMatchedSkillsPrompt emits exact SKILL.md file targets, not skill:// aliases", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
       {
         name: "brainstorming",
-        matchedPhrases: ["brainstorm"],
+        rawMatchedPhrases: ["brainstorm"],
         ownedReadTarget: "/plugin/skills/brainstorming/SKILL.md",
       },
     ]);

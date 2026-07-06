@@ -39,6 +39,23 @@ This gate applies even when the user says "it's simple", "just scaffold it", or 
 8. **User review gate** — use `ask` to present the spec and wait for explicit approval or revision requests
 9. **writing-plans transition** — on approval, invoke `writing-plans` only; no other implementation skill
 
+## Deep-interview semantics (gajae parity)
+
+- **Round 0 = topology confirmation.** The first substantive question confirms the system topology in the user's language: major components, ownership boundaries, and the relation between the requested change and adjacent flows. Do not skip straight to preferences before the topology is explicit.
+- **Target the weakest unresolved component/dimension next.** After Round 0, every next question should aim at the currently weakest point in the design graph: the component with the highest unresolved ambiguity, and within that component the weakest dimension (goal, constraints, criteria, or context). The runtime may persist the chosen target, but the scoring and selection logic stays prompt-owned.
+- **Ambiguity formulas stay in the prompt.** You MAY compute ambiguity, confidence, and weakest-target math inside the interview prompt/prose, but NEVER migrate that scoring formula into runtime business logic. Runtime persists metadata only; the reasoning remains authored in the question flow.
+- **Trigger taxonomy is explicit.** Track why a question is being asked: topology confirmation, contradiction repair, scope collapse, edge-case forcing, ontology repair, weakest-target follow-up, closure/restate, or approval handoff. Preserve those trigger labels in `deepInterview` metadata when they help resume the interview accurately.
+- **Milestone bands are progressive, not binary.** Use the milestone vocabulary `initial` → `progress` → `refined` → `ready`. Do not claim `ready` until the weakest unresolved target is addressed and the closure/restate gate below has passed.
+- **Ontology rules are first-class.** Keep a running ontology of canonical terms, synonyms, and exclusions. When the user uses overloaded language, restate it into the project's canonical term, record the resolved concept, and challenge collisions immediately rather than letting them leak into the spec.
+- **Closure / restate gate is mandatory.** Before saving the final spec, ask a restate/closure question that compresses the converged design back to the user: topology, chosen approach, strongest constraints, remaining exclusions, and the transition to approval. Only after that closure gate passes may the final spec be persisted and the approval handoff question be asked.
+- **Mutation boundary.** While brainstorming / deep-interview is active, implementation writes stay blocked. The only sanctioned write during this phase is the final spec-persistence completion action under `docs/specs/`, immediately followed by the approval handoff.
+
+## Runtime-owned vs prompt-owned
+
+- **Runtime-owned:** resume identity, topology summary, milestone band, weakest-target metadata, spec persistence receipt, approval handoff state.
+- **Prompt-owned:** ambiguity formulas, weakest-target scoring, milestone advancement reasoning, ontology judgments, and the actual interview questions.
+
+
 ## Q&A discipline
 
 - Ask one question per turn, not a list — and pair each with your recommended answer
@@ -46,9 +63,12 @@ This gate applies even when the user says "it's simple", "just scaffold it", or 
 - For single-select option questions, prefer the `pi-oven_ask` tool with each option as `{label, description}` — the recommended-answer rationale goes in `description`, shown beside the option in the live picker. Write a **substantive 1–3 sentence `description`** per option (the concrete trade-off, when to pick it, and the consequence) — not a few words or a restatement of the label. Keep the built-in `ask` for multi-select or free-form questions
 - Never ask for information you can infer from codebase exploration — ENFORCEMENT: Main dispatches `pi-oven:explorer` to discover codebase answers instead of asking.
 - When a question depends on external API/SDK/library behavior, ENFORCEMENT: Main dispatches `pi-oven:document-specialist` (or `pi-oven:librarian` for web/citations) to fetch current docs instead of asking the user.
+- **Round 0 discipline:** start with topology confirmation, not implementation preference ranking
+- **Weakest-target discipline:** each subsequent question should attack the weakest unresolved component/dimension, not whichever topic is easiest to ask next
 - **Convergence gate:** do not stop until EVERY design dimension — Goals, Non-goals, Constraints, Data model, API surface, Open questions — is either resolved or explicitly deferred by the user. Then present for approval. The interview asks **at least 15 and at most 100 questions**: never present before the 15-question floor, keep questioning unresolved dimensions until the gate is met, and the 100-question ceiling also ends the loop (mark any still-open dimensions OPEN). Never stop on "I think I have enough" alone; track each dimension and keep questioning the unresolved ones
 - **Single-question exit is invalid:** asking one question and then switching to implementation/autonomous execution is a hard violation unless the user explicitly says to skip brainstorming
 - **Stall rule:** if a dimension stops converging after a few rounds, surface the stall explicitly and ask the user to decide it directly or mark it OPEN — do not loop silently
+- **Closure / restate gate:** before persisting the final spec, restate the converged design back to the user and confirm the transition into approval explicitly
 
 Convergence discipline adapted from the `grill-with-docs` pattern (relentless one-question-at-a-time interview until shared understanding).
 

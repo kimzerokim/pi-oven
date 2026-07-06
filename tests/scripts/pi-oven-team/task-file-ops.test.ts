@@ -204,6 +204,11 @@ describe("pi-oven-team/task-file-ops", () => {
     ]);
 
     expect(plan.batches.map((batch) => batch.map((item) => item.id))).toEqual([["1", "3"], ["2"]]);
+    expect(plan.barrierBenchmark).toEqual({
+      sequentialUnits: 3,
+      criticalPathUnits: 2,
+      overlapUnits: 1,
+    });
     expect(plan.reducerOrder).toEqual([
       "append_results",
       "append_results",
@@ -218,22 +223,94 @@ describe("pi-oven-team/task-file-ops", () => {
       "task_file:2",
       "worker_overlay:overlay-a",
     ]);
+  });
 
-    expect(() =>
-      buildDependencyAwareBatches([
-        {
-          id: "7",
-          blockedBy: [],
-          lane: ownedWriteLane,
-          persistenceClaims: [{ surface: "worker_overlay", key: "shared-doc" }],
-        },
-        {
-          id: "8",
-          blockedBy: [],
-          lane: ownedWriteLane,
-          persistenceClaims: [{ surface: "worker_overlay", key: "shared-doc" }],
-        },
-      ])
-    ).toThrow(/collision/i);
+  it("keeps dependency-bearing writer work behind independent read-only lanes", () => {
+    const verificationLane: TeamRuntimeLaneMetadata = {
+      kind: "verification",
+      objective: "verify in parallel",
+      independence_reason: "read-only verification is safe to fan out",
+      shared_state_policy: "read_only",
+      output_schema: "verification_report",
+      reducer: "append_results",
+    };
+    const ownedWriteLane: TeamRuntimeLaneMetadata = {
+      kind: "owned_write",
+      objective: "apply isolated overlay edits",
+      independence_reason: "each owned write claims one unique mutable target",
+      shared_state_policy: "exclusive_write",
+      output_schema: "owned_write_result",
+      reducer: "owned_write_commit",
+      persistence_claims: [{ surface: "worker_overlay", key: "overlay-b" }],
+    };
+
+    const plan = buildDependencyAwareBatches([
+      {
+        id: "1",
+        blockedBy: [],
+        lane: ownedWriteLane,
+        persistenceClaims: [
+          { surface: "worker_dir", key: "worker-1" },
+          { surface: "task_file", key: "1" },
+          { surface: "worker_overlay", key: "overlay-b" },
+        ],
+      },
+      {
+        id: "2",
+        blockedBy: ["1"],
+        lane: verificationLane,
+        persistenceClaims: [
+          { surface: "worker_dir", key: "worker-2" },
+          { surface: "task_file", key: "2" },
+        ],
+      },
+      {
+        id: "3",
+        blockedBy: [],
+        lane: verificationLane,
+        persistenceClaims: [
+          { surface: "worker_dir", key: "worker-3" },
+          { surface: "task_file", key: "3" },
+        ],
+      },
+      {
+        id: "4",
+        blockedBy: ["1"],
+        lane: ownedWriteLane,
+        persistenceClaims: [
+          { surface: "worker_dir", key: "worker-4" },
+          { surface: "task_file", key: "4" },
+          { surface: "worker_overlay", key: "overlay-c" },
+        ],
+      },
+    ]);
+
+    expect(plan.batches.map((batch) => batch.map((item) => item.id))).toEqual([
+      ["1", "3"],
+      ["2", "4"],
+    ]);
+    expect(plan.barrierBenchmark).toEqual({
+      sequentialUnits: 4,
+      criticalPathUnits: 2,
+      overlapUnits: 2,
+    });
+    expect(plan.reducerOrder).toEqual([
+      "owned_write_commit",
+      "append_results",
+      "append_results",
+      "owned_write_commit",
+    ]);
+    expect(plan.collisionEvidence).toEqual([
+      "worker_dir:worker-1",
+      "task_file:1",
+      "worker_overlay:overlay-b",
+      "worker_dir:worker-3",
+      "task_file:3",
+      "worker_dir:worker-2",
+      "task_file:2",
+      "worker_dir:worker-4",
+      "task_file:4",
+      "worker_overlay:overlay-c",
+    ]);
   });
 });

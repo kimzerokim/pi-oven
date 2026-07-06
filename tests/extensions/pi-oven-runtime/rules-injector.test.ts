@@ -261,7 +261,23 @@ describe("orchestrator conduct block", () => {
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
     expect(b).toContain("pi-oven_ask");
     expect(b).toContain("deepInterview");
-    expect(b).toMatch(/approval handoff|resume state/i);
+    expect(b).toMatch(/approval handoff|resume state|topology|milestone|threshold|spec persistence/i);
+  });
+});
+
+describe("orchestrator conduct block provider-family wording", () => {
+  it("interactive and autonomous variants avoid named-model workflow lore", () => {
+    const inj = new RulesInjector();
+    const interactive = inj.buildOrchestratorConductBlock({ autonomousActive: false });
+    const autonomous = inj.buildOrchestratorConductBlock({ autonomousActive: true });
+    for (const block of [interactive, autonomous]) {
+      expect(block).toContain("pi-oven_ask");
+      expect(block).toContain("deepInterview");
+      expect(block).not.toMatch(/\bcodex\b/i);
+      expect(block).not.toMatch(/\bzen\b/i);
+      expect(block).not.toMatch(/\bopus\b/i);
+      expect(block).not.toMatch(/\bsonnet\b/i);
+    }
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync, utimesSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
@@ -757,6 +757,100 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(after.state.skillReads).toEqual([ownedTarget]);
   });
 
+  it("coalesces same-turn exact skill-proof read + code-write down to one store state read", async () => {
+    const ownedTarget = "/plugin/skills/autonomous-loop/SKILL.md";
+    writeState(dir, {
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: ["autonomous-loop"],
+      skillReads: [],
+      requiredSkillsMessageId: "u1",
+      ownedSkillReadTargets: [ownedTarget],
+    });
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(
+      join(dir, "state", "branch-contract.json"),
+      JSON.stringify({ destination: "worktree", branch: "feature/ws5", pr_mode: "draft" })
+    );
+    const d = await deps(dir);
+    const originalReadState = d.store.readState.bind(d.store);
+    let readStateCalls = 0;
+    d.store.readState = async () => {
+      readStateCalls += 1;
+      return originalReadState();
+    };
+    const h = createGateHandler(d);
+
+    const readRes = await h(readEvent(ownedTarget));
+    expect(readRes?.block ?? false).toBe(false);
+
+    const writeRes = await h(writeEvent("src/example.ts", "tc-write-proofed"));
+    expect(writeRes?.block ?? false).toBe(false);
+    expect(readStateCalls).toBe(1);
+  });
+
+  it("refreshes same-turn cached FSM after an external approval-state mutation before code-write", async () => {
+    const ownedTarget = "/plugin/skills/autonomous-loop/SKILL.md";
+    writeState(dir, {
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: ["autonomous-loop"],
+      skillReads: [ownedTarget],
+      requiredSkillsMessageId: "u1",
+      ownedSkillReadTargets: [ownedTarget],
+    });
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(
+      join(dir, "state", "branch-contract.json"),
+      JSON.stringify({ destination: "worktree", branch: "feature/ws5", pr_mode: "draft" })
+    );
+    const h = createGateHandler(await deps(dir));
+
+    const primed = await h(readEvent(ownedTarget, "tc-read-prime"));
+    expect(primed?.block ?? false).toBe(false);
+
+    writeState(dir, {
+      active: false,
+      gateCache: {},
+      version: 2,
+      schemaVersion: 1,
+      requiredSkills: ["autonomous-loop"],
+      skillReads: [ownedTarget],
+      requiredSkillsMessageId: "u1",
+      ownedSkillReadTargets: [ownedTarget],
+      deepInterview: {
+        version: 1,
+        active: true,
+        interviewId: "di-1",
+        phase: "approval_pending",
+        spec: {
+          path: "docs/specs/2026-07-06-workflow-optimization-design.md",
+          sha256: "abc123",
+          persistedAt: "2026-07-06T00:04:00.000Z",
+          stage: "final",
+        },
+        approvalHandoff: {
+          decisionKey: "approve-workflow-optimization-spec-v1",
+          summary:
+            "Approve workflow optimization + gajae-style deep-interview redesign direction for spec/plan drafting",
+          status: "pending",
+          requestedAt: "2026-07-06T00:04:00.000Z",
+        },
+        lastUpdatedAt: "2026-07-06T00:04:00.000Z",
+      },
+    });
+    const future = new Date(Date.now() + 5_000);
+    utimesSync(projectStatePath(dir, AUTONOMOUS_STATE_FILE), future, future);
+
+    const blocked = await h(writeEvent("src/example.ts", "tc-write-after-approval"));
+    expect(blocked?.block).toBe(true);
+    expect(blocked?.reason).toMatch(/approval|brainstorming|deep-interview/i);
+  });
+
   it("blocks code-write with an explicit capability-proof diagnostic when a required skill has no owned proof target", async () => {
     writeState(dir, {
       active: true,
@@ -780,6 +874,100 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(blocked?.reason).toMatch(/requiredSkills/i);
     expect(blocked?.reason).toMatch(/ownedSkillReadTargets/i);
     expect(blocked?.reason).toMatch(/autonomous-loop/i);
+  });
+
+  it("blocks code-write while deep-interview is actively converging", async () => {
+    writeState(dir, {
+      active: false,
+      gateCache: {},
+      version: 1,
+      schemaVersion: 1,
+      deepInterview: {
+        version: 2,
+        interviewId: "di-1",
+        active: true,
+        phase: "interviewing",
+        threshold: 0.35,
+        thresholdSource: "session",
+        pendingQuestion: {
+          roundKey: "di-1::rid:round-1",
+          question: "What is the weakest unresolved dimension?",
+          askedAt: "2026-07-06T00:00:00.000Z",
+          meta: {
+            interviewId: "di-1",
+            round: 1,
+            roundId: "round-1",
+            questionId: "q-round-1",
+            stage: "round",
+            component: "runtime-routing",
+            dimension: "criteria",
+            milestone: "refined",
+          },
+        },
+        state: {
+          rounds: [],
+          establishedFacts: [],
+          ontologySnapshots: [],
+          milestone: "refined",
+          nextTarget: {
+            componentId: "runtime-routing",
+            dimension: "criteria",
+            rationale: "Resolve the weakest unresolved dimension.",
+          },
+        },
+      },
+    });
+    const h = createGateHandler(await deps(dir));
+    const r = await h(writeEvent("src/example.ts"));
+    expect(r?.block).toBe(true);
+    expect(r?.reason).toMatch(/brainstorming|deep-interview|docs\/specs/i);
+  });
+
+  it("migrates legacy approval-pending interview state into the mutation guard", async () => {
+    writeState(dir, {
+      active: false,
+      gateCache: {},
+      version: 1,
+      schemaVersion: 1,
+      deepInterview: {
+        version: 1,
+        active: true,
+        interviewId: "di-1",
+        phase: "approval_pending",
+        spec: {
+          path: "docs/specs/2026-07-06-workflow-optimization-design.md",
+          sha256: "abc123",
+          persistedAt: "2026-07-06T00:04:00.000Z",
+          stage: "final",
+        },
+        approvalHandoff: {
+          decisionKey: "approve-workflow-optimization-spec-v1",
+          summary:
+            "Approve workflow optimization + gajae-style deep-interview redesign direction for spec/plan drafting",
+          status: "pending",
+          requestedAt: "2026-07-06T00:04:00.000Z",
+        },
+        routingApproval: {
+          sessionProviderFamily: "openai-codex",
+          recommendedByRole: {
+            executor: "openai-codex/gpt-5.5:high",
+          },
+          buckets: [
+            {
+              bucketKey: "openai-codex/gpt-5.5:high",
+              recommendedSelector: "openai-codex/gpt-5.5:high",
+              roles: ["executor"],
+            },
+          ],
+          approvals: {},
+        },
+        lastUpdatedAt: "2026-07-06T00:04:00.000Z",
+      },
+    });
+    const h = createGateHandler(await deps(dir));
+    const r = await h(writeEvent("src/example.ts"));
+    expect(r?.block).toBe(true);
+    expect(r?.reason).toMatch(/approval|brainstorming|deep-interview/i);
   });
 
   it("initializes and preserves ownership state fields across exact skill-proof mutations", async () => {
@@ -836,6 +1024,62 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(after.state.ownershipTrace).toEqual(ownershipTrace);
     expect(after.state.explicitForeignAgents).toEqual(["kzk:explorer"]);
     expect(after.state.ownedSkillReadTargets).toEqual([ownedTarget]);
+  });
+
+  it("refreshes the runtime cache from persisted state after an interleaved skill-read mutation", async () => {
+    const ownedTarget = "/plugin/skills/autonomous-loop/SKILL.md";
+    const setupTarget = "/plugin/skills/setup/SKILL.md";
+    let mtimeMs = 1;
+    let currentState: FsmState = {
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: ["autonomous-loop"],
+      ownedSkillReadTargets: [ownedTarget],
+      skillReads: [],
+      requiredSkillsMessageId: "u1",
+    };
+    let interleaved = false;
+    const lg = makeLogger();
+    const fakeStore = {
+      async readState() {
+        return { kind: "OK" as const, state: structuredClone(currentState) };
+      },
+      async readStateMtimeMs() {
+        return mtimeMs;
+      },
+      async mutate(updater: (current: FsmState) => FsmState) {
+        if (!interleaved) {
+          interleaved = true;
+          currentState = {
+            ...currentState,
+            version: currentState.version + 1,
+            requiredSkills: ["setup"],
+            ownedSkillReadTargets: [setupTarget],
+          };
+          mtimeMs += 1;
+        }
+        currentState = updater(structuredClone(currentState));
+        mtimeMs += 1;
+      },
+      async readBranchContract() {
+        return { kind: "OK" as const, contract: { destination: "worktree" as const, branch: "feature/ws5", pr_mode: "draft" as const } };
+      },
+    } as unknown as GateStateStore;
+    const h = createGateHandler({
+      store: fakeStore,
+      logger: lg.logger,
+      getEnv: () => ({}),
+      isParentSession: true,
+    });
+
+    const readRes = await h(readEvent(ownedTarget));
+    expect(readRes?.block ?? false).toBe(false);
+
+    const writeRes = await h(writeEvent("src/example.ts"));
+    expect(writeRes?.block).toBe(true);
+    expect(writeRes?.reason).toContain(setupTarget);
   });
 
   it("ignores skill:// reads outside an active autonomous state", async () => {

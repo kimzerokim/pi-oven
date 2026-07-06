@@ -66,7 +66,7 @@ Parse the user's intent from their initial request:
 
 ### Step 0 — Primary language
 
-Before anything else, ask the user which language will be the **default response language going forward** — this is a global preference, not just for the current project. Call the `pi-oven_ask` tool with exactly two arguments — `question` (a string) and `options` (an array of `{ label, description }`). It takes no other arguments, and its UI automatically appends an "Other (type your own)" entry. Then read the user's choice from `details.selected` (the picked option's label) or `details.customInput` (free text), falling back to the visible `User selected:` / `User provided custom input:` line. If neither is present, treat it as a cancel and stop — do NOT silently re-ask.
+Before anything else, ask the user which language will be the **default response language going forward** — this is a global preference, not just for the current project. Call the `pi-oven_ask` tool with the question string, the two listed `options`, `recommended: 0`, and `affordances: { other: true, askAboutChoices: false }`. This step is plain preference capture, not a deep-interview / approval handoff, so omit `deepInterview` / `approval` metadata here. Read the outcome from `details.action`: `selected` populates `details.selected`, `other` populates `details.customInput`; if the action is cancelled/deferred or neither field is present, treat it as a cancel and stop — do NOT silently re-ask.
 
 Use a question framing like: "pi-oven 셋업 — 앞으로의 기본 응답 언어를 무엇으로 할까요?" (or in English: "pi-oven setup — what should be the default response language going forward?")
 
@@ -81,7 +81,7 @@ Do NOT persist the language yet — the write is deferred to Step 0.5 so it can 
 
 ### Step 0.5 — Setup scope
 
-Right after the language choice, ask whether this setup applies **globally** (the default for every project) or **only to this project**. Call the `pi-oven_ask` tool with exactly two arguments — `question` (a string) and `options` (an array of `{ label, description }`); it takes no other arguments. Read the user's choice the same way as Step 0 (`details.selected` / the visible `User selected:` line); if neither is present, treat it as a cancel and stop.
+Right after the language choice, ask whether this setup applies **globally** (the default for every project) or **only to this project**. Call `pi-oven_ask` with the question string, the two listed `options`, `recommended: 0`, and `affordances: { other: false, askAboutChoices: false }`. Scope is a closed set here, so do NOT expose free-text or the clarification affordance. Read the outcome the same way as Step 0 (`details.action` + `details.selected`); if the action is cancelled/deferred or no selection is present, treat it as a cancel and stop.
 
 Question framing: "이번 셋업을 글로벌(모든 프로젝트 기본값)로 적용할까요, 이 프로젝트에만 적용할까요?" (or in English: "Apply this setup globally (default for all projects) or to this project only?")
 
@@ -151,6 +151,8 @@ Available profiles: list only the actually available no-Codex options from this 
   - D (opencode-zen-only)   ← only if opencode-zen is authed
 ```
 
+Important boundary: this detection only decides which persisted routing profiles are eligible. `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` are visibility/guard layers only; the runtime still owns the current-session provider-family choice.
+
 ### Step 2 — Parent session check
 
 Read `~/.omp/plugins/pi-oven-session-model.json` (written by the pi-oven extension's `session_start` handler). This file looks like:
@@ -183,16 +185,11 @@ Present the options based on Step 1 findings:
 
 If `openai-codex` is unavailable, show only the remaining provider-backed options and set the default to the first actually available option. Never render Profile A or B in this branch.
 
-```
-Select profile:
-  [C] Profile C — All-Anthropic (opus-4-8 / sonnet-4-6, writes 24 per-role overrides)   ← only if anthropic authed
-  [D] Profile D — opencode-zen-only wide fan-out profile (kimi-k2.6 / minimax-m2.5 / gemini-3-flash, writes 24 per-role overrides)   ← only if opencode-zen authed
+Build a `pi-oven_ask` question from only the visible profiles. Use the first available profile as `recommended`, set `affordances: { other: false, askAboutChoices: true }`, and give each visible option a concise one-line description in the chosen language. This is a routing-choice clarification branch, so the dedicated `Ask about these choices` affordance is valid; free-text is not.
 
-Enter choice [C]:   ← when C is the first available option
-Enter choice [D]:   ← when D is the only available option
-```
+If the user picks `Ask about these choices`, explain the currently available profile differences in the chosen language, then re-ask with the same visible option set. Read the final choice from `details.selected`.
 
-If neither C nor D is available, do not render a selection prompt — tell the user to authenticate a supported provider first and stop.
+If no profiles are available, do not render a selection prompt — tell the user to authenticate a supported provider first and stop.
 
 If the user selects Profile A, B, C, or D, display this notice and ask for confirmation before proceeding:
 

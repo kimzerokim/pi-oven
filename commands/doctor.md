@@ -76,6 +76,8 @@ Exit code: `0` when there are no FAILs (WARNs are acceptable), `1` when any chec
 
 Relay the report to the user, then walk each non-PASS line. The script still prints the 11-check matrix first, but now also appends a **Standalone truth surface** section. Treat that section as part of the diagnostic output — it carries the same operator-facing warnings status shows.
 
+If the standalone truth surface reports provider-family or routing-boundary state, make the boundary explicit: `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` are visibility/guard layers only. They can report or persist routing configuration, but the runtime still owns the current-session provider-family choice.
+
 ## Temporary compatibility boundary
 
 - Scope: vendored native worker runtime under `scripts/pi-oven-team/*` only.
@@ -85,7 +87,7 @@ Relay the report to the user, then walk each non-PASS line. The script still pri
 
 - **FAIL** — a hard blocker. Surface the `fix:` hint from that line and tell the user this must be resolved before pi-oven works correctly. If multiple checks FAIL, list them in priority order (binaries/git first, then skills/agents, then eval).
 - **WARN** — non-blocking, but worth noting. Explain what is degraded (e.g. eval cannot run live, project-scope routing still needs a separate global setup step) and the optional remediation.
-- **INFO** in the standalone section — state you should surface, not ignore (for example installed-topology evidence, the explicit control-plane front door, or the native worker boundary state). It does not affect the exit code, but it is still part of the truth surface.
+- **INFO** in the standalone section — state you should surface, not ignore (for example installed-topology evidence, the explicit control-plane front door, current-session provider-family ownership, or the native worker boundary state). It does not affect the exit code, but it is still part of the truth surface.
 - **PASS** — no action; only mention in the summary count.
 
 If `overall PASS` or `overall WARN`, tell the user the install is healthy (or healthy-with-warnings). If `overall FAIL`, tell them the install needs attention and summarize the failing checks.

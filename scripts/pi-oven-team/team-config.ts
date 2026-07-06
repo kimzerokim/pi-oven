@@ -32,6 +32,21 @@ export interface TaskStateWrite {
   owner: string;
 }
 
+export interface TeamStartupBarrierBenchmark {
+  sequentialUnits: number;
+  criticalPathUnits: number;
+  overlapUnits: number;
+}
+
+export interface TeamStartupDeterministicBenchmark {
+  model: "synthetic-barrier-units-v1";
+  reservation: TeamStartupBarrierBenchmark;
+  persistence: TeamStartupBarrierBenchmark;
+  spawn: TeamStartupBarrierBenchmark;
+  totalSequentialUnits: number;
+  totalCriticalPathUnits: number;
+}
+
 export interface TeamStartupEvidence {
   fanoutLatencyMs: number;
   sequentialComparableLatencyMs: number;
@@ -39,6 +54,7 @@ export interface TeamStartupEvidence {
   collisionEvidence: string[];
   reducerOrder: string[];
   persistenceOrder: string[];
+  benchmark?: TeamStartupDeterministicBenchmark;
   recordedAt: string;
 }
 
@@ -179,12 +195,55 @@ export function buildStartupEvidence(args: {
   collisionEvidence: readonly string[];
   reducerOrder: readonly string[];
   persistenceOrder: readonly string[];
+  benchmark?: {
+    model: "synthetic-barrier-units-v1";
+    reservation: TeamStartupBarrierBenchmark;
+    persistence: TeamStartupBarrierBenchmark;
+    spawn: TeamStartupBarrierBenchmark;
+  };
 }): TeamStartupEvidence {
-  const fanoutLatencyMs = Math.max(1, Math.round(args.fanoutLatencyMs));
-  const sequentialComparableLatencyMs = Math.max(
+  let fanoutLatencyMs = Math.max(1, Math.round(args.fanoutLatencyMs));
+  let sequentialComparableLatencyMs = Math.max(
     fanoutLatencyMs,
     Math.round(args.sequentialComparableLatencyMs)
   );
+  let benchmark: TeamStartupDeterministicBenchmark | undefined;
+
+  if (args.benchmark) {
+    const reservation = {
+      sequentialUnits: Math.max(0, Math.round(args.benchmark.reservation.sequentialUnits)),
+      criticalPathUnits: Math.max(0, Math.round(args.benchmark.reservation.criticalPathUnits)),
+      overlapUnits: Math.max(0, Math.round(args.benchmark.reservation.overlapUnits)),
+    };
+    const persistence = {
+      sequentialUnits: Math.max(0, Math.round(args.benchmark.persistence.sequentialUnits)),
+      criticalPathUnits: Math.max(0, Math.round(args.benchmark.persistence.criticalPathUnits)),
+      overlapUnits: Math.max(0, Math.round(args.benchmark.persistence.overlapUnits)),
+    };
+    const spawn = {
+      sequentialUnits: Math.max(0, Math.round(args.benchmark.spawn.sequentialUnits)),
+      criticalPathUnits: Math.max(0, Math.round(args.benchmark.spawn.criticalPathUnits)),
+      overlapUnits: Math.max(0, Math.round(args.benchmark.spawn.overlapUnits)),
+    };
+    const totalSequentialUnits =
+      reservation.sequentialUnits + persistence.sequentialUnits + spawn.sequentialUnits;
+    const totalCriticalPathUnits =
+      reservation.criticalPathUnits + persistence.criticalPathUnits + spawn.criticalPathUnits;
+    benchmark = {
+      model: args.benchmark.model,
+      reservation,
+      persistence,
+      spawn,
+      totalSequentialUnits,
+      totalCriticalPathUnits,
+    };
+    fanoutLatencyMs = Math.max(1, totalCriticalPathUnits);
+    sequentialComparableLatencyMs = Math.max(
+      fanoutLatencyMs,
+      totalSequentialUnits
+    );
+  }
+
   return {
     fanoutLatencyMs,
     sequentialComparableLatencyMs,
@@ -194,6 +253,7 @@ export function buildStartupEvidence(args: {
     collisionEvidence: [...args.collisionEvidence],
     reducerOrder: [...args.reducerOrder],
     persistenceOrder: [...args.persistenceOrder],
+    ...(benchmark ? { benchmark } : {}),
     recordedAt: new Date().toISOString(),
   };
 }

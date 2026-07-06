@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { PROFILE_B, ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
@@ -7,8 +7,24 @@ import {
   createDeepInterviewRuntime,
   type DeepInterviewRuntime,
 } from "../../../.omp/extensions/pi-oven-runtime/deep-interview-runtime";
-import type { DeepInterviewAskMetadata } from "../../../.omp/extensions/pi-oven-runtime/deep-interview-state";
+import type {
+  ApprovalFlowAskMetadata,
+  ApprovalFlowState,
+  DeepInterviewAskMetadata,
+  DeepInterviewState,
+} from "../../../.omp/extensions/pi-oven-runtime/deep-interview-state";
 import type { RuntimeTraceSnapshot } from "../../../.omp/extensions/pi-oven-runtime/trace-primitives";
+type DeepInterviewCompletionRuntime = DeepInterviewRuntime & {
+  persistFinalSpecAndSeedApprovalFlow(input: {
+    specPath: string;
+    content: string;
+    decisionKey: string;
+    summary: string;
+    question?: string;
+    recommended?: number;
+  }): Promise<{ deepInterview: DeepInterviewState; approvalFlow: ApprovalFlowState }>;
+};
+
 
 const META: DeepInterviewAskMetadata = {
   interviewId: "di-1",
@@ -19,6 +35,9 @@ const META: DeepInterviewAskMetadata = {
   component: "runtime-routing",
   dimension: "scope",
   ambiguity: 1,
+  threshold: 0.35,
+  thresholdSource: "session",
+  milestone: "initial",
 };
 
 const APPROVAL_META: DeepInterviewAskMetadata = {
@@ -30,11 +49,40 @@ const APPROVAL_META: DeepInterviewAskMetadata = {
   component: "runtime-routing",
   dimension: "approval",
   ambiguity: 0.25,
-  approvalHandoff: {
-    decisionKey: "approve-option-c",
-    summary: "Implement Option C after approval",
+};
+
+const APPROVAL_FLOW: ApprovalFlowAskMetadata = {
+  kind: "spec-handoff",
+  source: "manual",
+  decisionKey: "approve-option-c",
+  summary: "Implement Option C after approval",
+  resumedFrom: {
+    interviewId: "di-1",
   },
 };
+
+const APPROVAL_ONLY_FLOW: ApprovalFlowAskMetadata = {
+  kind: "spec-handoff",
+  source: "manual",
+  decisionKey: "approve-runtime-cutover",
+  summary: "Approve the runtime cutover after root approvalFlow persistence.",
+  resumedFrom: {
+    interviewId: "di-approval-root",
+    specPath: "docs/specs/2026-07-06-workflow-optimization-design.md",
+  },
+};
+
+const APPROVAL_ONLY_META: DeepInterviewAskMetadata = {
+  interviewId: "di-approval-root",
+  round: 1,
+  roundId: "approval-root",
+  questionId: "q-approval-root",
+  stage: "approval",
+  component: "runtime-routing",
+  dimension: "approval",
+  ambiguity: 0.2,
+};
+
 function buildRecommendedByRole(): Record<Role, string> {
   return Object.fromEntries(
     ROLES.map((role) => {
@@ -45,6 +93,7 @@ function buildRecommendedByRole(): Record<Role, string> {
 }
 
 const ROUTING_APPROVAL_PAYLOAD: NonNullable<DeepInterviewAskMetadata["routingApproval"]> = {
+  sessionProviderFamily: "openai-codex",
   recommendedByRole: buildRecommendedByRole(),
   buckets: [
     {
@@ -69,10 +118,21 @@ const ROUTING_APPROVAL_META: DeepInterviewAskMetadata = {
   roundId: "approval-bucket-gpt-5-5-high",
   questionId: "q-approval-bucket-gpt-5-5-high",
   dimension: "routing-approval",
+};
+
+const ROUTING_APPROVAL_FLOW: ApprovalFlowAskMetadata = {
+  kind: "routing-bucket",
+  source: "setup",
+  decisionKey: "approve-routing-bucket",
+  summary: "Approve the current routing bucket recommendations before resuming execution.",
   routingApproval: ROUTING_APPROVAL_PAYLOAD,
+  resumedFrom: {
+    interviewId: "di-1",
+  },
 };
 
 const MULTI_BUCKET_ROUTING_APPROVAL_PAYLOAD: NonNullable<DeepInterviewAskMetadata["routingApproval"]> = {
+  sessionProviderFamily: "openai-codex",
   recommendedByRole: buildRecommendedByRole(),
   buckets: [
     {
@@ -89,7 +149,7 @@ const MULTI_BUCKET_ROUTING_APPROVAL_PAYLOAD: NonNullable<DeepInterviewAskMetadat
   approvals: {},
 };
 
-const MULTI_BUCKET_ROUTING_APPROVAL_META: DeepInterviewAskMetadata = {
+const FIRST_BUCKET_META: DeepInterviewAskMetadata = {
   ...APPROVAL_META,
   roundId: "approval-bucket-gpt-5-5-high",
   questionId: "q-approval-bucket-gpt-5-5-high",
@@ -97,55 +157,23 @@ const MULTI_BUCKET_ROUTING_APPROVAL_META: DeepInterviewAskMetadata = {
   routingApproval: MULTI_BUCKET_ROUTING_APPROVAL_PAYLOAD,
 };
 
-const SECOND_BUCKET_ROUTING_APPROVAL_META: DeepInterviewAskMetadata = {
+const SECOND_BUCKET_META: DeepInterviewAskMetadata = {
   ...APPROVAL_META,
   round: 2,
   roundId: "approval-bucket-gpt-5-4-medium",
   questionId: "q-approval-bucket-gpt-5-4-medium",
   dimension: "routing-approval",
+};
+
+const MULTI_BUCKET_ROUTING_APPROVAL_FLOW: ApprovalFlowAskMetadata = {
+  kind: "routing-bucket",
+  source: "setup",
+  decisionKey: "approve-routing-bucket",
+  summary: "Approve the current routing bucket recommendations before resuming execution.",
   routingApproval: MULTI_BUCKET_ROUTING_APPROVAL_PAYLOAD,
-};
-
-const EXPLICIT_OVERRIDE_ROUTING_APPROVAL_PAYLOAD: NonNullable<DeepInterviewAskMetadata["routingApproval"]> = {
-  recommendedByRole: buildRecommendedByRole(),
-  buckets: [
-    {
-      bucketKey: "openai-codex/gpt-5.5:high",
-      recommendedSelector: "openai-codex/gpt-5.5:high",
-      roles: ["executor", "test-engineer", "metis"],
-    },
-  ],
-  approvals: {
-    executor: {
-      role: "executor",
-      bucketKey: "openai-codex/gpt-5.5:high",
-      status: "overridden",
-      recommendedSelector: "openai-codex/gpt-5.5:high",
-      selectedSelector: "openai-codex/gpt-5.4:high",
-    },
-    "test-engineer": {
-      role: "test-engineer",
-      bucketKey: "openai-codex/gpt-5.5:high",
-      status: "overridden",
-      recommendedSelector: "openai-codex/gpt-5.5:high",
-      selectedSelector: "openai-codex/gpt-5.4:high",
-    },
-    metis: {
-      role: "metis",
-      bucketKey: "openai-codex/gpt-5.5:high",
-      status: "overridden",
-      recommendedSelector: "openai-codex/gpt-5.5:high",
-      selectedSelector: "openai-codex/gpt-5.4:high",
-    },
+  resumedFrom: {
+    interviewId: "di-1",
   },
-};
-
-const EXPLICIT_OVERRIDE_ROUTING_APPROVAL_META: DeepInterviewAskMetadata = {
-  ...APPROVAL_META,
-  roundId: "approval-bucket-gpt-5-5-high",
-  questionId: "q-approval-bucket-gpt-5-5-high",
-  dimension: "routing-approval",
-  routingApproval: EXPLICIT_OVERRIDE_ROUTING_APPROVAL_PAYLOAD,
 };
 
 describe("deep-interview-runtime", () => {
@@ -162,14 +190,21 @@ describe("deep-interview-runtime", () => {
   afterEach(() => {
     rmSync(projectRoot, { recursive: true, force: true });
   });
+  it("keeps final spec persistence off the public runtime interface", () => {
+    const publicSurfaceHidden: "persistFinalSpecAndSeedApprovalFlow" extends keyof DeepInterviewRuntime ? false : true =
+      true;
 
-  it("seeds pending question state with stable round identity", async () => {
+    expect(publicSurfaceHidden).toBe(true);
+  });
+
+  it("seeds pending question state into the V2 nested envelope with stable round identity", async () => {
     const state = await runtime.seedQuestion({
       question: "Confirm the topology.",
       recommended: 0,
       deepInterview: META,
     });
 
+    expect(state.phase).toBe("interviewing");
     expect(state.pendingQuestion).toEqual(
       expect.objectContaining({
         roundKey: "di-1::rid:topology",
@@ -178,7 +213,7 @@ describe("deep-interview-runtime", () => {
         meta: META,
       })
     );
-    expect(state.rounds).toEqual(
+    expect(state.state.rounds).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           roundKey: "di-1::rid:topology",
@@ -193,7 +228,7 @@ describe("deep-interview-runtime", () => {
     expect(persisted.deepInterview).toBeDefined();
   });
 
-  it("records an answer, clears pending state, and reloads from the persisted store", async () => {
+  it("records answers inside state.rounds and reloads from the persisted store", async () => {
     await runtime.seedQuestion({
       question: "Confirm the topology.",
       recommended: 0,
@@ -206,10 +241,10 @@ describe("deep-interview-runtime", () => {
       recommended: 0,
       deepInterview: META,
     });
-    const resumed = await createDeepInterviewRuntime(projectRoot).readState();
+    const resumed = (await createDeepInterviewRuntime(projectRoot).readState()) as DeepInterviewState | undefined;
 
     expect(answered.pendingQuestion).toBeUndefined();
-    expect(answered.rounds).toEqual(
+    expect(answered.state.rounds).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           roundKey: "di-1::rid:topology",
@@ -218,412 +253,499 @@ describe("deep-interview-runtime", () => {
         }),
       ])
     );
-    expect(resumed).toEqual(
-      expect.objectContaining({
-        interviewId: "di-1",
-        rounds: expect.arrayContaining([
-          expect.objectContaining({
-            roundKey: "di-1::rid:topology",
-            selected: "Option C",
-          }),
-        ]),
-      })
+    expect(resumed?.state.rounds).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          roundKey: "di-1::rid:topology",
+          selected: "Option C",
+        }),
+      ])
     );
     expect(resumed?.pendingQuestion).toBeUndefined();
   });
 
-  it("closes approval answers directly into ready_to_resume without a second runtime hop", async () => {
-    await runtime.seedQuestion({
+  it("cuts approval ownership over to root approvalFlow while leaving deepInterview in handoff", async () => {
+    const seeded = await runtime.seedQuestion({
       question: "Approve the implementation handoff.",
       recommended: 0,
       deepInterview: APPROVAL_META,
+      approval: APPROVAL_FLOW,
     });
+    const pending = (await runtime.readApprovalFlow()) as ApprovalFlowState | undefined;
 
-    const approved = await runtime.recordAnswer({
+    expect(seeded.phase).toBe("handoff");
+    expect(seeded.approvalHandoff).toBeUndefined();
+    expect(seeded.pendingQuestion?.meta.approvalHandoff).toBeUndefined();
+    expect(seeded.pendingQuestion?.meta.routingApproval).toBeUndefined();
+    expect(pending).toEqual(
+      expect.objectContaining({
+        kind: "spec-handoff",
+        status: "pending",
+        decisionKey: "approve-option-c",
+        pendingQuestion: expect.objectContaining({
+          question: "Approve the implementation handoff.",
+          recommended: 0,
+        }),
+      })
+    );
+
+    const answered = await runtime.recordAnswer({
       question: "Approve the implementation handoff.",
       selected: "Proceed",
       recommended: 0,
       deepInterview: APPROVAL_META,
+      approval: APPROVAL_FLOW,
     });
+    const approval = (await runtime.readApprovalFlow()) as ApprovalFlowState | undefined;
+    const resumed = (await createDeepInterviewRuntime(projectRoot).readState()) as DeepInterviewState | undefined;
 
-    expect(approved.phase).toBe("ready_to_resume");
-    expect(approved.approvalHandoff).toEqual(
+    expect(answered.phase).toBe("handoff");
+    expect(answered.state.rounds.at(-1)?.approvalHandoff).toEqual(
       expect.objectContaining({
         decisionKey: "approve-option-c",
         status: "approved",
       })
     );
-  });
-  it("marks seeded approval questions as approval_pending before the answer arrives", async () => {
-    const seeded = await runtime.seedQuestion({
-      question: "Approve the codex routing bucket.",
-      recommended: 0,
-      deepInterview: ROUTING_APPROVAL_META,
-    });
-
-    expect(seeded.phase).toBe("approval_pending");
-    expect(seeded.approvalHandoff).toEqual(
+    expect(approval).toEqual(
       expect.objectContaining({
+        active: false,
+        status: "approved",
         decisionKey: "approve-option-c",
-        status: "pending",
       })
     );
-    expect(seeded.pendingQuestion).toEqual(
+    expect(resumed?.state.rounds.at(-1)?.approvalHandoff).toEqual(
       expect.objectContaining({
-        question: "Approve the codex routing bucket.",
-        meta: expect.objectContaining({
-          stage: "approval",
-          roundId: "approval-bucket-gpt-5-5-high",
+        decisionKey: "approve-option-c",
+        status: "approved",
+      })
+    );
+    expect(resumed?.approvalHandoff).toBeUndefined();
+    expect(resumed?.routingApproval).toBeUndefined();
+  });
+
+  it("persists cancelled approval answers without falling back to a pending compatibility mirror", async () => {
+    await runtime.seedQuestion({
+      question: "Approve the implementation handoff.",
+      recommended: 0,
+      deepInterview: APPROVAL_META,
+      approval: APPROVAL_FLOW,
+    });
+
+    const answered = await runtime.recordAnswer({
+      question: "Approve the implementation handoff.",
+      recommended: 0,
+      deepInterview: APPROVAL_META,
+      approval: APPROVAL_FLOW,
+    });
+    const approval = (await runtime.readApprovalFlow()) as ApprovalFlowState | undefined;
+    const resumed = (await createDeepInterviewRuntime(projectRoot).readState()) as DeepInterviewState | undefined;
+
+    expect(answered.state.rounds.at(-1)?.approvalHandoff).toEqual(
+      expect.objectContaining({
+        decisionKey: "approve-option-c",
+        status: "cancelled",
+      })
+    );
+    expect(approval).toEqual(
+      expect.objectContaining({
+        active: false,
+        status: "cancelled",
+        decisionKey: "approve-option-c",
+      })
+    );
+    expect(approval?.pendingQuestion).toBeUndefined();
+    expect(resumed?.state.rounds.at(-1)?.approvalHandoff).toEqual(
+      expect.objectContaining({
+        decisionKey: "approve-option-c",
+        status: "cancelled",
+      })
+    );
+    expect(resumed?.approvalHandoff).toBeUndefined();
+    expect(resumed?.routingApproval).toBeUndefined();
+  });
+
+  it("keeps approvalFlow pending when the user asks about the listed choices", async () => {
+    await runtime.seedQuestion({
+      question: "Approve the implementation handoff.",
+      recommended: 0,
+      deepInterview: APPROVAL_META,
+      approval: APPROVAL_FLOW,
+    });
+
+    const answered = await runtime.recordAnswer({
+      question: "Approve the implementation handoff.",
+      selected: "Ask about these choices",
+      recommended: 0,
+      deepInterview: APPROVAL_META,
+      approval: APPROVAL_FLOW,
+    });
+    const approval = (await runtime.readApprovalFlow()) as ApprovalFlowState | undefined;
+    const resumed = (await createDeepInterviewRuntime(projectRoot).readApprovalFlow()) as ApprovalFlowState | undefined;
+
+    expect(answered.state.rounds.at(-1)).toEqual(
+      expect.objectContaining({
+        selected: "Ask about these choices",
+        approvalHandoff: expect.objectContaining({
+          decisionKey: "approve-option-c",
+          status: "pending",
         }),
       })
     );
+    expect(approval).toEqual(
+      expect.objectContaining({
+        active: true,
+        status: "pending",
+        resolved: {
+          selected: "Ask about these choices",
+          customInput: null,
+        },
+      })
+    );
+    expect(resumed).toEqual(
+      expect.objectContaining({
+        active: true,
+        status: "pending",
+        resolved: {
+          selected: "Ask about these choices",
+          customInput: null,
+        },
+      })
+    );
   });
-  it("persists routing approval payloads across seed → approve → resume", async () => {
+
+  it("marks explicit refinement choices as rejected while preserving the resolved selection", async () => {
+    await runtime.seedQuestion({
+      question: "Approve the implementation handoff.",
+      recommended: 0,
+      deepInterview: APPROVAL_META,
+      approval: APPROVAL_FLOW,
+    });
+
+    await runtime.recordAnswer({
+      question: "Approve the implementation handoff.",
+      selected: "Refine further",
+      recommended: 0,
+      deepInterview: APPROVAL_META,
+      approval: APPROVAL_FLOW,
+    });
+    const approval = (await runtime.readApprovalFlow()) as ApprovalFlowState | undefined;
+
+    expect(approval).toEqual(
+      expect.objectContaining({
+        active: false,
+        status: "rejected",
+        resolved: {
+          selected: "Refine further",
+          customInput: null,
+        },
+      })
+    );
+  });
+
+  it("honors canonical root approval metadata without requiring nested approvalHandoff fields", async () => {
+    const seeded = await runtime.seedQuestion({
+      question: "Approve the runtime cutover.",
+      recommended: 0,
+      deepInterview: APPROVAL_ONLY_META,
+      approval: APPROVAL_ONLY_FLOW,
+    });
+    const pending = (await runtime.readApprovalFlow()) as ApprovalFlowState | undefined;
+
+    expect(seeded.phase).toBe("handoff");
+    expect(pending).toEqual(
+      expect.objectContaining({
+        kind: "spec-handoff",
+        source: "manual",
+        decisionKey: "approve-runtime-cutover",
+        summary: "Approve the runtime cutover after root approvalFlow persistence.",
+        status: "pending",
+        pendingQuestion: expect.objectContaining({
+          question: "Approve the runtime cutover.",
+          recommended: 0,
+        }),
+        resumedFrom: {
+          interviewId: "di-approval-root",
+          specPath: "docs/specs/2026-07-06-workflow-optimization-design.md",
+        },
+      })
+    );
+
+    await runtime.recordAnswer({
+      question: "Approve the runtime cutover.",
+      selected: "Proceed",
+      recommended: 0,
+      deepInterview: APPROVAL_ONLY_META,
+      approval: APPROVAL_ONLY_FLOW,
+    });
+    const resumedApproval = (await createDeepInterviewRuntime(projectRoot).readApprovalFlow()) as
+      | ApprovalFlowState
+      | undefined;
+
+    expect(resumedApproval).toEqual(
+      expect.objectContaining({
+        kind: "spec-handoff",
+        source: "manual",
+        decisionKey: "approve-runtime-cutover",
+        status: "approved",
+        resumedFrom: {
+          interviewId: "di-approval-root",
+          specPath: "docs/specs/2026-07-06-workflow-optimization-design.md",
+        },
+        resolved: {
+          selected: "Proceed",
+          customInput: null,
+        },
+      })
+    );
+  });
+
+  it("persists routing approval payloads under root approvalFlow across seed → approve → resume", async () => {
     await runtime.seedQuestion({
       question: "Approve the codex routing bucket.",
       recommended: 0,
       deepInterview: ROUTING_APPROVAL_META,
+      approval: ROUTING_APPROVAL_FLOW,
     });
 
-    const approved = (await runtime.recordAnswer({
+    const approved = await runtime.recordAnswer({
       question: "Approve the codex routing bucket.",
       selected: "Approve",
       recommended: 0,
       deepInterview: ROUTING_APPROVAL_META,
-    })) as unknown as {
-      phase: string;
-      routingApproval?: {
-        approvals?: {
-          executor?: { status?: string; selectedSelector?: string };
-        };
-      };
-      rounds: Array<{
-        roundKey: string;
-        routingApproval?: {
-          buckets?: Array<{ bucketKey?: string }>;
-        };
-      }>;
-    };
-    const resumed = (await createDeepInterviewRuntime(projectRoot).readState()) as unknown as
-      | undefined
-      | {
-          routingApproval?: {
-            approvals?: {
-              executor?: { status?: string; selectedSelector?: string };
-            };
-          };
-        };
+      approval: ROUTING_APPROVAL_FLOW,
+    });
+    const resumedApproval = (await createDeepInterviewRuntime(projectRoot).readApprovalFlow()) as
+      | ApprovalFlowState
+      | undefined;
+    const resumedState = (await createDeepInterviewRuntime(projectRoot).readState()) as DeepInterviewState | undefined;
 
-    expect(approved.phase).toBe("ready_to_resume");
-    expect(approved.routingApproval?.approvals?.executor).toEqual(
+    expect(approved.phase).toBe("handoff");
+    expect(approved.routingApproval).toBeUndefined();
+    expect(resumedState?.routingApproval).toBeUndefined();
+    expect(resumedState?.pendingQuestion).toBeUndefined();
+    expect(resumedApproval?.routingApproval?.approvals.executor).toEqual(
       expect.objectContaining({
         status: "approved",
         selectedSelector: "openai-codex/gpt-5.5:high",
       })
     );
-    expect(approved.rounds).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          roundKey: "di-1::rid:approval-bucket-gpt-5-5-high",
-          routingApproval: expect.objectContaining({
-            buckets: expect.arrayContaining([
-              expect.objectContaining({
-                bucketKey: "openai-codex/gpt-5.5:high",
-              }),
-            ]),
+    expect(resumedApproval).toEqual(
+      expect.objectContaining({
+        kind: "routing-bucket",
+        status: "approved",
+      })
+    );
+  });
+
+  it("keeps approvalFlow pending until every routing bucket is resolved", async () => {
+    await runtime.seedQuestion({
+      question: "Approve the first codex routing bucket.",
+      recommended: 0,
+      deepInterview: FIRST_BUCKET_META,
+      approval: MULTI_BUCKET_ROUTING_APPROVAL_FLOW,
+    });
+
+    await runtime.recordAnswer({
+      question: "Approve the first codex routing bucket.",
+      selected: "Approve",
+      recommended: 0,
+      deepInterview: FIRST_BUCKET_META,
+      approval: MULTI_BUCKET_ROUTING_APPROVAL_FLOW,
+    });
+
+    let approval = (await runtime.readApprovalFlow()) as ApprovalFlowState | undefined;
+    expect(approval).toEqual(
+      expect.objectContaining({
+        status: "pending",
+        routingApproval: expect.objectContaining({
+          approvals: expect.objectContaining({
+            executor: expect.objectContaining({ status: "approved" }),
           }),
         }),
-      ])
+      })
     );
-    expect(resumed?.routingApproval?.approvals?.executor).toEqual(
+
+    await runtime.seedQuestion({
+      question: "Approve the second codex routing bucket.",
+      recommended: 0,
+      deepInterview: SECOND_BUCKET_META,
+      approval: MULTI_BUCKET_ROUTING_APPROVAL_FLOW,
+    });
+    await runtime.recordAnswer({
+      question: "Approve the second codex routing bucket.",
+      selected: "Approve",
+      recommended: 0,
+      deepInterview: SECOND_BUCKET_META,
+      approval: MULTI_BUCKET_ROUTING_APPROVAL_FLOW,
+    });
+
+    approval = (await runtime.readApprovalFlow()) as ApprovalFlowState | undefined;
+    expect(approval).toEqual(
       expect.objectContaining({
         status: "approved",
-        selectedSelector: "openai-codex/gpt-5.5:high",
+        routingApproval: expect.objectContaining({
+          approvals: expect.objectContaining({
+            writer: expect.objectContaining({
+              status: "approved",
+              selectedSelector: "openai-codex/gpt-5.4:medium",
+            }),
+          }),
+        }),
       })
     );
   });
 
-  it("emits routing approval state deltas into runtime traces", async () => {
-    let trace: RuntimeTraceSnapshot | undefined;
+  it("writes the final docs/specs artifact and seeds approvalFlow via the sanctioned completion path", async () => {
+    await runtime.seedQuestion({
+      question: "Confirm the topology.",
+      recommended: 0,
+      deepInterview: META,
+    });
+    await runtime.recordAnswer({
+      question: "Confirm the topology.",
+      selected: "Session cookie",
+      recommended: 0,
+      deepInterview: META,
+    });
+
+    const completed = await (runtime as DeepInterviewCompletionRuntime).persistFinalSpecAndSeedApprovalFlow({
+      specPath: "docs/specs/drafts/../2026-07-06-workflow-optimization-design.md",
+      content: "# Workflow optimization\n\nFinalized.",
+      decisionKey: "approve-workflow-optimization-spec-v1",
+      summary: "Approve workflow optimization + gajae-style deep-interview redesign direction for spec/plan drafting",
+      question: "지금까지의 수렴 결과로 spec/plan 초안 작성 단계로 넘어갈까요?",
+      recommended: 0,
+    });
+
+    expect(readFileSync(join(projectRoot, "docs/specs/2026-07-06-workflow-optimization-design.md"), "utf-8")).toContain(
+      "Finalized."
+    );
+    expect(completed.deepInterview).toEqual(
+      expect.objectContaining({
+        phase: "complete",
+        active: false,
+        spec: expect.objectContaining({
+          path: "docs/specs/2026-07-06-workflow-optimization-design.md",
+          stage: "final",
+        }),
+      })
+    );
+    expect(completed.approvalFlow).toEqual(
+      expect.objectContaining({
+        active: true,
+        kind: "spec-handoff",
+        status: "pending",
+        decisionKey: "approve-workflow-optimization-spec-v1",
+        resumedFrom: {
+          interviewId: "di-1",
+          specPath: "docs/specs/2026-07-06-workflow-optimization-design.md",
+        },
+      })
+    );
+  });
+  it("rejects final spec persistence paths that escape docs/specs after canonicalization", async () => {
+    let thrown: unknown;
+    try {
+      await (runtime as DeepInterviewCompletionRuntime).persistFinalSpecAndSeedApprovalFlow({
+        specPath: "docs/specs/../../outside.md",
+        content: "# Workflow optimization\n\nFinalized.",
+        decisionKey: "approve-workflow-optimization-spec-v1",
+        summary: "Approve workflow optimization + gajae-style deep-interview redesign direction for spec/plan drafting",
+        question: "지금까지의 수렴 결과로 spec/plan 초안 작성 단계로 넘어갈까요?",
+        recommended: 0,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain("Final spec persistence path must stay under docs/specs/");
+    expect(existsSync(join(projectRoot, "outside.md"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".pi-oven", "state", "autonomous.json"))).toBe(false);
+  });
+  it("rejects final spec persistence paths that traverse symlinks under docs/specs", async () => {
+    mkdirSync(join(projectRoot, "external"), { recursive: true });
+    mkdirSync(join(projectRoot, "docs/specs"), { recursive: true });
+    symlinkSync(join(projectRoot, "external"), join(projectRoot, "docs/specs/link"), "dir");
+    let thrown: unknown;
+    try {
+      await (runtime as DeepInterviewCompletionRuntime).persistFinalSpecAndSeedApprovalFlow({
+        specPath: "docs/specs/link/escaped.md",
+        content: "# Workflow optimization\n\nFinalized.",
+        decisionKey: "approve-workflow-optimization-spec-v1",
+        summary: "Approve workflow optimization + gajae-style deep-interview redesign direction for spec/plan drafting",
+        question: "지금까지의 수렴 결과로 spec/plan 초안 작성 단계로 넘어갈까요?",
+        recommended: 0,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain("must not traverse symlinks");
+    expect(existsSync(join(projectRoot, "external", "escaped.md"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".pi-oven", "state", "autonomous.json"))).toBe(false);
+  });
+
+  it("emits approvalFlow and spec receipt deltas into runtime traces", async () => {
+    let traces: RuntimeTraceSnapshot[] = [];
     runtime = createDeepInterviewRuntime(projectRoot, {
       now: () => "2026-07-05T00:00:00.000Z",
-      onRuntimeTrace: (nextTrace) => {
-        trace = nextTrace;
+      onRuntimeTrace: (trace) => {
+        traces = [...traces, trace];
       },
     });
-    const pendingMeta: DeepInterviewAskMetadata = {
-      ...ROUTING_APPROVAL_META,
-      routingApproval: {
-        ...ROUTING_APPROVAL_PAYLOAD,
-        approvals: {},
-      },
-    };
 
     await runtime.seedQuestion({
       question: "Approve the codex routing bucket.",
       recommended: 0,
-      deepInterview: pendingMeta,
+      deepInterview: ROUTING_APPROVAL_META,
+      approval: {
+        ...ROUTING_APPROVAL_FLOW,
+        routingApproval: {
+          ...ROUTING_APPROVAL_PAYLOAD,
+          approvals: {},
+        },
+      },
     });
     await runtime.recordAnswer({
       question: "Approve the codex routing bucket.",
       selected: "Approve",
       recommended: 0,
-      deepInterview: pendingMeta,
-    });
-
-    expect(trace?.mutationScope).toBe("runtime_contract");
-    expect(trace?.touchedPaths).toContain(".omp/extensions/pi-oven-runtime/deep-interview-runtime.ts");
-    expect(trace?.stateChanges).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: "deepInterview.approvalHandoff.status",
-          before: "pending",
-          after: "approved",
-        }),
-        expect.objectContaining({
-          key: "deepInterview.routingApproval.approvals.executor.selectedSelector",
-          before: undefined,
-          after: "openai-codex/gpt-5.5:high",
-        }),
-      ])
-    );
-  });
-
-  it("keeps routing approval pending until every selector bucket is resolved", async () => {
-    await runtime.seedQuestion({
-      question: "Approve the first codex routing bucket.",
-      recommended: 0,
-      deepInterview: MULTI_BUCKET_ROUTING_APPROVAL_META,
-    });
-
-    const firstApproved = (await runtime.recordAnswer({
-      question: "Approve the first codex routing bucket.",
-      selected: "Approve",
-      recommended: 0,
-      deepInterview: MULTI_BUCKET_ROUTING_APPROVAL_META,
-    })) as unknown as {
-      phase: string;
-      approvalHandoff?: { status?: string };
-      routingApproval?: {
-        approvals?: {
-          executor?: { status?: string };
-          writer?: { status?: string };
-        };
-      };
-    };
-
-    expect(firstApproved.phase).toBe("approval_pending");
-    expect(firstApproved.approvalHandoff).toEqual(
-      expect.objectContaining({
-        status: "pending",
-      })
-    );
-    expect(firstApproved.routingApproval?.approvals?.executor).toEqual(
-      expect.objectContaining({
-        status: "approved",
-      })
-    );
-    expect(firstApproved.routingApproval?.approvals?.writer).toBeUndefined();
-
-    await runtime.seedQuestion({
-      question: "Approve the second codex routing bucket.",
-      recommended: 0,
-      deepInterview: SECOND_BUCKET_ROUTING_APPROVAL_META,
-    });
-
-    const fullyApproved = (await runtime.recordAnswer({
-      question: "Approve the second codex routing bucket.",
-      selected: "Approve",
-      recommended: 0,
-      deepInterview: SECOND_BUCKET_ROUTING_APPROVAL_META,
-    })) as unknown as {
-      phase: string;
-      approvalHandoff?: { status?: string };
-      routingApproval?: {
-        approvals?: {
-          writer?: { status?: string; selectedSelector?: string };
-        };
-      };
-    };
-
-    expect(fullyApproved.phase).toBe("ready_to_resume");
-    expect(fullyApproved.approvalHandoff).toEqual(
-      expect.objectContaining({
-        status: "approved",
-      })
-    );
-    expect(fullyApproved.routingApproval?.approvals?.writer).toEqual(
-      expect.objectContaining({
-        status: "approved",
-        selectedSelector: "openai-codex/gpt-5.4:medium",
-      })
-    );
-  });
-
-  it("keeps override-per-role pending until explicit per-role selectors are stored", async () => {
-    const pendingOverrideMeta: DeepInterviewAskMetadata = {
-      ...ROUTING_APPROVAL_META,
-      routingApproval: {
-        ...ROUTING_APPROVAL_PAYLOAD,
-        approvals: {},
+      deepInterview: ROUTING_APPROVAL_META,
+      approval: {
+        ...ROUTING_APPROVAL_FLOW,
+        routingApproval: {
+          ...ROUTING_APPROVAL_PAYLOAD,
+          approvals: {},
+        },
       },
-    };
-
-    await runtime.seedQuestion({
-      question: "Approve the codex routing bucket.",
+    });
+    await (runtime as DeepInterviewCompletionRuntime).persistFinalSpecAndSeedApprovalFlow({
+      specPath: "docs/specs/2026-07-06-workflow-optimization-design.md",
+      content: "# Workflow optimization\n\nFinalized.",
+      decisionKey: "approve-workflow-optimization-spec-v1",
+      summary: "Approve workflow optimization + gajae-style deep-interview redesign direction for spec/plan drafting",
+      question: "지금까지의 수렴 결과로 spec/plan 초안 작성 단계로 넘어갈까요?",
       recommended: 0,
-      deepInterview: pendingOverrideMeta,
     });
 
-    const unresolved = (await runtime.recordAnswer({
-      question: "Approve the codex routing bucket.",
-      selected: "Override per role",
-      recommended: 1,
-      deepInterview: pendingOverrideMeta,
-    })) as unknown as {
-      phase: string;
-      routingApproval?: {
-        approvals?: {
-          executor?: { status?: string; selectedSelector?: string };
-        };
-      };
-    };
-
-    expect(unresolved.phase).toBe("approval_pending");
-    expect(unresolved.routingApproval?.approvals?.executor).toBeUndefined();
-
-    await runtime.seedQuestion({
-      question: "Approve the codex routing bucket.",
-      recommended: 1,
-      deepInterview: EXPLICIT_OVERRIDE_ROUTING_APPROVAL_META,
-    });
-
-    const resolved = (await runtime.recordAnswer({
-      question: "Approve the codex routing bucket.",
-      selected: "Override per role",
-      recommended: 1,
-      deepInterview: EXPLICIT_OVERRIDE_ROUTING_APPROVAL_META,
-    })) as unknown as {
-      phase: string;
-      routingApproval?: {
-        approvals?: {
-          executor?: { status?: string; selectedSelector?: string };
-        };
-      };
-    };
-    const resumed = (await createDeepInterviewRuntime(projectRoot).readState()) as unknown as
-      | undefined
-      | {
-          routingApproval?: {
-            approvals?: {
-              executor?: { status?: string; selectedSelector?: string };
-            };
-          };
-        };
-
-    expect(resolved.phase).toBe("ready_to_resume");
-    expect(resolved.routingApproval?.approvals?.executor).toEqual(
-      expect.objectContaining({
-        status: "overridden",
-        selectedSelector: "openai-codex/gpt-5.4:high",
-      })
-    );
-    expect(resumed?.routingApproval?.approvals?.executor).toEqual(
-      expect.objectContaining({
-        status: "overridden",
-        selectedSelector: "openai-codex/gpt-5.4:high",
-      })
-    );
-  });
-
-  it("keeps approval pending when a follow-up routing bucket is cancelled with buckets still unresolved", async () => {
-    await runtime.seedQuestion({
-      question: "Approve the first codex routing bucket.",
-      recommended: 0,
-      deepInterview: MULTI_BUCKET_ROUTING_APPROVAL_META,
-    });
-    await runtime.recordAnswer({
-      question: "Approve the first codex routing bucket.",
-      selected: "Approve",
-      recommended: 0,
-      deepInterview: MULTI_BUCKET_ROUTING_APPROVAL_META,
-    });
-
-    await runtime.seedQuestion({
-      question: "Approve the second codex routing bucket.",
-      recommended: 0,
-      deepInterview: SECOND_BUCKET_ROUTING_APPROVAL_META,
-    });
-
-    const cancelled = (await runtime.recordAnswer({
-      question: "Approve the second codex routing bucket.",
-      recommended: 0,
-      deepInterview: SECOND_BUCKET_ROUTING_APPROVAL_META,
-    })) as unknown as {
-      phase: string;
-      approvalHandoff?: { status?: string };
-      routingApproval?: {
-        approvals?: {
-          executor?: { status?: string };
-          writer?: { status?: string };
-        };
-      };
-    };
-    const resumed = (await createDeepInterviewRuntime(projectRoot).readState()) as unknown as
-      | undefined
-      | {
-          phase?: string;
-          approvalHandoff?: { status?: string };
-          routingApproval?: {
-            approvals?: {
-              executor?: { status?: string };
-              writer?: { status?: string };
-            };
-          };
-        };
-
-    expect(cancelled.phase).toBe("approval_pending");
-    expect(cancelled.approvalHandoff).toEqual(
-      expect.objectContaining({
-        status: "pending",
-      })
-    );
-    expect(cancelled.routingApproval?.approvals?.executor).toEqual(
-      expect.objectContaining({
-        status: "approved",
-      })
-    );
-    expect(cancelled.routingApproval?.approvals?.writer).toBeUndefined();
-    expect(resumed?.phase).toBe("approval_pending");
-    expect(resumed?.approvalHandoff).toEqual(
-      expect.objectContaining({
-        status: "pending",
-      })
-    );
-  });
-  it("persists cancellation by clearing pendingQuestion and recording a cancelled lifecycle", async () => {
-    await runtime.seedQuestion({
-      question: "Approve the implementation handoff.",
-      recommended: 0,
-      deepInterview: APPROVAL_META,
-    });
-
-    const cancelled = await runtime.recordAnswer({
-      question: "Approve the implementation handoff.",
-      recommended: 0,
-      deepInterview: APPROVAL_META,
-    });
-
-    expect(cancelled.phase).toBe("interviewing");
-    expect(cancelled.pendingQuestion).toBeUndefined();
-    expect(cancelled.approvalHandoff).toBeUndefined();
-    expect(cancelled.rounds).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          roundKey: "di-1::rid:approval",
-          lifecycle: "cancelled",
-        }),
-      ])
-    );
+    expect(traces.some((trace) => trace.stateChanges.some((change) => change.key === "approvalFlow.status"))).toBe(true);
+    expect(
+      traces.some((trace) =>
+        trace.stateChanges.some(
+          (change) =>
+            change.key === "approvalFlow.routingApproval.approvals.executor.selectedSelector" &&
+            change.after === "openai-codex/gpt-5.5:high"
+        )
+      )
+    ).toBe(true);
+    expect(
+      traces.some((trace) =>
+        trace.stateChanges.some(
+          (change) =>
+            change.key === "deepInterview.spec.path" &&
+            change.after === "docs/specs/2026-07-06-workflow-optimization-design.md"
+        )
+      )
+    ).toBe(true);
   });
 });

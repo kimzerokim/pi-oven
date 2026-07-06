@@ -33,19 +33,19 @@ mid-execution 5+ file reads → halt + re-route regardless of prior override.
 
 ## Routing table
 
-| Phase | Subagent type | Model |
+| Phase | Subagent type | Dispatch note |
 |---|---|---|
-| Deep read / file search | `pi-oven:explorer` | `model="sonnet"` (deep) / `model="haiku"` (targeted) |
-| Plan authoring | `pi-oven:planner` | omit model (inherits parent version) |
-| Critic / code review | `pi-oven:critic` | omit model (inherits parent version) |
-| Semantic verification | `pi-oven:verifier` | omit model (inherits parent version) |
-| Implementation (substantive) | `pi-oven:executor` | `model="sonnet"` |
-| Implementation (mechanical) | `pi-oven:executor` | `model="haiku"` |
-| Documentation | `pi-oven:writer` | `model="sonnet"` |
-| External / SOTA research | `pi-oven:deep-researcher` | omit model (inherits parent version) |
-| REPL data execution / empirical validation | `pi-oven:data-runner` | omit model (inherits parent version) |
+| Deep read / file search | `pi-oven:explorer` | Choose deep vs targeted investigation within the current session provider family |
+| Plan authoring | `pi-oven:planner` | Omit `model`; inherit current session routing |
+| Critic / code review | `pi-oven:critic` | Omit `model`; review stays inside the current session provider family |
+| Semantic verification | `pi-oven:verifier` | Omit `model`; high-risk verification may widen only within the current session provider family |
+| Implementation (substantive) | `pi-oven:executor` | Use the standard implementation tier from the current session provider family |
+| Implementation (mechanical) | `pi-oven:executor` | Use the cheapest adequate implementation tier from the current session provider family |
+| Documentation | `pi-oven:writer` | Use the standard authoring tier from the current session provider family |
+| External / SOTA research | `pi-oven:deep-researcher` | Omit `model`; inherit current session routing |
+| REPL data execution / empirical validation | `pi-oven:data-runner` | Omit `model`; inherit current session routing |
 
-`model="opus"` MUST NOT be specified in any dispatch. Omit model for critic/verifier/planner/deep-researcher/data-runner — this inherits the parent version and avoids version mismatch.
+Do not hardcode named models in dispatch prompts. Omit `model` for critic/verifier/planner/deep-researcher/data-runner unless the task explicitly requires a specific tier inside the current session provider family; high-risk review widening stays inside that family.
 
 ## Sub-flow routing for specialized work types
 
@@ -80,7 +80,7 @@ Every dispatch prompt must include all of the following sections (60-150 lines f
 2. **Required reading** — explicit file paths; survey report path when Step 0 ran
 3. **Scope** — file paths, line ranges, DO-NOT-MODIFY paths
 4. **Branch contract verify** — `git branch --show-current` must match session branch contract
-5. **Task body** — inlined ≤120 lines; exact signatures, edge cases, test names + assertion shapes for sonnet
+5. **Task body** — inlined ≤120 lines; exact signatures, edge cases, test names + assertion shapes for the chosen implementation tier
 6. **Rules block** — literal copy mandatory (reference alone is not sufficient — fresh agents do not auto-read SKILL.md):
    - Anti-self-verification boilerplate
    - Production-code-first boilerplate

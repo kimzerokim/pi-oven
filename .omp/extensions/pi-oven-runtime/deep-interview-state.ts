@@ -1,19 +1,73 @@
 import { createHash } from "crypto";
 import { ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
 import {
+  SUPPORTED_SESSION_PROVIDER_FAMILIES,
   type ModelRoutingApprovalBucket,
   type ModelRoutingApprovalPayload,
   type ModelRoutingApprovalRecord,
+  type SessionProviderFamily,
 } from "./model-routing-approval";
 
 export type DeepInterviewStage = "topology" | "round" | "closure" | "approval";
-export type DeepInterviewPhase = "idle" | "interviewing" | "approval_pending" | "ready_to_resume";
-export type DeepInterviewRoundLifecycle = "pending" | "answered" | "cancelled";
-export type DeepInterviewApprovalStatus = "pending" | "approved" | "rejected";
+export type DeepInterviewPhase = "idle" | "interviewing" | "handoff" | "complete";
+export type DeepInterviewRoundLifecycle = "pending" | "answered" | "scored" | "cancelled";
+export type DeepInterviewApprovalStatus = "pending" | "approved" | "rejected" | "cancelled";
+export type DeepInterviewMilestone = "initial" | "progress" | "refined" | "ready";
+export type DeepInterviewDimension = "goal" | "constraints" | "criteria" | "context";
+export type DeepInterviewThresholdSource = "session" | "project" | "user" | "default";
+export type ApprovalFlowKind = "spec-handoff" | "routing-bucket" | "routing-role";
+export type ApprovalFlowSource = "brainstorming" | "setup" | "status" | "manual";
+export type ApprovalFlowStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 export interface DeepInterviewApprovalHandoffMeta {
   decisionKey: string;
   summary: string;
+}
+
+export interface DeepInterviewEstablishedFact {
+  summary: string;
+  sourceRoundKey?: string;
+  componentId?: string;
+  dimension?: DeepInterviewDimension;
+}
+
+export interface DeepInterviewTopologyNode {
+  id: string;
+  label: string;
+  kind?: string;
+}
+
+export interface DeepInterviewTopologyEdge {
+  from: string;
+  to: string;
+  label?: string;
+}
+
+export interface DeepInterviewTopology {
+  confirmed?: boolean;
+  summary?: string;
+  nodes: DeepInterviewTopologyNode[];
+  edges?: DeepInterviewTopologyEdge[];
+}
+
+export interface DeepInterviewOntologySnapshot {
+  id?: string;
+  summary: string;
+  capturedAt?: string;
+  stable?: boolean;
+}
+
+export interface DeepInterviewNextTarget {
+  componentId: string;
+  dimension: DeepInterviewDimension;
+  rationale: string;
+}
+
+export interface DeepInterviewSpecReceipt {
+  path: string;
+  sha256: string;
+  persistedAt: string;
+  stage: "draft" | "final";
 }
 
 export interface DeepInterviewAskMetadata {
@@ -25,8 +79,23 @@ export interface DeepInterviewAskMetadata {
   component?: string;
   dimension?: string;
   ambiguity?: number;
+  ambiguityAtAsk?: number;
   approvalHandoff?: DeepInterviewApprovalHandoffMeta;
   routingApproval?: ModelRoutingApprovalPayload;
+  threshold?: number;
+  thresholdSource?: DeepInterviewThresholdSource;
+  scores?: Partial<Record<DeepInterviewDimension, number>>;
+  triggers?: string[];
+  topologySummary?: string;
+  ontologySummary?: string;
+  milestone?: DeepInterviewMilestone;
+  nextTarget?: DeepInterviewNextTarget;
+  establishedFacts?: DeepInterviewEstablishedFact[];
+  topology?: DeepInterviewTopology;
+  ontologySnapshot?: DeepInterviewOntologySnapshot;
+  currentAmbiguity?: number;
+  initialIdea?: string;
+  spec?: DeepInterviewSpecReceipt;
 }
 
 export interface DeepInterviewApprovalHandoff extends DeepInterviewApprovalHandoffMeta {
@@ -49,11 +118,18 @@ export interface DeepInterviewRoundRecord {
   customInput?: string;
   component?: string;
   dimension?: string;
+  ambiguityAtAsk?: number;
   ambiguity?: number;
   recommended?: number;
   lifecycle: DeepInterviewRoundLifecycle;
   askedAt: string;
   answeredAt?: string;
+  scores?: Partial<Record<DeepInterviewDimension, number>>;
+  triggers?: string[];
+  topologySummary?: string;
+  ontologySummary?: string;
+  milestone?: DeepInterviewMilestone;
+  nextTarget?: DeepInterviewNextTarget;
   approvalHandoff?: DeepInterviewApprovalHandoff;
   routingApproval?: ModelRoutingApprovalPayload;
 }
@@ -66,13 +142,58 @@ export interface DeepInterviewPendingQuestion {
   meta: DeepInterviewAskMetadata;
 }
 
-export interface DeepInterviewState {
+export interface ApprovalFlowAskMetadata {
+  kind: ApprovalFlowKind;
+  source: ApprovalFlowSource;
+  decisionKey: string;
+  summary: string;
+  routingApproval?: ModelRoutingApprovalPayload;
+  resumedFrom?: { interviewId?: string; specPath?: string };
+  status?: ApprovalFlowStatus;
+}
+
+export interface ApprovalFlowPendingQuestion {
+  question: string;
+  askedAt: string;
+  recommended?: number;
+}
+
+export interface ApprovalFlowState {
   version: 1;
+  active: boolean;
+  kind: ApprovalFlowKind;
+  source: ApprovalFlowSource;
+  decisionKey: string;
+  summary: string;
+  status: ApprovalFlowStatus;
+  recommended?: unknown;
+  resolved?: unknown;
+  pendingQuestion?: ApprovalFlowPendingQuestion;
+  resumedFrom?: { interviewId?: string; specPath?: string };
+  requestedAt: string;
+  resolvedAt?: string;
+  routingApproval?: ModelRoutingApprovalPayload;
+}
+
+export interface DeepInterviewState {
+  version: 2;
   interviewId: string;
   active: boolean;
   phase: DeepInterviewPhase;
-  rounds: DeepInterviewRoundRecord[];
+  threshold?: number;
+  thresholdSource?: DeepInterviewThresholdSource;
+  spec?: DeepInterviewSpecReceipt;
   pendingQuestion?: DeepInterviewPendingQuestion;
+  state: {
+    initialIdea?: string;
+    rounds: DeepInterviewRoundRecord[];
+    establishedFacts: DeepInterviewEstablishedFact[];
+    topology?: DeepInterviewTopology;
+    ontologySnapshots: DeepInterviewOntologySnapshot[];
+    currentAmbiguity?: number;
+    milestone?: DeepInterviewMilestone;
+    nextTarget?: DeepInterviewNextTarget;
+  };
   approvalHandoff?: DeepInterviewApprovalHandoff;
   routingApproval?: ModelRoutingApprovalPayload;
   lastUpdatedAt?: string;
@@ -84,6 +205,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function asNumber(value: unknown): number | undefined {
@@ -101,20 +226,40 @@ function asStage(value: unknown): DeepInterviewStage | undefined {
 }
 
 function asPhase(value: unknown): DeepInterviewPhase | undefined {
-  return value === "idle" ||
-    value === "interviewing" ||
-    value === "approval_pending" ||
-    value === "ready_to_resume"
+  if (value === "approval_pending" || value === "ready_to_resume") return "handoff";
+  return value === "idle" || value === "interviewing" || value === "handoff" || value === "complete"
     ? value
     : undefined;
 }
 
 function asLifecycle(value: unknown): DeepInterviewRoundLifecycle | undefined {
-  return value === "pending" || value === "answered" || value === "cancelled" ? value : undefined;
+  return value === "pending" || value === "answered" || value === "scored" || value === "cancelled"
+    ? value
+    : undefined;
 }
 
 function asApprovalStatus(value: unknown): DeepInterviewApprovalStatus | undefined {
-  return value === "pending" || value === "approved" || value === "rejected" ? value : undefined;
+  return value === "pending" || value === "approved" || value === "rejected" || value === "cancelled"
+    ? value
+    : undefined;
+}
+
+function asMilestone(value: unknown): DeepInterviewMilestone | undefined {
+  return value === "initial" || value === "progress" || value === "refined" || value === "ready"
+    ? value
+    : undefined;
+}
+
+function asThresholdSource(value: unknown): DeepInterviewThresholdSource | undefined {
+  return value === "session" || value === "project" || value === "user" || value === "default"
+    ? value
+    : undefined;
+}
+
+function asDimension(value: unknown): DeepInterviewDimension | undefined {
+  return value === "goal" || value === "constraints" || value === "criteria" || value === "context"
+    ? value
+    : undefined;
 }
 
 function normalizeApprovalHandoff(value: unknown): DeepInterviewApprovalHandoff | undefined {
@@ -172,6 +317,44 @@ function normalizeRoutingApprovalRecord(
   };
 }
 
+function asSessionProviderFamily(value: unknown): SessionProviderFamily | undefined {
+  const normalized = asString(value)?.toLowerCase();
+  return normalized &&
+    SUPPORTED_SESSION_PROVIDER_FAMILIES.includes(normalized as SessionProviderFamily)
+    ? (normalized as SessionProviderFamily)
+    : undefined;
+}
+
+function resolveRoutingApprovalSessionProviderFamily(
+  value: Record<string, unknown>,
+  recommendedByRole: Partial<Record<Role, string>>,
+  buckets: ModelRoutingApprovalBucket[],
+  approvals: Partial<Record<Role, ModelRoutingApprovalRecord>>
+): SessionProviderFamily | undefined {
+  const explicit = asSessionProviderFamily(value.sessionProviderFamily);
+  if (explicit) return explicit;
+
+  for (const selector of Object.values(recommendedByRole)) {
+    const family = asSessionProviderFamily(selector.split("/", 1)[0]);
+    if (family) return family;
+  }
+  for (const bucket of buckets) {
+    const bucketFamily =
+      asSessionProviderFamily(bucket.bucketKey.split("/", 1)[0]) ??
+      asSessionProviderFamily(bucket.recommendedSelector.split("/", 1)[0]);
+    if (bucketFamily) return bucketFamily;
+  }
+  for (const record of Object.values(approvals)) {
+    if (!record) continue;
+    const recordFamily =
+      asSessionProviderFamily(record.bucketKey.split("/", 1)[0]) ??
+      asSessionProviderFamily(record.recommendedSelector.split("/", 1)[0]) ??
+      asSessionProviderFamily(record.selectedSelector.split("/", 1)[0]);
+    if (recordFamily) return recordFamily;
+  }
+  return undefined;
+}
+
 function normalizeRoutingApprovalPayload(value: unknown): ModelRoutingApprovalPayload | undefined {
   if (!isRecord(value)) return undefined;
 
@@ -197,19 +380,142 @@ function normalizeRoutingApprovalPayload(value: unknown): ModelRoutingApprovalPa
     }
   }
 
-  if (
-    Object.keys(recommendedByRole).length === 0 &&
-    buckets.length === 0 &&
-    Object.keys(approvals).length === 0
-  ) {
-    return undefined;
-  }
+  const sessionProviderFamily = resolveRoutingApprovalSessionProviderFamily(
+    value,
+    recommendedByRole,
+    buckets,
+    approvals
+  );
+  if (!sessionProviderFamily) return undefined;
 
   return {
+    sessionProviderFamily,
     recommendedByRole,
     buckets,
     approvals,
   };
+}
+
+function normalizeEstablishedFact(value: unknown): DeepInterviewEstablishedFact | undefined {
+  if (typeof value === "string" && value.trim().length > 0) return { summary: value };
+  if (!isRecord(value)) return undefined;
+  const summary = asString(value.summary);
+  if (!summary) return undefined;
+  const sourceRoundKey = asString(value.sourceRoundKey);
+  const componentId = asString(value.componentId);
+  const dimension = asDimension(value.dimension);
+  return {
+    summary,
+    ...(sourceRoundKey ? { sourceRoundKey } : {}),
+    ...(componentId ? { componentId } : {}),
+    ...(dimension ? { dimension } : {}),
+  };
+}
+
+function normalizeTopologyNode(value: unknown): DeepInterviewTopologyNode | undefined {
+  if (!isRecord(value)) return undefined;
+  const id = asString(value.id);
+  const label = asString(value.label);
+  const kind = asString(value.kind);
+  if (!id || !label) return undefined;
+  return {
+    id,
+    label,
+    ...(kind ? { kind } : {}),
+  };
+}
+
+function normalizeTopologyEdge(value: unknown): DeepInterviewTopologyEdge | undefined {
+  if (!isRecord(value)) return undefined;
+  const from = asString(value.from);
+  const to = asString(value.to);
+  const label = asString(value.label);
+  if (!from || !to) return undefined;
+  return {
+    from,
+    to,
+    ...(label ? { label } : {}),
+  };
+}
+
+function normalizeTopology(value: unknown): DeepInterviewTopology | undefined {
+  if (!isRecord(value)) return undefined;
+  const nodes = Array.isArray(value.nodes)
+    ? value.nodes.map((entry) => normalizeTopologyNode(entry)).filter((entry): entry is DeepInterviewTopologyNode => entry !== undefined)
+    : [];
+  if (nodes.length === 0) return undefined;
+  const confirmed = asBoolean(value.confirmed);
+  const summary = asString(value.summary);
+  const edges = Array.isArray(value.edges)
+    ? value.edges.map((entry) => normalizeTopologyEdge(entry)).filter((entry): entry is DeepInterviewTopologyEdge => entry !== undefined)
+    : [];
+  return {
+    nodes,
+    ...(confirmed !== undefined ? { confirmed } : {}),
+    ...(summary ? { summary } : {}),
+    ...(edges.length > 0 ? { edges } : {}),
+  };
+}
+
+function normalizeOntologySnapshot(value: unknown): DeepInterviewOntologySnapshot | undefined {
+  if (!isRecord(value)) return undefined;
+  const summary = asString(value.summary);
+  if (!summary) return undefined;
+  const id = asString(value.id);
+  const capturedAt = asString(value.capturedAt);
+  const stable = asBoolean(value.stable);
+  return {
+    summary,
+    ...(id ? { id } : {}),
+    ...(capturedAt ? { capturedAt } : {}),
+    ...(stable !== undefined ? { stable } : {}),
+  };
+}
+
+function normalizeNextTarget(value: unknown): DeepInterviewNextTarget | undefined {
+  if (!isRecord(value)) return undefined;
+  const componentId = asString(value.componentId);
+  const dimension = asDimension(value.dimension);
+  const rationale = asString(value.rationale);
+  if (!componentId || !dimension || !rationale) return undefined;
+  return {
+    componentId,
+    dimension,
+    rationale,
+  };
+}
+
+function normalizeSpecReceipt(value: unknown): DeepInterviewSpecReceipt | undefined {
+  if (!isRecord(value)) return undefined;
+  const path = asString(value.path);
+  const sha256 = asString(value.sha256);
+  const persistedAt = asString(value.persistedAt);
+  const stage = value.stage === "draft" || value.stage === "final" ? value.stage : undefined;
+  if (!path || !sha256 || !persistedAt || !stage) return undefined;
+  return {
+    path,
+    sha256,
+    persistedAt,
+    stage,
+  };
+}
+
+function normalizeScores(
+  value: unknown
+): Partial<Record<DeepInterviewDimension, number>> | undefined {
+  if (!isRecord(value)) return undefined;
+  const scores = {} as Partial<Record<DeepInterviewDimension, number>>;
+  for (const key of ["goal", "constraints", "criteria", "context"] as const) {
+    const score = asNumber(value[key]);
+    if (score !== undefined) scores[key] = score;
+  }
+  return Object.keys(scores).length > 0 ? scores : undefined;
+}
+
+function normalizeTriggers(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const triggers = value.map((entry) => asString(entry)).filter((entry): entry is string => entry !== undefined);
+  return triggers.length > 0 ? Array.from(new Set(triggers)) : undefined;
 }
 
 function normalizeAskMetadata(value: unknown): DeepInterviewAskMetadata | undefined {
@@ -223,6 +529,7 @@ function normalizeAskMetadata(value: unknown): DeepInterviewAskMetadata | undefi
   const component = asString(value.component);
   const dimension = asString(value.dimension);
   const ambiguity = asNumber(value.ambiguity);
+  const ambiguityAtAsk = asNumber(value.ambiguityAtAsk);
   const approval = isRecord(value.approvalHandoff)
     ? (() => {
         const decisionKey = asString(value.approvalHandoff.decisionKey);
@@ -232,6 +539,24 @@ function normalizeAskMetadata(value: unknown): DeepInterviewAskMetadata | undefi
       })()
     : undefined;
   const routingApproval = normalizeRoutingApprovalPayload(value.routingApproval);
+  const threshold = asNumber(value.threshold);
+  const thresholdSource = asThresholdSource(value.thresholdSource);
+  const scores = normalizeScores(value.scores);
+  const triggers = normalizeTriggers(value.triggers);
+  const topologySummary = asString(value.topologySummary);
+  const ontologySummary = asString(value.ontologySummary);
+  const milestone = asMilestone(value.milestone);
+  const nextTarget = normalizeNextTarget(value.nextTarget);
+  const establishedFacts = Array.isArray(value.establishedFacts)
+    ? value.establishedFacts
+        .map((entry) => normalizeEstablishedFact(entry))
+        .filter((entry): entry is DeepInterviewEstablishedFact => entry !== undefined)
+    : [];
+  const topology = normalizeTopology(value.topology);
+  const ontologySnapshot = normalizeOntologySnapshot(value.ontologySnapshot);
+  const currentAmbiguity = asNumber(value.currentAmbiguity);
+  const initialIdea = asString(value.initialIdea);
+  const spec = normalizeSpecReceipt(value.spec);
   return {
     ...(interviewId ? { interviewId } : {}),
     round,
@@ -241,8 +566,23 @@ function normalizeAskMetadata(value: unknown): DeepInterviewAskMetadata | undefi
     ...(component ? { component } : {}),
     ...(dimension ? { dimension } : {}),
     ...(ambiguity !== undefined ? { ambiguity } : {}),
+    ...(ambiguityAtAsk !== undefined ? { ambiguityAtAsk } : {}),
     ...(approval ? { approvalHandoff: approval } : {}),
     ...(routingApproval ? { routingApproval } : {}),
+    ...(threshold !== undefined ? { threshold } : {}),
+    ...(thresholdSource ? { thresholdSource } : {}),
+    ...(scores ? { scores } : {}),
+    ...(triggers ? { triggers } : {}),
+    ...(topologySummary ? { topologySummary } : {}),
+    ...(ontologySummary ? { ontologySummary } : {}),
+    ...(milestone ? { milestone } : {}),
+    ...(nextTarget ? { nextTarget } : {}),
+    ...(establishedFacts.length > 0 ? { establishedFacts } : {}),
+    ...(topology ? { topology } : {}),
+    ...(ontologySnapshot ? { ontologySnapshot } : {}),
+    ...(currentAmbiguity !== undefined ? { currentAmbiguity } : {}),
+    ...(initialIdea ? { initialIdea } : {}),
+    ...(spec ? { spec } : {}),
   };
 }
 
@@ -276,16 +616,7 @@ function normalizeRoundRecord(
   const questionHash = asString(value.questionHash);
   const lifecycle = asLifecycle(value.lifecycle);
   const askedAt = asString(value.askedAt);
-  if (
-    !roundKey ||
-    !interviewId ||
-    round === undefined ||
-    !stage ||
-    !question ||
-    !questionHash ||
-    !lifecycle ||
-    !askedAt
-  ) {
+  if (!roundKey || !interviewId || round === undefined || !stage || !question || !questionHash || !lifecycle || !askedAt) {
     return undefined;
   }
   const roundId = asString(value.roundId);
@@ -295,9 +626,16 @@ function normalizeRoundRecord(
   const customInput = asString(value.customInput);
   const component = asString(value.component);
   const dimension = asString(value.dimension);
+  const ambiguityAtAsk = asNumber(value.ambiguityAtAsk);
   const ambiguity = asNumber(value.ambiguity);
   const recommended = asNumber(value.recommended);
   const answeredAt = asString(value.answeredAt);
+  const scores = normalizeScores(value.scores);
+  const triggers = normalizeTriggers(value.triggers);
+  const topologySummary = asString(value.topologySummary);
+  const ontologySummary = asString(value.ontologySummary);
+  const milestone = asMilestone(value.milestone);
+  const nextTarget = normalizeNextTarget(value.nextTarget);
   const approvalHandoff = normalizeApprovalHandoff(value.approvalHandoff);
   const routingApproval = normalizeRoutingApprovalPayload(value.routingApproval);
   return {
@@ -316,11 +654,245 @@ function normalizeRoundRecord(
     ...(customInput ? { customInput } : {}),
     ...(component ? { component } : {}),
     ...(dimension ? { dimension } : {}),
+    ...(ambiguityAtAsk !== undefined ? { ambiguityAtAsk } : {}),
     ...(ambiguity !== undefined ? { ambiguity } : {}),
     ...(recommended !== undefined ? { recommended } : {}),
     ...(answeredAt ? { answeredAt } : {}),
+    ...(scores ? { scores } : {}),
+    ...(triggers ? { triggers } : {}),
+    ...(topologySummary ? { topologySummary } : {}),
+    ...(ontologySummary ? { ontologySummary } : {}),
+    ...(milestone ? { milestone } : {}),
+    ...(nextTarget ? { nextTarget } : {}),
     ...(approvalHandoff ? { approvalHandoff } : {}),
     ...(routingApproval ? { routingApproval } : {}),
+  };
+}
+
+function normalizeApprovalFlowPendingQuestion(value: unknown): ApprovalFlowPendingQuestion | undefined {
+  if (!isRecord(value)) return undefined;
+  const question = asString(value.question);
+  const askedAt = asString(value.askedAt);
+  if (!question || !askedAt) return undefined;
+  const recommended = asNumber(value.recommended);
+  return {
+    question,
+    askedAt,
+    ...(recommended !== undefined ? { recommended } : {}),
+  };
+}
+
+function resolveLegacyApprovalArtifacts(
+  deepInterview: DeepInterviewState | undefined
+): {
+  approvalHandoff?: DeepInterviewApprovalHandoff;
+  routingApproval?: ModelRoutingApprovalPayload;
+  pendingQuestion?: ApprovalFlowPendingQuestion;
+} {
+  if (!deepInterview) return {};
+  const roundApproval = [...deepInterview.state.rounds].reverse().find((round) => round.approvalHandoff)?.approvalHandoff;
+  const roundRouting = [...deepInterview.state.rounds].reverse().find((round) => round.routingApproval)?.routingApproval;
+  const pendingQuestion =
+    deepInterview.pendingQuestion?.meta.stage === "approval"
+      ? {
+          question: deepInterview.pendingQuestion.question,
+          askedAt: deepInterview.pendingQuestion.askedAt,
+          ...(deepInterview.pendingQuestion.recommended !== undefined
+            ? { recommended: deepInterview.pendingQuestion.recommended }
+            : {}),
+        }
+      : undefined;
+  const pendingApprovalHandoff: DeepInterviewApprovalHandoff | undefined = deepInterview.pendingQuestion?.meta
+    .approvalHandoff
+    ? {
+        ...deepInterview.pendingQuestion.meta.approvalHandoff,
+        status: "pending",
+        requestedAt: deepInterview.pendingQuestion.askedAt,
+      }
+    : undefined;
+  const approvalHandoff =
+    deepInterview.approvalHandoff?.status && deepInterview.approvalHandoff.status !== "pending"
+      ? deepInterview.approvalHandoff
+      : roundApproval?.status && roundApproval.status !== "pending"
+        ? roundApproval
+        : deepInterview.approvalHandoff ?? roundApproval ?? pendingApprovalHandoff;
+  return {
+    approvalHandoff,
+    routingApproval:
+      deepInterview.routingApproval ??
+      deepInterview.pendingQuestion?.meta.routingApproval ??
+      roundRouting,
+    pendingQuestion,
+  };
+}
+
+function isRoutingApprovalResolved(payload: ModelRoutingApprovalPayload): boolean {
+  return payload.buckets.every((bucket) => bucket.roles.every((role) => payload.approvals[role] !== undefined));
+}
+
+function buildLegacyApprovalFlowState(
+  deepInterview: DeepInterviewState | undefined
+): ApprovalFlowState | undefined {
+  const legacy = resolveLegacyApprovalArtifacts(deepInterview);
+  if (!legacy.approvalHandoff && !legacy.routingApproval) return undefined;
+
+  const kind: ApprovalFlowKind = legacy.routingApproval ? "routing-bucket" : "spec-handoff";
+  const source: ApprovalFlowSource = legacy.routingApproval ? "setup" : "brainstorming";
+  const requestedAt =
+    legacy.approvalHandoff?.requestedAt ??
+    legacy.pendingQuestion?.askedAt ??
+    deepInterview?.lastUpdatedAt ??
+    new Date(0).toISOString();
+  const status: ApprovalFlowStatus = legacy.approvalHandoff
+    ? legacy.approvalHandoff.status
+    : legacy.routingApproval && isRoutingApprovalResolved(legacy.routingApproval)
+      ? "approved"
+      : "pending";
+  return {
+    version: 1,
+    active: status === "pending",
+    kind,
+    source,
+    decisionKey: legacy.approvalHandoff?.decisionKey ?? "approve-routing-bucket",
+    summary:
+      legacy.approvalHandoff?.summary ??
+      "Approve the current routing bucket recommendations before resuming execution.",
+    status,
+    ...(status === "pending" && legacy.pendingQuestion ? { pendingQuestion: legacy.pendingQuestion } : {}),
+    resumedFrom: {
+      ...(deepInterview?.interviewId ? { interviewId: deepInterview.interviewId } : {}),
+      ...(deepInterview?.spec?.path ? { specPath: deepInterview.spec.path } : {}),
+    },
+    requestedAt,
+    ...(legacy.approvalHandoff?.resolvedAt ? { resolvedAt: legacy.approvalHandoff.resolvedAt } : {}),
+    ...(legacy.routingApproval ? { routingApproval: legacy.routingApproval } : {}),
+  };
+}
+
+function reconcileRootApprovalFlowState(
+  current: ApprovalFlowState,
+  legacy: ApprovalFlowState | undefined
+): ApprovalFlowState {
+  if (
+    !legacy ||
+    current.status !== "pending" ||
+    legacy.status === "pending" ||
+    current.decisionKey !== legacy.decisionKey
+  ) {
+    return current;
+  }
+
+  const mergedRouting = mergeApprovalFlowRoutingState(current, legacy);
+  const reconciled: ApprovalFlowState = {
+    ...current,
+    active: false,
+    status: legacy.status,
+    ...(legacy.resolvedAt ? { resolvedAt: legacy.resolvedAt } : current.resolvedAt ? { resolvedAt: current.resolvedAt } : {}),
+    ...(mergedRouting ? { routingApproval: mergedRouting } : {}),
+  };
+  const { pendingQuestion: _pendingQuestion, ...withoutPendingQuestion } = reconciled;
+  return withoutPendingQuestion;
+}
+
+export function normalizeApprovalFlowState(
+  value: unknown,
+  deepInterview?: DeepInterviewState
+): ApprovalFlowState | undefined {
+  const legacyState = buildLegacyApprovalFlowState(deepInterview);
+
+  if (isRecord(value)) {
+    const active = value.active === true;
+    const kind =
+      value.kind === "spec-handoff" || value.kind === "routing-bucket" || value.kind === "routing-role"
+        ? value.kind
+        : undefined;
+    const source =
+      value.source === "brainstorming" || value.source === "setup" || value.source === "status" || value.source === "manual"
+        ? value.source
+        : undefined;
+    const decisionKey = asString(value.decisionKey);
+    const summary = asString(value.summary);
+    const status =
+      value.status === "pending" ||
+      value.status === "approved" ||
+      value.status === "rejected" ||
+      value.status === "cancelled"
+        ? value.status
+        : undefined;
+    const requestedAt = asString(value.requestedAt);
+    if (kind && source && decisionKey && summary && status && requestedAt) {
+      const pendingQuestion = normalizeApprovalFlowPendingQuestion(value.pendingQuestion);
+      const resumedFrom = isRecord(value.resumedFrom)
+        ? {
+            ...(asString(value.resumedFrom.interviewId)
+              ? { interviewId: asString(value.resumedFrom.interviewId)! }
+              : {}),
+            ...(asString(value.resumedFrom.specPath) ? { specPath: asString(value.resumedFrom.specPath)! } : {}),
+          }
+        : undefined;
+      const resolvedAt = asString(value.resolvedAt);
+      const routingApproval = normalizeRoutingApprovalPayload(value.routingApproval);
+      return reconcileRootApprovalFlowState(
+        {
+          version: 1,
+          active,
+          kind,
+          source,
+          decisionKey,
+          summary,
+          status,
+          ...(Object.hasOwn(value, "recommended") ? { recommended: value.recommended } : {}),
+          ...(Object.hasOwn(value, "resolved") ? { resolved: value.resolved } : {}),
+          ...(pendingQuestion ? { pendingQuestion } : {}),
+          ...(resumedFrom && Object.keys(resumedFrom).length > 0 ? { resumedFrom } : {}),
+          requestedAt,
+          ...(resolvedAt ? { resolvedAt } : {}),
+          ...(routingApproval ? { routingApproval } : {}),
+        },
+        legacyState
+      );
+    }
+  }
+
+  return legacyState;
+}
+
+function normalizeRounds(value: Record<string, unknown>, interviewId: string): DeepInterviewRoundRecord[] {
+  const stateRecord = isRecord(value.state) ? value.state : undefined;
+  const rawRounds = Array.isArray(stateRecord?.rounds) ? stateRecord.rounds : Array.isArray(value.rounds) ? value.rounds : [];
+  return rawRounds
+    .map((entry) => normalizeRoundRecord(entry, interviewId))
+    .filter((entry): entry is DeepInterviewRoundRecord => entry !== undefined);
+}
+
+function normalizeEnvelopeState(value: Record<string, unknown>): DeepInterviewState["state"] {
+  const stateRecord = isRecord(value.state) ? value.state : undefined;
+  const interviewId = asString(value.interviewId) ?? "pi-oven-default";
+  const rounds = normalizeRounds(value, interviewId);
+  const establishedFacts = Array.isArray(stateRecord?.establishedFacts)
+    ? stateRecord.establishedFacts
+        .map((entry) => normalizeEstablishedFact(entry))
+        .filter((entry): entry is DeepInterviewEstablishedFact => entry !== undefined)
+    : [];
+  const topology = normalizeTopology(stateRecord?.topology);
+  const ontologySnapshots = Array.isArray(stateRecord?.ontologySnapshots)
+    ? stateRecord.ontologySnapshots
+        .map((entry) => normalizeOntologySnapshot(entry))
+        .filter((entry): entry is DeepInterviewOntologySnapshot => entry !== undefined)
+    : [];
+  const currentAmbiguity = asNumber(stateRecord?.currentAmbiguity);
+  const milestone = asMilestone(stateRecord?.milestone);
+  const nextTarget = normalizeNextTarget(stateRecord?.nextTarget);
+  const initialIdea = asString(stateRecord?.initialIdea) ?? asString(value.initialIdea);
+  return {
+    rounds,
+    establishedFacts,
+    ontologySnapshots,
+    ...(topology ? { topology } : {}),
+    ...(currentAmbiguity !== undefined ? { currentAmbiguity } : {}),
+    ...(milestone ? { milestone } : {}),
+    ...(nextTarget ? { nextTarget } : {}),
+    ...(initialIdea ? { initialIdea } : {}),
   };
 }
 
@@ -350,32 +922,48 @@ export function deriveRoundKey(
 export function normalizeDeepInterviewState(value: unknown): DeepInterviewState {
   if (!isRecord(value)) {
     return {
-      version: 1,
+      version: 2,
       interviewId: "pi-oven-default",
       active: false,
       phase: "idle",
-      rounds: [],
+      state: {
+        rounds: [],
+        establishedFacts: [],
+        ontologySnapshots: [],
+      },
     };
   }
   const interviewId = asString(value.interviewId) ?? "pi-oven-default";
   const active = value.active === true;
-  const phase = asPhase(value.phase) ?? (active ? "interviewing" : "idle");
-  const rounds = Array.isArray(value.rounds)
-    ? value.rounds
-        .map((entry) => normalizeRoundRecord(entry, interviewId))
-        .filter((entry): entry is DeepInterviewRoundRecord => entry !== undefined)
-    : [];
+  const threshold = asNumber(value.threshold);
+  const thresholdSource = asThresholdSource(value.thresholdSource);
+  const spec = normalizeSpecReceipt(value.spec);
   const pendingQuestion = normalizePendingQuestion(value.pendingQuestion);
   const approvalHandoff = normalizeApprovalHandoff(value.approvalHandoff);
   const routingApproval = normalizeRoutingApprovalPayload(value.routingApproval);
   const lastUpdatedAt = asString(value.lastUpdatedAt);
+  const state = normalizeEnvelopeState(value);
+  const explicitPhase = asPhase(value.phase);
+  const phase =
+    explicitPhase ??
+    (spec?.stage === "final"
+      ? "complete"
+      : active && (approvalHandoff !== undefined || routingApproval !== undefined)
+        ? "handoff"
+        : active
+          ? "interviewing"
+          : "idle");
+
   return {
-    version: 1,
+    version: 2,
     interviewId,
     active,
     phase,
-    rounds,
+    ...(threshold !== undefined ? { threshold } : {}),
+    ...(thresholdSource ? { thresholdSource } : {}),
+    ...(spec ? { spec } : {}),
     ...(pendingQuestion ? { pendingQuestion } : {}),
+    state,
     ...(approvalHandoff ? { approvalHandoff } : {}),
     ...(routingApproval ? { routingApproval } : {}),
     ...(lastUpdatedAt ? { lastUpdatedAt } : {}),
@@ -429,6 +1017,7 @@ function mergeRoutingApprovalPayload(
   }
 
   return {
+    sessionProviderFamily: incoming.sessionProviderFamily ?? existing.sessionProviderFamily,
     recommendedByRole: {
       ...existing.recommendedByRole,
       ...incoming.recommendedByRole,
@@ -443,13 +1032,20 @@ function mergeRoutingApprovalPayload(
 
 function lifecycleRank(value: DeepInterviewRoundLifecycle): number {
   switch (value) {
+    case "scored":
+      return 3;
     case "answered":
     case "cancelled":
-      return 1;
+      return 2;
     case "pending":
     default:
-      return 0;
+      return 1;
   }
+}
+
+function mergeStringArrays(existing: string[] | undefined, incoming: string[] | undefined): string[] | undefined {
+  const merged = Array.from(new Set([...(existing ?? []), ...(incoming ?? [])]));
+  return merged.length > 0 ? merged : undefined;
 }
 
 function mergeRoundRecord(
@@ -468,21 +1064,81 @@ function mergeRoundRecord(
     askedAt: existing.askedAt,
     approvalHandoff: mergeApprovalHandoff(existing.approvalHandoff, incoming.approvalHandoff),
     routingApproval: mergeRoutingApprovalPayload(existing.routingApproval, incoming.routingApproval),
+    scores: {
+      ...(existing.scores ?? {}),
+      ...(incoming.scores ?? {}),
+    },
+    triggers: mergeStringArrays(existing.triggers, incoming.triggers),
   };
-  if (!incoming.answeredAt && existing.answeredAt) {
-    merged.answeredAt = existing.answeredAt;
-  }
-  if (!incoming.answerHash && existing.answerHash) {
-    merged.answerHash = existing.answerHash;
+  if (!incoming.answeredAt && existing.answeredAt) merged.answeredAt = existing.answeredAt;
+  if (!incoming.answerHash && existing.answerHash) merged.answerHash = existing.answerHash;
+  if (!incoming.selected && existing.selected) merged.selected = existing.selected;
+  if (!incoming.customInput && existing.customInput) merged.customInput = existing.customInput;
+  if (Object.keys(merged.scores ?? {}).length === 0) delete merged.scores;
+  if (!merged.triggers || merged.triggers.length === 0) delete merged.triggers;
+  return merged;
+}
+
+function mergeEstablishedFacts(
+  existing: DeepInterviewEstablishedFact[],
+  incoming: DeepInterviewEstablishedFact[]
+): DeepInterviewEstablishedFact[] {
+  const merged = [...existing];
+  const seen = new Set(existing.map((entry) => `${entry.summary}::${entry.sourceRoundKey ?? ""}`));
+  for (const fact of incoming) {
+    const key = `${fact.summary}::${fact.sourceRoundKey ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(fact);
   }
   return merged;
 }
 
-export function mergeDeepInterviewState(existing: unknown, incoming: unknown): DeepInterviewState {
-  const existingState = normalizeDeepInterviewState(existing);
-  const incomingState = normalizeDeepInterviewState(incoming);
-  const incomingRecord = isRecord(incoming) ? incoming : {};
+function mergeTopology(
+  existing: DeepInterviewTopology | undefined,
+  incoming: DeepInterviewTopology | undefined
+): DeepInterviewTopology | undefined {
+  if (!existing) return incoming;
+  if (!incoming) return existing;
+  const nodes = [...existing.nodes];
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  for (const node of incoming.nodes) {
+    if (nodeIds.has(node.id)) continue;
+    nodeIds.add(node.id);
+    nodes.push(node);
+  }
+  const edges = Array.from(
+    new Map(
+      [...(existing.edges ?? []), ...(incoming.edges ?? [])].map((edge) => [`${edge.from}->${edge.to}:${edge.label ?? ""}`, edge])
+    ).values()
+  );
+  return {
+    nodes,
+    ...(incoming.confirmed !== undefined ? { confirmed: incoming.confirmed } : existing.confirmed !== undefined ? { confirmed: existing.confirmed } : {}),
+    ...(incoming.summary ? { summary: incoming.summary } : existing.summary ? { summary: existing.summary } : {}),
+    ...(edges.length > 0 ? { edges } : {}),
+  };
+}
 
+function mergeOntologySnapshots(
+  existing: DeepInterviewOntologySnapshot[],
+  incoming: DeepInterviewOntologySnapshot[]
+): DeepInterviewOntologySnapshot[] {
+  const merged = [...existing];
+  const seen = new Set(existing.map((entry) => entry.id ?? `${entry.summary}::${entry.capturedAt ?? ""}`));
+  for (const snapshot of incoming) {
+    const key = snapshot.id ?? `${snapshot.summary}::${snapshot.capturedAt ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(snapshot);
+  }
+  return merged;
+}
+
+function mergeEnvelopeState(
+  existing: DeepInterviewState["state"],
+  incoming: DeepInterviewState["state"]
+): DeepInterviewState["state"] {
   const mergedRounds: DeepInterviewRoundRecord[] = [];
   const byRoundKey = new Map<string, number>();
   const addRound = (record: DeepInterviewRoundRecord) => {
@@ -494,29 +1150,68 @@ export function mergeDeepInterviewState(existing: unknown, incoming: unknown): D
     }
     mergedRounds[index] = mergeRoundRecord(mergedRounds[index]!, record);
   };
-  for (const round of existingState.rounds) addRound(round);
-  for (const round of incomingState.rounds) addRound(round);
+  for (const round of existing.rounds) addRound(round);
+  for (const round of incoming.rounds) addRound(round);
+  return {
+    rounds: mergedRounds,
+    establishedFacts: mergeEstablishedFacts(existing.establishedFacts, incoming.establishedFacts),
+    ontologySnapshots: mergeOntologySnapshots(existing.ontologySnapshots, incoming.ontologySnapshots),
+    ...(mergeTopology(existing.topology, incoming.topology) ? { topology: mergeTopology(existing.topology, incoming.topology)! } : {}),
+    ...(incoming.currentAmbiguity !== undefined
+      ? { currentAmbiguity: incoming.currentAmbiguity }
+      : existing.currentAmbiguity !== undefined
+        ? { currentAmbiguity: existing.currentAmbiguity }
+        : {}),
+    ...(incoming.milestone ? { milestone: incoming.milestone } : existing.milestone ? { milestone: existing.milestone } : {}),
+    ...(incoming.nextTarget ? { nextTarget: incoming.nextTarget } : existing.nextTarget ? { nextTarget: existing.nextTarget } : {}),
+    ...(incoming.initialIdea ? { initialIdea: incoming.initialIdea } : existing.initialIdea ? { initialIdea: existing.initialIdea } : {}),
+  };
+}
 
-  const hasPendingQuestion = Object.hasOwn(incomingRecord, "pendingQuestion");
-  const hasApprovalHandoff = Object.hasOwn(incomingRecord, "approvalHandoff");
-  const hasRoutingApproval = Object.hasOwn(incomingRecord, "routingApproval");
-  const hasPhase = Object.hasOwn(incomingRecord, "phase");
-  const hasActive = Object.hasOwn(incomingRecord, "active");
-  const hasInterviewId = Object.hasOwn(incomingRecord, "interviewId");
-  const hasLastUpdatedAt = Object.hasOwn(incomingRecord, "lastUpdatedAt");
-  const incomingTouchesInterview =
-    incomingState.rounds.length > 0 || hasPendingQuestion || hasApprovalHandoff || hasPhase || hasActive;
-  const incomingCarriesRoutingApproval =
-    incomingState.routingApproval !== undefined ||
-    incomingState.pendingQuestion?.meta.routingApproval !== undefined ||
-    incomingState.rounds.some((round) => round.routingApproval !== undefined);
+function hasOwn(record: Record<string, unknown>, key: string): boolean {
+  return Object.hasOwn(record, key);
+}
+
+export function mergeDeepInterviewState(existing: unknown, incoming: unknown): DeepInterviewState {
+  const existingState = normalizeDeepInterviewState(existing);
+  const incomingState = normalizeDeepInterviewState(incoming);
+  const incomingRecord = isRecord(incoming) ? incoming : {};
+  const hasPendingQuestion = hasOwn(incomingRecord, "pendingQuestion");
+  const hasPhase = hasOwn(incomingRecord, "phase");
+  const hasActive = hasOwn(incomingRecord, "active");
+  const hasInterviewId = hasOwn(incomingRecord, "interviewId");
+  const hasLastUpdatedAt = hasOwn(incomingRecord, "lastUpdatedAt");
+  const hasThreshold = hasOwn(incomingRecord, "threshold");
+  const hasThresholdSource = hasOwn(incomingRecord, "thresholdSource");
+  const hasSpec = hasOwn(incomingRecord, "spec");
+  const hasState = hasOwn(incomingRecord, "state") || hasOwn(incomingRecord, "rounds");
 
   return {
-    version: 1,
+    version: 2,
     interviewId: hasInterviewId ? incomingState.interviewId : existingState.interviewId,
     active: hasActive ? incomingState.active : existingState.active,
     phase: hasPhase ? incomingState.phase : existingState.phase,
-    rounds: mergedRounds,
+    ...(hasThreshold
+      ? incomingState.threshold !== undefined
+        ? { threshold: incomingState.threshold }
+        : {}
+      : existingState.threshold !== undefined
+        ? { threshold: existingState.threshold }
+        : {}),
+    ...(hasThresholdSource
+      ? incomingState.thresholdSource
+        ? { thresholdSource: incomingState.thresholdSource }
+        : {}
+      : existingState.thresholdSource
+        ? { thresholdSource: existingState.thresholdSource }
+        : {}),
+    ...(hasSpec
+      ? incomingState.spec
+        ? { spec: incomingState.spec }
+        : {}
+      : existingState.spec
+        ? { spec: existingState.spec }
+        : {}),
     ...(hasPendingQuestion
       ? incomingState.pendingQuestion
         ? { pendingQuestion: incomingState.pendingQuestion }
@@ -524,27 +1219,7 @@ export function mergeDeepInterviewState(existing: unknown, incoming: unknown): D
       : existingState.pendingQuestion
         ? { pendingQuestion: existingState.pendingQuestion }
         : {}),
-    ...(hasApprovalHandoff
-      ? incomingState.approvalHandoff
-        ? { approvalHandoff: incomingState.approvalHandoff }
-        : {}
-      : existingState.approvalHandoff
-        ? { approvalHandoff: existingState.approvalHandoff }
-        : {}),
-    ...(hasRoutingApproval
-      ? incomingState.routingApproval
-        ? {
-            routingApproval: mergeRoutingApprovalPayload(
-              existingState.routingApproval,
-              incomingState.routingApproval
-            ),
-          }
-        : {}
-      : incomingTouchesInterview && !incomingCarriesRoutingApproval
-        ? {}
-        : existingState.routingApproval
-          ? { routingApproval: existingState.routingApproval }
-          : {}),
+    state: hasState ? mergeEnvelopeState(existingState.state, incomingState.state) : existingState.state,
     ...(hasLastUpdatedAt
       ? incomingState.lastUpdatedAt
         ? { lastUpdatedAt: incomingState.lastUpdatedAt }
@@ -552,5 +1227,48 @@ export function mergeDeepInterviewState(existing: unknown, incoming: unknown): D
       : existingState.lastUpdatedAt
         ? { lastUpdatedAt: existingState.lastUpdatedAt }
         : {}),
+  };
+}
+
+function mergeApprovalFlowRoutingState(
+  existing: ApprovalFlowState | undefined,
+  incoming: ApprovalFlowState | undefined
+): ModelRoutingApprovalPayload | undefined {
+  return mergeRoutingApprovalPayload(existing?.routingApproval, incoming?.routingApproval);
+}
+
+export function mergeApprovalFlowState(
+  existing: unknown,
+  incoming: unknown,
+  deepInterview?: DeepInterviewState
+): ApprovalFlowState | undefined {
+  const existingState = normalizeApprovalFlowState(existing, deepInterview);
+  const incomingState = normalizeApprovalFlowState(incoming, deepInterview);
+  if (!existingState) return incomingState;
+  if (!incomingState) return existingState;
+  return {
+    version: 1,
+    active: incomingState.active,
+    kind: incomingState.kind,
+    source: incomingState.source,
+    decisionKey: incomingState.decisionKey,
+    summary: incomingState.summary,
+    status: incomingState.status,
+    ...(Object.hasOwn(incomingState, "recommended") ? { recommended: incomingState.recommended } : Object.hasOwn(existingState, "recommended") ? { recommended: existingState.recommended } : {}),
+    ...(Object.hasOwn(incomingState, "resolved") ? { resolved: incomingState.resolved } : Object.hasOwn(existingState, "resolved") ? { resolved: existingState.resolved } : {}),
+    ...(incomingState.pendingQuestion ? { pendingQuestion: incomingState.pendingQuestion } : {}),
+    ...(incomingState.resumedFrom ?? existingState.resumedFrom
+      ? {
+          resumedFrom: {
+            ...(existingState.resumedFrom ?? {}),
+            ...(incomingState.resumedFrom ?? {}),
+          },
+        }
+      : {}),
+    requestedAt: incomingState.requestedAt,
+    ...(incomingState.resolvedAt ? { resolvedAt: incomingState.resolvedAt } : existingState.resolvedAt ? { resolvedAt: existingState.resolvedAt } : {}),
+    ...(mergeApprovalFlowRoutingState(existingState, incomingState)
+      ? { routingApproval: mergeApprovalFlowRoutingState(existingState, incomingState)! }
+      : {}),
   };
 }

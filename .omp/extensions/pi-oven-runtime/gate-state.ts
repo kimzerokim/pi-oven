@@ -84,6 +84,7 @@ export interface FsmState {
   externalExecConsent?: ExternalExecConsent;
   consumedExternalExecConsentMessageId?: string;
   deepInterview?: unknown;
+  approvalFlow?: unknown;
 }
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -294,6 +295,7 @@ interface ReadStateOptions {
   persistSanitizedRead?: boolean;
 }
 
+
 export class GateStateStore {
   /** `.pi-oven/` root directory. State lives under `<root>/state/`. */
   private readonly root: string;
@@ -399,10 +401,24 @@ export class GateStateStore {
     return this.readStateInternal();
   }
 
-  /** Atomically write the FSM state (temp + rename). Invalidates the cache. */
+  async readStateMtimeMs(): Promise<number | null> {
+    try {
+      const stat = await fs.stat(this.statePath);
+      return stat.mtimeMs;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Atomically write the FSM state (temp + rename). Refreshes the cache from the written file. */
   async writeState(state: FsmState): Promise<void> {
     await atomicWriteProjectState(this.root, AUTONOMOUS_STATE_FILE, state);
-    this.cache = null; // force re-read (next readState re-stats)
+    try {
+      const stat = await fs.stat(this.statePath);
+      this.cache = { mtimeMs: stat.mtimeMs, view: { kind: "OK", state: structuredClone(state) } };
+    } catch {
+      this.cache = null;
+    }
   }
 
   /**
@@ -431,6 +447,7 @@ export class GateStateStore {
               continuationMarker: undefined,
               consumedExternalExecConsentMessageId: undefined,
               deepInterview: undefined,
+              approvalFlow: undefined,
             };
       const next = updater(current);
       await this.writeState(next);

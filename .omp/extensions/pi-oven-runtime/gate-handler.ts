@@ -31,6 +31,12 @@ import {
   type GateEnv,
   type FsmStateView as GateFsmView,
 } from "./gate";
+import {
+  normalizeApprovalFlowState,
+  normalizeDeepInterviewState,
+  type ApprovalFlowState,
+  type DeepInterviewState,
+} from "./deep-interview-state";
 import type { GateStateStore, FsmStateView, OwnershipTraceEntry } from "./gate-state";
 import {
   attachFailurePath,
@@ -73,7 +79,7 @@ export interface GateHandlerDeps {
     trace: RuntimeTraceSnapshot;
     verifierDepth: VerifierDepthDecision;
   }) => void;
-  runtimeTraceState?: { trace: RuntimeTraceSnapshot };
+  runtimeTraceState?: GateRuntimeState;
 }
 
 /** Minimal structural view of the parts of a ToolCallEvent we read. */
@@ -89,8 +95,14 @@ interface ToolCallResultLike {
   reason?: string;
 }
 
+interface CachedFsmEntry {
+  mtimeMs: number | null;
+  view: FsmStateView;
+}
+
 interface GateRuntimeState {
   trace: RuntimeTraceSnapshot;
+  cachedFsm?: CachedFsmEntry;
 }
 
 const EMPTY_NORMALIZED_COMMAND: NormalizedCommand = { gitVerbs: [], forbiddenMatches: [], externalMatches: [], inlineSecretMatches: [] };
@@ -260,21 +272,87 @@ export function toGateFsmView(view: FsmStateView): GateFsmView {
   return { kind: "OK", state: { active, gateCache } };
 }
 
-async function observeSkillRead(deps: GateHandlerDeps, skillReadTarget: string): Promise<void> {
-  if (!deps.isParentSession) return;
+async function readCachedFsm(
+  deps: GateHandlerDeps,
+  runtimeState: GateRuntimeState
+): Promise<FsmStateView> {
+  if (runtimeState.cachedFsm !== undefined) {
+    const currentMtimeMs = await deps.store.readStateMtimeMs();
+    if (currentMtimeMs === runtimeState.cachedFsm.mtimeMs) {
+      return runtimeState.cachedFsm.view;
+    }
+  }
   const currentView = await deps.store.readState();
+  runtimeState.cachedFsm = {
+    mtimeMs: await deps.store.readStateMtimeMs(),
+    view: currentView,
+  };
+  return currentView;
+}
+
+async function observeSkillRead(
+  deps: GateHandlerDeps,
+  runtimeState: GateRuntimeState,
+  skillReadTarget: string
+): Promise<void> {
+  if (!deps.isParentSession) return;
+  const currentView = await readCachedFsm(deps, runtimeState);
   if (currentView.kind !== "OK" || !currentView.state.active) return;
   const allowedProofTargets = new Set(currentView.state.ownedSkillReadTargets ?? []);
   if (!allowedProofTargets.has(skillReadTarget)) return;
+  let nextState: FsmStateView | undefined;
   await deps.store.mutate((current) => {
     const nextProofReads = new Set(current.skillReads ?? []);
     nextProofReads.add(skillReadTarget);
-    return {
+    const updated = {
       ...current,
       version: current.version + 1,
       skillReads: [...nextProofReads],
     };
+    nextState = { kind: "OK", state: updated };
+    return updated;
   });
+  if (nextState !== undefined) {
+    runtimeState.cachedFsm = {
+      mtimeMs: await deps.store.readStateMtimeMs(),
+      view: nextState,
+    };
+  }
+}
+
+function hasPersistedDeepInterviewState(state: DeepInterviewState): boolean {
+  return (
+    state.active ||
+    state.pendingQuestion !== undefined ||
+    state.spec !== undefined ||
+    state.approvalHandoff !== undefined ||
+    state.routingApproval !== undefined ||
+    state.threshold !== undefined ||
+    state.state.rounds.length > 0 ||
+    state.state.topology !== undefined ||
+    state.state.milestone !== undefined ||
+    state.state.nextTarget !== undefined ||
+    state.state.currentAmbiguity !== undefined
+  );
+}
+
+function readPersistedInterviewState(
+  view: FsmStateView
+): { deepInterview: DeepInterviewState | undefined; approvalFlow: ApprovalFlowState | undefined } {
+  if (view.kind !== "OK") {
+    return { deepInterview: undefined, approvalFlow: undefined };
+  }
+  const stateRecord = view.state as unknown as Record<string, unknown>;
+  const normalizedDeepInterview =
+    stateRecord.deepInterview !== undefined ? normalizeDeepInterviewState(stateRecord.deepInterview) : undefined;
+  const deepInterview =
+    normalizedDeepInterview && hasPersistedDeepInterviewState(normalizedDeepInterview)
+      ? normalizedDeepInterview
+      : undefined;
+  return {
+    deepInterview,
+    approvalFlow: normalizeApprovalFlowState(stateRecord.approvalFlow, deepInterview),
+  };
 }
 
 async function decideForCodeWrite(
@@ -292,9 +370,10 @@ async function decideForCodeWrite(
     PI_OVEN_PUSH_CONSENT: deps.getEnv().PI_OVEN_PUSH_CONSENT,
     PI_OVEN_GATE_BYPASS: deps.getEnv().PI_OVEN_GATE_BYPASS,
   };
-  const fsmRaw = await deps.store.readState();
+  const fsmRaw = await readCachedFsm(deps, runtimeState);
   const fsm = toGateFsmView(fsmRaw);
   const verifierDepth = decideCurrentVerifierDepth(traceWithFunction, fsm);
+  const { deepInterview, approvalFlow } = readPersistedInterviewState(fsmRaw);
   const decision = decideGate({
     normalized: EMPTY_NORMALIZED_COMMAND,
     fsm,
@@ -307,6 +386,8 @@ async function decideForCodeWrite(
     ownedSkillReadTargets: fsmRaw.kind === "OK" ? fsmRaw.state.ownedSkillReadTargets : [],
     skillReads: fsmRaw.kind === "OK" ? fsmRaw.state.skillReads : [],
     verifierDepth,
+    deepInterview,
+    approvalFlow,
   });
   runtimeState.trace = decision.block
     ? attachFailurePath(
@@ -315,7 +396,7 @@ async function decideForCodeWrite(
           surface: "code-write-gate",
           message: decision.reason ?? "code-write blocked",
           functions: ["decideForCodeWrite", "decideGate"],
-          stateKeys: ["requiredSkills", "ownedSkillReadTargets", "skillReads"],
+          stateKeys: ["requiredSkills", "ownedSkillReadTargets", "skillReads", "deepInterview", "approvalFlow"],
         })
       )
     : recordTouchedPath(traceWithFunction, targetPath);
@@ -333,7 +414,7 @@ async function decideForToolCall(
 ): Promise<ToolCallResultLike | void> {
   const skillReadTarget = event.toolName === "read" ? getTargetPath(event.input) : null;
   if (skillReadTarget !== null) {
-    await observeSkillRead(deps, skillReadTarget);
+    await observeSkillRead(deps, runtimeState, skillReadTarget);
     return { block: false };
   }
 

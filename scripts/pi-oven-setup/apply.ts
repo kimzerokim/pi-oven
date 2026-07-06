@@ -166,7 +166,7 @@ export async function runApply(
         projectRoot: cwd,
         spawnFn: opts.spawnFn,
       });
-      scopeLine = `✓ project routing written to ${projectSettingsPath(cwd)} (all 24 roles pinned + modelRoles + retry.fallbackChains; Profiles A/B include reasoning-effort suffixes)\n`;
+      scopeLine = `✓ project visibility matrix written to ${projectSettingsPath(cwd)} (all 24 roles pinned + modelRoles + retry.fallbackChains; Profiles A/B include reasoning-effort suffixes)\n`;
       projectRemediationLine =
         "Project scope kept ~/.omp/agent/config.yml untouched.\n" +
         formatStandaloneTruthSignals(standaloneSignals).join("\n") +
@@ -231,7 +231,7 @@ export async function runApply(
     return {
       exitCode: 1,
       output:
-        `Profile ${opts.profile} applied but validation failed.\n` +
+        `Profile ${opts.profile} setup applied but validation failed.\n` +
         `Unverified roles: ${unverifiedList}\n` +
         `Run /pi-oven:setup to reconfigure, or /pi-oven:setup --reset to return to defaults.\n`,
     };
@@ -247,13 +247,14 @@ export async function runApply(
   return {
     exitCode: 0,
     output:
-      `Profile ${opts.profile} active. ${summaryParts.join(", ")}.\n` +
+      `Profile ${opts.profile} setup applied. ${summaryParts.join(", ")}.\n` +
       scopeLine +
       projectRemediationLine +
       memoryConfigLine +
       toolsEnabledLine +
       nativeWorkerRuntimeLine +
       workerCeilingLine +
+      "Configuration boundary: setup/status are visibility/guard layers only; runtime still owns current-session provider-family choice.\n" +
       "Fan-out contract: dispatch dependency-ready work in the widest safe wave (default target 8-12 siblings). The vendored pi-oven launcher enforces nativeWorkers.maxWorkers when its control path is present, and setup/status/doctor surface any degraded runtime state explicitly.\n" +
       `Setup complete.\n`,
   };

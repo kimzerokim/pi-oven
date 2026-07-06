@@ -1,7 +1,7 @@
 ---
 name: spec-and-review
 version: 0.1.0
-description: "Read this skill when drafting a new spec, plan, or architectural design document, or when a design needs cross-vendor critique before lock-in. Runs a Codex + Zen critic fan-out loop."
+description: "Read this skill when drafting a new spec, plan, or architectural design document, or when a design needs current-session critic pressure before lock-in. Runs one fresh same-provider-family critic by default and widens to same-family multi-lane review only when risk justifies it."
 ---
 
 # spec-and-review
@@ -11,15 +11,15 @@ description: "Read this skill when drafting a new spec, plan, or architectural d
 Invoke when any of the following is true:
 
 - User requests a new spec, plan, or architectural design document.
-- User writes: "spec 잡자", "plan draft", "plan 만들어", "codex review", "brainstorm".
-- A design decision requires cross-vendor critique before locking in.
+- User writes: "spec 잡자", "plan draft", "plan 만들어", "brainstorm".
+- A design decision requires critic pressure before locking in.
 - `writing-plans` or `large-task-delegation` explicitly hands off to this skill.
 
 Do not invoke for doc-only edits, changelog entries, or minor README updates. Those do not need a critic loop.
 
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
-Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits (≤30 LoC) or operational commands (git status / ls / install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`). Match the agent to the work (model-fit + role-fit is first-class): cross-vendor critique → `pi-oven:critic`; design pressure-test → `pi-oven:architect`; plan synthesis → `pi-oven:planner`.
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits (≤30 LoC) or operational commands (git status / ls / install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`). Match the agent to the work (model-fit + role-fit is first-class): critic review → `pi-oven:critic`; design pressure-test → `pi-oven:architect`; plan synthesis → `pi-oven:planner`.
 
 ## Step 0 — codebase-survey precondition
 
@@ -54,11 +54,11 @@ Ambiguous cases default to brainstorming ON.
 Repeat until Gate decides PASS or HALT:
 
 ```
-Draft → Critic (multi-provider fan-out) → Synthesize → Gate
+Draft → Critic → Synthesize → Gate
 ```
 
 - **Draft** (Cycle 1): dispatch `pi-oven:planner` or `pi-oven:executor` via omp `task`. ENFORCEMENT: Main dispatches a subagent for the draft research and authoring. Main MUST NOT research or draft the spec inline. Exception: ≤5 LoC changes may be drafted inline by main.
-- **Critic**: fan out to Codex + Zen GLM/Qwen simultaneously (see Cross-vendor critic).
+- **Critic**: dispatch one fresh `pi-oven:critic` from the current session provider family by default. Widen to same-family parallel critics only when the review is high-risk and an independent disagreement check is justified (see Current-session provider-family critic).
 - **Synthesize**: merge critic outputs; categorize findings as 🔴 / 🟡 / ⚪.
 - **Gate**: evaluate cycle outcome (see Gate decision).
 
@@ -72,18 +72,13 @@ Draft → Critic (multi-provider fan-out) → Synthesize → Gate
 
 On HALT, surface all unresolved BLOCKERs to the user and stop. Do not continue iterating silently.
 
-## Cross-vendor critic
+## Current-session provider-family critic
 
-pi-oven uses omp internal multi-provider `task` fan-out — not the external codex CLI shell-out used by pi-oven.
+pi-oven uses internal omp `task` fan-out for critic passes. Do not treat this as an external CLI shell-out workflow.
 
-Dispatch both critics in parallel:
+Default path: dispatch one fresh critic pass from the current-session provider family and synthesize that verdict.
 
-```
-task(prompt: <critic prompt>, model: "codex")
-task(prompt: <critic prompt>, model: "zen")   # GLM/Qwen backend
-```
-
-Both tasks receive the identical prompt. Collect both responses before synthesizing. A single-provider result is not sufficient for Gate evaluation — if one provider fails, retry once before falling back to a single-provider CONTINUE verdict (not PASS).
+High-risk exception: widen to two independent critic passes from the same provider family only when the change needs an explicit disagreement check. Both critics receive the identical prompt. Collect every configured same-family critic response before synthesizing. If one of the widened critics fails, retry that lane once before collapsing back to the single-critic path.
 
 ## Verdict file convention
 
@@ -108,7 +103,7 @@ BLOCKERs resolved since N-1: <count>
 | 🟡 NIT | Should be fixed but does not block Gate. Naming, clarity, minor consistency. |
 | ⚪ PUSH-BACK | Reviewer opinion that conflicts with a locked prior decision. Log but do not act. |
 
-Every finding from every critic provider must be assigned one of these three categories. Unclassified findings are treated as 🔴 BLOCKER.
+Every finding from every critic response must be assigned one of these three categories. Unclassified findings are treated as 🔴 BLOCKER.
 
 ---
 
@@ -122,10 +117,10 @@ When running spec-and-review inside omp:
 
 - Step 0 (codebase survey precondition): dispatch `pi-oven:explorer`, and `pi-oven:librarian` when external research is needed.
 - Step 0b (novel domain / SOTA research): dispatch `pi-oven:deep-researcher` for academic papers, external library research, or SOTA landscape — runs alongside librarian, not as a replacement.
-- Step 1 (draft authoring): the main agent leads; consult `pi-oven:architect` for system-design decisions. If the draft will reference external SDK/framework APIs, dispatch `pi-oven:document-specialist` BEFORE writing the API-surface section to verify signatures and version compatibility — do not draft external API surfaces from memory.
-- Step 2 (cross-vendor review): dispatch `pi-oven:critic` as the BLOCKER/NIT quality gate.
+- Step 1 (draft authoring): dispatch `pi-oven:planner` or `pi-oven:executor` for draft authoring; main scopes and reviews the loop, and consults `pi-oven:architect` for system-design decisions. If the draft will reference external SDK/framework APIs, dispatch `pi-oven:document-specialist` BEFORE writing the API-surface section to verify signatures and version compatibility — do not draft external API surfaces from memory.
+- Step 2 (same-provider-family critic review): dispatch one fresh `pi-oven:critic` by default, and widen to same-family parallel critics only for high-risk disagreement checks.
 
-**irc coordination at critic fan-out.** When dispatching the two-provider critic review (Codex + Zen), each critic subagent must: (1) call `irc(op:"list")` to discover sibling peer ids; (2) broadcast confirmed P0/P1 findings via `irc(op:"send", to:"all", message:"P0 finding confirmed in <file>: <summary>", awaitReply:false)` so the other critic and the orchestrator are immediately notified. The orchestrator awaits all critic replies before synthesizing — do not poll; await the task results directly.
+**irc coordination at critic fan-out.** When dispatching the optional parallel critic review inside the current session provider family, each critic subagent must: (1) call `irc(op:"list")` to discover sibling peer ids; (2) broadcast confirmed P0/P1 findings via `irc(op:"send", to:"all", message:"P0 finding confirmed in <file>: <summary>", awaitReply:false)` so the other critics and the orchestrator are immediately notified. The orchestrator awaits all critic replies before synthesizing — do not poll; await the task results directly.
 
 - Step 3 (synthesis and acceptance loop): the main agent owns synthesis.
 - Experiment-style verification (falsifiability) when relevant: dispatch `pi-oven:analyst`.

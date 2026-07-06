@@ -160,7 +160,7 @@ Never stop in any of these situations — continue in the same turn:
 ### Rate-limit (provider 429 / dispatch fail)
 - On rate-limit: call `ScheduleWakeup(600)` + restate remaining tasks in the wakeup prompt
 - Do not end the turn empty — always embed the restate arg
-- Provider fallback chain: Codex → Zen → Anthropic opt-in
+- Provider retry path: current-session provider family only; retry once, then use a same-family alternate if configured
 - Critic dispatch fail: main runs critic directly OR dispatches `pi-oven:critic` subagent
 
 ### Auto /compact
@@ -171,7 +171,7 @@ Never stop in any of these situations — continue in the same turn:
 ### Stuck thresholds — kill + diagnose + retry
 - Subagent stuck ≥ 5 min → kill, diagnose, re-dispatch with added context
 - Bash command stuck ≥ 3 min → kill, diagnose, retry or reformulate
-- Codex no first token within 60s → kill, retry once, then fallback
+- Primary dispatch no first token within 60s → kill, retry once, then use a same-family alternate if configured
 
 ### Oracle escalation
 After two consecutive fix attempts on the same surface have failed, dispatch `pi-oven:oracle` before attempting a third fix. The oracle consultation is a strategic re-think — it returns either a different angle of attack or a hard halt recommendation. Two consecutive failed fixes is the trigger; do not invoke oracle on a single failure (cheaper retry first).
@@ -182,8 +182,8 @@ After two consecutive fix attempts on the same surface have failed, dispatch `pi
 
 Before declaring any cycle or loop complete:
 
-1. Dispatch `pi-oven:verifier` with `model="opus"`
-2. The verifier selects the **heavy** path from `fresh-verifier`'s intent/risk matrix — cycle exit is always heavy
+1. Dispatch `pi-oven:verifier` on the heavy path within the current session provider family
+2. If the first verifier route is unavailable after retry, widen only within that same provider family; cycle exit is still always heavy
 3. Heavy-path checks are the 4 sub-checks:
    - Prod-build smoke (build passes with zero errors)
    - Stub sweep (no `TODO`, `FIXME`, placeholder stubs in touched files)

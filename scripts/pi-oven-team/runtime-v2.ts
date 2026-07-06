@@ -14,7 +14,10 @@ import {
   saveTeamConfigWithStartupEvidence,
   type TaskStateWrite,
 } from "./team-config";
-import { buildDependencyAwareBatches } from "./task-file-ops";
+import {
+  buildDependencyAwareBatches,
+  type DependencyAwareBarrierBenchmark,
+} from "./task-file-ops";
 import { rollbackStartedWorkers } from "./rollback";
 import {
   PI_OVEN_NATIVE_MAX_WORKERS,
@@ -59,6 +62,7 @@ export interface StartupWorkerPlan {
 
 export interface StartupWorkerBatchPlan {
   batches: StartupWorkerPlan[][];
+  barrierBenchmark: DependencyAwareBarrierBenchmark;
   reducerOrder: string[];
   collisionEvidence: string[];
 }
@@ -66,6 +70,8 @@ export interface StartupWorkerBatchPlan {
 export interface StartupBatchExecutionResult {
   fanoutLatencyMs: number;
   sequentialComparableLatencyMs: number;
+  reservationBenchmark: DependencyAwareBarrierBenchmark;
+  spawnBenchmark: DependencyAwareBarrierBenchmark;
   workerPaneIds: string[];
 }
 
@@ -164,6 +170,7 @@ export function planStartupWorkerBatches(plans: readonly StartupWorkerPlan[]): S
 
   return {
     batches: batchPlan.batches.map((batch) => batch.map((item) => item.value ?? plans[0]!)),
+    barrierBenchmark: batchPlan.barrierBenchmark,
     reducerOrder: batchPlan.reducerOrder,
     collisionEvidence: batchPlan.collisionEvidence,
   };
@@ -180,13 +187,30 @@ export async function executeStartupWorkerBatches(args: {
   tmux: StartTeamV2Options["tmux"];
   buildWorkerStart: StartTeamV2Options["buildWorkerStart"];
   dispatchStartup: StartTeamV2Options["dispatchStartup"];
+  beforeBatchSpawn?: (context: {
+    batchIndex: number;
+    batch: readonly StartupWorkerPlan[];
+  }) => void | Promise<void>;
 }): Promise<StartupBatchExecutionResult> {
-  const fanoutStart = Date.now();
   const workerPaneIds = [...args.workerPaneIds];
-  let sequentialComparableLatencyMs = 0;
+  const reservationBenchmark: DependencyAwareBarrierBenchmark = {
+    sequentialUnits: 0,
+    criticalPathUnits: 0,
+    overlapUnits: 0,
+  };
+  const spawnBenchmark: DependencyAwareBarrierBenchmark = {
+    sequentialUnits: 0,
+    criticalPathUnits: 0,
+    overlapUnits: 0,
+  };
 
-  for (const batch of args.batches) {
-    const reservationPromises: Array<Promise<{ plan: StartupWorkerPlan; paneId: string; splitLatencyMs: number }>> = [];
+  for (const [batchIndex, batch] of args.batches.entries()) {
+    if (batch.length === 0) {
+      continue;
+    }
+    reservationBenchmark.sequentialUnits += batch.length;
+    reservationBenchmark.criticalPathUnits += 1;
+    const reservationPromises: Array<Promise<{ plan: StartupWorkerPlan; paneId: string }>> = [];
     const tmux = args.tmux as StartTeamV2Options["tmux"] & {
       splitWorkerPaneOptimistic?: (
         splitTarget: string | Promise<string>,
@@ -202,13 +226,11 @@ export async function executeStartupWorkerBatches(args: {
       typeof actualSplitTarget === "string"
         ? actualSplitTarget
         : args.leaderPaneId;
-    let splitReadyAt = Promise.resolve(Date.now());
     let predictedPaneId = predictNextPaneId(predictedSplitTarget);
     const firstSplitDirection = workerPaneIds.length === 0 ? "right" : "down";
 
     for (const [index, plan] of batch.entries()) {
       const splitDirection = index === 0 ? firstSplitDirection : "down";
-      const reservationReadyAt = splitReadyAt;
       const optimisticTarget = predictedSplitTarget;
       const paneIdPromise: Promise<string | null> =
         typeof tmux.splitWorkerPaneOptimistic === "function"
@@ -226,15 +248,11 @@ export async function executeStartupWorkerBatches(args: {
             )
           );
       reservationPromises.push(
-        Promise.all([paneIdPromise, reservationReadyAt]).then(([paneId, readyAt]) => {
+        Promise.resolve(paneIdPromise).then((paneId) => {
           if (!paneId) {
             throw new Error(`worker_startup_failed:${plan.workerName}:pane_id_missing`);
           }
-          return {
-            plan,
-            paneId,
-            splitLatencyMs: Math.max(1, Date.now() - readyAt),
-          };
+          return { plan, paneId };
         })
       );
       const nextTargetLabel = predictedPaneId ?? optimisticTarget;
@@ -246,11 +264,10 @@ export async function executeStartupWorkerBatches(args: {
         }
         return paneId;
       });
-      splitReadyAt = Promise.resolve(actualSplitTarget).then(() => Date.now());
     }
 
     const reservationResults = await Promise.allSettled(reservationPromises);
-    const reservations: Array<{ plan: StartupWorkerPlan; paneId: string; splitLatencyMs: number }> = [];
+    const reservations: Array<{ plan: StartupWorkerPlan; paneId: string }> = [];
     let reservationFailure: unknown = null;
     for (const reservationResult of reservationResults) {
       if (reservationResult.status === "rejected") {
@@ -265,9 +282,11 @@ export async function executeStartupWorkerBatches(args: {
       throw reservationFailure;
     }
 
+    await args.beforeBatchSpawn?.({ batchIndex, batch });
+    spawnBenchmark.sequentialUnits += reservations.length;
+    spawnBenchmark.criticalPathUnits += 1;
     const batchResults = await Promise.all(
       reservations.map(async (reservation) => {
-        const startupStartedAt = Date.now();
         const spawnResult = await spawnV2Worker({
           sessionName: args.sessionName,
           leaderPaneId: args.leaderPaneId,
@@ -286,17 +305,8 @@ export async function executeStartupWorkerBatches(args: {
           buildWorkerStart: args.buildWorkerStart,
           dispatchStartup: args.dispatchStartup,
         });
-        return {
-          reservation,
-          spawnResult,
-          startupLatencyMs: Math.max(1, Date.now() - startupStartedAt),
-        };
+        return { reservation, spawnResult };
       })
-    );
-
-    sequentialComparableLatencyMs += batchResults.reduce(
-      (total, result) => total + result.reservation.splitLatencyMs + result.startupLatencyMs,
-      0
     );
 
     let batchFailure: Error | null = null;
@@ -323,9 +333,22 @@ export async function executeStartupWorkerBatches(args: {
     }
   }
 
+  reservationBenchmark.overlapUnits = Math.max(
+    0,
+    reservationBenchmark.sequentialUnits - reservationBenchmark.criticalPathUnits
+  );
+  spawnBenchmark.overlapUnits = Math.max(
+    0,
+    spawnBenchmark.sequentialUnits - spawnBenchmark.criticalPathUnits
+  );
+
   return {
-    fanoutLatencyMs: Math.max(1, Date.now() - fanoutStart),
-    sequentialComparableLatencyMs,
+    fanoutLatencyMs:
+      reservationBenchmark.criticalPathUnits + spawnBenchmark.criticalPathUnits,
+    sequentialComparableLatencyMs:
+      reservationBenchmark.sequentialUnits + spawnBenchmark.sequentialUnits,
+    reservationBenchmark,
+    spawnBenchmark,
     workerPaneIds,
   };
 }
@@ -465,13 +488,15 @@ export async function startTeamV2(options: StartTeamV2Options): Promise<TeamRunt
   teamConfig.next_task_id = options.tasks.length + 1;
 
   let batchPlan: StartupWorkerBatchPlan | null = null;
-  let taskPersistenceOrder: string[] = [];
-  let initialConfigSaveLabel = "";
+  let startupPersistenceOrderPromise: Promise<string[]> | null = null;
   let execution: StartupBatchExecutionResult;
   try {
     batchPlan = planStartupWorkerBatches(plans);
-    taskPersistenceOrder = persistTaskStateWrites(options.teamName, options.cwd, taskWrites);
-    initialConfigSaveLabel = saveTeamConfigWithStartupEvidence(teamConfig, options.cwd);
+    startupPersistenceOrderPromise = Promise.resolve().then(() => {
+      const taskPersistenceOrder = persistTaskStateWrites(options.teamName, options.cwd, taskWrites);
+      const initialConfigSaveLabel = saveTeamConfigWithStartupEvidence(teamConfig, options.cwd);
+      return [...taskPersistenceOrder, initialConfigSaveLabel];
+    });
     execution = await executeStartupWorkerBatches({
       batches: batchPlan.batches,
       workerPaneIds: [...session.workerPaneIds],
@@ -483,6 +508,10 @@ export async function startTeamV2(options: StartTeamV2Options): Promise<TeamRunt
       tmux: options.tmux,
       buildWorkerStart: options.buildWorkerStart,
       dispatchStartup: options.dispatchStartup,
+      beforeBatchSpawn: ({ batchIndex }) =>
+        batchIndex === 0
+          ? startupPersistenceOrderPromise?.then(() => undefined)
+          : undefined,
     });
   } catch (error) {
     await rollbackStartedWorkers({
@@ -505,15 +534,36 @@ export async function startTeamV2(options: StartTeamV2Options): Promise<TeamRunt
   if (!resolvedBatchPlan) {
     throw new Error("worker_startup_failed:startup_batch_plan_missing");
   }
+  const startupPersistenceOrder = startupPersistenceOrderPromise
+    ? await startupPersistenceOrderPromise
+    : [];
 
   teamConfig.workers = workersInfo;
   const finalConfigSaveLabel = `team_config:${teamConfig.name}:save`;
+  const persistenceSequentialUnits = taskWrites.length + 1;
+  const persistenceOverlapUnits = Math.min(
+    persistenceSequentialUnits,
+    resolvedBatchPlan.batches.length > 0 ? 1 : 0
+  );
   const startupEvidence = buildStartupEvidence({
     fanoutLatencyMs: execution.fanoutLatencyMs,
     sequentialComparableLatencyMs: execution.sequentialComparableLatencyMs,
     collisionEvidence: resolvedBatchPlan.collisionEvidence,
     reducerOrder: resolvedBatchPlan.reducerOrder,
-    persistenceOrder: [...taskPersistenceOrder, initialConfigSaveLabel, finalConfigSaveLabel],
+    persistenceOrder: [...startupPersistenceOrder, finalConfigSaveLabel],
+    benchmark: {
+      model: "synthetic-barrier-units-v1",
+      reservation: execution.reservationBenchmark,
+      persistence: {
+        sequentialUnits: persistenceSequentialUnits,
+        criticalPathUnits: Math.max(
+          0,
+          persistenceSequentialUnits - persistenceOverlapUnits
+        ),
+        overlapUnits: persistenceOverlapUnits,
+      },
+      spawn: execution.spawnBenchmark,
+    },
   });
   saveTeamConfigWithStartupEvidence(teamConfig, options.cwd, startupEvidence);
 

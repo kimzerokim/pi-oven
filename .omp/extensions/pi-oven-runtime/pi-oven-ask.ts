@@ -23,25 +23,56 @@ import type {
 } from "@oh-my-pi/pi-coding-agent";
 import { createDeepInterviewRuntime } from "./deep-interview-runtime";
 import { RECOMMENDED_SUFFIX, formatRecommendedLabel } from "./deep-interview-render";
-import type { DeepInterviewAskMetadata } from "./deep-interview-state";
+import type { ApprovalFlowAskMetadata, DeepInterviewAskMetadata } from "./deep-interview-state";
 import type { RuntimeTraceSnapshot } from "./trace-primitives";
 
+export const ASK_ABOUT_CHOICES_VALUE = "__pi-oven_ask_about_choices__";
 export const OTHER_VALUE = "__pi-oven_other__";
+const ASK_ABOUT_CHOICES_LABEL = "Ask about these choices";
 const OTHER_LABEL = "Other (type your own)";
+const ASK_ABOUT_CHOICES_DESCRIPTION =
+  "Pause the decision and request more explanation about the listed choices.";
+const OTHER_DESCRIPTION = "Provide a custom answer that is not listed above.";
+
+export type PiOvenAskAction = "selected" | "other" | "ask_about_choices" | "deferred" | "cancelled";
+
+export interface PiOvenAskContextHeader {
+  title: string;
+  value?: string;
+  tone?: "info" | "accent" | "warning" | "success";
+}
+
+export interface PiOvenAskContextSection {
+  title: string;
+  bodyMarkdown?: string;
+  bullets?: string[];
+}
+
+export interface PiOvenAskAffordances {
+  other?: boolean;
+  askAboutChoices?: boolean;
+}
 
 export interface PiOvenAskOption {
   label: string;
   description?: string;
+  detailMarkdown?: string;
 }
 
 export interface PiOvenAskSingleDetails {
   mode: "single";
   question: string;
+  action: PiOvenAskAction;
   selected?: string;
   customInput?: string;
   deferred?: boolean;
   recommended?: number;
   deepInterview?: DeepInterviewAskMetadata;
+  approval?: ApprovalFlowAskMetadata;
+  contextHeaders?: PiOvenAskContextHeader[];
+  contextSections?: PiOvenAskContextSection[];
+  affordances?: PiOvenAskAffordances;
+  options?: PiOvenAskOption[];
 }
 
 export type PiOvenAskDetails = PiOvenAskSingleDetails;
@@ -108,29 +139,81 @@ function getSelectListThemeFor(theme: Theme): SelectListTheme {
   selectListThemes.set(theme, selectListTheme);
   return selectListTheme;
 }
+interface PiOvenAskRow {
+  value: string;
+  label: string;
+  description?: string;
+  detailMarkdown?: string;
+  action: "selected" | "other" | "ask_about_choices";
+  selected?: string;
+}
 
-export function buildSelectItems(
+interface PiOvenAskOutcome {
+  action: PiOvenAskAction;
+  selected?: string;
+  customInput?: string;
+}
+
+interface PiOvenAskResultMeta {
+  recommended?: number;
+  deepInterview?: DeepInterviewAskMetadata;
+  approval?: ApprovalFlowAskMetadata;
+  contextHeaders?: PiOvenAskContextHeader[];
+  contextSections?: PiOvenAskContextSection[];
+  affordances?: PiOvenAskAffordances;
+  options?: PiOvenAskOption[];
+}
+
+function buildAskRows(
   options: PiOvenAskOption[],
-  recommended?: number
-): SelectItem[] {
+  recommended?: number,
+  affordances: Required<PiOvenAskAffordances> = { other: true, askAboutChoices: false }
+): PiOvenAskRow[] {
   const seen = new Set<string>();
-  const items: SelectItem[] = options.map((opt, i) => {
+  const rows: PiOvenAskRow[] = options.map((opt, i) => {
     let value = opt.label;
     if (seen.has(value)) {
       value = `${opt.label}#${i}`;
     }
     seen.add(value);
-    const item: SelectItem = {
+    return {
       value,
       label: formatRecommendedLabel(opt.label, recommended === i),
+      description: opt.description,
+      detailMarkdown: opt.detailMarkdown,
+      action: "selected",
+      selected: opt.label,
     };
-    if (opt.description !== undefined) {
-      item.description = opt.description;
-    }
-    return item;
   });
-  items.push({ value: OTHER_VALUE, label: OTHER_LABEL });
-  return items;
+  if (affordances.askAboutChoices) {
+    rows.push({
+      value: ASK_ABOUT_CHOICES_VALUE,
+      label: ASK_ABOUT_CHOICES_LABEL,
+      description: ASK_ABOUT_CHOICES_DESCRIPTION,
+      action: "ask_about_choices",
+    });
+  }
+  if (affordances.other) {
+    rows.push({
+      value: OTHER_VALUE,
+      label: OTHER_LABEL,
+      description: OTHER_DESCRIPTION,
+      action: "other",
+    });
+  }
+  return rows;
+}
+
+export function buildSelectItems(
+  options: PiOvenAskOption[],
+  recommended?: number,
+  affordances: Required<PiOvenAskAffordances> = { other: true, askAboutChoices: false }
+): SelectItem[] {
+  return buildAskRows(options, recommended, affordances).map((row) => ({
+    value: row.value,
+    label: row.label,
+    ...(row.description !== undefined ? { description: row.description } : {}),
+  }));
 }
 
 export function clampRecommended(
@@ -145,29 +228,44 @@ export function clampRecommended(
 
 export function formatAskResult(
   question: string,
-  selected: string | undefined,
-  customInput: string | undefined,
-  meta: { recommended?: number; deepInterview?: DeepInterviewAskMetadata } = {}
+  outcome: PiOvenAskOutcome,
+  meta: PiOvenAskResultMeta = {}
 ): AgentToolResult<PiOvenAskDetails> {
   let text: string;
-  if (selected !== undefined) {
-    text = `User selected: ${selected}`;
-  } else if (customInput !== undefined) {
-    text = customInput.includes("\n")
-      ? `User provided custom input:\n${customInput
+  if (outcome.action === "selected" && outcome.selected !== undefined) {
+    text = `User selected: ${outcome.selected}`;
+  } else if (outcome.action === "other" && outcome.customInput !== undefined) {
+    text = outcome.customInput.includes("\n")
+      ? `User provided custom input:\n${outcome.customInput
           .split("\n")
           .map((line) => `  ${line}`)
           .join("\n")}`
-      : `User provided custom input: ${customInput}`;
+      : `User provided custom input: ${outcome.customInput}`;
+  } else if (outcome.action === "ask_about_choices") {
+    text = "User asked about these choices";
+  } else if (outcome.action === "deferred") {
+    text = "Workflow gate deferred approval.";
+  } else if (outcome.action === "other") {
+    text = "User selected Other";
   } else {
     text = "User cancelled the selection";
   }
 
-  const details: PiOvenAskSingleDetails = { mode: "single", question };
-  if (selected !== undefined) details.selected = selected;
-  if (customInput !== undefined) details.customInput = customInput;
+  const details: PiOvenAskSingleDetails = {
+    mode: "single",
+    question,
+    action: outcome.action,
+  };
+  if (outcome.selected !== undefined) details.selected = outcome.selected;
+  if (outcome.customInput !== undefined) details.customInput = outcome.customInput;
+  if (outcome.action === "deferred") details.deferred = true;
   if (meta.recommended !== undefined) details.recommended = meta.recommended;
   if (meta.deepInterview !== undefined) details.deepInterview = meta.deepInterview;
+  if (meta.approval !== undefined) details.approval = meta.approval;
+  if (meta.contextHeaders !== undefined) details.contextHeaders = meta.contextHeaders;
+  if (meta.contextSections !== undefined) details.contextSections = meta.contextSections;
+  if (meta.affordances !== undefined) details.affordances = meta.affordances;
+  if (meta.options !== undefined) details.options = meta.options;
 
   return {
     content: [{ type: "text" as const, text }],
@@ -182,80 +280,135 @@ export function foldLabel(opt: PiOvenAskOption): string {
 class PiOvenAskContainer extends Container {
   readonly #list: SelectList;
   readonly #dim: (s: string) => string;
+  readonly #rowByValue: Map<string, PiOvenAskRow>;
+
   constructor(
-    question: string,
+    payload: {
+      question: string;
+      contextHeaders: PiOvenAskContextHeader[];
+      contextSections: PiOvenAskContextSection[];
+    },
     list: SelectList,
     mdTheme: MarkdownTheme,
+    rowByValue: Map<string, PiOvenAskRow>,
     dim: (s: string) => string = (s) => s
   ) {
     super();
     this.#list = list;
     this.#dim = dim;
-    this.addChild(new Markdown(question, 1, 0, mdTheme));
+    this.#rowByValue = rowByValue;
+    if (payload.contextHeaders.length > 0) {
+      this.addChild(
+        new Text(
+          payload.contextHeaders
+            .map((header) => `[${header.title}${header.value ? `: ${header.value}` : ""}]`)
+            .join(" "),
+          0,
+          0
+        )
+      );
+    }
+    this.addChild(new Markdown(payload.question, 1, 0, mdTheme));
+    for (const section of payload.contextSections) {
+      const bullets =
+        section.bullets && section.bullets.length > 0
+          ? `\n\n${section.bullets.map((bullet) => `- ${bullet}`).join("\n")}`
+          : "";
+      const block = `### ${section.title}\n\n${section.bodyMarkdown ?? ""}${bullets}`.trim();
+      this.addChild(new Markdown(block, 1, 0, mdTheme));
+    }
     this.addChild(list);
   }
+
   handleInput(data: string): void {
     this.#list.handleInput(data);
   }
+
   render(width: number): string[] {
     const lines = super.render(width);
-    const desc = this.#list.getSelectedItem()?.description;
-    if (desc && desc.trim().length > 0) {
-      const wrapWidth = Math.max(20, width - 4);
-      lines.push("");
-      for (const line of wrapTextWithAnsi(desc, wrapWidth)) {
-        lines.push(this.#dim(`  ${line}`));
+    const selected = this.#list.getSelectedItem();
+    const row = selected ? this.#rowByValue.get(selected.value) : undefined;
+    const detailBlocks = [row?.description, row?.detailMarkdown].filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0
+    );
+    if (detailBlocks.length === 0) {
+      return lines;
+    }
+
+    const wrapWidth = Math.max(20, width - 4);
+    lines.push("");
+    for (const block of detailBlocks) {
+      for (const rawLine of block.split("\n")) {
+        for (const wrapped of wrapTextWithAnsi(rawLine, wrapWidth)) {
+          lines.push(this.#dim(`  ${wrapped}`));
+        }
       }
+      lines.push("");
+    }
+    while (lines.at(-1) === "") {
+      lines.pop();
     }
     return lines;
   }
 }
 
+function appendOptionRows(container: Container, rows: PiOvenAskRow[], theme: Theme): void {
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    const isLast = i === rows.length - 1;
+    const branch = isLast ? theme.tree.last : theme.tree.branch;
+    container.addChild(
+      new Text(
+        ` ${theme.fg("dim", branch)} ${theme.fg("dim", theme.checkbox.unchecked)} ${row.label}`,
+        0,
+        0
+      )
+    );
+    if (row.description) {
+      const cont = isLast ? "   " : ` ${theme.fg("dim", theme.tree.vertical)} `;
+      container.addChild(new Text(`${cont}  ${theme.fg("dim", row.description)}`, 0, 0));
+    }
+    if (row.detailMarkdown) {
+      for (const line of wrapTextWithAnsi(row.detailMarkdown, 72)) {
+        const cont = isLast ? "   " : ` ${theme.fg("dim", theme.tree.vertical)} `;
+        container.addChild(new Text(`${cont}  ${theme.fg("dim", line)}`, 0, 0));
+      }
+    }
+  }
+}
+
 function renderCall(
-  args: {
-    question?: string;
-    options?: PiOvenAskOption[];
-    recommended?: number;
-    deepInterview?: DeepInterviewAskMetadata;
-  },
+  args: PiOvenAskParams,
   _options: ToolRenderResultOptions,
   theme: Theme
 ): Component {
+  const resolved = resolveAskPayload(args);
+  const rows = buildAskRows(resolved.options, resolved.recommended, resolved.affordances);
   const container = new Container();
   const mdTheme = getMarkdownThemeFor(theme);
   container.addChild(new Text(theme.fg("toolTitle", "Ask (pi-oven)"), 0, 0));
 
-  if (args.deepInterview) {
+  if (resolved.contextHeaders.length > 0) {
     container.addChild(
       new Text(
-        theme.fg(
-          "dim",
-          `Deep interview · round ${args.deepInterview.round} · ${args.deepInterview.stage}`
-        ),
+        resolved.contextHeaders
+          .map((header) => `[${header.title}${header.value ? `: ${header.value}` : ""}]`)
+          .join(" "),
         0,
         0
       )
     );
   }
-  container.addChild(new Markdown(args.question ?? "", 1, 0, mdTheme));
-  const opts = args.options ?? [];
-  for (let i = 0; i < opts.length; i++) {
-    const opt = opts[i]!;
-    const isLast = i === opts.length - 1;
-    const branch = isLast ? theme.tree.last : theme.tree.branch;
-    const label = formatRecommendedLabel(opt.label, args.recommended === i);
-    container.addChild(
-      new Text(
-        ` ${theme.fg("dim", branch)} ${theme.fg("dim", theme.checkbox.unchecked)} ${label}`,
-        0,
-        0
-      )
-    );
-    if (opt.description) {
-      const cont = isLast ? "   " : ` ${theme.fg("dim", theme.tree.vertical)} `;
-      container.addChild(new Text(`${cont}  ${theme.fg("dim", opt.description)}`, 0, 0));
-    }
+  container.addChild(new Markdown(resolved.question, 1, 0, mdTheme));
+  for (const section of resolved.contextSections) {
+    const bullets =
+      section.bullets && section.bullets.length > 0
+        ? `\n\n${section.bullets.map((bullet) => `- ${bullet}`).join("\n")}`
+        : "";
+    container.addChild(new Markdown(`### ${section.title}\n\n${section.bodyMarkdown ?? ""}${bullets}`.trim(), 1, 0, mdTheme));
   }
+
+  appendOptionRows(container, rows, theme);
   return container;
 }
 
@@ -276,33 +429,39 @@ function renderResult(
     return container;
   }
 
-  if (details.deepInterview) {
+  const resolved = resolveAskPayload({
+    question: details.question,
+    options: details.options ?? [],
+    recommended: details.recommended,
+    deepInterview: details.deepInterview,
+    approval: details.approval,
+    contextHeaders: details.contextHeaders,
+    contextSections: details.contextSections,
+    affordances: details.affordances,
+  });
+  const rows = buildAskRows(resolved.options, resolved.recommended, resolved.affordances);
+  if (resolved.contextHeaders.length > 0) {
     container.addChild(
       new Text(
-        theme.fg(
-          "dim",
-          `Deep interview · round ${details.deepInterview.round} · ${details.deepInterview.stage}`
-        ),
+        resolved.contextHeaders
+          .map((header) => `[${header.title}${header.value ? `: ${header.value}` : ""}]`)
+          .join(" "),
         0,
         0
       )
     );
-    if (details.deepInterview.approvalHandoff) {
-      container.addChild(
-        new Text(
-          theme.fg(
-            "dim",
-            `Approval handoff · ${details.deepInterview.approvalHandoff.decisionKey}`
-          ),
-          0,
-          0
-        )
-      );
-    }
   }
   container.addChild(new Markdown(details.question, 1, 0, mdTheme));
+  for (const section of resolved.contextSections) {
+    const bullets =
+      section.bullets && section.bullets.length > 0
+        ? `\n\n${section.bullets.map((bullet) => `- ${bullet}`).join("\n")}`
+        : "";
+    container.addChild(new Markdown(`### ${section.title}\n\n${section.bodyMarkdown ?? ""}${bullets}`.trim(), 1, 0, mdTheme));
+  }
+  appendOptionRows(container, rows, theme);
 
-  if (details.selected !== undefined) {
+  if (details.action === "selected" && details.selected !== undefined) {
     container.addChild(
       new Text(
         ` ${theme.fg("dim", theme.tree.last)} ${theme.fg("success", theme.checkbox.checked)} ${theme.fg("toolOutput", details.selected)}`,
@@ -310,7 +469,7 @@ function renderResult(
         0
       )
     );
-  } else if (details.customInput !== undefined) {
+  } else if (details.action === "other" && details.customInput !== undefined) {
     const lines = details.customInput.split("\n");
     container.addChild(
       new Text(
@@ -322,10 +481,26 @@ function renderResult(
     for (let i = 1; i < lines.length; i++) {
       container.addChild(new Text(`     ${theme.fg("toolOutput", lines[i]!)}`, 0, 0));
     }
-  } else if (details.deferred) {
+  } else if (details.action === "ask_about_choices") {
+    container.addChild(
+      new Text(
+        ` ${theme.fg("dim", theme.tree.last)} ${theme.styledSymbol("status.info", "accent")} ${theme.fg("dim", ASK_ABOUT_CHOICES_LABEL)}`,
+        0,
+        0
+      )
+    );
+  } else if (details.action === "deferred") {
     container.addChild(
       new Text(
         ` ${theme.fg("dim", theme.tree.last)} ${theme.styledSymbol("status.info", "accent")} ${theme.fg("dim", "Deferred")}`,
+        0,
+        0
+      )
+    );
+  } else if (details.action === "other") {
+    container.addChild(
+      new Text(
+        ` ${theme.fg("dim", theme.tree.last)} ${theme.styledSymbol("status.info", "accent")} ${theme.fg("dim", OTHER_LABEL)}`,
         0,
         0
       )
@@ -343,17 +518,187 @@ function renderResult(
 }
 
 const DESCRIPTION = [
-  "Ask the user ONE single-select question with a one-line rationale per option.",
-  "Each option carries { label, description? }; an 'Other (type your own)' free-text entry is appended automatically.",
+  "Ask the user ONE single-select question with structured context headers, markdown context sections, and one-line rationales per option.",
+  "Each option carries { label, description?, detailMarkdown? } and affordances control the explicit `Other (type your own)` / `Ask about these choices` rows.",
   "Use recommended (option index) to preselect a default.",
 ].join(" ");
 
 type PiOvenAskParams = {
   question: string;
+  contextHeaders?: PiOvenAskContextHeader[];
+  contextSections?: PiOvenAskContextSection[];
   options: PiOvenAskOption[];
   recommended?: number;
+  affordances?: PiOvenAskAffordances;
   deepInterview?: DeepInterviewAskMetadata;
+  approval?: ApprovalFlowAskMetadata;
 };
+function slugifyApprovalToken(value: string): string {
+  const slug = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug.length > 0 ? slug : "approval";
+}
+
+function resolveRuntimeDeepInterview(
+  deepInterview: DeepInterviewAskMetadata | undefined,
+  approval: ApprovalFlowAskMetadata | undefined
+): DeepInterviewAskMetadata | undefined {
+  if (!approval) {
+    if (!deepInterview) return undefined;
+    const { approvalHandoff: _ignoredApprovalHandoff, routingApproval: _ignoredRoutingApproval, ...canonicalMeta } =
+      deepInterview;
+    return canonicalMeta;
+  }
+  const approvalToken = slugifyApprovalToken(approval.decisionKey);
+  const fallbackRoundId =
+    approval.kind === "routing-bucket"
+      ? `approval-bucket-${approvalToken}`
+      : approval.kind === "routing-role"
+        ? `approval-role-${approvalToken}`
+        : `approval-${approvalToken}`;
+  const dimension = approval.kind === "spec-handoff" ? "approval" : "routing-approval";
+  if (deepInterview) {
+    const { approvalHandoff: _ignoredApprovalHandoff, routingApproval: _ignoredRoutingApproval, ...canonicalMeta } =
+      deepInterview;
+    const roundId = canonicalMeta.roundId ?? fallbackRoundId;
+    return {
+      ...canonicalMeta,
+      ...(approval.resumedFrom?.interviewId && !canonicalMeta.interviewId
+        ? { interviewId: approval.resumedFrom.interviewId }
+        : {}),
+      roundId,
+      questionId: canonicalMeta.questionId ?? `q-${roundId}`,
+      stage: "approval",
+      dimension: canonicalMeta.dimension ?? dimension,
+    };
+  }
+  const roundId = fallbackRoundId;
+  return {
+    ...(approval.resumedFrom?.interviewId ? { interviewId: approval.resumedFrom.interviewId } : {}),
+    round: 0,
+    roundId,
+    questionId: `q-${roundId}`,
+    stage: "approval",
+    component: "approval-flow",
+    dimension,
+  };
+}
+
+function resolveAskPayload(params: PiOvenAskParams): PiOvenAskParams & {
+  contextHeaders: PiOvenAskContextHeader[];
+  contextSections: PiOvenAskContextSection[];
+  affordances: Required<PiOvenAskAffordances>;
+} {
+  const isApproval = params.deepInterview?.stage === "approval" || params.approval !== undefined;
+  const affordances = {
+    other: params.affordances?.other ?? !isApproval,
+    askAboutChoices: params.affordances?.askAboutChoices ?? isApproval,
+  };
+  const routingApproval = params.approval?.routingApproval;
+  const contextHeaders =
+    params.contextHeaders && params.contextHeaders.length > 0
+      ? params.contextHeaders
+      : [
+          ...(params.deepInterview
+            ? [
+                {
+                  title: "Deep interview",
+                  value: `round ${params.deepInterview.round} · ${params.deepInterview.stage}`,
+                  tone: "accent" as const,
+                },
+              ]
+            : []),
+          ...(params.approval
+            ? [
+                {
+                  title: "Approval flow",
+                  value: `${params.approval.kind} · ${params.approval.decisionKey}`,
+                  tone: "warning" as const,
+                },
+              ]
+            : []),
+          ...(params.recommended !== undefined && params.options[params.recommended]
+            ? [
+                {
+                  title: "Recommended",
+                  value: params.options[params.recommended]!.label,
+                  tone: "success" as const,
+                },
+              ]
+            : []),
+          ...(routingApproval
+            ? [
+                {
+                  title: "Routing approval",
+                  value: `${Object.keys(routingApproval.approvals).length}/${routingApproval.buckets.reduce(
+                    (sum, bucket) => sum + bucket.roles.length,
+                    0
+                  )} roles decided`,
+                  tone: "info" as const,
+                },
+              ]
+            : []),
+        ];
+  const contextSections =
+    params.contextSections && params.contextSections.length > 0
+      ? params.contextSections
+      : [
+          ...(params.approval?.summary
+            ? [
+                {
+                  title: "Approval summary",
+                  bodyMarkdown: params.approval.summary,
+                },
+              ]
+            : []),
+          ...(params.approval?.resumedFrom?.specPath
+            ? [
+                {
+                  title: "Resume context",
+                  bullets: [`Spec: ${params.approval.resumedFrom.specPath}`],
+                },
+              ]
+            : []),
+          ...(routingApproval
+            ? [
+                {
+                  title: "Routing approval details",
+                  bullets: [
+                    ...routingApproval.buckets.map(
+                      (bucket) => `${bucket.recommendedSelector}: ${bucket.roles.join(", ")}`
+                    ),
+                    ...Object.values(routingApproval.approvals)
+                      .filter((approval): approval is NonNullable<typeof approval> => approval !== undefined)
+                      .map(
+                        (approval) =>
+                          `${approval.role}: ${approval.selectedSelector} (${approval.status})`
+                      ),
+                  ],
+                },
+              ]
+            : []),
+          ...(params.deepInterview?.topologySummary || params.deepInterview?.ontologySummary
+            ? [
+                {
+                  title: "Interview context",
+                  bullets: [
+                    ...(params.deepInterview.topologySummary
+                      ? [`Topology: ${params.deepInterview.topologySummary}`]
+                      : []),
+                    ...(params.deepInterview.ontologySummary
+                      ? [`Ontology: ${params.deepInterview.ontologySummary}`]
+                      : []),
+                  ],
+                },
+              ]
+            : []),
+        ];
+  return {
+    ...params,
+    contextHeaders,
+    contextSections,
+    affordances,
+  };
+}
 
 async function askSingle(
   ctx: ExtensionContext,
@@ -361,11 +706,28 @@ async function askSingle(
   debugLog?: (message: string) => void,
   registration: PiOvenAskRegistrationOptions = {}
 ): Promise<AgentToolResult<PiOvenAskDetails>> {
-  const { question, options, deepInterview } = params;
+  const { question, options, deepInterview, approval } = params;
   const recommended = clampRecommended(params.recommended, options.length);
-  const resultMeta = {
+  const runtimeDeepInterview = resolveRuntimeDeepInterview(deepInterview, approval);
+  const resolvedPayload = resolveAskPayload({
+    ...params,
+    recommended,
+    ...(runtimeDeepInterview ? { deepInterview: runtimeDeepInterview } : {}),
+  });
+  const rows = buildAskRows(options, recommended, resolvedPayload.affordances);
+  const rowByValue = new Map(rows.map((row) => [row.value, row] as const));
+  const resultMeta: PiOvenAskResultMeta = {
     ...(recommended !== undefined ? { recommended } : {}),
-    ...(deepInterview !== undefined ? { deepInterview } : {}),
+    ...(runtimeDeepInterview !== undefined
+      ? { deepInterview: runtimeDeepInterview }
+      : deepInterview !== undefined
+        ? { deepInterview }
+        : {}),
+    ...(approval !== undefined ? { approval } : {}),
+    contextHeaders: resolvedPayload.contextHeaders,
+    contextSections: resolvedPayload.contextSections,
+    affordances: resolvedPayload.affordances,
+    options: resolvedPayload.options,
   };
   const contextState = ctx as unknown as {
     cwd?: unknown;
@@ -377,31 +739,76 @@ async function askSingle(
     typeof contextState.cwd === "string" && contextState.cwd.trim().length > 0
       ? contextState.cwd
       : process.cwd();
-  const runtime = deepInterview ? createDeepInterviewRuntime(projectRoot, { onRuntimeTrace: registration.onRuntimeTrace }) : undefined;
-  if (runtime && deepInterview) {
+  const runtime = runtimeDeepInterview
+    ? createDeepInterviewRuntime(projectRoot, { onRuntimeTrace: registration.onRuntimeTrace })
+    : undefined;
+  if (runtime && runtimeDeepInterview) {
     try {
       await runtime.seedQuestion({
         question,
         recommended,
-        deepInterview,
+        deepInterview: runtimeDeepInterview,
+        ...(approval !== undefined ? { approval } : {}),
       });
     } catch (err) {
       debugLog?.(`pi-oven_ask: deep-interview seed skipped: ${err}`);
     }
   }
 
-  const persistAnswer = async (
-    selected: string | undefined,
+  const outcomeFor = (
+    row: PiOvenAskRow | undefined,
+    fallbackChoice: string | undefined,
     customInput: string | undefined
-  ): Promise<void> => {
-    if (!runtime || !deepInterview) return;
+  ): PiOvenAskOutcome => {
+    if (row?.action === "ask_about_choices") {
+      return { action: "ask_about_choices" };
+    }
+    if (row?.action === "other") {
+      return customInput !== undefined ? { action: "other", customInput } : { action: "other" };
+    }
+    if (row?.selected !== undefined) {
+      return { action: "selected", selected: row.selected };
+    }
+    if (fallbackChoice === ASK_ABOUT_CHOICES_LABEL) {
+      return resolvedPayload.affordances.askAboutChoices ? { action: "ask_about_choices" } : { action: "deferred" };
+    }
+    if (fallbackChoice === OTHER_LABEL) {
+      if (!resolvedPayload.affordances.other) {
+        return { action: "deferred" };
+      }
+      return customInput !== undefined ? { action: "other", customInput } : { action: "other" };
+    }
+    if (customInput !== undefined) {
+      return resolvedPayload.affordances.other ? { action: "other", customInput } : { action: "deferred" };
+    }
+    if (fallbackChoice !== undefined) {
+      return { action: "selected", selected: fallbackChoice.replace(RECOMMENDED_SUFFIX, "") };
+    }
+    return { action: "cancelled" };
+  };
+
+  const persistOutcome = async (outcome: PiOvenAskOutcome): Promise<void> => {
+    if (!runtime || !runtimeDeepInterview || outcome.action === "deferred") return;
+    let selected: string | undefined;
+    let customInput: string | undefined;
+    if (outcome.action === "selected") {
+      selected = outcome.selected;
+    } else if (outcome.action === "ask_about_choices") {
+      selected = ASK_ABOUT_CHOICES_LABEL;
+    } else if (outcome.action === "other") {
+      customInput = outcome.customInput;
+      if (customInput === undefined) {
+        selected = OTHER_LABEL;
+      }
+    }
     try {
       await runtime.recordAnswer({
         question,
         selected,
         customInput,
         recommended,
-        deepInterview,
+        deepInterview: runtimeDeepInterview,
+        ...(approval !== undefined ? { approval } : {}),
       });
     } catch (err) {
       debugLog?.(`pi-oven_ask: deep-interview answer persist skipped: ${err}`);
@@ -410,50 +817,75 @@ async function askSingle(
 
   if (!ctx.hasUI || typeof ctx.ui?.custom !== "function") {
     if (
-      deepInterview?.stage === "approval" &&
+      (runtimeDeepInterview?.stage === "approval" || approval !== undefined) &&
       typeof contextState.workflowGate?.emitGate === "function"
     ) {
       const gateResult = await contextState.workflowGate.emitGate({
         question,
         options,
         recommended,
-        deepInterview,
+        contextHeaders: resolvedPayload.contextHeaders,
+        contextSections: resolvedPayload.contextSections,
+        affordances: resolvedPayload.affordances,
+        ...(runtimeDeepInterview ? { deepInterview: runtimeDeepInterview } : {}),
+        ...(approval !== undefined ? { approval } : {}),
       });
-      const selected =
-        Array.isArray(gateResult?.selectedOptions) && typeof gateResult.selectedOptions[0] === "string"
+      if (!gateResult || (!Array.isArray(gateResult.selectedOptions) && gateResult.customInput === undefined)) {
+        return formatAskResult(question, { action: "deferred" }, resultMeta);
+      }
+      const gateChoice =
+        Array.isArray(gateResult.selectedOptions) && typeof gateResult.selectedOptions[0] === "string"
           ? gateResult.selectedOptions[0]
           : undefined;
-      const customInput = typeof gateResult?.customInput === "string" ? gateResult.customInput : undefined;
-      if (selected === undefined && customInput === undefined) {
-        return {
-          content: [{ type: "text", text: "Workflow gate deferred approval." }],
-          details: { mode: "single", question, deferred: true, ...resultMeta },
-        };
-      }
-      await persistAnswer(selected, customInput);
-      return formatAskResult(question, selected, customInput, resultMeta);
+      const row =
+        rows.find((entry) => entry.label === gateChoice || entry.selected === gateChoice) ??
+        (gateChoice === ASK_ABOUT_CHOICES_LABEL
+          ? rows.find((entry) => entry.action === "ask_about_choices")
+          : gateChoice === OTHER_LABEL
+            ? rows.find((entry) => entry.action === "other")
+            : undefined);
+      const outcome = outcomeFor(
+        row,
+        gateChoice,
+        typeof gateResult.customInput === "string" ? gateResult.customInput : undefined
+      );
+      await persistOutcome(outcome);
+      return formatAskResult(question, outcome, resultMeta);
     }
     if (typeof ctx.ui?.select === "function") {
-      const folded = options.map((opt, index) => ({
-        label: formatRecommendedLabel(opt.label, recommended === index),
-        description: opt.description,
-      }));
-      const foldedLabels = folded.map(foldLabel);
+      const foldedRows = rows.map((row) => ({ label: row.label, description: row.description }));
+      const foldedLabels = foldedRows.map(foldLabel);
       const chosen = await ctx.ui.select(question, foldedLabels);
       if (chosen === undefined) {
-        await persistAnswer(undefined, undefined);
-        return formatAskResult(question, undefined, undefined, resultMeta);
+        const outcome = { action: "cancelled" as const };
+        await persistOutcome(outcome);
+        return formatAskResult(question, outcome, resultMeta);
       }
-      const idx = foldedLabels.indexOf(chosen);
-      const selected = idx >= 0 ? options[idx]!.label : chosen.replace(RECOMMENDED_SUFFIX, "");
-      await persistAnswer(selected, undefined);
-      return formatAskResult(question, selected, undefined, resultMeta);
+      const rowIndex = foldedLabels.indexOf(chosen);
+      const row = rowIndex >= 0 ? rows[rowIndex] : rows.find((entry) => entry.label === chosen);
+      if (row?.action === "other" && typeof ctx.ui.editor === "function") {
+        const custom = await ctx.ui.editor("Enter your response:", undefined, undefined, {
+          promptStyle: true,
+        });
+        if (custom === undefined) {
+          const outcome = { action: "cancelled" as const };
+          await persistOutcome(outcome);
+          return formatAskResult(question, outcome, resultMeta);
+        }
+        const outcome = { action: "other" as const, customInput: custom };
+        await persistOutcome(outcome);
+        return formatAskResult(question, outcome, resultMeta);
+      }
+      const outcome = outcomeFor(row, chosen, undefined);
+      await persistOutcome(outcome);
+      return formatAskResult(question, outcome, resultMeta);
     }
-    await persistAnswer(undefined, undefined);
-    return formatAskResult(question, undefined, undefined, resultMeta);
+    const outcome = { action: "cancelled" as const };
+    await persistOutcome(outcome);
+    return formatAskResult(question, outcome, resultMeta);
   }
 
-  const items = buildSelectItems(options, recommended);
+  const items = buildSelectItems(options, recommended, resolvedPayload.affordances);
   const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _keybindings, done) => {
     const mdTheme = getMarkdownThemeFor(theme);
     const list = new SelectList(items, items.length, getSelectListThemeFor(theme), {
@@ -463,27 +895,41 @@ async function askSingle(
     if (recommended !== undefined) list.setSelectedIndex(recommended);
     list.onSelect = (item) => done(item.value);
     list.onCancel = () => done(undefined);
-    return new PiOvenAskContainer(question, list, mdTheme, (text) => theme.fg("dim", text));
+    return new PiOvenAskContainer(
+      {
+        question,
+        contextHeaders: resolvedPayload.contextHeaders,
+        contextSections: resolvedPayload.contextSections,
+      },
+      list,
+      mdTheme,
+      rowByValue,
+      (text) => theme.fg("dim", text)
+    );
   });
 
   if (choice === undefined) {
-    await persistAnswer(undefined, undefined);
-    return formatAskResult(question, undefined, undefined, resultMeta);
+    const outcome = { action: "cancelled" as const };
+    await persistOutcome(outcome);
+    return formatAskResult(question, outcome, resultMeta);
   }
   if (choice === OTHER_VALUE) {
     const custom = await ctx.ui.editor("Enter your response:", undefined, undefined, {
       promptStyle: true,
     });
-    const normalizedCustom = custom ?? undefined;
-    if (normalizedCustom === undefined) {
-      await persistAnswer(undefined, undefined);
-      return formatAskResult(question, undefined, undefined, resultMeta);
+    if (custom === undefined) {
+      const outcome = { action: "cancelled" as const };
+      await persistOutcome(outcome);
+      return formatAskResult(question, outcome, resultMeta);
     }
-    await persistAnswer(undefined, normalizedCustom);
-    return formatAskResult(question, undefined, normalizedCustom, resultMeta);
+    const outcome = { action: "other" as const, customInput: custom };
+    await persistOutcome(outcome);
+    return formatAskResult(question, outcome, resultMeta);
   }
-  await persistAnswer(choice, undefined);
-  return formatAskResult(question, choice, undefined, resultMeta);
+  const row = rowByValue.get(choice);
+  const outcome = outcomeFor(row, choice, undefined);
+  await persistOutcome(outcome);
+  return formatAskResult(question, outcome, resultMeta);
 }
 
 export function registerPiOvenAsk(pi: ExtensionAPI, options: PiOvenAskRegistrationOptions = {}): void {
@@ -497,6 +943,24 @@ export function registerPiOvenAsk(pi: ExtensionAPI, options: PiOvenAskRegistrati
   const optionSchema = z.object({
     label: z.string(),
     description: z.string().optional(),
+    detailMarkdown: z.string().optional(),
+  });
+
+  const contextHeaderSchema = z.object({
+    title: z.string().min(1),
+    value: z.string().optional(),
+    tone: z.enum(["info", "accent", "warning", "success"]).optional(),
+  });
+
+  const contextSectionSchema = z.object({
+    title: z.string().min(1),
+    bodyMarkdown: z.string().optional(),
+    bullets: z.array(z.string()).optional(),
+  });
+
+  const affordancesSchema = z.object({
+    other: z.boolean().optional(),
+    askAboutChoices: z.boolean().optional(),
   });
 
   const deepInterviewSchema = z.object({
@@ -508,6 +972,7 @@ export function registerPiOvenAsk(pi: ExtensionAPI, options: PiOvenAskRegistrati
     component: z.string().optional(),
     dimension: z.string().optional(),
     ambiguity: z.number().min(0).max(1).optional(),
+    ambiguityAtAsk: z.number().min(0).max(1).optional(),
     approvalHandoff: z
       .object({
         decisionKey: z.string().min(1),
@@ -515,13 +980,96 @@ export function registerPiOvenAsk(pi: ExtensionAPI, options: PiOvenAskRegistrati
       })
       .optional(),
     routingApproval: z.unknown().optional(),
+    threshold: z.number().min(0).max(1).optional(),
+    thresholdSource: z.enum(["session", "project", "user", "default"]).optional(),
+    scores: z.record(z.string(), z.number()).optional(),
+    triggers: z.array(z.string()).optional(),
+    topologySummary: z.string().optional(),
+    ontologySummary: z.string().optional(),
+    milestone: z.enum(["initial", "progress", "refined", "ready"]).optional(),
+    nextTarget: z
+      .object({
+        componentId: z.string().min(1),
+        dimension: z.enum(["goal", "constraints", "criteria", "context"]),
+        rationale: z.string().min(1),
+      })
+      .optional(),
+    establishedFacts: z
+      .array(
+        z.object({
+          summary: z.string().min(1),
+          sourceRoundKey: z.string().optional(),
+          componentId: z.string().optional(),
+          dimension: z.enum(["goal", "constraints", "criteria", "context"]).optional(),
+        })
+      )
+      .optional(),
+    topology: z
+      .object({
+        confirmed: z.boolean().optional(),
+        summary: z.string().optional(),
+        nodes: z.array(
+          z.object({
+            id: z.string().min(1),
+            label: z.string().min(1),
+            kind: z.string().optional(),
+          })
+        ),
+        edges: z
+          .array(
+            z.object({
+              from: z.string().min(1),
+              to: z.string().min(1),
+              label: z.string().optional(),
+            })
+          )
+          .optional(),
+      })
+      .optional(),
+    ontologySnapshot: z
+      .object({
+        id: z.string().optional(),
+        summary: z.string().min(1),
+        capturedAt: z.string().optional(),
+        stable: z.boolean().optional(),
+      })
+      .optional(),
+    currentAmbiguity: z.number().min(0).max(1).optional(),
+    initialIdea: z.string().optional(),
+    spec: z
+      .object({
+        path: z.string().min(1),
+        sha256: z.string().min(1),
+        persistedAt: z.string().min(1),
+        stage: z.enum(["draft", "final"]),
+      })
+      .optional(),
+  });
+
+  const approvalSchema = z.object({
+    kind: z.enum(["spec-handoff", "routing-bucket", "routing-role"]),
+    source: z.enum(["brainstorming", "setup", "status", "manual"]),
+    decisionKey: z.string().min(1),
+    summary: z.string().min(1),
+    routingApproval: z.unknown().optional(),
+    resumedFrom: z
+      .object({
+        interviewId: z.string().optional(),
+        specPath: z.string().optional(),
+      })
+      .optional(),
+    status: z.enum(["pending", "approved", "rejected", "cancelled"]).optional(),
   });
 
   const parameters = z.object({
     question: z.string().min(1),
+    contextHeaders: z.array(contextHeaderSchema).optional(),
+    contextSections: z.array(contextSectionSchema).optional(),
     options: z.array(optionSchema).min(1),
     recommended: z.number().optional(),
+    affordances: affordancesSchema.optional(),
     deepInterview: deepInterviewSchema.optional(),
+    approval: approvalSchema.optional(),
   });
 
   pi.registerTool({
@@ -542,9 +1090,13 @@ export function registerPiOvenAsk(pi: ExtensionAPI, options: PiOvenAskRegistrati
         ctx,
         {
           question: params.question,
+          contextHeaders: params.contextHeaders,
+          contextSections: params.contextSections,
           options: params.options,
           recommended: params.recommended,
+          affordances: params.affordances,
           deepInterview: params.deepInterview,
+          approval: params.approval,
         },
         (message) => pi.logger?.debug?.(message),
         options

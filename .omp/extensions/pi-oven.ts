@@ -53,13 +53,19 @@ import {
   buildDeepInterviewContractPrompt,
 } from "./pi-oven-runtime/deep-interview-render";
 import {
+  normalizeApprovalFlowState,
   normalizeDeepInterviewState,
+  type ApprovalFlowState,
   type DeepInterviewState,
 } from "./pi-oven-runtime/deep-interview-state";
 
 import { createGateHandler } from "./pi-oven-runtime/gate-handler";
 import { registerPiOvenAsk } from "./pi-oven-runtime/pi-oven-ask";
 import { resolveLanguage } from "./pi-oven-runtime/language";
+import {
+  SUPPORTED_SESSION_PROVIDER_FAMILIES,
+  type SessionProviderFamily,
+} from "./pi-oven-runtime/model-routing-approval";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,7 +75,13 @@ export interface AgentFileEntry {
   modelArray: string[];
 }
 
-export interface SessionModelCapture {
+export interface SessionProviderFamilyResolution {
+  sessionProviderFamily: string | null;
+  supportedForRouting: boolean;
+  diagnostic?: string;
+}
+
+export interface SessionModelCapture extends SessionProviderFamilyResolution {
   model: string;
   capturedAt: number;
 }
@@ -83,6 +95,12 @@ const INSTALLED_TOPOLOGY_SIGNAL_NAME = "installed topology";
 const RUNTIME_GLOBAL_CONFIG_PATH = "~/.omp/agent/config.yml";
 const RUNTIME_INSTALLED_TOPOLOGY_FIX =
   "Restore the plugin assets at that path or reinstall pi-oven@kzk.";
+
+const SUPPORTED_SESSION_PROVIDER_FAMILY_FLAGS: Record<SessionProviderFamily, true> = {
+  "openai-codex": true,
+  anthropic: true,
+  "opencode-zen": true,
+};
 
 const PLUGIN_ROOT_MARKERS = [
   ".claude-plugin",
@@ -369,6 +387,46 @@ export function validateAgentRegistry(
 // ---------------------------------------------------------------------------
 
 /**
+ * Derive the runtime-visible provider family from the captured parent session
+ * model id. This is the execution SoT for provider-family-aware runtime paths.
+ */
+export function resolveSessionProviderFamily(modelId: string): SessionProviderFamilyResolution {
+  const normalizedModelId = modelId.trim();
+  const slashIdx = normalizedModelId.indexOf("/");
+  if (slashIdx <= 0) {
+    return {
+      sessionProviderFamily: null,
+      supportedForRouting: false,
+      diagnostic: `Could not derive current session provider family from session model "${modelId}".`,
+    };
+  }
+
+  const sessionProviderFamily = normalizedModelId.slice(0, slashIdx).trim().toLowerCase();
+  if (!sessionProviderFamily) {
+    return {
+      sessionProviderFamily: null,
+      supportedForRouting: false,
+      diagnostic: `Could not derive current session provider family from session model "${modelId}".`,
+    };
+  }
+
+  if (SUPPORTED_SESSION_PROVIDER_FAMILY_FLAGS[sessionProviderFamily as SessionProviderFamily]) {
+    return {
+      sessionProviderFamily: sessionProviderFamily as SessionProviderFamily,
+      supportedForRouting: true,
+    };
+  }
+
+  return {
+    sessionProviderFamily,
+    supportedForRouting: false,
+    diagnostic:
+      `Current session provider family "${sessionProviderFamily}" is unsupported for runtime routing. ` +
+      `Supported families: ${SUPPORTED_SESSION_PROVIDER_FAMILIES.join(", ")}.`,
+  };
+}
+
+/**
  * Writes the parent session model to a JSON file for use by CLI scripts.
  * Spec B §6 Step a.5 / §9.6.
  * Throws on FS error — caller is responsible for catching.
@@ -377,8 +435,10 @@ export async function captureSessionModel(
   modelId: string,
   targetPath: string
 ): Promise<void> {
+  const providerFamily = resolveSessionProviderFamily(modelId);
   const data: SessionModelCapture = {
     model: modelId,
+    ...providerFamily,
     capturedAt: Date.now(),
   };
   mkdirSync(path.dirname(targetPath), { recursive: true });
@@ -823,7 +883,7 @@ export default function piOvenPi(
     pi.logger.warn(installedTopologyNotice.message);
   }
   let stopGuardState = createStopGuardState();
-  let runtimeTraceState = { trace: createRuntimeTraceSnapshot() };
+  let runtimeTraceState = { trace: createRuntimeTraceSnapshot(), cachedFsm: undefined };
   let runtimeTrace: RuntimeTraceSnapshot = runtimeTraceState.trace;
   let verifierDepth: VerifierDepthDecision = decideVerifierDepth({
     mode: "interactive",
@@ -886,6 +946,7 @@ export default function piOvenPi(
       // re-declared at the injection point.
       let needsAutonomousReminder = false;
       let persistedDeepInterviewState: DeepInterviewState | undefined;
+      let persistedApprovalFlow: ApprovalFlowState | undefined;
 
       if (isParentSession) {
         const fsm = await store.readState();
@@ -894,14 +955,27 @@ export default function piOvenPi(
           if (fsmRecord.deepInterview !== undefined) {
             const normalized = normalizeDeepInterviewState(fsmRecord.deepInterview);
             if (
-              normalized.rounds.length > 0 ||
+              normalized.active ||
+              normalized.state.rounds.length > 0 ||
               normalized.pendingQuestion !== undefined ||
-              normalized.approvalHandoff !== undefined
+              normalized.spec !== undefined ||
+              normalized.approvalHandoff !== undefined ||
+              normalized.routingApproval !== undefined ||
+              normalized.threshold !== undefined ||
+              normalized.state.topology !== undefined ||
+              normalized.state.milestone !== undefined ||
+              normalized.state.nextTarget !== undefined ||
+              normalized.state.currentAmbiguity !== undefined
             ) {
               persistedDeepInterviewState = normalized;
             }
           }
+          persistedApprovalFlow = normalizeApprovalFlowState(
+            fsmRecord.approvalFlow,
+            persistedDeepInterviewState
+          );
         }
+        
 
         const remainingSkillReadTargets =
           fsm.kind === "OK"
@@ -961,16 +1035,20 @@ export default function piOvenPi(
         ) {
           systemPrompt = [...systemPrompt, keywordIntegrityNotice.message];
         }
+        const hasPendingApprovalFlow =
+          persistedApprovalFlow?.status === "pending" || persistedApprovalFlow?.active === true;
         const shouldInjectDeepInterviewContract =
           getCapabilitiesByTag("deep-interview").includes("ask") &&
-          (effectiveMatchedSkills.length > 0 || persistedDeepInterviewState !== undefined);
+          (effectiveMatchedSkills.length > 0 ||
+            persistedDeepInterviewState !== undefined ||
+            hasPendingApprovalFlow);
         if (
           shouldInjectDeepInterviewContract &&
           !systemPrompt.some((entry) => entry.includes(DEEP_INTERVIEW_CONTRACT_DEDUP_KEY))
         ) {
           systemPrompt = [
             ...systemPrompt,
-            buildDeepInterviewContractPrompt(persistedDeepInterviewState),
+            buildDeepInterviewContractPrompt(persistedDeepInterviewState, persistedApprovalFlow),
           ];
         }
       }
@@ -1061,6 +1139,7 @@ export default function piOvenPi(
       branchEntries,
       skillKeywordIndex
     );
+    runtimeTraceState.cachedFsm = undefined;
     await store.mutate((current) => {
       const requiredSkills = skillKeywordState.matchedSkills.map((skill) => skill.name);
       const ownedSkillReadTargets = skillKeywordState.matchedSkills.map(

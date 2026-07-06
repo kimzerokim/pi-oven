@@ -79,7 +79,7 @@ describe("profiles", () => {
   });
 
   describe("PROFILE_A_FALLBACK_CHAINS release-default assignments", () => {
-    it("matches the codex-only release-default runtime fallback policy", () => {
+    it("matches the codex-only release-default visibility/guard fallback record", () => {
       expect(PROFILE_A_FALLBACK_CHAINS).toEqual(PROFILE_B_FALLBACK_CHAINS);
     });
   });
@@ -154,11 +154,11 @@ describe("profiles", () => {
   });
 
   describe("PROFILE_B_FALLBACK_CHAINS new assignments", () => {
-    it("default chain is empty so Profile B stays openai-codex-only at runtime", () => {
+    it("default chain is empty so Profile B advertises no alternate visibility-layer fallback", () => {
       expect(PROFILE_B_FALLBACK_CHAINS.default).toEqual([]);
     });
 
-    it("title chain is empty so Profile B does not use opencode-zen fallback", () => {
+    it("title chain is empty so Profile B keeps the title fallback record empty too", () => {
       expect(PROFILE_B_FALLBACK_CHAINS.title).toEqual([]);
     });
   });

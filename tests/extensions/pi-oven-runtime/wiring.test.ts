@@ -685,7 +685,38 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
           active: true,
           interviewId: "di-1",
           phase: "approval_pending",
+          threshold: 0.35,
+          thresholdSource: "session",
+          spec: {
+            path: "docs/specs/2026-07-06-workflow-optimization-design.md",
+            sha256: "abc123",
+            persistedAt: "2026-07-05T00:04:00.000Z",
+            stage: "final",
+          },
           rounds: [],
+          state: {
+            rounds: [],
+            establishedFacts: [{ summary: "Approval ownership must leave deepInterview." }],
+            ontologySnapshots: [
+              {
+                id: "ontology-2",
+                summary: "approval flow, sanctioned completion path",
+                capturedAt: "2026-07-05T00:03:00.000Z",
+              },
+            ],
+            topology: {
+              confirmed: true,
+              summary: "Runtime routing + approval flow boundary",
+              nodes: [{ id: "runtime-routing", label: "Runtime routing" }],
+            },
+            currentAmbiguity: 0.15,
+            milestone: "ready",
+            nextTarget: {
+              componentId: "approval-flow",
+              dimension: "criteria",
+              rationale: "Lock the post-spec transition options.",
+            },
+          },
           approvalHandoff: {
             decisionKey: "approve-option-c",
             summary: "Implement Option C after approval",
@@ -731,11 +762,53 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
 
     expect(joined).toContain("pi-oven:deep-interview-contract@v1");
     expect(joined).toContain("pi-oven_ask");
-    expect(joined).toContain("approve-option-c");
-    expect(joined).toContain("Implement Option C after approval");
+    expect(joined).toContain("threshold: 0.35 (source: session)");
+    expect(joined).toContain("milestone band: ready");
+    expect(joined).toContain("weakest unresolved target: approval-flow / criteria");
+    expect(joined).toContain("spec persistence: final persisted to docs/specs/2026-07-06-workflow-optimization-design.md");
+    expect(joined).toContain("approval handoff state: pending (setup / routing-bucket)");
     expect(joined).toContain("openai-codex/gpt-5.5:high");
     expect(joined).toContain("executor");
     expect(joined).toContain("test-engineer");
+  });
+
+  it("before_agent_start skips deep-interview contract injection for resolved approvalFlow-only state", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+
+    const pi = makeFakePi();
+    piOvenPi(pi as never);
+
+    const store = new GateStateStore(join(tempDir, ".pi-oven"));
+    await store.writeState({
+      active: false,
+      gateCache: {},
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: [],
+      skillReads: [],
+      approvalFlow: {
+        version: 1,
+        active: false,
+        kind: "spec-handoff",
+        source: "brainstorming",
+        decisionKey: "approve-option-c",
+        summary: "Implement Option C after approval",
+        status: "rejected",
+        requestedAt: "2026-07-05T00:00:00.000Z",
+        resolvedAt: "2026-07-05T00:01:00.000Z",
+      },
+    });
+
+    const onBeforeAgentStart = pi.handlers["before_agent_start"];
+    const res = (await onBeforeAgentStart({
+      type: "before_agent_start",
+      prompt: "continue",
+      systemPrompt: ["base"],
+    })) as { systemPrompt: string[] };
+    const joined = res.systemPrompt.join("\n");
+
+    expect(joined).not.toContain("pi-oven:deep-interview-contract@v1");
   });
   for (const testCase of [
     {

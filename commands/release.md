@@ -22,7 +22,7 @@ test -f scripts/pi-oven-release/index.ts || {
   exit 1
 }
 
-bun scripts/pi-oven-release/index.ts --bump patch --dry-run
+bun ./scripts/pi-oven-release/index.ts --bump patch --dry-run
 ```
 
 The dry-run JSON prints a `boundary` object that makes the source repo → release artifact → installed cache contract explicit for the current run.

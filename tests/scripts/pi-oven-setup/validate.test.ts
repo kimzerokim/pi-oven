@@ -158,21 +158,47 @@ describe("runValidate", () => {
     expect(result.alternates.length).toBe(0);
   });
 
-  it("partial failure: some verified, some alternates, some unverified", async () => {
-    // executor primary succeeds (openai-codex/gpt-5.4) → verified
-    // explorer primary fails, alternate succeeds (opencode-zen/glm-5.1) → alternates
-    // critic: primary=anthropic/claude-opus-4-8 (not in set), alternate=openai-codex/gpt-5.5 (not in set) → unverified
-    const successModels = new Set([
-      PROFILE_A.executor.primary,         // openai-codex/gpt-5.4
-      PROFILE_A.explorer.registry_alternate, // opencode-zen/glm-5.1
-    ]);
+  it("partial failure: verified, alternate, and unverified roles are all reported", async () => {
+    const ok = () => ({
+      exitCode: 0,
+      stdout: Buffer.from("ok"),
+      stderr: Buffer.from(""),
+    });
+    const fail = () => ({
+      exitCode: 1,
+      stdout: Buffer.from(""),
+      stderr: Buffer.from("error"),
+    });
+    const responses = [
+      ok(),
+      fail(), ok(),
+      fail(), fail(),
+      fail(), fail(),
+      fail(), fail(),
+      fail(), fail(),
+      fail(), fail(),
+    ];
+    const spawnFn: NonNullable<Parameters<typeof runValidate>[1]["spawnFn"]> = () => {
+      const result = responses.shift();
+      if (!result) {
+        throw new Error("spawnFn called more times than expected");
+      }
+      return result;
+    };
+
     const result = await runValidate(PROFILE_A, {
       mode: "smoke",
-      spawnFn: makeSpawnFn(successModels),
+      spawnFn,
     });
-    expect(result.verified).toContain("executor");
-    expect(result.alternates).toContain("explorer");
-    expect(result.unverified).toContain("critic");
+    expect(result.verified).toEqual(["executor"]);
+    expect(result.alternates).toEqual(["explorer"]);
+    expect(result.unverified).toEqual([
+      "verifier",
+      "critic",
+      "planner",
+      "code-reviewer",
+      "debugger",
+    ]);
     expect(result.ok).toBe(false);
   });
 

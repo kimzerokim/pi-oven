@@ -758,17 +758,17 @@ describe("pi-oven-setup CLI --suppress-sibling-skills", () => {
     expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
   });
 
-  it("--isolate warns that clean-room mode can hide the ~/.claude home-layer and is not the default fix", async () => {
+  it("--isolate reports the legacy home-layer compatibility mode and boundary contract", async () => {
     const { exitCode, stdout: out } = await runCLIInCwd(
       ["--isolate"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
     expect(exitCode).toBe(0);
-    expect(out).toMatch(/clean-room/i);
-    expect(out).toContain("kzk");
-    expect(out).toMatch(/not the default/i);
-    expect(out).toContain("--suppress-sibling-skills");
+    expect(out).toContain("legacy home-layer compatibility mode");
+    expect(out).toContain("disabledProviders = [claude]");
+    expect(out).toContain("~/.claude home layer");
+    expect(out).toContain("Legacy front doors");
   });
 
   it("--isolate + --scope project is rejected (no global write leak)", async () => {
@@ -811,7 +811,7 @@ describe("pi-oven-setup CLI --suppress-sibling-skills", () => {
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
     expect(exitCode).toBe(1);
-    expect(stderr).toMatch(/mutual.?exclu|cannot.*both|both.*cannot/i);
+    expect(stderr).toMatch(/mutual(?:ly)?\s+exclusive|cannot.*both|both.*cannot/i);
   });
 });
 

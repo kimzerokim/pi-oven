@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.24 - 2026-07-06
+
+- docs(release): prep v0.1.24 refs
+- test: fix release gate expectations
+- docs(release): use explicit source-repo script path
+- fix(pi-oven): complete harness remediation wave
+- feat: overhaul pi-oven meta control plane
 ## v0.1.23 - 2026-07-03
 
 - feat(pi-oven): cut over native worker runtime

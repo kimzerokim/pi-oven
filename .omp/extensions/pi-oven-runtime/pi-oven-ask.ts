@@ -33,6 +33,8 @@ const OTHER_LABEL = "Other (type your own)";
 const ASK_ABOUT_CHOICES_DESCRIPTION =
   "Pause the decision and request more explanation about the listed choices.";
 const OTHER_DESCRIPTION = "Provide a custom answer that is not listed above.";
+const OTHER_DETAIL_MARKDOWN = "Select this row and press Enter to type a custom answer directly.";
+const OTHER_HINT = "Press Enter to type";
 
 export type PiOvenAskAction = "selected" | "other" | "ask_about_choices" | "deferred" | "cancelled";
 
@@ -144,6 +146,7 @@ interface PiOvenAskRow {
   label: string;
   description?: string;
   detailMarkdown?: string;
+  hint?: string;
   action: "selected" | "other" | "ask_about_choices";
   selected?: string;
 }
@@ -162,6 +165,103 @@ interface PiOvenAskResultMeta {
   contextSections?: PiOvenAskContextSection[];
   affordances?: PiOvenAskAffordances;
   options?: PiOvenAskOption[];
+}
+const QUESTION_PADDING_Y = 1;
+const QUESTION_LINE_GAP = 1;
+const OPTION_BLOCK_SPACER_LINES = 2;
+const DETAIL_BLOCK_SPACER_LINES = 2;
+
+function buildContextSectionBodyMarkdown(section: PiOvenAskContextSection): string {
+  const blocks: string[] = [];
+  if (section.bodyMarkdown && section.bodyMarkdown.trim().length > 0) {
+    blocks.push(section.bodyMarkdown);
+  }
+  if (section.bullets && section.bullets.length > 0) {
+    blocks.push(section.bullets.map((bullet) => `- ${bullet}`).join("\n"));
+  }
+  return blocks.join("\n\n");
+}
+
+function appendContextSection(
+  container: Container,
+  section: PiOvenAskContextSection,
+  mdTheme: MarkdownTheme
+): void {
+  container.addChild(new Markdown(`### ${section.title}`, 1, 0, mdTheme));
+  const bodyMarkdown = buildContextSectionBodyMarkdown(section);
+  if (bodyMarkdown.length === 0) {
+    return;
+  }
+  container.addChild(new Markdown(bodyMarkdown, 1, 1, mdTheme));
+}
+
+function appendBlankLines(lines: string[], count: number): void {
+  for (let i = 0; i < count; i++) {
+    lines.push("");
+  }
+}
+
+function appendVisibleSpacerLines(lines: string[], count: number): void {
+  for (let i = 0; i < count; i++) {
+    lines.push(" ");
+  }
+}
+
+class VerticalSpacer implements Component {
+  readonly #lines: number;
+
+  constructor(lines: number) {
+    this.#lines = lines;
+  }
+
+  render(): string[] {
+    return Array.from({ length: this.#lines }, () => " ");
+  }
+
+  invalidate(): void {}
+}
+
+class LineGapComponent implements Component {
+  readonly #inner: Component;
+  readonly #gapLines: number;
+
+  constructor(inner: Component, gapLines: number) {
+    this.#inner = inner;
+    this.#gapLines = gapLines;
+  }
+
+  get wantsKeyRelease(): boolean | undefined {
+    return this.#inner.wantsKeyRelease;
+  }
+
+  render(width: number): string[] {
+    const lines = this.#inner.render(width);
+    if (this.#gapLines <= 0 || lines.length < 2) {
+      return lines;
+    }
+    const spaced: string[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      const next = lines[i + 1];
+      spaced.push(line);
+      if (
+        next !== undefined &&
+        line.trim().length > 0 &&
+        next.trim().length > 0
+      ) {
+        appendVisibleSpacerLines(spaced, this.#gapLines);
+      }
+    }
+    return spaced;
+  }
+
+  handleInput(data: string): void {
+    this.#inner.handleInput?.(data);
+  }
+
+  invalidate(): void {
+    this.#inner.invalidate();
+  }
 }
 
 function buildAskRows(
@@ -198,6 +298,8 @@ function buildAskRows(
       value: OTHER_VALUE,
       label: OTHER_LABEL,
       description: OTHER_DESCRIPTION,
+      detailMarkdown: OTHER_DETAIL_MARKDOWN,
+      hint: OTHER_HINT,
       action: "other",
     });
   }
@@ -213,6 +315,7 @@ export function buildSelectItems(
     value: row.value,
     label: row.label,
     ...(row.description !== undefined ? { description: row.description } : {}),
+    ...(row.hint !== undefined ? { hint: row.hint } : {}),
   }));
 }
 
@@ -308,14 +411,11 @@ class PiOvenAskContainer extends Container {
         )
       );
     }
-    this.addChild(new Markdown(payload.question, 1, 0, mdTheme));
+    this.addChild(
+      new LineGapComponent(new Markdown(payload.question, 1, QUESTION_PADDING_Y, mdTheme), QUESTION_LINE_GAP)
+    );
     for (const section of payload.contextSections) {
-      const bullets =
-        section.bullets && section.bullets.length > 0
-          ? `\n\n${section.bullets.map((bullet) => `- ${bullet}`).join("\n")}`
-          : "";
-      const block = `### ${section.title}\n\n${section.bodyMarkdown ?? ""}${bullets}`.trim();
-      this.addChild(new Markdown(block, 1, 0, mdTheme));
+      appendContextSection(this, section, mdTheme);
     }
     this.addChild(list);
   }
@@ -326,29 +426,45 @@ class PiOvenAskContainer extends Container {
 
   render(width: number): string[] {
     const lines = super.render(width);
+    const listLines = this.#list.render(width);
+    const linesBeforeList = Math.max(0, lines.length - listLines.length);
+    const spacedLines = lines.slice(0, linesBeforeList);
+    for (let i = 0; i < listLines.length; i++) {
+      const line = listLines[i]!;
+      const next = listLines[i + 1];
+      spacedLines.push(line);
+      if (
+        next !== undefined &&
+        line.trim().length > 0 &&
+        next.trim().length > 0
+      ) {
+        appendVisibleSpacerLines(spacedLines, OPTION_BLOCK_SPACER_LINES);
+      }
+    }
+
     const selected = this.#list.getSelectedItem();
     const row = selected ? this.#rowByValue.get(selected.value) : undefined;
     const detailBlocks = [row?.description, row?.detailMarkdown].filter(
       (value): value is string => typeof value === "string" && value.trim().length > 0
     );
     if (detailBlocks.length === 0) {
-      return lines;
+      return spacedLines;
     }
 
     const wrapWidth = Math.max(20, width - 4);
-    lines.push("");
-    for (const block of detailBlocks) {
+    appendBlankLines(spacedLines, DETAIL_BLOCK_SPACER_LINES);
+    for (let i = 0; i < detailBlocks.length; i++) {
+      const block = detailBlocks[i]!;
       for (const rawLine of block.split("\n")) {
         for (const wrapped of wrapTextWithAnsi(rawLine, wrapWidth)) {
-          lines.push(this.#dim(`  ${wrapped}`));
+          spacedLines.push(this.#dim(`  ${wrapped}`));
         }
       }
-      lines.push("");
+      if (i < detailBlocks.length - 1) {
+        appendBlankLines(spacedLines, DETAIL_BLOCK_SPACER_LINES);
+      }
     }
-    while (lines.at(-1) === "") {
-      lines.pop();
-    }
-    return lines;
+    return spacedLines;
   }
 }
 
@@ -373,6 +489,9 @@ function appendOptionRows(container: Container, rows: PiOvenAskRow[], theme: The
         const cont = isLast ? "   " : ` ${theme.fg("dim", theme.tree.vertical)} `;
         container.addChild(new Text(`${cont}  ${theme.fg("dim", line)}`, 0, 0));
       }
+    }
+    if (!isLast) {
+      container.addChild(new VerticalSpacer(OPTION_BLOCK_SPACER_LINES));
     }
   }
 }
@@ -399,13 +518,11 @@ function renderCall(
       )
     );
   }
-  container.addChild(new Markdown(resolved.question, 1, 0, mdTheme));
+  container.addChild(
+    new LineGapComponent(new Markdown(resolved.question, 1, QUESTION_PADDING_Y, mdTheme), QUESTION_LINE_GAP)
+  );
   for (const section of resolved.contextSections) {
-    const bullets =
-      section.bullets && section.bullets.length > 0
-        ? `\n\n${section.bullets.map((bullet) => `- ${bullet}`).join("\n")}`
-        : "";
-    container.addChild(new Markdown(`### ${section.title}\n\n${section.bodyMarkdown ?? ""}${bullets}`.trim(), 1, 0, mdTheme));
+    appendContextSection(container, section, mdTheme);
   }
 
   appendOptionRows(container, rows, theme);
@@ -451,13 +568,11 @@ function renderResult(
       )
     );
   }
-  container.addChild(new Markdown(details.question, 1, 0, mdTheme));
+  container.addChild(
+    new LineGapComponent(new Markdown(details.question, 1, QUESTION_PADDING_Y, mdTheme), QUESTION_LINE_GAP)
+  );
   for (const section of resolved.contextSections) {
-    const bullets =
-      section.bullets && section.bullets.length > 0
-        ? `\n\n${section.bullets.map((bullet) => `- ${bullet}`).join("\n")}`
-        : "";
-    container.addChild(new Markdown(`### ${section.title}\n\n${section.bodyMarkdown ?? ""}${bullets}`.trim(), 1, 0, mdTheme));
+    appendContextSection(container, section, mdTheme);
   }
   appendOptionRows(container, rows, theme);
 
@@ -590,7 +705,7 @@ function resolveAskPayload(params: PiOvenAskParams): PiOvenAskParams & {
 } {
   const isApproval = params.deepInterview?.stage === "approval" || params.approval !== undefined;
   const affordances = {
-    other: params.affordances?.other ?? !isApproval,
+    other: params.affordances?.other ?? (!isApproval || params.deepInterview?.component !== "approval-flow"),
     askAboutChoices: params.affordances?.askAboutChoices ?? isApproval,
   };
   const routingApproval = params.approval?.routingApproval;

@@ -125,6 +125,24 @@ describe("buildSelectItems", () => {
     ]);
   });
 
+  it("surfaces both clarification and direct-typing affordances when explicitly enabled", () => {
+    const items = buildSelectItems([{ label: "A" }], undefined, {
+      other: true,
+      askAboutChoices: true,
+    });
+    expect(items).toEqual([
+      { value: "A", label: "A" },
+      expect.objectContaining({
+        value: ASK_ABOUT_CHOICES_VALUE,
+        label: "Ask about these choices",
+      }),
+      expect.objectContaining({
+        value: OTHER_VALUE,
+        label: "Other (type your own)",
+      }),
+    ]);
+  });
+
   it("keeps values unique even when labels are duplicated", () => {
     const items = buildSelectItems([{ label: "Dup" }, { label: "Dup" }]);
     const values = items.map((i) => i.value);
@@ -299,6 +317,7 @@ function makeTheme() {
 
 interface PiOvenAskTestComponent {
   render(width: number): string[];
+  handleInput?(data: string): void;
   children?: unknown[];
 }
 
@@ -334,14 +353,15 @@ function capturePiOvenAskTool(): PiOvenAskTestTool {
   return captured as PiOvenAskTestTool;
 }
 
+
 describe("registerPiOvenAsk", () => {
-  it("renderCall emits the image-style hierarchy with headers, markdown context, and explicit affordances", () => {
+  it("renderCall separates markdown blocks and option groups while surfacing direct-typing affordances", () => {
     const tool = capturePiOvenAskTool();
     const theme = makeTheme();
-
     const component = tool.renderCall(
       {
-        question: "Approve the implementation handoff.",
+        question:
+          "Approve the implementation handoff after confirming the current approval context remains intact.",
         contextHeaders: [
           { title: "Stage", value: "approval" },
           { title: "Recommended", value: "Proceed" },
@@ -349,64 +369,212 @@ describe("registerPiOvenAsk", () => {
         contextSections: [
           {
             title: "Why now",
-            bodyMarkdown: "Need **approval** before moving forward.",
+            bodyMarkdown: "Need **approval** before moving forward with the current handoff.",
             bullets: ["Keep resume state intact."],
           },
         ],
         options: [
-          { label: "Proceed", description: "Continue with the current handoff.", detailMarkdown: "Use the current spec." },
+          {
+            label: "Proceed",
+            description: "Continue with the current handoff.",
+            detailMarkdown: "Use the current spec.",
+          },
+          { label: "Refine further", description: "Stop and revisit the plan." },
         ],
-        affordances: { other: false, askAboutChoices: true },
+        recommended: 0,
+        affordances: { other: true, askAboutChoices: true },
       },
       {},
       theme
+    ) as PiOvenAskTestComponent;
+
+    const lines = component.render(48).map((line) => line.trimEnd());
+    const questionLine = lines.findIndex((line) => line.includes("Approve the implementation handoff"));
+    const questionTail = lines.findIndex((line) => line.includes("remains intact."));
+    const sectionHeading = lines.findIndex((line) => line.includes("Why now"));
+    const bodyLine = lines.findIndex((line) =>
+      line.includes("Need approval before moving forward")
+    );
+    const bulletLine = lines.findIndex((line) => line.includes("Keep resume state intact."));
+    const proceedLine = lines.findIndex((line) => line.includes("Proceed (Recommended)"));
+    const proceedDescription = lines.findIndex((line) =>
+      line.includes("Continue with the current handoff.")
+    );
+    const proceedDetail = lines.findIndex((line) => line.includes("Use the current spec."));
+    const refineLine = lines.findIndex((line) => line.includes("Refine further"));
+    const refineDescription = lines.findIndex((line) =>
+      line.includes("Stop and revisit the plan.")
+    );
+    const askChoicesLine = lines.findIndex((line) => line.includes("Ask about these choices"));
+    const askChoicesDescriptionTail = lines.findIndex((line) =>
+      line.includes("listed choices.")
+    );
+    const otherLine = lines.findIndex((line) => line.includes("Other (type your own)"));
+    const otherInstructionLine = lines.findIndex((line) =>
+      line.includes("custom answer directly.")
     );
 
-    const rendered = component.render(80).join("\n");
-    expect(rendered).toContain("Approve the implementation handoff.");
-    expect(rendered).toContain("Stage: approval");
-    expect(rendered).toContain("Why now");
-    expect(rendered).toContain("Ask about these choices");
-    expect(rendered).not.toContain("Other (type your own)");
+    expect(questionLine).toBeGreaterThanOrEqual(0);
+    expect(questionTail).toBeGreaterThan(questionLine);
+    expect(lines.slice(questionLine, questionTail + 1).map((line) => line.trim())).toEqual([
+      "Approve the implementation handoff after",
+      "",
+      "confirming the current approval context",
+      "",
+      "remains intact.",
+    ]);
+    expect(sectionHeading).toBeGreaterThan(questionTail);
+    expect(bodyLine).toBeGreaterThan(sectionHeading);
+    expect(lines.slice(questionTail, bodyLine + 1).map((line) => line.trim())).toEqual([
+      "remains intact.",
+      "",
+      "### Why now",
+      "",
+      "Need approval before moving forward with the",
+    ]);
+    expect(lines.slice(bulletLine + 1, proceedLine).filter((line) => line.trim() === "")).toHaveLength(1);
+    expect(lines.slice(proceedLine, refineLine + 1).map((line) => line.trim())).toEqual([
+      "├ □ Proceed (Recommended)",
+      "│   Continue with the current handoff.",
+      "│   Use the current spec.",
+      "",
+      "",
+      "├ □ Refine further",
+    ]);
+    expect(lines.slice(refineLine, askChoicesLine + 1).map((line) => line.trim())).toEqual([
+      "├ □ Refine further",
+      "│   Stop and revisit the plan.",
+      "",
+      "",
+      "├ □ Ask about these choices",
+    ]);
+    expect(lines.slice(askChoicesLine, otherLine + 1).map((line) => line.trim())).toEqual([
+      "├ □ Ask about these choices",
+      "│   Pause the decision and request more",
+      "explanation about the listed choices.",
+      "",
+      "",
+      "└ □ Other (type your own)",
+    ]);
+    expect(lines.slice(otherLine, otherInstructionLine + 1).map((line) => line.trim())).toEqual([
+      "└ □ Other (type your own)",
+      "Provide a custom answer that is not listed",
+      "above.",
+      "Select this row and press Enter to type a",
+      "custom answer directly.",
+    ]);
+    expect(proceedDescription).toBeGreaterThan(proceedLine);
+    expect(proceedDetail).toBeGreaterThan(proceedDescription);
+    expect(refineDescription).toBeGreaterThan(refineLine);
+    expect(askChoicesDescriptionTail).toBeGreaterThan(askChoicesLine);
   });
 
-  it("renderResult keeps the title → headers → context → options → outcome hierarchy", () => {
+  it("renderResult replays the same spacing contract and keeps direct-typing affordances visible before the outcome row", () => {
     const tool = capturePiOvenAskTool();
     const theme = makeTheme();
     const component = tool.renderResult(
       formatAskResult(
-        "Approve the implementation handoff.",
+        "Approve the implementation handoff after confirming the current approval context remains intact.",
         { action: "selected", selected: "Proceed" },
         {
           recommended: 0,
           contextHeaders: [{ title: "Stage", value: "approval", tone: "accent" }],
-          contextSections: [{ title: "Why now", bodyMarkdown: "Need **approval** before moving forward." }],
+          contextSections: [
+            {
+              title: "Why now",
+              bodyMarkdown: "Need **approval** before moving forward with the current handoff.",
+              bullets: ["Keep resume state intact."],
+            },
+          ],
           options: [
             { label: "Proceed", description: "Continue with the current handoff." },
             { label: "Refine further", description: "Stop and revisit the plan." },
           ],
-          affordances: { other: false, askAboutChoices: true },
+          affordances: { other: true, askAboutChoices: true },
         }
       ),
       {},
       theme
     ) as PiOvenAskTestComponent;
 
-    const rendered = component.render(80).join("\n");
-    const titleIndex = rendered.indexOf("Ask (pi-oven)");
-    const headerIndex = rendered.indexOf("Stage: approval");
-    const questionIndex = rendered.indexOf("Approve the implementation handoff.");
-    const contextIndex = rendered.indexOf("Why now");
-    const optionsIndex = rendered.indexOf("Refine further");
-    const outcomeIndex = rendered.indexOf("■ Proceed");
+    const lines = component.render(48).map((line) => line.trimEnd());
+    const questionLine = lines.findIndex((line) => line.includes("Approve the implementation handoff"));
+    const questionTail = lines.findIndex((line) => line.includes("remains intact."));
+    const sectionHeading = lines.findIndex((line) => line.includes("Why now"));
+    const bodyLine = lines.findIndex((line) =>
+      line.includes("Need approval before moving forward")
+    );
+    const bulletLine = lines.findIndex((line) => line.includes("Keep resume state intact."));
+    const proceedLine = lines.findIndex((line) => line.includes("Proceed (Recommended)"));
+    const proceedDescription = lines.findIndex((line) =>
+      line.includes("Continue with the current handoff.")
+    );
+    const refineLine = lines.findIndex((line) => line.includes("Refine further"));
+    const refineDescription = lines.findIndex((line) =>
+      line.includes("Stop and revisit the plan.")
+    );
+    const askChoicesLine = lines.findIndex((line) => line.includes("Ask about these choices"));
+    const askChoicesDescriptionTail = lines.findIndex((line) =>
+      line.includes("listed choices.")
+    );
+    const otherLine = lines.findIndex((line) => line.includes("Other (type your own)"));
+    const otherInstructionLine = lines.findIndex((line) =>
+      line.includes("custom answer directly.")
+    );
+    const outcomeLine = lines.findIndex((line) => line.includes("■ Proceed"));
 
-    expect(titleIndex).toBeGreaterThanOrEqual(0);
-    expect(headerIndex).toBeGreaterThan(titleIndex);
-    expect(questionIndex).toBeGreaterThan(headerIndex);
-    expect(contextIndex).toBeGreaterThan(questionIndex);
-    expect(optionsIndex).toBeGreaterThan(contextIndex);
-    expect(outcomeIndex).toBeGreaterThan(optionsIndex);
-    expect(rendered).toContain("Ask about these choices");
+    expect(questionLine).toBeGreaterThanOrEqual(0);
+    expect(questionTail).toBeGreaterThan(questionLine);
+    expect(lines.slice(questionLine, questionTail + 1).map((line) => line.trim())).toEqual([
+      "Approve the implementation handoff after",
+      "",
+      "confirming the current approval context",
+      "",
+      "remains intact.",
+    ]);
+    expect(sectionHeading).toBeGreaterThan(questionTail);
+    expect(bodyLine).toBeGreaterThan(sectionHeading);
+    expect(lines.slice(questionTail, bodyLine + 1).map((line) => line.trim())).toEqual([
+      "remains intact.",
+      "",
+      "### Why now",
+      "",
+      "Need approval before moving forward with the",
+    ]);
+    expect(lines.slice(bulletLine + 1, proceedLine).filter((line) => line.trim() === "")).toHaveLength(1);
+    expect(lines.slice(proceedLine, refineLine + 1).map((line) => line.trim())).toEqual([
+      "├ □ Proceed (Recommended)",
+      "│   Continue with the current handoff.",
+      "",
+      "",
+      "├ □ Refine further",
+    ]);
+    expect(lines.slice(refineLine, askChoicesLine + 1).map((line) => line.trim())).toEqual([
+      "├ □ Refine further",
+      "│   Stop and revisit the plan.",
+      "",
+      "",
+      "├ □ Ask about these choices",
+    ]);
+    expect(lines.slice(askChoicesLine, otherLine + 1).map((line) => line.trim())).toEqual([
+      "├ □ Ask about these choices",
+      "│   Pause the decision and request more",
+      "explanation about the listed choices.",
+      "",
+      "",
+      "└ □ Other (type your own)",
+    ]);
+    expect(lines.slice(otherLine, otherInstructionLine + 1).map((line) => line.trim())).toEqual([
+      "└ □ Other (type your own)",
+      "Provide a custom answer that is not listed",
+      "above.",
+      "Select this row and press Enter to type a",
+      "custom answer directly.",
+    ]);
+    expect(proceedDescription).toBeGreaterThan(proceedLine);
+    expect(refineDescription).toBeGreaterThan(refineLine);
+    expect(askChoicesDescriptionTail).toBeGreaterThan(askChoicesLine);
+    expect(outcomeLine).toBeGreaterThan(otherInstructionLine);
   });
 
   it("accepts mixed structured+markdown ask fields without stripping routing approval resume state", () => {
@@ -505,7 +673,7 @@ describe("registerPiOvenAsk", () => {
         expect.objectContaining({
           question: "Approve the implementation handoff.",
           recommended: 0,
-          affordances: { other: false, askAboutChoices: true },
+          affordances: { other: true, askAboutChoices: true },
           contextHeaders: expect.arrayContaining([
             expect.objectContaining({ title: "Deep interview" }),
             expect.objectContaining({ title: "Recommended", value: "Proceed" }),
@@ -525,7 +693,7 @@ describe("registerPiOvenAsk", () => {
           recommended: 0,
           deepInterview: APPROVAL_META,
           approval: APPROVAL_FLOW_META,
-          affordances: { other: false, askAboutChoices: true },
+          affordances: { other: true, askAboutChoices: true },
         })
       );
     } finally {
@@ -750,7 +918,7 @@ describe("registerPiOvenAsk", () => {
           question: "Approve the implementation handoff.",
           action: "ask_about_choices",
           deepInterview: APPROVAL_META,
-          affordances: { other: false, askAboutChoices: true },
+          affordances: { other: true, askAboutChoices: true },
         })
       );
 
@@ -834,7 +1002,7 @@ describe("registerPiOvenAsk", () => {
           recommended: 0,
           deepInterview: APPROVAL_META,
           approval: APPROVAL_FLOW_META,
-          affordances: { other: false, askAboutChoices: true },
+          affordances: { other: true, askAboutChoices: true },
         })
       );
       expect(traces).toEqual(
@@ -927,7 +1095,7 @@ describe("registerPiOvenAsk", () => {
           recommended: 0,
           deepInterview: APPROVAL_META,
           approval: APPROVAL_FLOW_META,
-          affordances: { other: false, askAboutChoices: true },
+          affordances: { other: true, askAboutChoices: true },
         })
       );
       expect(traces).toEqual(
@@ -978,18 +1146,16 @@ describe("registerPiOvenAsk", () => {
               const component = await factory({}, theme, {}, (value: string | undefined) => {
                 resolved = value;
               });
-              const list = Array.isArray(component.children)
-                ? (component.children.find(
-                    (child) =>
-                      typeof child === "object" &&
-                      child !== null &&
-                      "getSelectedItem" in child &&
-                      "onSelect" in child
-                  ) as SelectListLike | undefined)
-                : undefined;
-              const selected = list?.getSelectedItem?.();
-              expect(selected?.value).toBe("Session cookie");
-              list?.onSelect?.(selected);
+              const rendered = component.render(48).map((line) => line.trimEnd());
+              expect(rendered).toEqual(
+                expect.arrayContaining([
+                  "[Deep interview: round 0 · topology]",
+                  "[Recommended: Session cookie]",
+                  "> Session cookie (Recommended)",
+                ])
+              );
+              component.handleInput?.("\r");
+              expect(resolved).toBe("Session cookie");
               return resolved;
             },
             async editor() {

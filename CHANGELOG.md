@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.0 - 2026-07-07
+
+- docs(release): prep v0.2.0 refs
+- feat(pi-oven): parallelize task waves and relax sts consent
+- feat(pi-oven): align workflow runtime and ask control plane
 ## v0.1.24 - 2026-07-06
 
 - docs(release): prep v0.1.24 refs

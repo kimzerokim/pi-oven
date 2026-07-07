@@ -27,7 +27,7 @@
 
 ```
 bun run check        # tsc --noEmit
-bun test             # 933 pass currently
+bun test             # full repo test suite
 bun run lint:agents  # agents/*.md frontmatter == PROFILE_A + colon-name invariant
 bun run lint:skills  # SKILL.md pi-oven:<role> refs ∈ ROLES; /pi-oven: slash refs excluded
 bun run build        # bundle .omp/extensions/pi-oven.ts -> dist/
@@ -90,7 +90,7 @@ bun run release:pi-oven -- --bump patch --dry-run  # release automation (safe de
 
 ## Status
 
-**Current: v0.1.24** — routes runtime skill-first guidance through exact plugin-owned `SKILL.md` targets instead of unresolved namespaced skill aliases, treats `/pi-oven:setup` as command-only via `commands/setup.md`, and removes stale `@oh-my-pi/pi-tui` test mocks so the full suite runs cleanly with the installed package API.
+**Current: v0.2.0** — aligns the workflow runtime and native ask control plane, parallelizes dependency-ready task waves, and relaxes AWS STS consent handling for direct external reads.
 
 **Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@kzk (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 

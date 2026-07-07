@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { PROFILE_B, ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
@@ -291,7 +291,7 @@ describe("deep-interview-runtime", () => {
 
     const answered = await runtime.recordAnswer({
       question: "Approve the implementation handoff.",
-      selected: "Proceed",
+      selected: "계속",
       recommended: 0,
       deepInterview: APPROVAL_META,
       approval: APPROVAL_FLOW,
@@ -300,10 +300,13 @@ describe("deep-interview-runtime", () => {
     const resumed = (await createDeepInterviewRuntime(projectRoot).readState()) as DeepInterviewState | undefined;
 
     expect(answered.phase).toBe("handoff");
-    expect(answered.state.rounds.at(-1)?.approvalHandoff).toEqual(
+    expect(answered.state.rounds.at(-1)).toEqual(
       expect.objectContaining({
-        decisionKey: "approve-option-c",
-        status: "approved",
+        selected: "proceed",
+        approvalHandoff: expect.objectContaining({
+          decisionKey: "approve-option-c",
+          status: "approved",
+        }),
       })
     );
     expect(approval).toEqual(
@@ -311,6 +314,11 @@ describe("deep-interview-runtime", () => {
         active: false,
         status: "approved",
         decisionKey: "approve-option-c",
+        resolved: {
+          selected: "proceed",
+          displayLabel: "계속",
+          customInput: null,
+        },
       })
     );
     expect(resumed?.state.rounds.at(-1)?.approvalHandoff).toEqual(
@@ -384,7 +392,7 @@ describe("deep-interview-runtime", () => {
 
     expect(answered.state.rounds.at(-1)).toEqual(
       expect.objectContaining({
-        selected: "Ask about these choices",
+        selected: "ask about these choices",
         approvalHandoff: expect.objectContaining({
           decisionKey: "approve-option-c",
           status: "pending",
@@ -396,7 +404,8 @@ describe("deep-interview-runtime", () => {
         active: true,
         status: "pending",
         resolved: {
-          selected: "Ask about these choices",
+          selected: "ask about these choices",
+          displayLabel: "Ask about these choices",
           customInput: null,
         },
       })
@@ -406,7 +415,8 @@ describe("deep-interview-runtime", () => {
         active: true,
         status: "pending",
         resolved: {
-          selected: "Ask about these choices",
+          selected: "ask about these choices",
+          displayLabel: "Ask about these choices",
           customInput: null,
         },
       })
@@ -436,6 +446,7 @@ describe("deep-interview-runtime", () => {
         status: "rejected",
         resolved: {
           selected: "Refine further",
+          displayLabel: "Refine further",
           customInput: null,
         },
       })
@@ -472,7 +483,7 @@ describe("deep-interview-runtime", () => {
 
     await runtime.recordAnswer({
       question: "Approve the runtime cutover.",
-      selected: "Proceed",
+      selected: "승인, plan으로 진행",
       recommended: 0,
       deepInterview: APPROVAL_ONLY_META,
       approval: APPROVAL_ONLY_FLOW,
@@ -480,7 +491,19 @@ describe("deep-interview-runtime", () => {
     const resumedApproval = (await createDeepInterviewRuntime(projectRoot).readApprovalFlow()) as
       | ApprovalFlowState
       | undefined;
+    const persisted = JSON.parse(
+      readFileSync(join(projectRoot, ".pi-oven", "state", "autonomous.json"), "utf-8")
+    ) as {
+      approvalFlow?: {
+        resolved?: { selected?: string; displayLabel?: string | null; customInput?: string | null };
+      };
+    };
 
+    expect(persisted.approvalFlow?.resolved).toEqual({
+      selected: "proceed",
+      displayLabel: "승인, plan으로 진행",
+      customInput: null,
+    });
     expect(resumedApproval).toEqual(
       expect.objectContaining({
         kind: "spec-handoff",
@@ -492,7 +515,93 @@ describe("deep-interview-runtime", () => {
           specPath: "docs/specs/2026-07-06-workflow-optimization-design.md",
         },
         resolved: {
-          selected: "Proceed",
+          selected: "proceed",
+          displayLabel: "승인, plan으로 진행",
+          customInput: null,
+        },
+      })
+    );
+  });
+  it("normalizes stale localized affirmative approval states back to approved on resume", async () => {
+    const specPath = "docs/specs/2026-07-06-workflow-optimization-design.md";
+    mkdirSync(join(projectRoot, ".pi-oven", "state"), { recursive: true });
+    writeFileSync(
+      join(projectRoot, ".pi-oven", "state", "autonomous.json"),
+      JSON.stringify({
+        active: false,
+        gateCache: { commit: "FAIL", regression: "FAIL" },
+        deepInterview: {
+          version: 2,
+          interviewId: "di-approval-root",
+          active: false,
+          phase: "complete",
+          spec: {
+            path: specPath,
+            sha256: "abc123",
+            persistedAt: "2026-07-06T00:04:00.000Z",
+            stage: "final",
+          },
+          state: {
+            rounds: [
+              {
+                roundKey: "di-approval-root::rid:approval-root",
+                interviewId: "di-approval-root",
+                round: 1,
+                roundId: "approval-root",
+                questionId: "q-approval-root",
+                stage: "approval",
+                question: "Approve the runtime cutover.",
+                questionHash: "qhash-approval-root",
+                lifecycle: "answered",
+                askedAt: "2026-07-06T00:04:00.000Z",
+                answeredAt: "2026-07-06T00:05:00.000Z",
+                selected: "이대로 진행",
+                answerHash: "ahash-approval-root",
+              },
+            ],
+            establishedFacts: [],
+            ontologySnapshots: [],
+            milestone: "ready",
+          },
+        },
+        approvalFlow: {
+          version: 1,
+          active: false,
+          kind: "spec-handoff",
+          source: "manual",
+          decisionKey: "approve-runtime-cutover",
+          summary: "Approve the runtime cutover after root approvalFlow persistence.",
+          status: "rejected",
+          requestedAt: "2026-07-06T00:04:00.000Z",
+          resolvedAt: "2026-07-06T00:05:00.000Z",
+          resumedFrom: {
+            interviewId: "di-approval-root",
+            specPath,
+          },
+          resolved: {
+            selected: "이대로 진행",
+            customInput: null,
+          },
+        },
+      })
+    );
+
+    const resumedApproval = (await createDeepInterviewRuntime(projectRoot).readApprovalFlow()) as
+      | ApprovalFlowState
+      | undefined;
+
+    expect(resumedApproval).toEqual(
+      expect.objectContaining({
+        active: false,
+        status: "approved",
+        decisionKey: "approve-runtime-cutover",
+        resumedFrom: {
+          interviewId: "di-approval-root",
+          specPath,
+        },
+        resolved: {
+          selected: "proceed",
+          displayLabel: "이대로 진행",
           customInput: null,
         },
       })

@@ -803,4 +803,52 @@ describe("decideGate — brainstorming mutation guard", () => {
     );
     expect(r.block).toBe(false);
   });
+  it("does not block code-write after a sanctioned final spec handoff resolves through a legacy localized affirmative answer", () => {
+    const r = decideGate(
+      input("", {
+        toolName: "edit",
+        targetPath: "src/example.ts",
+        branchContract,
+        deepInterview: {
+          version: 2,
+          interviewId: "di-approval-root",
+          active: false,
+          phase: "complete",
+          spec: {
+            path: specPath,
+            sha256: "abc123",
+            persistedAt: "2026-07-06T00:04:00.000Z",
+            stage: "final",
+          },
+          state: {
+            rounds: [],
+            establishedFacts: [],
+            ontologySnapshots: [],
+            milestone: "ready",
+          },
+        },
+        approvalFlow: {
+          version: 1,
+          active: false,
+          kind: "spec-handoff",
+          source: "manual",
+          decisionKey: "approve-runtime-cutover",
+          summary: "Approve the runtime cutover after root approvalFlow persistence.",
+          status: "approved",
+          requestedAt: "2026-07-06T00:04:00.000Z",
+          resolvedAt: "2026-07-06T00:05:00.000Z",
+          resumedFrom: {
+            interviewId: "di-approval-root",
+            specPath,
+          },
+          resolved: {
+            selected: "approve",
+            displayLabel: "이대로 진행",
+            customInput: null,
+          },
+        },
+      })
+    );
+    expect(r.block).toBe(false);
+  });
 });

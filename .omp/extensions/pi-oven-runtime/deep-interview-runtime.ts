@@ -39,6 +39,7 @@ export interface DeepInterviewQuestionInput {
 
 export interface DeepInterviewAnswerInput extends DeepInterviewQuestionInput {
   selected?: string;
+  selectedDisplayLabel?: string;
   customInput?: string;
 }
 
@@ -174,6 +175,160 @@ function buildApprovalHandoffFromFlow(flow: ApprovalFlowState | undefined): Deep
   };
 }
 
+
+export type CanonicalApprovalSelection =
+  | "approve"
+  | "proceed"
+  | "override per role"
+  | "ask about these choices";
+
+function normalizeApprovalSelectionToken(value: string): string {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[,_/]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+export function canonicalizeApprovalSelection(
+  value: string | null | undefined
+): CanonicalApprovalSelection | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  const normalized = normalizeApprovalSelectionToken(value);
+  if (normalized === "ask about these choices") return "ask about these choices";
+  if (normalized === "override per role") return "override per role";
+  if (normalized === "approve" || normalized === "approved" || normalized === "승인") return "approve";
+  if (
+    normalized === "proceed" ||
+    normalized === "continue" ||
+    normalized === "continue execution" ||
+    normalized === "go ahead" ||
+    normalized === "계속" ||
+    normalized === "계속 진행" ||
+    normalized === "이대로 진행" ||
+    normalized === "승인 plan으로 진행" ||
+    normalized === "승인 plan 으로 진행"
+  ) {
+    return "proceed";
+  }
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readApprovalSelectionFromResolved(
+  resolved: unknown
+): { selected?: string; selectedDisplayLabel?: string } {
+  if (!isRecord(resolved)) return {};
+  return {
+    ...(typeof resolved.selected === "string" ? { selected: resolved.selected } : {}),
+    ...(typeof resolved.displayLabel === "string" ? { selectedDisplayLabel: resolved.displayLabel } : {}),
+  };
+}
+
+function readLatestApprovalRoundSelection(
+  deepInterview: DeepInterviewState | undefined
+): { selected?: string; selectedDisplayLabel?: string } {
+  if (!deepInterview) return {};
+  const latestApprovalRound = [...deepInterview.state.rounds]
+    .reverse()
+    .find((round) => round.stage === "approval" && typeof round.selected === "string");
+  if (!latestApprovalRound?.selected) return {};
+  return {
+    selected: latestApprovalRound.selected,
+    selectedDisplayLabel: latestApprovalRound.selected,
+  };
+}
+
+function resolveEffectiveApprovalStatus(
+  approvalFlow: ApprovalFlowState | undefined,
+  deepInterview: DeepInterviewState | undefined
+): {
+  status: ApprovalFlowState["status"] | undefined;
+  selected?: string;
+  selectedDisplayLabel?: string;
+} {
+  if (!approvalFlow) return { status: undefined };
+  const fromResolved = readApprovalSelectionFromResolved(approvalFlow.resolved);
+  const fromRound = readLatestApprovalRoundSelection(deepInterview);
+  const selected = fromResolved.selected ?? fromRound.selected;
+  const selectedDisplayLabel =
+    fromResolved.selectedDisplayLabel ?? fromRound.selectedDisplayLabel ?? fromResolved.selected;
+  if (approvalFlow.status !== "rejected") {
+    return { status: approvalFlow.status, selected, selectedDisplayLabel };
+  }
+  const canonicalSelection =
+    canonicalizeApprovalSelection(selected) ?? canonicalizeApprovalSelection(selectedDisplayLabel);
+  if (!canonicalSelection) {
+    return { status: approvalFlow.status, selected, selectedDisplayLabel };
+  }
+  if (canonicalSelection === "ask about these choices") {
+    return { status: "pending", selected: canonicalSelection, selectedDisplayLabel };
+  }
+  if (canonicalSelection === "override per role") {
+    const routingResolved = approvalFlow.routingApproval ? isRoutingApprovalResolved(approvalFlow.routingApproval) : true;
+    return {
+      status: routingResolved ? "approved" : "pending",
+      selected: canonicalSelection,
+      selectedDisplayLabel,
+    };
+  }
+  return { status: "approved", selected: canonicalSelection, selectedDisplayLabel };
+}
+
+function repairApprovalFlowState(
+  approvalFlow: ApprovalFlowState | undefined,
+  deepInterview: DeepInterviewState | undefined
+): ApprovalFlowState | undefined {
+  if (!approvalFlow) return undefined;
+  const effective = resolveEffectiveApprovalStatus(approvalFlow, deepInterview);
+  if (!effective.status) return approvalFlow;
+  const nextResolved =
+    effective.selected || approvalFlow.resolved
+      ? {
+          ...(isRecord(approvalFlow.resolved) ? approvalFlow.resolved : {}),
+          ...(effective.selected ? { selected: effective.selected } : {}),
+          ...(effective.selectedDisplayLabel ? { displayLabel: effective.selectedDisplayLabel } : {}),
+        }
+      : approvalFlow.resolved;
+  if (
+    effective.status === approvalFlow.status &&
+    (!effective.selected || (isRecord(approvalFlow.resolved) && approvalFlow.resolved.selected === effective.selected)) &&
+    (!effective.selectedDisplayLabel ||
+      (isRecord(approvalFlow.resolved) && approvalFlow.resolved.displayLabel === effective.selectedDisplayLabel))
+  ) {
+    return approvalFlow;
+  }
+  const repaired: ApprovalFlowState = {
+    ...approvalFlow,
+    active: effective.status === "pending",
+    status: effective.status,
+    ...(nextResolved ? { resolved: nextResolved } : {}),
+    ...(effective.status === "pending"
+      ? {}
+      : { resolvedAt: approvalFlow.resolvedAt ?? deepInterview?.lastUpdatedAt ?? approvalFlow.requestedAt }),
+  };
+  if (effective.status !== "pending") {
+    const { pendingQuestion: _pendingQuestion, ...withoutPendingQuestion } = repaired;
+    return withoutPendingQuestion;
+  }
+  return repaired;
+}
+
+function canonicalizeRecordedAnswer(input: DeepInterviewAnswerInput): DeepInterviewAnswerInput {
+  const canonicalSelected = canonicalizeApprovalSelection(input.selected) ?? input.selected;
+  const selectedDisplayLabel =
+    input.selectedDisplayLabel ?? (canonicalSelected && canonicalSelected !== input.selected ? input.selected : undefined);
+  return {
+    ...input,
+    ...(canonicalSelected ? { selected: canonicalSelected } : {}),
+    ...(selectedDisplayLabel ? { selectedDisplayLabel } : {}),
+  };
+}
+
 function mergeRoutingApprovalPayload(
   existing: ModelRoutingApprovalPayload | undefined,
   incoming: ModelRoutingApprovalPayload | undefined
@@ -221,8 +376,7 @@ function resolveRoutingApprovalPayload(
       ? payload.buckets[0]
       : undefined;
   if (!bucket) return payload;
-  const normalizedSelection = selected.trim().toLowerCase();
-  if (normalizedSelection !== "approve") return payload;
+  if (canonicalizeApprovalSelection(selected) !== "approve") return payload;
 
   return applyBucketApprovalDecision(payload, {
     bucketKey: bucket.bucketKey,
@@ -449,7 +603,7 @@ function buildApprovalFlowResolution(
   now: string,
   routingApproval: ModelRoutingApprovalPayload | undefined
 ): ApprovalFlowState {
-  const normalizedSelection = input.selected?.trim().toLowerCase();
+  const canonicalSelection = canonicalizeApprovalSelection(input.selected);
   const routingResolved = routingApproval ? isRoutingApprovalResolved(routingApproval) : true;
   const cancelledWithPendingRoutingApproval =
     !input.selected &&
@@ -463,13 +617,13 @@ function buildApprovalFlowResolution(
     status = "pending";
   } else if (!input.selected && !input.customInput) {
     status = "cancelled";
-  } else if (
-    normalizedSelection === "approve" ||
-    normalizedSelection === "proceed" ||
-    normalizedSelection === "override per role"
-  ) {
+  } else if (canonicalSelection === "approve") {
     status = routingResolved ? "approved" : "pending";
-  } else if (normalizedSelection === "ask about these choices") {
+  } else if (canonicalSelection === "proceed") {
+    status = "approved";
+  } else if (canonicalSelection === "override per role") {
+    status = routingResolved ? "approved" : "pending";
+  } else if (canonicalSelection === "ask about these choices") {
     status = "pending";
   } else {
     status = "rejected";
@@ -485,6 +639,7 @@ function buildApprovalFlowResolution(
       input.selected || input.customInput
         ? {
             selected: input.selected ?? null,
+            ...(input.selectedDisplayLabel ? { displayLabel: input.selectedDisplayLabel } : {}),
             customInput: input.customInput ?? null,
           }
         : current.resolved,
@@ -507,7 +662,10 @@ export function createDeepInterviewRuntime(
     if (view.kind !== "OK") return { deepInterview: undefined, approvalFlow: undefined };
     const current = view.state as unknown as { deepInterview?: unknown; approvalFlow?: unknown };
     const persistedDeepInterview = readDeepInterviewFromUnknown(current.deepInterview);
-    const approvalFlow = normalizeApprovalFlowState(current.approvalFlow, persistedDeepInterview);
+    const approvalFlow = repairApprovalFlowState(
+      normalizeApprovalFlowState(current.approvalFlow, persistedDeepInterview),
+      persistedDeepInterview
+    );
     const deepInterview = sanitizeRuntimeDeepInterview(persistedDeepInterview);
     return { deepInterview, approvalFlow };
   };
@@ -632,36 +790,37 @@ export function createDeepInterviewRuntime(
       const existing = await readSnapshot();
       const currentNow = now();
       const interviewId = resolveInterviewId(input.deepInterview, existing.deepInterview);
+      const normalizedInput = canonicalizeRecordedAnswer(input);
       const lifecycle: DeepInterviewRoundLifecycle =
-        input.selected || input.customInput ? "answered" : "cancelled";
-      const isApprovalQuestion = input.approval !== undefined || input.deepInterview.stage === "approval";
+        normalizedInput.selected || normalizedInput.customInput ? "answered" : "cancelled";
+      const isApprovalQuestion = normalizedInput.approval !== undefined || normalizedInput.deepInterview.stage === "approval";
       const routingApproval = resolveRoutingApprovalPayload(
         existing.approvalFlow?.routingApproval,
-        input.approval?.routingApproval,
-        input.deepInterview.roundId,
-        input.selected
+        normalizedInput.approval?.routingApproval,
+        normalizedInput.deepInterview.roundId,
+        normalizedInput.selected
       );
       const nextApprovalFlow = isApprovalQuestion
         ? buildApprovalFlowResolution(
             existing.approvalFlow ??
               buildApprovalFlowSeed(
-                input.question,
-                input.recommended,
+                normalizedInput.question,
+                normalizedInput.recommended,
                 interviewId,
                 currentNow,
-                input.approval,
+                normalizedInput.approval,
                 undefined,
                 existing.deepInterview,
                 routingApproval
               ),
-            input,
+            normalizedInput,
             currentNow,
             routingApproval
           )
         : undefined;
       const approvalHandoff = isApprovalQuestion
         ? buildApprovalHandoffFromFlow(nextApprovalFlow) ??
-          buildApprovalHandoff(input.approval, currentNow, buildApprovalHandoffFromFlow(existing.approvalFlow))
+          buildApprovalHandoff(normalizedInput.approval, currentNow, buildApprovalHandoffFromFlow(existing.approvalFlow))
         : undefined;
       const phase =
         existing.deepInterview?.spec?.stage === "final"
@@ -672,7 +831,7 @@ export function createDeepInterviewRuntime(
       const nextDeepInterview = {
         ...buildDeepInterviewStatePatch(
           existing.deepInterview,
-          input,
+          normalizedInput,
           interviewId,
           currentNow,
           phase,

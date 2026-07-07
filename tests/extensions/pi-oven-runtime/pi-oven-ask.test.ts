@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import * as zod from "zod";
@@ -388,6 +388,10 @@ describe("registerPiOvenAsk", () => {
       theme
     ) as PiOvenAskTestComponent;
 
+    const wideLines = component.render(120).map((line) => line.trimEnd());
+    const wideQuestionLine = wideLines.findIndex((line) =>
+      line.includes("Approve the implementation handoff")
+    );
     const lines = component.render(48).map((line) => line.trimEnd());
     const questionLine = lines.findIndex((line) => line.includes("Approve the implementation handoff"));
     const questionTail = lines.findIndex((line) => line.includes("remains intact."));
@@ -414,6 +418,12 @@ describe("registerPiOvenAsk", () => {
       line.includes("custom answer directly.")
     );
 
+    expect(wideQuestionLine).toBeGreaterThanOrEqual(0);
+    expect(wideLines.slice(1, wideQuestionLine).map((line) => line.trim())).toEqual([
+      "[Stage: approval]",
+      "[Recommended: Proceed]",
+      "",
+    ]);
     expect(questionLine).toBeGreaterThanOrEqual(0);
     expect(questionTail).toBeGreaterThan(questionLine);
     expect(lines.slice(questionLine, questionTail + 1).map((line) => line.trim())).toEqual([
@@ -478,7 +488,10 @@ describe("registerPiOvenAsk", () => {
         { action: "selected", selected: "Proceed" },
         {
           recommended: 0,
-          contextHeaders: [{ title: "Stage", value: "approval", tone: "accent" }],
+          contextHeaders: [
+            { title: "Stage", value: "approval", tone: "accent" },
+            { title: "Recommended", value: "Proceed", tone: "success" },
+          ],
           contextSections: [
             {
               title: "Why now",
@@ -497,6 +510,10 @@ describe("registerPiOvenAsk", () => {
       theme
     ) as PiOvenAskTestComponent;
 
+    const wideLines = component.render(120).map((line) => line.trimEnd());
+    const wideQuestionLine = wideLines.findIndex((line) =>
+      line.includes("Approve the implementation handoff")
+    );
     const lines = component.render(48).map((line) => line.trimEnd());
     const questionLine = lines.findIndex((line) => line.includes("Approve the implementation handoff"));
     const questionTail = lines.findIndex((line) => line.includes("remains intact."));
@@ -523,6 +540,12 @@ describe("registerPiOvenAsk", () => {
     );
     const outcomeLine = lines.findIndex((line) => line.includes("■ Proceed"));
 
+    expect(wideQuestionLine).toBeGreaterThanOrEqual(0);
+    expect(wideLines.slice(1, wideQuestionLine).map((line) => line.trim())).toEqual([
+      "[Stage: approval]",
+      "[Recommended: Proceed]",
+      "",
+    ]);
     expect(questionLine).toBeGreaterThanOrEqual(0);
     expect(questionTail).toBeGreaterThan(questionLine);
     expect(lines.slice(questionLine, questionTail + 1).map((line) => line.trim())).toEqual([
@@ -808,7 +831,7 @@ describe("registerPiOvenAsk", () => {
     }
   });
 
-  it("persists approval-only asks through root approvalFlow without requiring nested deepInterview metadata", async () => {
+  it("persists localized approval-only asks through root approvalFlow with canonical action storage", async () => {
     const tool = capturePiOvenAskTool();
     const tempDir = mkdtempSync(join(tmpdir(), "pi-oven-ask-approval-flow-"));
     const gateCalls: unknown[] = [];
@@ -818,7 +841,7 @@ describe("registerPiOvenAsk", () => {
         "tool-call",
         {
           question: "Approve the implementation handoff.",
-          options: [{ label: "Proceed" }, { label: "Refine further" }],
+          options: [{ label: "승인" }, { label: "더 다듬기" }],
           recommended: 0,
           approval: APPROVAL_FLOW_META,
         },
@@ -830,7 +853,7 @@ describe("registerPiOvenAsk", () => {
           workflowGate: {
             async emitGate(question: unknown) {
               gateCalls.push(question);
-              return { selectedOptions: ["Proceed"] };
+              return { selectedOptions: ["승인"] };
             },
           },
           ui: {},
@@ -855,7 +878,7 @@ describe("registerPiOvenAsk", () => {
           mode: "single",
           question: "Approve the implementation handoff.",
           action: "selected",
-          selected: "Proceed",
+          selected: "승인",
           recommended: 0,
           approval: APPROVAL_FLOW_META,
           affordances: { other: false, askAboutChoices: true },
@@ -863,6 +886,13 @@ describe("registerPiOvenAsk", () => {
       );
 
       const approvalFlow = await createDeepInterviewRuntime(tempDir).readApprovalFlow();
+      const persisted = JSON.parse(
+        readFileSync(join(tempDir, ".pi-oven", "state", "autonomous.json"), "utf-8")
+      ) as {
+        approvalFlow?: {
+          resolved?: { selected?: string; displayLabel?: string | null; customInput?: string | null };
+        };
+      };
       expect(approvalFlow).toEqual(
         expect.objectContaining({
           kind: "spec-handoff",
@@ -875,11 +905,17 @@ describe("registerPiOvenAsk", () => {
             specPath: "docs/specs/2026-07-06-workflow-optimization-design.md",
           },
           resolved: {
-            selected: "Proceed",
+            selected: "approve",
+            displayLabel: "승인",
             customInput: null,
           },
         })
       );
+      expect(persisted.approvalFlow?.resolved).toEqual({
+        selected: "approve",
+        displayLabel: "승인",
+        customInput: null,
+      });
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -928,7 +964,8 @@ describe("registerPiOvenAsk", () => {
           active: true,
           status: "pending",
           resolved: {
-            selected: "Ask about these choices",
+            selected: "ask about these choices",
+            displayLabel: "Ask about these choices",
             customInput: null,
           },
         })

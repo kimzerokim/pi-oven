@@ -260,6 +260,28 @@ describe("skill-keyword-loader", () => {
     const skillLines = lines.filter((l) => l.startsWith("- `") && l.includes("matched by:"));
     expect(skillLines.every((l) => l.includes("/SKILL.md"))).toBe(true);
   });
+  it("keeps the exact phrase overlap matching the current skill order and owned targets", () => {
+    const repoRoot = path.resolve(__dirname, "../../..");
+    const index = loadSkillKeywordIndex(repoRoot);
+    const matched = matchSkillsForText("자율 실행, 리팩토링 기회 찾아줘", index);
+    expect(matched).toEqual([
+      {
+        name: "code-quality-discipline",
+        rawMatchedPhrases: ["리팩토링"],
+        ownedReadTarget: ownedSkillTarget(repoRoot, "code-quality-discipline"),
+      },
+      {
+        name: "autonomous-loop",
+        rawMatchedPhrases: ["자율 실행"],
+        ownedReadTarget: ownedSkillTarget(repoRoot, "autonomous-loop"),
+      },
+      {
+        name: "improve-codebase-architecture",
+        rawMatchedPhrases: ["리팩토링 기회"],
+        ownedReadTarget: ownedSkillTarget(repoRoot, "improve-codebase-architecture"),
+      },
+    ]);
+  });
 
   it("matches the broadened common phrasings for the user-triggered skills", () => {
     const index = loadSkillKeywordIndex(path.resolve(__dirname, "../../.."));

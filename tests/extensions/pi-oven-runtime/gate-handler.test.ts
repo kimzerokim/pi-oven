@@ -969,6 +969,95 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(r?.block).toBe(true);
     expect(r?.reason).toMatch(/approval|brainstorming|deep-interview/i);
   });
+  it("allows code-write after repairing a persisted stale root approvalFlow from localized approved legacy handoff state", async () => {
+    const ownedTarget = "/plugin/skills/autonomous-loop/SKILL.md";
+    const specPath = "docs/specs/2026-07-06-workflow-optimization-design.md";
+    writeState(dir, {
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+      requiredSkills: ["autonomous-loop"],
+      skillReads: [ownedTarget],
+      requiredSkillsMessageId: "u1",
+      ownedSkillReadTargets: [ownedTarget],
+      deepInterview: {
+        version: 2,
+        interviewId: "di-approval-root",
+        active: false,
+        phase: "complete",
+        spec: {
+          path: specPath,
+          sha256: "abc123",
+          persistedAt: "2026-07-06T00:04:00.000Z",
+          stage: "final",
+        },
+        approvalHandoff: {
+          decisionKey: "approve-runtime-cutover",
+          summary: "Approve the runtime cutover after root approvalFlow persistence.",
+          status: "approved",
+          requestedAt: "2026-07-06T00:04:00.000Z",
+          resolvedAt: "2026-07-06T00:05:00.000Z",
+        },
+        state: {
+          rounds: [
+            {
+              roundKey: "di-approval-root::rid:approval",
+              interviewId: "di-approval-root",
+              round: 1,
+              roundId: "approval",
+              questionId: "q-approval",
+              stage: "approval",
+              question: "Approve the runtime cutover after root approvalFlow persistence.",
+              questionHash: "qhash-approval",
+              lifecycle: "answered",
+              selected: "이대로 진행",
+              answerHash: "ahash-approval",
+              askedAt: "2026-07-06T00:04:00.000Z",
+              answeredAt: "2026-07-06T00:05:00.000Z",
+              approvalHandoff: {
+                decisionKey: "approve-runtime-cutover",
+                summary: "Approve the runtime cutover after root approvalFlow persistence.",
+                status: "approved",
+                requestedAt: "2026-07-06T00:04:00.000Z",
+                resolvedAt: "2026-07-06T00:05:00.000Z",
+              },
+            },
+          ],
+          establishedFacts: [],
+          ontologySnapshots: [],
+          milestone: "ready",
+        },
+      },
+      approvalFlow: {
+        version: 1,
+        active: true,
+        kind: "spec-handoff",
+        source: "manual",
+        decisionKey: "approve-runtime-cutover",
+        summary: "Approve the runtime cutover after root approvalFlow persistence.",
+        status: "pending",
+        pendingQuestion: {
+          question: "Approve the runtime cutover after root approvalFlow persistence.",
+          askedAt: "2026-07-06T00:04:00.000Z",
+          recommended: 0,
+        },
+        requestedAt: "2026-07-06T00:04:00.000Z",
+        resumedFrom: {
+          interviewId: "di-approval-root",
+          specPath,
+        },
+      },
+    });
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(
+      join(dir, "state", "branch-contract.json"),
+      JSON.stringify({ destination: "worktree", branch: "feature/ws5", pr_mode: "draft" })
+    );
+    const h = createGateHandler(await deps(dir));
+    const allowed = await h(writeEvent("src/example.ts", "tc-write-approved-legacy"));
+    expect(allowed?.block ?? false).toBe(false);
+  });
 
   it("initializes and preserves ownership state fields across exact skill-proof mutations", async () => {
     const store = new GateStateStore(dir);

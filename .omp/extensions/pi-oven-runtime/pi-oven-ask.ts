@@ -21,7 +21,11 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from "@oh-my-pi/pi-coding-agent";
-import { createDeepInterviewRuntime } from "./deep-interview-runtime";
+import {
+  canonicalizeApprovalSelection,
+  createDeepInterviewRuntime,
+  type CanonicalApprovalSelection,
+} from "./deep-interview-runtime";
 import { RECOMMENDED_SUFFIX, formatRecommendedLabel } from "./deep-interview-render";
 import type { ApprovalFlowAskMetadata, DeepInterviewAskMetadata } from "./deep-interview-state";
 import type { RuntimeTraceSnapshot } from "./trace-primitives";
@@ -149,6 +153,7 @@ interface PiOvenAskRow {
   hint?: string;
   action: "selected" | "other" | "ask_about_choices";
   selected?: string;
+  optionIndex?: number;
 }
 
 interface PiOvenAskOutcome {
@@ -170,6 +175,12 @@ const QUESTION_PADDING_Y = 1;
 const QUESTION_LINE_GAP = 1;
 const OPTION_BLOCK_SPACER_LINES = 2;
 const DETAIL_BLOCK_SPACER_LINES = 2;
+interface PiOvenAskPromptPayload {
+  question: string;
+  contextHeaders: PiOvenAskContextHeader[];
+  contextSections: PiOvenAskContextSection[];
+}
+
 
 function buildContextSectionBodyMarkdown(section: PiOvenAskContextSection): string {
   const blocks: string[] = [];
@@ -194,6 +205,33 @@ function appendContextSection(
   }
   container.addChild(new Markdown(bodyMarkdown, 1, 1, mdTheme));
 }
+function formatContextHeaderLine(header: PiOvenAskContextHeader): string {
+  return `[${header.title}${header.value ? `: ${header.value}` : ""}]`;
+}
+
+function appendContextHeaderBlock(
+  container: Container,
+  contextHeaders: PiOvenAskContextHeader[]
+): void {
+  for (const header of contextHeaders) {
+    container.addChild(new Text(formatContextHeaderLine(header), 0, 0));
+  }
+}
+
+function appendAskPromptBlock(
+  container: Container,
+  payload: PiOvenAskPromptPayload,
+  mdTheme: MarkdownTheme
+): void {
+  appendContextHeaderBlock(container, payload.contextHeaders);
+  container.addChild(
+    new LineGapComponent(new Markdown(payload.question, 1, QUESTION_PADDING_Y, mdTheme), QUESTION_LINE_GAP)
+  );
+  for (const section of payload.contextSections) {
+    appendContextSection(container, section, mdTheme);
+  }
+}
+
 
 function appendBlankLines(lines: string[], count: number): void {
   for (let i = 0; i < count; i++) {
@@ -264,6 +302,37 @@ class LineGapComponent implements Component {
   }
 }
 
+
+function resolvePersistedApprovalSelection(
+  row: PiOvenAskRow | undefined,
+  fallbackChoice: string | undefined,
+  deepInterview: DeepInterviewAskMetadata | undefined,
+  approval: ApprovalFlowAskMetadata | undefined
+): { selected?: string; selectedDisplayLabel?: string } {
+  const displayLabel = row?.selected ?? fallbackChoice?.replace(RECOMMENDED_SUFFIX, "");
+  if (row?.action === "ask_about_choices") {
+    return { selected: "ask about these choices", selectedDisplayLabel: ASK_ABOUT_CHOICES_LABEL };
+  }
+  if (!displayLabel) return {};
+  const isApprovalSelection = approval !== undefined || deepInterview?.stage === "approval";
+  if (!isApprovalSelection) {
+    return { selected: displayLabel };
+  }
+  if (approval?.routingApproval) {
+    if (row?.optionIndex === 0) {
+      return { selected: "approve", selectedDisplayLabel: displayLabel };
+    }
+    if (row?.optionIndex === 1) {
+      return { selected: "override per role", selectedDisplayLabel: displayLabel };
+    }
+  }
+  const canonicalSelection = canonicalizeApprovalSelection(displayLabel);
+  return {
+    selected: canonicalSelection ?? ("proceed" satisfies CanonicalApprovalSelection),
+    selectedDisplayLabel: displayLabel,
+  };
+}
+
 function buildAskRows(
   options: PiOvenAskOption[],
   recommended?: number,
@@ -283,6 +352,7 @@ function buildAskRows(
       detailMarkdown: opt.detailMarkdown,
       action: "selected",
       selected: opt.label,
+      optionIndex: i,
     };
   });
   if (affordances.askAboutChoices) {
@@ -386,11 +456,7 @@ class PiOvenAskContainer extends Container {
   readonly #rowByValue: Map<string, PiOvenAskRow>;
 
   constructor(
-    payload: {
-      question: string;
-      contextHeaders: PiOvenAskContextHeader[];
-      contextSections: PiOvenAskContextSection[];
-    },
+    payload: PiOvenAskPromptPayload,
     list: SelectList,
     mdTheme: MarkdownTheme,
     rowByValue: Map<string, PiOvenAskRow>,
@@ -400,23 +466,7 @@ class PiOvenAskContainer extends Container {
     this.#list = list;
     this.#dim = dim;
     this.#rowByValue = rowByValue;
-    if (payload.contextHeaders.length > 0) {
-      this.addChild(
-        new Text(
-          payload.contextHeaders
-            .map((header) => `[${header.title}${header.value ? `: ${header.value}` : ""}]`)
-            .join(" "),
-          0,
-          0
-        )
-      );
-    }
-    this.addChild(
-      new LineGapComponent(new Markdown(payload.question, 1, QUESTION_PADDING_Y, mdTheme), QUESTION_LINE_GAP)
-    );
-    for (const section of payload.contextSections) {
-      appendContextSection(this, section, mdTheme);
-    }
+    appendAskPromptBlock(this, payload, mdTheme);
     this.addChild(list);
   }
 
@@ -507,23 +557,7 @@ function renderCall(
   const mdTheme = getMarkdownThemeFor(theme);
   container.addChild(new Text(theme.fg("toolTitle", "Ask (pi-oven)"), 0, 0));
 
-  if (resolved.contextHeaders.length > 0) {
-    container.addChild(
-      new Text(
-        resolved.contextHeaders
-          .map((header) => `[${header.title}${header.value ? `: ${header.value}` : ""}]`)
-          .join(" "),
-        0,
-        0
-      )
-    );
-  }
-  container.addChild(
-    new LineGapComponent(new Markdown(resolved.question, 1, QUESTION_PADDING_Y, mdTheme), QUESTION_LINE_GAP)
-  );
-  for (const section of resolved.contextSections) {
-    appendContextSection(container, section, mdTheme);
-  }
+  appendAskPromptBlock(container, resolved, mdTheme);
 
   appendOptionRows(container, rows, theme);
   return container;
@@ -557,23 +591,7 @@ function renderResult(
     affordances: details.affordances,
   });
   const rows = buildAskRows(resolved.options, resolved.recommended, resolved.affordances);
-  if (resolved.contextHeaders.length > 0) {
-    container.addChild(
-      new Text(
-        resolved.contextHeaders
-          .map((header) => `[${header.title}${header.value ? `: ${header.value}` : ""}]`)
-          .join(" "),
-        0,
-        0
-      )
-    );
-  }
-  container.addChild(
-    new LineGapComponent(new Markdown(details.question, 1, QUESTION_PADDING_Y, mdTheme), QUESTION_LINE_GAP)
-  );
-  for (const section of resolved.contextSections) {
-    appendContextSection(container, section, mdTheme);
-  }
+  appendAskPromptBlock(container, resolved, mdTheme);
   appendOptionRows(container, rows, theme);
 
   if (details.action === "selected" && details.selected !== undefined) {
@@ -902,14 +920,22 @@ async function askSingle(
     return { action: "cancelled" };
   };
 
-  const persistOutcome = async (outcome: PiOvenAskOutcome): Promise<void> => {
+  const persistOutcome = async (
+    outcome: PiOvenAskOutcome,
+    row: PiOvenAskRow | undefined,
+    fallbackChoice: string | undefined
+  ): Promise<void> => {
     if (!runtime || !runtimeDeepInterview || outcome.action === "deferred") return;
     let selected: string | undefined;
+    let selectedDisplayLabel: string | undefined;
     let customInput: string | undefined;
     if (outcome.action === "selected") {
-      selected = outcome.selected;
+      const persistedSelection = resolvePersistedApprovalSelection(row, fallbackChoice, runtimeDeepInterview, approval);
+      selected = persistedSelection.selected;
+      selectedDisplayLabel = persistedSelection.selectedDisplayLabel;
     } else if (outcome.action === "ask_about_choices") {
-      selected = ASK_ABOUT_CHOICES_LABEL;
+      selected = "ask about these choices";
+      selectedDisplayLabel = ASK_ABOUT_CHOICES_LABEL;
     } else if (outcome.action === "other") {
       customInput = outcome.customInput;
       if (customInput === undefined) {
@@ -920,6 +946,7 @@ async function askSingle(
       await runtime.recordAnswer({
         question,
         selected,
+        ...(selectedDisplayLabel ? { selectedDisplayLabel } : {}),
         customInput,
         recommended,
         deepInterview: runtimeDeepInterview,
@@ -964,7 +991,7 @@ async function askSingle(
         gateChoice,
         typeof gateResult.customInput === "string" ? gateResult.customInput : undefined
       );
-      await persistOutcome(outcome);
+      await persistOutcome(outcome, row, gateChoice);
       return formatAskResult(question, outcome, resultMeta);
     }
     if (typeof ctx.ui?.select === "function") {
@@ -973,7 +1000,7 @@ async function askSingle(
       const chosen = await ctx.ui.select(question, foldedLabels);
       if (chosen === undefined) {
         const outcome = { action: "cancelled" as const };
-        await persistOutcome(outcome);
+        await persistOutcome(outcome, undefined, undefined);
         return formatAskResult(question, outcome, resultMeta);
       }
       const rowIndex = foldedLabels.indexOf(chosen);
@@ -984,19 +1011,19 @@ async function askSingle(
         });
         if (custom === undefined) {
           const outcome = { action: "cancelled" as const };
-          await persistOutcome(outcome);
+          await persistOutcome(outcome, undefined, undefined);
           return formatAskResult(question, outcome, resultMeta);
         }
         const outcome = { action: "other" as const, customInput: custom };
-        await persistOutcome(outcome);
+        await persistOutcome(outcome, row, chosen);
         return formatAskResult(question, outcome, resultMeta);
       }
       const outcome = outcomeFor(row, chosen, undefined);
-      await persistOutcome(outcome);
+      await persistOutcome(outcome, row, chosen);
       return formatAskResult(question, outcome, resultMeta);
     }
     const outcome = { action: "cancelled" as const };
-    await persistOutcome(outcome);
+    await persistOutcome(outcome, undefined, undefined);
     return formatAskResult(question, outcome, resultMeta);
   }
 
@@ -1025,7 +1052,7 @@ async function askSingle(
 
   if (choice === undefined) {
     const outcome = { action: "cancelled" as const };
-    await persistOutcome(outcome);
+    await persistOutcome(outcome, undefined, undefined);
     return formatAskResult(question, outcome, resultMeta);
   }
   if (choice === OTHER_VALUE) {
@@ -1034,16 +1061,17 @@ async function askSingle(
     });
     if (custom === undefined) {
       const outcome = { action: "cancelled" as const };
-      await persistOutcome(outcome);
+      await persistOutcome(outcome, undefined, undefined);
       return formatAskResult(question, outcome, resultMeta);
     }
     const outcome = { action: "other" as const, customInput: custom };
-    await persistOutcome(outcome);
+    const row = rowByValue.get(choice);
+    await persistOutcome(outcome, row, choice);
     return formatAskResult(question, outcome, resultMeta);
   }
   const row = rowByValue.get(choice);
   const outcome = outcomeFor(row, choice, undefined);
-  await persistOutcome(outcome);
+  await persistOutcome(outcome, row, choice);
   return formatAskResult(question, outcome, resultMeta);
 }
 

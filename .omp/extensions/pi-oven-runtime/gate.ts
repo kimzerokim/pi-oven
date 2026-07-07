@@ -137,16 +137,75 @@ function hasSanctionedSpecPersistenceReceipt(
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeApprovalSelectionToken(value: string): string {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[,_/]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function canonicalizeLegacyApprovalSelection(value: string | undefined): "approved" | "pending" | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  const normalized = normalizeApprovalSelectionToken(value);
+  if (normalized === "ask about these choices") return "pending";
+  if (normalized === "override per role") return "pending";
+  if (
+    normalized === "approve" ||
+    normalized === "approved" ||
+    normalized === "proceed" ||
+    normalized === "continue" ||
+    normalized === "continue execution" ||
+    normalized === "go ahead" ||
+    normalized === "승인" ||
+    normalized === "계속" ||
+    normalized === "계속 진행" ||
+    normalized === "이대로 진행" ||
+    normalized === "승인 plan으로 진행" ||
+    normalized === "승인 plan 으로 진행"
+  ) {
+    return "approved";
+  }
+  return undefined;
+}
+
+function readEffectiveApprovalStatus(
+  deepInterview: DeepInterviewState | undefined,
+  approvalFlow: ApprovalFlowState | undefined
+): ApprovalFlowState["status"] | undefined {
+  if (!approvalFlow) return undefined;
+  if (approvalFlow.status !== "rejected") return approvalFlow.status;
+  if (isRecord(approvalFlow.resolved)) {
+    const resolvedSelected =
+      typeof approvalFlow.resolved.selected === "string" ? approvalFlow.resolved.selected : undefined;
+    const resolvedDisplayLabel =
+      typeof approvalFlow.resolved.displayLabel === "string" ? approvalFlow.resolved.displayLabel : undefined;
+    const resolvedStatus =
+      canonicalizeLegacyApprovalSelection(resolvedSelected) ??
+      canonicalizeLegacyApprovalSelection(resolvedDisplayLabel);
+    if (resolvedStatus) return resolvedStatus;
+  }
+  const latestApprovalRound = deepInterview?.state.rounds
+    ?.filter((round) => round.stage === "approval" && typeof round.selected === "string")
+    .at(-1);
+  return canonicalizeLegacyApprovalSelection(latestApprovalRound?.selected) ?? approvalFlow.status;
+}
+
 function hasPendingBrainstormingApproval(
   deepInterview: DeepInterviewState | undefined,
   approvalFlow: ApprovalFlowState | undefined
 ): boolean {
   return (
-    approvalFlow?.status === "pending" &&
+    readEffectiveApprovalStatus(deepInterview, approvalFlow) === "pending" &&
     !hasSanctionedSpecPersistenceReceipt(deepInterview, approvalFlow) &&
-    (approvalFlow.source === "brainstorming" ||
-      approvalFlow.resumedFrom?.interviewId !== undefined ||
-      approvalFlow.resumedFrom?.specPath?.startsWith("docs/specs/") === true)
+    (approvalFlow?.source === "brainstorming" ||
+      approvalFlow?.resumedFrom?.interviewId !== undefined ||
+      approvalFlow?.resumedFrom?.specPath?.startsWith("docs/specs/") === true)
   );
 }
 
@@ -154,10 +213,12 @@ function decideBrainstormingMutationGuard(
   deepInterview: DeepInterviewState | undefined,
   approvalFlow: ApprovalFlowState | undefined
 ): GateDecision | undefined {
+  const effectiveApprovalStatus = readEffectiveApprovalStatus(deepInterview, approvalFlow);
   const pendingApproval = hasPendingBrainstormingApproval(deepInterview, approvalFlow);
-  if (!deepInterview?.active && !pendingApproval) return undefined;
+  const hasApprovedHandoff = effectiveApprovalStatus === "approved";
+  if ((!deepInterview?.active || hasApprovedHandoff) && !pendingApproval) return undefined;
   const stateHint = pendingApproval
-    ? `approval handoff is ${approvalFlow?.status ?? "pending"}`
+    ? `approval handoff is ${effectiveApprovalStatus ?? approvalFlow?.status ?? "pending"}`
     : `interview phase is ${deepInterview?.phase ?? "interviewing"}`;
   return {
     block: true,

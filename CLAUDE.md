@@ -90,7 +90,7 @@ bun run release:pi-oven -- --bump patch --dry-run  # release automation (safe de
 
 ## Status
 
-**Current: v0.2.1** — aligns the workflow runtime and native ask control plane, parallelizes dependency-ready task waves, and relaxes AWS STS consent handling for direct external reads.
+**Current: v0.2.2** — ships workflow-skill ownership via `skills.includeSkills`, routing-truth setup notices, durable autonomy blocked-state replay, and final ask spacing + notice dedupe hardening.
 
 **Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@kzk (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 

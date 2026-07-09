@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from four frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-1148%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.2.2-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-1179%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
@@ -37,7 +37,7 @@ omp plugin install pi-oven@kzk --force
 
 # 3. Verify
 omp plugin list | grep pi-oven
-# Expected: pi-oven@kzk (0.2.1)
+# Expected: pi-oven@kzk (0.2.2)
 ```
 
 ### One-shot (install automatic, setup interactive)
@@ -305,6 +305,7 @@ omp does not read the repo-root `CLAUDE.md` natively. The pi-oven runtime extens
 For gated work, pi-oven opens the control plane only through explicit runtime proofs: `requiredSkills`, exact plugin-owned `SKILL.md` reads captured in `ownedSkillReadTargets`/`skillReads`, `.pi-oven/state/branch-contract.json`, and external execution consent where relevant. That is the user-visible contract. Bootstrap message injection, tool remap, and discovery-layer compatibility toggles are not normal control-plane paths.
 
 - `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` are **visibility/guard layers only**. They report and persist routing configuration, but the runtime still owns the current-session provider-family choice. The session-start setup notice is deduped per repo/session start path and summarizes repo state from the same truth sources.
+- The sanctioned deep-interview completion path persists the final spec and seeds root `approvalFlow` state; once that receipt exists, approval may stay pending after `deepInterview.phase = "complete"`.
 - Ownership truth surfaces use three labels: `owned-surface active` when the effective `skills.includeSkills` surface is exactly `["pi-oven:*"]`; `compatibility aids only` when legacy aids are active but the mainline ownership filter is still missing or wrong; `ownership not established` otherwise. Empty `~/.claude/skills` is not the target state in any branch. A repo is `healthy setup` only when project routing is active and ownership is `owned-surface active`; missing project routing remains its own warning state.
 - Secondary track only: bootstrap-level gajae parity remains visible as an OMP/architecture follow-up, but it is not a blocker for the owned-surface success above.
 
@@ -313,7 +314,7 @@ For gated work, pi-oven opens the control plane only through explicit runtime pr
 - Scope: vendored native worker runtime under `scripts/pi-oven-team/*` only.
 - Owner: pi-oven maintainers.
 - Removal condition: remove this boundary once native worker startup/scale is owned end-to-end by the omp-native control plane and no runtime path depends on `scripts/pi-oven-team/*`.
-- Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only compatibility aids, owned by pi-oven maintainers. They never establish workflow-skill ownership by themselves, do not fully stop `claude-plugins` / namespaced marketplace workflow skills, and must be removed once the omp-native control plane owns those surfaces end-to-end.
+- Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.
 
 ---
 
@@ -399,7 +400,7 @@ If you're hacking on pi-oven itself, point omp at your local checkout instead of
 ```sh
 cd /path/to/pi-oven
 bun install
-bun test           # baseline 895 passing
+bun test           # baseline 1179 passing
 bun check          # typecheck clean
 bun run build      # extension bundles to dist/pi-oven.js
 bun run lint:agents

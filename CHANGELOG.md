@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.2 - 2026-07-09
+
+- docs(doctor): restore maintenance-boundary wording
+- docs(release): prep v0.2.2 refs
+- feat(pi-oven): redesign control-plane ownership and resume state
+- fix(runtime): normalize approval state and ask spacing
 ## v0.2.0 - 2026-07-07
 
 - docs(release): prep v0.2.0 refs

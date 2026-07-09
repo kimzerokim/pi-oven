@@ -19,6 +19,8 @@ import type { NormalizedCommand, ExternalCommandKind } from "./git-normalize";
 import { BRANCH_CONTRACT_STATE_FILE, projectStateMarker } from "./project-state";
 import {
   isTemporaryCredentialWindowActive,
+  type AutonomyBlockedReason,
+  type AutonomyNextAction,
   type BranchContractView,
   type ExternalExecConsent,
 } from "./gate-state";
@@ -60,6 +62,11 @@ export interface GateInput {
 
 export type ConsentSource = "env" | "file" | "none";
 
+export interface AutonomyStopBoundary {
+  blockedReason: AutonomyBlockedReason;
+  nextAction: AutonomyNextAction;
+}
+
 export interface GateDecision {
   block: boolean;
   reason?: string;
@@ -71,6 +78,7 @@ export interface GateDecision {
   consumeExternalExecConsent?: boolean;
   /** Which consent source authorized a push (for audit). */
   consentSource?: ConsentSource;
+  autonomyStopBoundary?: AutonomyStopBoundary;
 }
 
 function isBypass(env: GateEnv): boolean {
@@ -220,11 +228,23 @@ function decideBrainstormingMutationGuard(
   const stateHint = pendingApproval
     ? `approval handoff is ${effectiveApprovalStatus ?? approvalFlow?.status ?? "pending"}`
     : `interview phase is ${deepInterview?.phase ?? "interviewing"}`;
+  const reason =
+    "pi-oven: code-write blocked — active brainstorming/deep-interview owns the write lane while " +
+    `${stateHint}. Only the runtime-owned sanctioned completion action may persist the final docs/specs artifact and seed the paired deepInterview -> approvalFlow receipt before approval resolves.`;
   return {
     block: true,
-    reason:
-      "pi-oven: code-write blocked — active brainstorming/deep-interview owns the write lane while " +
-      `${stateHint}. Only the runtime-owned sanctioned completion action may persist the final docs/specs artifact and seed the paired deepInterview -> approvalFlow receipt before approval resolves.`,
+    reason,
+    autonomyStopBoundary: {
+      blockedReason: {
+        kind: "approval-pending",
+        message: reason,
+      },
+      nextAction: {
+        kind: "resolve-approval",
+        message:
+          "Resolve the pending approval/deep-interview handoff through the sanctioned runtime completion path before retrying the write.",
+      },
+    },
   };
 }
 
@@ -550,19 +570,43 @@ export function decideGate(input: GateInput): GateDecision {
   if (wantsCodeWrite) {
     if (!isBranchContractBootstrapWrite(toolName, targetPath)) {
       if (branchContract.kind === "CORRUPT") {
+        const reason =
+          `pi-oven: code-write blocked — ${BRANCH_CONTRACT_BOOTSTRAP_TARGET} is unreadable. ` +
+          "Set PI_OVEN_GATE_BYPASS=1 to recover.";
         return {
           block: true,
-          reason:
-            `pi-oven: code-write blocked — ${BRANCH_CONTRACT_BOOTSTRAP_TARGET} is unreadable. ` +
-            "Set PI_OVEN_GATE_BYPASS=1 to recover.",
+          reason,
+          autonomyStopBoundary: {
+            blockedReason: {
+              kind: "branch-contract",
+              message: reason,
+            },
+            nextAction: {
+              kind: "write-branch-contract",
+              message:
+                "Repair .pi-oven/state/branch-contract.json so it contains destination, branch, and pr_mode, then retry the write.",
+            },
+          },
         };
       }
       if (branchContract.kind === "ABSENT") {
+        const reason =
+          "pi-oven: code-write blocked — the control-plane front door requires " +
+          `${BRANCH_CONTRACT_BOOTSTRAP_TARGET} with destination/branch/pr_mode first.`;
         return {
           block: true,
-          reason:
-            "pi-oven: code-write blocked — the control-plane front door requires " +
-            `${BRANCH_CONTRACT_BOOTSTRAP_TARGET} with destination/branch/pr_mode first.`,
+          reason,
+          autonomyStopBoundary: {
+            blockedReason: {
+              kind: "branch-contract",
+              message: reason,
+            },
+            nextAction: {
+              kind: "write-branch-contract",
+              message:
+                "Write .pi-oven/state/branch-contract.json with destination, branch, and pr_mode, then retry the write.",
+            },
+          },
         };
       }
     }
@@ -573,25 +617,48 @@ export function decideGate(input: GateInput): GateDecision {
       skillReads
     );
     if (missingOwnershipSkills.length > 0) {
+      const reason =
+        "pi-oven: code-write blocked — capability proof surface is incomplete. " +
+        "`requiredSkills` has entries with no matching `ownedSkillReadTargets`: " +
+        `${missingOwnershipSkills.join(", ")}. ` +
+        "Automatic pi-oven skill ownership cannot be proven until the runtime persists exact plugin-owned SKILL.md targets.";
       return {
         block: true,
-        reason:
-          "pi-oven: code-write blocked — capability proof surface is incomplete. " +
-          "`requiredSkills` has entries with no matching `ownedSkillReadTargets`: " +
-          `${missingOwnershipSkills.join(", ")}. ` +
-          "Automatic pi-oven skill ownership cannot be proven until the runtime persists exact plugin-owned SKILL.md targets.",
+        reason,
+        autonomyStopBoundary: {
+          blockedReason: {
+            kind: "skill-proof-incomplete",
+            message: reason,
+          },
+          nextAction: {
+            kind: "complete-skill-proof",
+            message:
+              "Repair the exact plugin-owned skill proof surface so every required skill has a matching owned SKILL target, then retry the write.",
+          },
+        },
       };
     }
     if (unreadProofTargets.length > 0) {
       const required = unreadProofTargets
         .map(({ name, target }) => `${name} -> ${target}`)
         .join(", ");
+      const reason =
+        "pi-oven: code-write blocked — capability proof surface is not complete yet. " +
+        "`ownedSkillReadTargets` require exact reads before they can enter `skillReads`: " +
+        `${required}. Read the exact plugin-owned SKILL.md targets first.`;
       return {
         block: true,
-        reason:
-          "pi-oven: code-write blocked — capability proof surface is not complete yet. " +
-          "`ownedSkillReadTargets` require exact reads before they can enter `skillReads`: " +
-          `${required}. Read the exact plugin-owned SKILL.md targets first.`,
+        reason,
+        autonomyStopBoundary: {
+          blockedReason: {
+            kind: "skill-proof-incomplete",
+            message: reason,
+          },
+          nextAction: {
+            kind: "complete-skill-proof",
+            message: "Read the exact plugin-owned SKILL.md targets first, then retry the write.",
+          },
+        },
       };
     }
 

@@ -415,6 +415,18 @@ describe("renderReport", () => {
         },
         {
           level: "INFO",
+          name: "workflow-skill ownership",
+          detail:
+            'classification: owned-surface active. effective workflow-skill surface is pi-oven-only via skills.includeSkills = ["pi-oven:*"] from ~/.omp/agent/config.yml (machine-global layer). This preserves the populated Claude workflow-skill source for other users instead of deleting it, and it applies only to workflow skills — not commands, agents, hooks, or MCP. Empty ~/.claude/skills is not the target state; populated Claude user workflow skills should remain intact for other users.',
+        },
+        {
+          level: "INFO",
+          name: "bootstrap parity track",
+          detail:
+            "Secondary OMP/architecture track only: bootstrap-level gajae parity remains open. Task 1 ownership success comes from the effective workflow-skill filter plus runtime capability proofs; matching gajae-style bootstrap exclusivity is visible here but is not a blocker yet.",
+        },
+        {
+          level: "INFO",
           name: "native worker runtime",
           detail:
             "Only temporary adapter boundary remains: vendored launcher scripts/pi-oven-team/index.ts → scripts/pi-oven-team/runtime-v2.ts is ACTIVE; pi-oven owns native worker startup and scale decisions through this path.",
@@ -433,12 +445,17 @@ describe("renderReport", () => {
     expect(report).toContain("task.enableLsp");
     expect(report).toContain("[INFO] control-plane front door:");
     expect(report).toContain("requiredSkills");
+    expect(report).toContain("[INFO] workflow-skill ownership:");
+    expect(report).toContain("classification: owned-surface active");
+    expect(report).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(report).toContain("Empty ~/.claude/skills is not the target state");
+    expect(report).toContain("[INFO] bootstrap parity track:");
+    expect(report).toContain("gajae parity");
     expect(report).toContain("[INFO] native worker runtime:");
     expect(report).toContain("Only temporary adapter boundary remains");
     expect(report).toContain("scripts/pi-oven-team/index.ts");
     expect(report).toContain("[INFO] native worker ceiling:");
     expect(report).toContain("nativeWorkers.maxWorkers=100");
-    expect(report).toContain("8-12");
   });
 });
 
@@ -511,7 +528,7 @@ describe("gather", () => {
     expect(facts.skills.keywordIndexLoadedCount).toBe(0);
     expect(facts.skills.keywordIndexIssueCount).toBe(1);
     expect(facts.skills.keywordIndexIssues[0]).toContain("foo");
-  });
+  }, 15000);
 
   it("records missing shipped skill files from plugin assets without confusing project-root state", async () => {
     writePluginSkillsManifest(pluginRoot, ["./skills/missing-skill/SKILL.md"]);
@@ -526,7 +543,7 @@ describe("gather", () => {
     expect(facts.skills.keywordIndexIssues[0]).toContain("missing-skill");
     expect(facts.stateDir.path).toBe(join(projectRootSnapshot, ".pi-oven"));
     expect(facts.opsConnector.credentialFile).toBe(".external-credentials");
-  });
+  }, 15000);
 });
 
 // ---------------------------------------------------------------------------

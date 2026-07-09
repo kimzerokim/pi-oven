@@ -4,6 +4,7 @@ import {
   createHaltedByPolicyMarker,
   createLaneResumeMarker,
   createVerifierPendingMarker,
+  isRearmableContinuationMarker,
   isValidContinuationMarker,
 } from "../../../.omp/extensions/pi-oven-runtime/continuation-marker";
 
@@ -23,6 +24,11 @@ describe("continuation-marker", () => {
       { kind: "halted-by-policy", policy: "branch-contract" },
     ]);
     expect(markers.every((marker) => isValidContinuationMarker(marker))).toBe(true);
+    expect(markers.filter((marker) => isRearmableContinuationMarker(marker)).map((marker) => marker.kind)).toEqual([
+      "autonomous-loop-resume",
+      "verifier-pending",
+    ]);
+    expect(isRearmableContinuationMarker(createHaltedByPolicyMarker("branch-contract"))).toBe(false);
   });
 
   it("rejects prompt-only strings and malformed marker objects", () => {

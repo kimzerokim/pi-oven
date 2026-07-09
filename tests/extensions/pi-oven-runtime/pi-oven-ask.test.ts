@@ -448,13 +448,11 @@ describe("registerPiOvenAsk", () => {
       "│   Continue with the current handoff.",
       "│   Use the current spec.",
       "",
-      "",
       "├ □ Refine further",
     ]);
     expect(lines.slice(refineLine, askChoicesLine + 1).map((line) => line.trim())).toEqual([
       "├ □ Refine further",
       "│   Stop and revisit the plan.",
-      "",
       "",
       "├ □ Ask about these choices",
     ]);
@@ -462,7 +460,6 @@ describe("registerPiOvenAsk", () => {
       "├ □ Ask about these choices",
       "│   Pause the decision and request more",
       "explanation about the listed choices.",
-      "",
       "",
       "└ □ Other (type your own)",
     ]);
@@ -569,13 +566,11 @@ describe("registerPiOvenAsk", () => {
       "├ □ Proceed (Recommended)",
       "│   Continue with the current handoff.",
       "",
-      "",
       "├ □ Refine further",
     ]);
     expect(lines.slice(refineLine, askChoicesLine + 1).map((line) => line.trim())).toEqual([
       "├ □ Refine further",
       "│   Stop and revisit the plan.",
-      "",
       "",
       "├ □ Ask about these choices",
     ]);
@@ -583,7 +578,6 @@ describe("registerPiOvenAsk", () => {
       "├ □ Ask about these choices",
       "│   Pause the decision and request more",
       "explanation about the listed choices.",
-      "",
       "",
       "└ □ Other (type your own)",
     ]);

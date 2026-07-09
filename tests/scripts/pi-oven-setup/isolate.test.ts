@@ -34,14 +34,17 @@ const LEGACY_FRONT_DOOR_BOUNDARY_LINE =
   "global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.";
 
 describe("runIsolate — enable", () => {
-  it("writes disabledProviders = [claude] and reports the legacy home-layer compatibility mode", async () => {
+  it("writes disabledProviders = [claude] and reports the legacy home-layer compatibility aid", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult([]), okSetResult()]);
     const result = await runIsolate({ enable: true, spawnFn: fn });
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain("legacy home-layer compatibility mode");
+    expect(result.output).toContain("legacy home-layer compatibility aid");
+    expect(result.output).toContain("compatibility helper only");
+    expect(result.output).toContain("Empty ~/.claude/skills is not the target state");
     expect(result.output).toContain("claude");
     // claude-plugins must NOT be disabled — pi-oven's own /pi-oven:* commands load through it
     expect(result.output).toContain("claude-plugins");
+    expect(result.output).toContain("namespaced marketplace workflow skills");
     expect(result.output).toContain(LEGACY_FRONT_DOOR_BOUNDARY_LINE);
     expect(JSON.parse(calls[1][4])).toEqual(["claude"]);
   });
@@ -60,21 +63,21 @@ describe("runIsolate — enable", () => {
     expect(JSON.parse(calls[1][4])).toEqual(["claude"]);
   });
 
-  it("exit 1 with a compatibility-toggle failure message when the read fails (no set)", async () => {
+  it("exit 1 with a compatibility-aid failure message when the read fails (no set)", async () => {
     const { fn, calls } = makeSpawnFn([{ exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("err") }]);
     const result = await runIsolate({ enable: true, spawnFn: fn });
     expect(result.exitCode).toBe(1);
-    expect(result.output).toContain("Legacy home-layer compatibility toggle failed");
+    expect(result.output).toContain("Legacy home-layer compatibility aid failed");
     expect(calls.filter((c) => c[2] === "set").length).toBe(0);
   });
 });
 
 describe("runIsolate — disable (--no-isolate)", () => {
-  it("removes managed + legacy providers and reports compatibility-mode removal", async () => {
+  it("removes managed + legacy providers and reports compatibility-aid removal", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult(["claude", "claude-plugins"]), okSetResult()]);
     const result = await runIsolate({ enable: false, spawnFn: fn });
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain("Cleared the legacy home-layer compatibility mode");
+    expect(result.output).toContain("Cleared the legacy home-layer compatibility aid");
     expect(JSON.parse(calls[1][4])).toEqual([]);
   });
 
@@ -85,11 +88,11 @@ describe("runIsolate — disable (--no-isolate)", () => {
     expect(JSON.parse(calls[1][4])).toEqual(["codex"]);
   });
 
-  it("reports nothing-to-undo when not isolated (no set call)", async () => {
+  it("reports no compatibility-aid to undo when not isolated (no set call)", async () => {
     const { fn, calls } = makeSpawnFn([okGetArrayResult([])]);
     const result = await runIsolate({ enable: false, spawnFn: fn });
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain("nothing to undo");
+    expect(result.output).toContain("no compatibility aid to undo");
     expect(calls.filter((c) => c[2] === "set").length).toBe(0);
   });
 });

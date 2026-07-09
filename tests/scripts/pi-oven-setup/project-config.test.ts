@@ -4,23 +4,26 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
   DEFAULT_NATIVE_WORKER_MAX,
-  normalizeLanguage,
-  setProjectLanguage,
-  readProjectLanguage,
-  readProjectNativeWorkerMax,
-  seedProjectNativeWorkerMax,
-  markSetupComplete,
-  isSetupComplete,
+  SETUP_GLOBAL_PREREQUISITES,
   clearSetupComplete,
-  setGlobalLanguage,
+  clearSetupCompleteGlobal,
+  collectSetupReadiness,
+  isSetupComplete,
+  isSetupCompleteGlobal,
+  markSetupComplete,
+  markSetupCompleteGlobal,
+  normalizeLanguage,
   readGlobalLanguage,
   readGlobalNativeWorkerMax,
+  readProjectLanguage,
+  readProjectNativeWorkerMax,
   seedGlobalNativeWorkerMax,
-  markSetupCompleteGlobal,
-  isSetupCompleteGlobal,
-  clearSetupCompleteGlobal,
+  seedProjectNativeWorkerMax,
+  setGlobalLanguage,
+  setProjectLanguage,
   type ProjectLanguage,
 } from "../../../scripts/pi-oven-setup/project-config";
+import { ROLES } from "../../../scripts/pi-oven-setup/profiles";
 
 // ---------------------------------------------------------------------------
 // Helpers — every test uses an isolated temp cwd; never touch the repo .pi-oven.
@@ -37,6 +40,48 @@ function makeTempDir(): string {
 
 function configFile(cwd: string): string {
   return join(cwd, ".pi-oven", "config.json");
+}
+
+const configuredSetupScalars = Object.fromEntries(
+  SETUP_GLOBAL_PREREQUISITES.map(({ key, expected }) => [key, expected])
+);
+
+function makeSetupSpawnFn(opts?: {
+  overrides?: Record<string, string>;
+  scalarValues?: Record<string, unknown>;
+}): (cmd: string, args: string[]) => { exitCode: number | null; stdout: Buffer; stderr: Buffer } {
+  return (cmd, args) => {
+    if (cmd !== "omp" || args[0] !== "config" || args[1] !== "get") {
+      return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("unexpected command") };
+    }
+    if (args[2] === "task.agentModelOverrides") {
+      return {
+        exitCode: 0,
+        stdout: Buffer.from(
+          JSON.stringify({
+            key: "task.agentModelOverrides",
+            value: opts?.overrides ?? {},
+            type: "record",
+          })
+        ),
+        stderr: Buffer.from(""),
+      };
+    }
+    if (args[2] && opts?.scalarValues && Object.prototype.hasOwnProperty.call(opts.scalarValues, args[2])) {
+      return {
+        exitCode: 0,
+        stdout: Buffer.from(
+          JSON.stringify({
+            key: args[2],
+            value: opts.scalarValues[args[2]],
+            type: typeof opts.scalarValues[args[2]],
+          })
+        ),
+        stderr: Buffer.from(""),
+      };
+    }
+    return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("missing key") };
+  };
 }
 
 describe("project-config — normalizeLanguage", () => {
@@ -254,6 +299,83 @@ describe("project-config — native worker ceiling", () => {
   });
 });
 
+
+describe("project-config — setup readiness truth", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("treats valid global routing + prerequisites as ready even when no setup receipt exists", async () => {
+    const readiness = await collectSetupReadiness({
+      cwd,
+      spawnFn: makeSetupSpawnFn({
+        overrides: Object.fromEntries(
+          ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+        ),
+        scalarValues: configuredSetupScalars,
+      }),
+    });
+
+    expect(readiness.globalReady).toBe(true);
+    expect(readiness.projectReady).toBe(false);
+    expect(existsSync(configFile(cwd))).toBe(false);
+  });
+
+  it("keeps project readiness false when the project receipt exists but project routing is absent", async () => {
+    await markSetupComplete({ cwd });
+
+    const readiness = await collectSetupReadiness({
+      cwd,
+      spawnFn: makeSetupSpawnFn({
+        overrides: { "pi-oven:critic": "openai-codex/gpt-5.5:high" },
+        scalarValues: configuredSetupScalars,
+      }),
+    });
+
+    expect(readiness.globalReady).toBe(true);
+    expect(readiness.projectReady).toBe(false);
+    expect(isSetupComplete({ cwd })).toBe(true);
+  });
+
+  it("reports both layers ready when global prerequisites and project routing are configured", async () => {
+    mkdirSync(join(cwd, ".omp"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".omp", "settings.json"),
+      JSON.stringify(
+        {
+          task: {
+            agentModelOverrides: Object.fromEntries(
+              ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+            ),
+          },
+        },
+        null,
+        2
+      ) + "\n",
+      "utf-8"
+    );
+
+    const readiness = await collectSetupReadiness({
+      cwd,
+      spawnFn: makeSetupSpawnFn({
+        overrides: Object.fromEntries(
+          ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+        ),
+        scalarValues: configuredSetupScalars,
+      }),
+    });
+
+    expect(readiness.globalReady).toBe(true);
+    expect(readiness.projectReady).toBe(true);
+    expect(readiness.projectRoutingRoleCount).toBe(ROLES.length);
+  });
+});
 describe("project-config — setup-completion marker", () => {
   let cwd: string;
 

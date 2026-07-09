@@ -80,9 +80,11 @@ describe("runOverride — happy path", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(setCalls.length).toBe(1);
+    expect(setCalls.length).toBe(2);
     const capturedJson = JSON.parse(setCalls[0].args[4]); // args: [omp, config, set, task.agentModelOverrides, <json>]
     expect(capturedJson["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(setCalls[1].args[3]).toBe("skills.includeSkills");
+    expect(JSON.parse(setCalls[1].args[4])).toEqual(["pi-oven:*"]);
   });
 
   it("two --override entries both persist (MERGE)", async () => {
@@ -96,19 +98,13 @@ describe("runOverride — happy path", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    // Two set calls (one per entry), or one merged — plan says "순차 MERGE write" → each entry writes individually
-    // The final captured json must include both keys (last call wins for critic, executor added)
-    const lastSetJson = JSON.parse(setCalls[setCalls.length - 1].args[4]);
-    // After two sequential merges, the last set should have both keys
-    // First call sets critic, second call reads updated record and sets executor
-    // But in the mock, getRecord is always {}, so each set sees {}. The test verifies
-    // that BOTH calls happened and that applied[] contains both entries.
     expect(result.applied.map((a) => a.colonKey)).toContain("pi-oven:critic");
     expect(result.applied.map((a) => a.colonKey)).toContain("pi-oven:executor");
-    expect(setCalls.length).toBe(2);
-    // Each call writes its own merged json with the key
+    expect(setCalls.length).toBe(3);
     expect(JSON.parse(setCalls[0].args[4])["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
     expect(JSON.parse(setCalls[1].args[4])["pi-oven:executor"]).toBe("opencode-zen/gpt-5.3-codex");
+    expect(setCalls[2].args[3]).toBe("skills.includeSkills");
+    expect(JSON.parse(setCalls[2].args[4])).toEqual(["pi-oven:*"]);
   });
 
   it("preserves sibling (non-pi-oven:*) keys in the record", async () => {
@@ -301,8 +297,11 @@ describe("runOverride — stateful merge round-trip (AC#2)", () => {
         return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
       }
       if (args[0] === "config" && args[1] === "set") {
-        // args: ["config", "set", "task.agentModelOverrides", "<json>"]
-        storedRecord = JSON.parse(args[3]) as Record<string, string>;
+        // args: ["config", "set", "task.agentModelOverrides", "<json>"] or
+        // ["config", "set", "skills.includeSkills", "<json>"].
+        if (args[2] === "task.agentModelOverrides") {
+          storedRecord = JSON.parse(args[3]) as Record<string, string>;
+        }
         return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
       }
       return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
@@ -364,6 +363,8 @@ describe("runOverride — scope:project", () => {
     const overrides = await readProjectAgentModelOverrides({ cwd });
     expect(overrides["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
     expect(overrides["pi-oven:executor"]).toBe("opencode-zen/gpt-5.3-codex");
+    const parsed = JSON.parse(readFileSync(projectSettingsPath(cwd), "utf-8"));
+    expect(parsed.skills.includeSkills).toEqual(["pi-oven:*"]);
 
     // The validator may spawn `omp models` only when no listModelsOutput is
     // injected; here it is injected, so no `config` spawn must occur at all.

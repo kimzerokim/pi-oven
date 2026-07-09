@@ -14,10 +14,12 @@ import {
   setModelRoles,
   readRetryFallbackChains,
   setRetryFallbackChains,
+  setPiOvenIncludedSkills,
   setToolEnablementConfig,
   TOOL_ENABLEMENT,
   PI_OVEN_MANAGED_PROVIDERS,
   PI_OVEN_DEPRECATED_PROVIDERS,
+  PI_OVEN_WORKFLOW_SKILL_INCLUDE,
 } from "../../../scripts/pi-oven-setup/config-yml";
 
 // ---------------------------------------------------------------------------
@@ -871,6 +873,34 @@ describe("setRetryFallbackChains", () => {
     await expect(setRetryFallbackChains({}, { spawnFn: fn })).rejects.toThrow(
       /omp config set retry.fallbackChains failed/
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setPiOvenIncludedSkills — canonical workflow-skill ownership mainline
+// ---------------------------------------------------------------------------
+
+describe("setPiOvenIncludedSkills", () => {
+  it('writes the canonical workflow-skill include filter via `omp config set skills.includeSkills ["pi-oven:*"]`', async () => {
+    const { fn, calls } = makeSpawnFn([okSetResult()]);
+    const written = await setPiOvenIncludedSkills({ spawnFn: fn });
+    expect(written).toEqual([...PI_OVEN_WORKFLOW_SKILL_INCLUDE]);
+    expect(calls).toEqual([
+      [
+        "omp",
+        "config",
+        "set",
+        "skills.includeSkills",
+        JSON.stringify([...PI_OVEN_WORKFLOW_SKILL_INCLUDE]),
+      ],
+    ]);
+  });
+
+  it("throws (including stderr) on a non-zero set exit", async () => {
+    const { fn } = makeSpawnFn([
+      { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("boom") },
+    ]);
+    await expect(setPiOvenIncludedSkills({ spawnFn: fn })).rejects.toThrow(/boom/);
   });
 });
 

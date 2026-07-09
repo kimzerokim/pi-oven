@@ -119,7 +119,13 @@ async function deps(dir: string, env: Record<string, string | undefined> = {}): 
     store: new GateStateStore(dir),
     logger: lg.logger,
     getEnv: () => env,
+    getAutonomyResumeTarget: async () => ({
+      repoRoot: dir,
+      branch: "feature/task4",
+      capturedAt: "2026-07-08T00:00:00.000Z",
+    }),
     isParentSession: true,
+    roots: { repoRoot: dir, homeDir: join(dir, "home") },
     _logger: lg,
   };
 }
@@ -690,6 +696,41 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     const r = await h(writeEvent("src/example.ts"));
     expect(r?.block).toBe(true);
     expect(r?.reason).toMatch(/branch-contract\.json/i);
+    const after = await new GateStateStore(dir).readState();
+    expect(after.kind).toBe("OK");
+    if (after.kind !== "OK") return;
+    expect(after.state.ownershipStatus).toBe("ownership not established");
+    expect(after.state.blockedReason).toEqual({
+      kind: "branch-contract",
+      message:
+        "pi-oven: code-write blocked — the control-plane front door requires .pi-oven/state/branch-contract.json with destination/branch/pr_mode first.",
+    });
+    expect(after.state.nextAction).toEqual({
+      kind: "write-branch-contract",
+      message:
+        "Write .pi-oven/state/branch-contract.json with destination, branch, and pr_mode, then retry the write.",
+    });
+    expect(after.state.resumeTarget).toEqual({
+      repoRoot: dir,
+      branch: "feature/task4",
+      capturedAt: "2026-07-08T00:00:00.000Z",
+    });
+
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(
+      join(dir, "state", "branch-contract.json"),
+      JSON.stringify({ destination: "worktree", branch: "feature/ws5", pr_mode: "draft" })
+    );
+    const allowed = await h(writeEvent("src/example.ts", "tc-write-after-branch-contract"));
+    expect(allowed?.block ?? false).toBe(false);
+
+    const recovered = await new GateStateStore(dir).readState();
+    expect(recovered.kind).toBe("OK");
+    if (recovered.kind !== "OK") return;
+    expect(recovered.state.blockedReason).toBeUndefined();
+    expect(recovered.state.nextAction).toBeUndefined();
+    expect(recovered.state.resumeTarget).toBeUndefined();
+    expect(recovered.state.continuationMarker).toBeUndefined();
   });
 
   it("allows bootstrap write for the branch-contract marker path itself", async () => {
@@ -748,6 +789,14 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     const readRes = await h(readEvent(ownedTarget));
     expect(readRes?.block ?? false).toBe(false);
 
+    const afterRead = await new GateStateStore(dir).readState();
+    expect(afterRead.kind).toBe("OK");
+    if (afterRead.kind !== "OK") return;
+    expect(afterRead.state.blockedReason).toBeUndefined();
+    expect(afterRead.state.nextAction).toBeUndefined();
+    expect(afterRead.state.resumeTarget).toBeUndefined();
+    expect(afterRead.state.continuationMarker).toBeUndefined();
+
     const allowed = await h(writeEvent("src/example.ts", "tc-write-2"));
     expect(allowed?.block ?? false).toBe(false);
 
@@ -755,6 +804,10 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(after.kind).toBe("OK");
     if (after.kind !== "OK") return;
     expect(after.state.skillReads).toEqual([ownedTarget]);
+    expect(after.state.blockedReason).toBeUndefined();
+    expect(after.state.nextAction).toBeUndefined();
+    expect(after.state.resumeTarget).toBeUndefined();
+    expect(after.state.continuationMarker).toBeUndefined();
   });
 
   it("coalesces same-turn exact skill-proof read + code-write down to one store state read", async () => {

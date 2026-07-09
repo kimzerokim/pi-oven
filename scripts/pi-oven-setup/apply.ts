@@ -16,6 +16,7 @@
  */
 
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { rewriteAllAgents } from "./agent-rewriter";
 import { runValidate } from "./validate";
 import {
@@ -24,9 +25,11 @@ import {
   setRetryFallbackChains,
   setAgentModelOverrides,
   setToolEnablementConfig,
+  setPiOvenIncludedSkills,
 } from "./config-yml";
 import {
   setProjectAgentModelOverrides,
+  setProjectIncludedSkills,
   setProjectModelRoles,
   setProjectRetryFallbackChains,
   projectSettingsPath,
@@ -83,6 +86,8 @@ function modelOverrideValue(profile: ApplyOptions["profile"], entry: ModelEntry)
     : entry.primary;
 }
 
+const PLUGIN_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
 /**
  * Apply a profile:
  * 1. Resolve profileMap = PROFILE_A/B/C/D.
@@ -110,6 +115,7 @@ export async function runApply(
 
   let memoryConfigLine = "";
   let toolsEnabledLine = "";
+  let workflowSkillLine = "";
   let scopeLine = "";
   let projectRemediationLine = "";
   let nativeWorkerRuntimeLine = "";
@@ -156,17 +162,20 @@ export async function runApply(
         );
       }
       await setProjectAgentModelOverrides(overrideRecord, { cwd });
+      await setProjectIncludedSkills({ cwd });
       await setProjectModelRoles(
         { default: orchestrator.default, title: orchestrator.title },
         { cwd }
       );
       await setProjectRetryFallbackChains(fallbackChains, { cwd });
       const standaloneSignals = await collectStandaloneTruthSignals({
-        pluginAssetPath: path.resolve(import.meta.dir, "..", ".."),
+        pluginAssetPath: PLUGIN_ROOT,
         projectRoot: cwd,
         spawnFn: opts.spawnFn,
       });
-      scopeLine = `✓ project visibility matrix written to ${projectSettingsPath(cwd)} (all 24 roles pinned + modelRoles + retry.fallbackChains; Profiles A/B include reasoning-effort suffixes)\n`;
+      scopeLine = `✓ project visibility matrix written to ${projectSettingsPath(cwd)} (all 24 roles pinned + skills.includeSkills + modelRoles + retry.fallbackChains; Profiles A/B include reasoning-effort suffixes)\n`;
+      workflowSkillLine =
+        '✓ workflow-skill ownership: skills.includeSkills = ["pi-oven:*"] written to project .omp/settings.json (workflow skills only; populated ~/.claude/skills remains explicitly non-owning)\n';
       projectRemediationLine =
         "Project scope kept ~/.omp/agent/config.yml untouched.\n" +
         formatStandaloneTruthSignals(standaloneSignals).join("\n") +
@@ -194,12 +203,14 @@ export async function runApply(
         );
       }
       await setAgentModelOverrides(overrideRecord, { spawnFn: opts.spawnFn });
+      await setPiOvenIncludedSkills({ spawnFn: opts.spawnFn });
+      workflowSkillLine =
+        '✓ workflow-skill ownership: skills.includeSkills = ["pi-oven:*"] written to ~/.omp/agent/config.yml (workflow skills only; populated ~/.claude/skills remains explicitly non-owning)\n';
 
       // Write mnemopi memory backend + async.enabled for native memory/irc.
       await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });
       memoryConfigLine =
         "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled for subagent coordination\n";
-
       // Enable omp's gated tools so the agents' tool mandates have teeth
       // (inspect_image defaults false; the rest are written defensively). Global
       // scope only — project scope writes routing files, never `omp config set`.
@@ -207,7 +218,7 @@ export async function runApply(
       toolsEnabledLine =
         "✓ tools enabled: inspect_image, web_search, lsp, ast_grep, browser, debug\n";
       const nativeWorkerRuntime = await resolveNativeWorkerRuntimeStatus({
-        pluginRoot: path.resolve(import.meta.dir, "..", ".."),
+        pluginRoot: PLUGIN_ROOT,
         projectRoot: opts.cwd ?? process.cwd(),
       });
       nativeWorkerRuntimeLine =
@@ -250,6 +261,7 @@ export async function runApply(
       `Profile ${opts.profile} setup applied. ${summaryParts.join(", ")}.\n` +
       scopeLine +
       projectRemediationLine +
+      workflowSkillLine +
       memoryConfigLine +
       toolsEnabledLine +
       nativeWorkerRuntimeLine +

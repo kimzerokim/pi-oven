@@ -11,6 +11,10 @@ import { readAgentModelOverrides, type ConfigYmlOpts } from "./config-yml";
 import { readAgentFiles } from "./agent-rewriter";
 import { ROLES } from "./profiles";
 import {
+  buildSetupReadinessNotice,
+  collectSetupReadiness,
+} from "./project-config";
+import {
   readProjectSettingsDisplayState,
   type ProjectSettingsDisplayState,
 } from "./project-settings";
@@ -45,11 +49,20 @@ export async function runStatus(
       ? "absent"
       : "present but unreadable/corrupt";
 
+  const setupReadiness = await collectSetupReadiness({
+    cwd,
+    spawnFn: opts?.spawnFn,
+  });
+  lines.push(buildSetupReadinessNotice(setupReadiness).message);
+  lines.push("");
+
   lines.push("Configured model layers — visibility/guard only; project wins per role:");
   lines.push(`  project: ${projectState.file} (${projectFileLabel})`);
   lines.push("  override: machine-global (~/.omp/agent/config.yml)");
   lines.push("  default:  agent-file frontmatter");
   lines.push("  note: runtime owns current-session provider-family choice");
+  lines.push("  note: workflow-skill ownership classification below is judged by the effective includeSkills surface, not by empty ~/.claude/skills");
+  lines.push("  note: bootstrap-level gajae parity below is a secondary OMP/architecture track, not a blocker for owned-surface success");
 
   const overrides = await readAgentModelOverrides(opts);
   const projectOverrides = extractProjectOverrides(projectState);
@@ -170,7 +183,7 @@ function extractProjectOverrides(
 
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(overrides as Record<string, unknown>)) {
-    out[key] = String(value);
+    if (typeof value === "string") out[key] = value;
   }
   return out;
 }

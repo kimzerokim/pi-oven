@@ -11,6 +11,7 @@ import {
   RulesInjector,
   ORCHESTRATOR_CONDUCT_DEDUP_KEY,
 } from "../../.omp/extensions/pi-oven-runtime/rules-injector";
+import { SHIPPED_SKILL_PATHS } from "../../scripts/pi-oven-setup/shipped-skill-registry";
 
 
 const ext = await import("../../.omp/extensions/pi-oven");
@@ -25,8 +26,11 @@ const {
   applyOrchestratorConduct,
   readProjectInstructions,
   extractExternalExecConsent,
+  shouldNotifySessionStartTruthSignal,
+  emitSessionStartSetupNotice,
 } = ext;
 const SHIPPED_AGENTS_DIR = resolve(__dirname, "../../agents");
+const PLUGIN_MANIFEST_PATH = resolve(__dirname, "../../.claude-plugin/plugin.json");
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-ext-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
@@ -93,6 +97,71 @@ describe("extension install detection", () => {
     }
   });
 });
+
+describe("workflow-skill ownership sources", () => {
+  it("keeps plugin.json skills[] in exact parity with shipped-skill-registry SoT", () => {
+    const plugin = JSON.parse(readFileSync(PLUGIN_MANIFEST_PATH, "utf-8")) as {
+      skills?: unknown;
+    };
+    const skills =
+      Array.isArray(plugin.skills) ? plugin.skills.filter((value): value is string => typeof value === "string") : [];
+    expect(skills).toEqual(SHIPPED_SKILL_PATHS);
+  });
+});
+
+describe("session-start truth-signal routing", () => {
+  it("notifies only workflow ownership and bootstrap parity signals", () => {
+    expect(shouldNotifySessionStartTruthSignal("workflow-skill ownership")).toBe(true);
+    expect(shouldNotifySessionStartTruthSignal("bootstrap parity track")).toBe(true);
+    expect(shouldNotifySessionStartTruthSignal("native worker runtime")).toBe(false);
+  });
+
+  it("emits the session-start setup notice only once per repo/session key", () => {
+    const notices: Array<{ message: string; level: string }> = [];
+    const emittedKeys = new Set<string>();
+    const notify = (message: string, level: "info" | "warning") => {
+      notices.push({ message, level });
+    };
+    const readiness = {
+      globalReady: true,
+      projectReady: false,
+      globalRoutingRoleCount: 24,
+      projectRoutingRoleCount: 0,
+      missingGlobalPrerequisites: [],
+      unknownGlobalPrerequisites: [],
+    };
+    const truthSignals = [
+      {
+        name: "workflow-skill ownership",
+        detail:
+          'classification: compatibility aids only. project skills.includeSkills is not the canonical workflow-skill filter.',
+        level: "WARN" as const,
+      },
+    ];
+
+    emitSessionStartSetupNotice(
+      notify,
+      { sessionId: "same-session" },
+      "/repo",
+      readiness,
+      truthSignals,
+      emittedKeys
+    );
+    emitSessionStartSetupNotice(
+      notify,
+      { sessionId: "same-session" },
+      "/repo",
+      readiness,
+      truthSignals,
+      emittedKeys
+    );
+
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.message).toContain("workflow-skill ownership: compatibility aids only");
+    expect(notices[0]?.message).toContain("repo setup state: missing project routing for this repo");
+  });
+});
+
 
 // ---------------------------------------------------------------------------
 // validateAgentRegistry
@@ -490,63 +559,191 @@ describe("readProjectInstructions", () => {
 
 describe("buildSetupChecklistNotice", () => {
   it("renders the neither state: both ✗, run hint, uninstall hint, warning level", () => {
-    const { message, level } = buildSetupChecklistNotice(false, false);
+    const { message, level } = buildSetupChecklistNotice({
+      globalReady: false,
+      projectReady: false,
+      globalRoutingRoleCount: 0,
+      projectRoutingRoleCount: 0,
+      missingGlobalPrerequisites: ["task.enableLsp"],
+      unknownGlobalPrerequisites: [],
+    });
     expect(message).toContain("pi-oven setup");
-    expect(message).toContain("[✗] Global   (~/.pi-oven/config.json)");
-    expect(message).toContain("[✗] Project  (.pi-oven/config.json) — run /pi-oven:setup");
+    expect(message).toContain(
+      "[✗] Global   (~/.omp/agent/config.yml routing + machine-global prerequisites)"
+    );
+    expect(message).toContain(
+      "[✗] Project  (.omp/settings.json routing) — run /pi-oven:setup --scope project"
+    );
     expect(message).toContain("omp plugin uninstall pi-oven@kzk");
     expect(level).toBe("warning");
   });
 
   it("renders the global-only state: Global ✓ / Project ✗, run hint, warning level (project incomplete)", () => {
-    const { message, level } = buildSetupChecklistNotice(true, false);
-    expect(message).toContain("[✓] Global   (~/.pi-oven/config.json)");
-    expect(message).toContain("[✗] Project  (.pi-oven/config.json) — run /pi-oven:setup");
-    // uninstall hint shown only when NEITHER is complete
+    const { message, level } = buildSetupChecklistNotice({
+      globalReady: true,
+      projectReady: false,
+      globalRoutingRoleCount: 24,
+      projectRoutingRoleCount: 0,
+      missingGlobalPrerequisites: [],
+      unknownGlobalPrerequisites: [],
+    });
+    expect(message).toContain(
+      "[✓] Global   (~/.omp/agent/config.yml routing + machine-global prerequisites)"
+    );
+    expect(message).toContain(
+      "[✗] Project  (.omp/settings.json routing) — run /pi-oven:setup --scope project"
+    );
     expect(message).not.toContain("omp plugin uninstall");
     expect(level).toBe("warning");
   });
 
   it("renders the project-only state: Global ✗ / Project ✓, no run hint, info level", () => {
-    const { message, level } = buildSetupChecklistNotice(false, true);
-    expect(message).toContain("[✗] Global   (~/.pi-oven/config.json)");
-    expect(message).toContain("[✓] Project  (.pi-oven/config.json)");
+    const { message, level } = buildSetupChecklistNotice({
+      globalReady: false,
+      projectReady: true,
+      globalRoutingRoleCount: 0,
+      projectRoutingRoleCount: 24,
+      missingGlobalPrerequisites: ["memory.backend"],
+      unknownGlobalPrerequisites: [],
+    });
+    expect(message).toContain(
+      "[✗] Global   (~/.omp/agent/config.yml routing + machine-global prerequisites)"
+    );
+    expect(message).toContain("[✓] Project  (.omp/settings.json routing)");
     expect(message).not.toContain("run /pi-oven:setup");
     expect(message).not.toContain("omp plugin uninstall");
     expect(level).toBe("info");
   });
 
   it("renders the both-complete state: both ✓, no hints, info level", () => {
-    const { message, level } = buildSetupChecklistNotice(true, true);
-    expect(message).toContain("[✓] Global   (~/.pi-oven/config.json)");
-    expect(message).toContain("[✓] Project  (.pi-oven/config.json)");
+    const { message, level } = buildSetupChecklistNotice({
+      globalReady: true,
+      projectReady: true,
+      globalRoutingRoleCount: 24,
+      projectRoutingRoleCount: 24,
+      missingGlobalPrerequisites: [],
+      unknownGlobalPrerequisites: [],
+    });
+    expect(message).toContain(
+      "[✓] Global   (~/.omp/agent/config.yml routing + machine-global prerequisites)"
+    );
+    expect(message).toContain("[✓] Project  (.omp/settings.json routing)");
     expect(message).not.toContain("run /pi-oven:setup");
     expect(message).not.toContain("omp plugin uninstall");
     expect(level).toBe("info");
   });
 
-  it("level is chosen by projectComplete, independent of globalComplete", () => {
-    // project complete -> info regardless of global
-    expect(buildSetupChecklistNotice(false, true).level).toBe("info");
-    expect(buildSetupChecklistNotice(true, true).level).toBe("info");
-    // project incomplete -> warning regardless of global
-    expect(buildSetupChecklistNotice(false, false).level).toBe("warning");
-    expect(buildSetupChecklistNotice(true, false).level).toBe("warning");
+  it("level is chosen by project readiness, independent of global readiness", () => {
+    expect(
+      buildSetupChecklistNotice({
+        globalReady: false,
+        projectReady: true,
+        globalRoutingRoleCount: 0,
+        projectRoutingRoleCount: 1,
+        missingGlobalPrerequisites: ["memory.backend"],
+        unknownGlobalPrerequisites: [],
+      }).level
+    ).toBe("info");
+    expect(
+      buildSetupChecklistNotice({
+        globalReady: true,
+        projectReady: true,
+        globalRoutingRoleCount: 1,
+        projectRoutingRoleCount: 1,
+        missingGlobalPrerequisites: [],
+        unknownGlobalPrerequisites: [],
+      }).level
+    ).toBe("info");
+    expect(
+      buildSetupChecklistNotice({
+        globalReady: false,
+        projectReady: false,
+        globalRoutingRoleCount: 0,
+        projectRoutingRoleCount: 0,
+        missingGlobalPrerequisites: ["memory.backend"],
+        unknownGlobalPrerequisites: [],
+      }).level
+    ).toBe("warning");
+    expect(
+      buildSetupChecklistNotice({
+        globalReady: true,
+        projectReady: false,
+        globalRoutingRoleCount: 1,
+        projectRoutingRoleCount: 0,
+        missingGlobalPrerequisites: [],
+        unknownGlobalPrerequisites: [],
+      }).level
+    ).toBe("warning");
   });
 
-  it("appends the project routing line when routingRoleCount > 0", () => {
-    const { message } = buildSetupChecklistNotice(true, true, 24);
+  it("appends the project routing line when project routing is active", () => {
+    const { message } = buildSetupChecklistNotice({
+      globalReady: true,
+      projectReady: true,
+      globalRoutingRoleCount: 24,
+      projectRoutingRoleCount: 24,
+      missingGlobalPrerequisites: [],
+      unknownGlobalPrerequisites: [],
+    });
     expect(message).toContain("↳ project model routing active (24 roles)");
   });
 
-  it("omits the project routing line when routingRoleCount is 0", () => {
-    const { message } = buildSetupChecklistNotice(true, true, 0);
-    expect(message).not.toContain("project model routing active");
+  it("surfaces ownership classification and healthy repo state when project routing is active", () => {
+    const { message } = buildSetupChecklistNotice(
+      {
+        globalReady: true,
+        projectReady: true,
+        globalRoutingRoleCount: 24,
+        projectRoutingRoleCount: 24,
+        missingGlobalPrerequisites: [],
+        unknownGlobalPrerequisites: [],
+      },
+      { workflowSkillOwnershipStatus: "owned-surface active" }
+    );
+    expect(message).toContain("↳ workflow-skill ownership: owned-surface active");
+    expect(message).toContain("↳ repo setup state: healthy setup");
+  });
+
+  it("surfaces missing project routing separately from compatibility-only ownership", () => {
+    const { message } = buildSetupChecklistNotice(
+      {
+        globalReady: true,
+        projectReady: false,
+        globalRoutingRoleCount: 24,
+        projectRoutingRoleCount: 0,
+        missingGlobalPrerequisites: [],
+        unknownGlobalPrerequisites: [],
+      },
+      { workflowSkillOwnershipStatus: "compatibility aids only" }
+    );
+    expect(message).toContain("↳ workflow-skill ownership: compatibility aids only");
+    expect(message).toContain("↳ repo setup state: missing project routing for this repo");
+  });
+
+  it("summarizes missing machine-global prerequisites when routing is present but incomplete", () => {
+    const { message } = buildSetupChecklistNotice({
+      globalReady: false,
+      projectReady: false,
+      globalRoutingRoleCount: 24,
+      projectRoutingRoleCount: 0,
+      missingGlobalPrerequisites: ["task.enableLsp"],
+      unknownGlobalPrerequisites: [],
+    });
+    expect(message).toContain(
+      "↳ machine-global routing is present, but required prerequisites are missing or mismatched"
+    );
   });
 
   it("is always a 2+ line checklist (always shown, never empty)", () => {
-    const { message } = buildSetupChecklistNotice(true, true);
-    expect(message.split("\n").length).toBeGreaterThanOrEqual(3); // header + 2 markers
+    const { message } = buildSetupChecklistNotice({
+      globalReady: true,
+      projectReady: true,
+      globalRoutingRoleCount: 24,
+      projectRoutingRoleCount: 24,
+      missingGlobalPrerequisites: [],
+      unknownGlobalPrerequisites: [],
+    });
+    expect(message.split("\n").length).toBeGreaterThanOrEqual(3);
   });
 });
 

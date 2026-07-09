@@ -28,6 +28,7 @@
 
 import { promises as fs } from "fs";
 import * as path from "path";
+import { PI_OVEN_WORKFLOW_SKILL_INCLUDE } from "./config-yml";
 
 /** Directory + file the per-project omp settings live in (relative to a cwd). */
 const SETTINGS_DIR = ".omp";
@@ -224,6 +225,24 @@ export async function setProjectAgentModelOverrides(
 }
 
 /**
+ * SET the canonical workflow-skill include filter in the project layer:
+ * strict-read → deep-merge `skills.includeSkills = ["pi-oven:*"]` → atomic write.
+ * This owns ONLY workflow-skill visibility. Commands / agents / hooks / MCP stay
+ * out of scope, and populated `~/.claude/skills` remains explicitly non-owning.
+ */
+export async function setProjectIncludedSkills(opts?: { cwd?: string }): Promise<void> {
+  const read = await readProjectSettingsStrict(opts);
+  if (!read.ok) {
+    throw new Error(`setProjectIncludedSkills: ${read.error}`);
+  }
+
+  const merged = deepMerge(read.data, {
+    skills: { includeSkills: [...PI_OVEN_WORKFLOW_SKILL_INCLUDE] },
+  });
+  await atomicWrite(projectSettingsPath(opts?.cwd ?? process.cwd()), merged);
+}
+
+/**
  * SET the MAIN orchestrator model roles (`default` / `title`) in the project
  * layer: strict-read → deep-merge `roles` into `data.modelRoles` (preserving
  * sibling roles) → atomic write. Throws on a present-but-malformed file.
@@ -293,9 +312,9 @@ export async function readProjectAgentModelOverrides(opts?: {
 /**
  * Prune empties left behind by a clear and persist (or remove) the file:
  *   - drop an empty `task.agentModelOverrides`, then an empty `task`;
+ *   - drop an empty `skills.includeSkills`, then an empty `skills`;
  *   - if `data` is left `{}` → REMOVE the file (don't leave an empty shell);
  *   - otherwise atomic-write the pruned object.
- * Internal to the clear paths.
  */
 async function pruneAndPersist(
   file: string,
@@ -309,6 +328,16 @@ async function pruneAndPersist(
     }
     if (Object.keys(task).length === 0) {
       delete data["task"];
+    }
+  }
+  const skills = data["skills"];
+  if (isPlainObject(skills)) {
+    const includeSkills = skills["includeSkills"];
+    if (Array.isArray(includeSkills) && includeSkills.length === 0) {
+      delete skills["includeSkills"];
+    }
+    if (Object.keys(skills).length === 0) {
+      delete data["skills"];
     }
   }
 
@@ -349,6 +378,29 @@ export async function clearProjectAgentModelOverrides(opts?: {
 
   await pruneAndPersist(file, data);
   return removed;
+}
+
+/**
+ * CLEAR the project workflow-skill include filter: SOFT-read → delete
+ * `data.skills.includeSkills` → prune an empty `skills` shell → if `data`
+ * becomes `{}` REMOVE the file, else atomic-write. Returns true when the filter
+ * existed and was removed. No-op (returns false, never creates a file) when the
+ * file is absent or when `skills.includeSkills` is already absent.
+ */
+export async function clearProjectIncludedSkills(opts?: {
+  cwd?: string;
+}): Promise<boolean> {
+  const file = projectSettingsPath(opts?.cwd ?? process.cwd());
+  const data = await readProjectSettingsSoft(opts);
+
+  const skills = data["skills"];
+  if (!isPlainObject(skills) || !("includeSkills" in skills)) {
+    return false;
+  }
+
+  delete skills["includeSkills"];
+  await pruneAndPersist(file, data);
+  return true;
 }
 
 /**

@@ -130,7 +130,7 @@ describe("runReset", () => {
     await expect(runReset({ spawnFn })).rejects.toThrow();
   });
 
-  it("non-full reset preserves modelRoles/disabledProviders/setupVersion (no config reset call)", async () => {
+  it("non-full reset preserves modelRoles/disabledProviders/setupVersion but still clears skills.includeSkills", async () => {
     const getResponse = {
       type: "record",
       value: { "pi-oven:critic": "anthropic/claude-opus-4-8" },
@@ -140,9 +140,10 @@ describe("runReset", () => {
     const result = await runReset({ spawnFn });
     expect(result.exitCode).toBe(0);
 
-    // A non-full reset must NEVER touch modelRoles / disabledProviders / setupVersion
-    const resetCall = calls.find((c) => c.args[0] === "config" && c.args[1] === "reset");
-    expect(resetCall).toBeUndefined();
+    const resetKeys = calls
+      .filter((c) => c.args[0] === "config" && c.args[1] === "reset")
+      .map((c) => c.args[2]);
+    expect(resetKeys).toEqual(["skills.includeSkills"]);
   });
 });
 
@@ -164,10 +165,11 @@ describe("runReset — --full mode", () => {
     expect(writtenJson["claude-code:foo"]).toBe("model-x");
     expect(writtenJson["pi-oven:critic"]).toBeUndefined();
 
-    // The three pi-oven-managed keys are reset to defaults
+    // The pi-oven-managed keys are reset to defaults, including the workflow-skill filter.
     const resetKeys = calls
       .filter((c) => c.args[0] === "config" && c.args[1] === "reset")
       .map((c) => c.args[2]);
+    expect(resetKeys).toContain("skills.includeSkills");
     expect(resetKeys).toContain("modelRoles");
     expect(resetKeys).toContain("disabledProviders");
     expect(resetKeys).toContain("setupVersion");
@@ -184,9 +186,9 @@ describe("runReset — --full mode", () => {
       .filter((c) => c.args[0] === "config" && c.args[1] === "reset")
       .map((c) => c.args[2]);
     expect(resetKeys).not.toContain("lastChangelogVersion");
-    // Only the three pi-oven-managed keys are ever reset
+    // Only the four pi-oven-managed keys are ever reset
     expect(new Set(resetKeys)).toEqual(
-      new Set(["modelRoles", "disabledProviders", "setupVersion"])
+      new Set(["skills.includeSkills", "modelRoles", "disabledProviders", "setupVersion"])
     );
   });
 
@@ -203,7 +205,12 @@ describe("runReset — --full mode", () => {
     const resetKeys = calls
       .filter((c) => c.args[0] === "config" && c.args[1] === "reset")
       .map((c) => c.args[2]);
-    expect(resetKeys.sort()).toEqual(["disabledProviders", "modelRoles", "setupVersion"]);
+    expect(resetKeys.sort()).toEqual([
+      "disabledProviders",
+      "modelRoles",
+      "setupVersion",
+      "skills.includeSkills",
+    ]);
   });
 });
 
@@ -315,6 +322,20 @@ describe("runReset — project scope", () => {
     // ZERO global config get/set/reset calls — project scope never touches config.yml
     const configCalls = calls.filter((c) => c.args[0] === "config");
     expect(configCalls.length).toBe(0);
+  });
+
+  it("project reset also clears the project workflow-skill include filter", async () => {
+    seedProjectSettings(cwd, {
+      task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } },
+      skills: { includeSkills: ["pi-oven:*"] },
+    });
+    const { spawnFn } = makeSpawn({ type: "record", value: {} });
+
+    const result = await runReset({ spawnFn, cwd, scope: "project" });
+    expect(result.exitCode).toBe(0);
+
+    expect(existsSync(projectSettingsPath(cwd))).toBe(false);
+    expect(result.output).toContain("workflow-skill ownership filter");
   });
 
   it("project reset clears the PROJECT marker, not the global marker", async () => {

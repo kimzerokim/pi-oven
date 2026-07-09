@@ -37,7 +37,13 @@ import {
   type ApprovalFlowState,
   type DeepInterviewState,
 } from "./deep-interview-state";
-import type { GateStateStore, FsmStateView, OwnershipTraceEntry } from "./gate-state";
+import {
+  deriveAutonomyOwnershipStatus,
+  type AutonomyResumeTarget,
+  type GateStateStore,
+  type FsmStateView,
+  type OwnershipTraceEntry,
+} from "./gate-state";
 import {
   attachFailurePath,
   createRuntimeTraceSnapshot,
@@ -73,6 +79,8 @@ export interface GateHandlerDeps {
    * `rm -rf` patterns are matched.
    */
   roots?: NormalizeRoots;
+  /** Resolve the repo/branch target that owns the active autonomy resume state. */
+  getAutonomyResumeTarget?: () => Promise<AutonomyResumeTarget>;
   /** Self-deadline in ms (default 1500). Lower in tests for fault injection. */
   deadlineMs?: number;
   onRuntimeContractUpdate?: (update: {
@@ -304,10 +312,19 @@ async function observeSkillRead(
   await deps.store.mutate((current) => {
     const nextProofReads = new Set(current.skillReads ?? []);
     nextProofReads.add(skillReadTarget);
+    const proofComplete = (current.ownedSkillReadTargets ?? []).every((target) =>
+      nextProofReads.has(target)
+    );
+    const clearSkillProofBoundary =
+      proofComplete && current.blockedReason?.kind === "skill-proof-incomplete";
     const updated = {
       ...current,
       version: current.version + 1,
       skillReads: [...nextProofReads],
+      blockedReason: clearSkillProofBoundary ? undefined : current.blockedReason,
+      nextAction: clearSkillProofBoundary ? undefined : current.nextAction,
+      resumeTarget: clearSkillProofBoundary ? undefined : current.resumeTarget,
+      continuationMarker: clearSkillProofBoundary ? undefined : current.continuationMarker,
     };
     nextState = { kind: "OK", state: updated };
     return updated;
@@ -355,6 +372,64 @@ function readPersistedInterviewState(
   };
 }
 
+async function resolveAutonomyResumeTarget(deps: GateHandlerDeps): Promise<AutonomyResumeTarget> {
+  if (deps.getAutonomyResumeTarget) {
+    return deps.getAutonomyResumeTarget();
+  }
+  return {
+    repoRoot: deps.roots?.repoRoot ?? process.cwd(),
+    branch: "(unknown)",
+    capturedAt: new Date().toISOString(),
+  };
+}
+
+async function persistAutonomyBoundaryBlock(
+  deps: GateHandlerDeps,
+  fsmRaw: FsmStateView,
+  decision: ReturnType<typeof decideGate>
+): Promise<void> {
+  if (!deps.isParentSession) return;
+  if (!decision.block || decision.autonomyStopBoundary === undefined) return;
+  if (fsmRaw.kind !== "OK" || !fsmRaw.state.active) return;
+  const ownershipStatus =
+    fsmRaw.state.ownershipStatus ??
+    deriveAutonomyOwnershipStatus(fsmRaw.state.requiredSkills, fsmRaw.state.ownedSkillReadTargets);
+  const resumeTarget = await resolveAutonomyResumeTarget(deps);
+  await deps.store.mutate((current) => ({
+    ...current,
+    version: current.version + 1,
+    ownershipStatus,
+    blockedReason: decision.autonomyStopBoundary?.blockedReason,
+    nextAction: decision.autonomyStopBoundary?.nextAction,
+    resumeTarget,
+    continuationMarker: undefined,
+  }));
+}
+
+async function clearRecoveredAutonomyBoundaryState(
+  deps: GateHandlerDeps,
+  decision: ReturnType<typeof decideGate>
+): Promise<void> {
+  if (!deps.isParentSession || decision.block) return;
+  await deps.store.mutate((current) => {
+    const hadBoundaryState =
+      current.blockedReason !== undefined ||
+      current.nextAction !== undefined ||
+      current.resumeTarget !== undefined;
+    if (!hadBoundaryState) {
+      return current;
+    }
+    return {
+      ...current,
+      version: current.version + 1,
+      blockedReason: undefined,
+      nextAction: undefined,
+      resumeTarget: undefined,
+      continuationMarker: undefined,
+    };
+  });
+}
+
 async function decideForCodeWrite(
   deps: GateHandlerDeps,
   runtimeState: GateRuntimeState,
@@ -389,6 +464,8 @@ async function decideForCodeWrite(
     deepInterview,
     approvalFlow,
   });
+  await persistAutonomyBoundaryBlock(deps, fsmRaw, decision);
+  await clearRecoveredAutonomyBoundaryState(deps, decision);
   runtimeState.trace = decision.block
     ? attachFailurePath(
         traceWithFunction,

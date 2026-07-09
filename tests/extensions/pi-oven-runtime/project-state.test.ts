@@ -49,6 +49,10 @@ describe("project-state", () => {
         "skillReads",
         "ownershipTrace",
         "ownedSkillReadTargets",
+        "ownershipStatus",
+        "blockedReason",
+        "nextAction",
+        "resumeTarget",
         "externalExecConsent",
         "consumedExternalExecConsentMessageId",
       ])

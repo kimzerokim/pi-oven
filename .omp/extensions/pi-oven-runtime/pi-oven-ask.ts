@@ -173,7 +173,7 @@ interface PiOvenAskResultMeta {
 }
 const QUESTION_PADDING_Y = 1;
 const QUESTION_LINE_GAP = 1;
-const OPTION_BLOCK_SPACER_LINES = 2;
+const OPTION_BLOCK_SPACER_LINES = 1;
 const DETAIL_BLOCK_SPACER_LINES = 2;
 interface PiOvenAskPromptPayload {
   question: string;

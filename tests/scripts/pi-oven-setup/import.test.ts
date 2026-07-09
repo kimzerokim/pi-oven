@@ -318,11 +318,12 @@ describe("runImport", () => {
 
     expect(result.exitCode).toBe(0);
 
-    // A "config set" call must carry the pi-oven:executor key with the primary value
+    // A config set call must carry both the pi-oven:executor override and the
+    // canonical workflow-skill include filter.
     const setCalls = spawned.filter(
       (s) => s.args[0] === "config" && s.args[1] === "set"
     );
-    expect(setCalls.length).toBeGreaterThan(0);
+    expect(setCalls.length).toBeGreaterThan(1);
 
     const hasExecutorKey = setCalls.some((s) => {
       const payload = s.args[3] ?? s.args[2];
@@ -334,6 +335,9 @@ describe("runImport", () => {
       }
     });
     expect(hasExecutorKey).toBe(true);
+    const includeSkillsCall = setCalls.find((s) => s.args[2] === "skills.includeSkills");
+    expect(includeSkillsCall).toBeDefined();
+    expect(JSON.parse(includeSkillsCall!.args[3])).toEqual(["pi-oven:*"]);
   });
 
   it("import does NOT touch agents/ files (no agent-rewriter call)", async () => {
@@ -416,7 +420,7 @@ describe("runImport", () => {
     expect(setCalls).toHaveLength(0);
   });
 
-  it("import with no models block writes 0 entries and exits 0", async () => {
+  it("import with no models block still applies the workflow-skill filter and exits 0", async () => {
     const p = writeJson(tempDir, "config.json", {
       "pi-oven": {
         profile: "A",
@@ -437,7 +441,10 @@ describe("runImport", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(setCalls).toHaveLength(0);
+    expect(result.output).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(setCalls).toHaveLength(1);
+    expect(setCalls[0][2]).toBe("skills.includeSkills");
+    expect(JSON.parse(setCalls[0][3])).toEqual(["pi-oven:*"]);
   });
 
   it("import does NOT write plugin-config namespace (no pi-oven.profile or pi-oven.models.* in args)", async () => {

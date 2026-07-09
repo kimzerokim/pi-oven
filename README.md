@@ -78,7 +78,7 @@ The wizard will:
 2. Offer Profile A (release default, openai-codex-only), Profile B (explicit openai-codex override profile), Profile C (all-Anthropic, if available), or Profile D (opencode-zen-only).
 3. Ask the setup scope: global machine config or this project's `.omp/settings.json`.
 4. Optionally let you override individual agent roles.
-5. Persist routing to the selected layer: global writes all 24 per-role `task.agentModelOverrides` for Profiles A/B/C/D plus `modelRoles`/`retry.fallbackChains`; project scope writes the same 24-role override surface plus `modelRoles`/`retry.fallbackChains` to `.omp/settings.json`. User setup does not rewrite committed agent files.
+5. Persist routing to the selected layer: global writes all 24 per-role `task.agentModelOverrides` for Profiles A/B/C/D plus the workflow-skill ownership filter `skills.includeSkills = ["pi-oven:*"]` and `modelRoles`/`retry.fallbackChains`; project scope writes the same 24-role override surface plus the same workflow-skill filter and `modelRoles`/`retry.fallbackChains` to `.omp/settings.json`. This explicitly filters a populated `~/.claude/skills` workflow-skill source without deleting it, and it stays scoped to workflow skills only — not commands, agents, hooks, or MCP. Empty `~/.claude/skills` is not the target state; populated Claude user workflow skills stay intact for other users, and legacy compatibility aids alone do not stop `claude-plugins` or namespaced marketplace workflow skills. User setup does not rewrite committed agent files, and `~/.pi-oven/config.json` / `.pi-oven/config.json` keep language, `nativeWorkers.maxWorkers`, and setup receipt metadata while readiness is judged from live routing + prerequisites rather than `setupCompletedAt` alone.
 6. Run a smoke validation (7 MUST-tier roles pinged) and report the result.
 
 ### 2. Dispatch agents directly
@@ -98,7 +98,7 @@ Skills activate through explicit control-plane proofs:
 1. **Runtime keyword whitelist** — on each `turn_start`, the pi-oven extension matches the latest user message against a curated, code-owned keyword list for each shipped skill. On a match, `before_agent_start` injects a system prompt block that tells the model it **MUST** read the exact plugin-owned `SKILL.md` file targets shown in that block before proceeding. Those exact targets become the `ownedSkillReadTargets` proof surface for the current turn.
 2. **Description-driven discovery** — even without a keyword hit, shipped skills are still surfaced through their `description:` field in the system prompt. If a pi-oven skill is needed, prefer the exact plugin-owned `SKILL.md` target from the runtime keyword block; do not invent namespaced skill aliases. `/pi-oven:*` entries such as `/pi-oven:setup` are commands, not skills.
 
-For gated work, pi-oven uses `requiredSkills`, exact `ownedSkillReadTargets` reads, the branch contract, and external execution consent as the single front door. Bootstrap message injection and tool remap are explicitly out of bounds as control-plane paths.
+For gated work, pi-oven uses `requiredSkills`, exact `ownedSkillReadTargets` reads, the branch contract, external execution consent, and the setup-written workflow-skill ownership filter `skills.includeSkills = ["pi-oven:*"]` as the single front door. That filter explicitly ignores a populated `~/.claude/skills` workflow-skill source rather than relying on emptiness, and it does not widen into commands/agents/hooks/MCP exclusivity. Empty `~/.claude/skills` is not the target state; compatibility aids alone still do not stop `claude-plugins` or namespaced marketplace workflow skills. Bootstrap message injection and tool remap are explicitly out of bounds as control-plane paths.
 
 The autonomous stop-guard still exists as a separate runtime behavior: autonomous-mode keywords keep the agent looping until completion or explicit stop. That guard now complements skill loading instead of being the only keyword-driven behavior.
 
@@ -220,9 +220,9 @@ The wizard accepts subcommands:
 | Subcommand | Purpose |
 |---|---|
 | `/pi-oven:setup` | Interactive first-run flow (default) |
-| `/pi-oven:setup --status` | Show effective per-role models across project, global override, and frontmatter layers |
+| `/pi-oven:setup --status` | Show the shared setup readiness summary first — global readiness from machine-global routing + prerequisites, project readiness from `.omp/settings.json` routing — then show effective per-role models across project, global override, and frontmatter layers, plus the standalone workflow-skill ownership classifications (`owned-surface active` / `compatibility aids only` / `ownership not established`) and the secondary bootstrap-parity track |
 | `/pi-oven:setup --reset` | Clear pi-oven-managed routing overrides; with `--scope project`, clear project `.omp/settings.json` routing |
-| `/pi-oven:setup --repair-prereqs` | Repair only the machine-global prerequisites: `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true`, `task.enableLsp=true`, and the 6 gated tool flags. Does not touch routing, project settings, or setup markers. |
+| `/pi-oven:setup --repair-prereqs` | Repair only the machine-global prerequisites: `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true`, `task.enableLsp=true`, and the 6 gated tool flags. Does not touch routing, project settings, or setup receipt metadata. |
 | `/pi-oven:setup --import <file>` | Apply a JSON config (validated against the 24-role schema + provider whitelist) |
 | `/pi-oven:setup --apply --profile A\|B\|C\|D` | Non-interactive apply with explicit profile |
 | `/pi-oven:setup --apply --profile B --validate full` | Full 24-role smoke ping (default is 7 MUST-tier); same flag works for `--profile C`, `--profile D` |
@@ -231,7 +231,7 @@ The wizard accepts subcommands:
 
 ### Interactive prompt semantics
 
-The interactive wizard uses `pi-oven_ask` rather than ad-hoc prose parsing. `Other (type your own)` is intentionally valid only when free text is a real next action (for example the language step); closed-set questions such as scope or profile selection suppress it. Routing clarification branches use the dedicated `Ask about these choices` affordance instead of inventing nested approval prose.
+The interactive wizard uses `pi-oven_ask` rather than ad-hoc prose parsing. Question and context body rhythm stay unchanged, but each option now follows on the next line without an extra blank spacer between options. `Other (type your own)` is intentionally valid only when free text is a real next action (for example the language step); closed-set questions such as scope or profile selection suppress it. Routing clarification branches use the dedicated `Ask about these choices` affordance instead of inventing nested approval prose.
 ### Profile A (release default, openai-codex-only)
 
 Requires **OpenAI Codex / ChatGPT subscription** for the shipped primaries. The committed frontmatter pairs those primaries with matching `opencode-zen/gpt-5.5` / `opencode-zen/gpt-5.4` registry alternates for spawn-time availability fallback.
@@ -270,16 +270,19 @@ If your OpenCode Zen credential changes, re-run `/pi-oven:setup --apply --profil
 
 ### Per-project routing (`--scope project`)
 
-By default, setup applies **globally** — model routing, language, and the setup-complete marker are written to your machine-global config (`~/.omp/agent/config.yml` + `~/.pi-oven/config.json`), shared by every project. The wizard's **Step 0.5** lets you choose per-project instead:
+By default, setup applies **globally** — model routing is written to your machine-global config (`~/.omp/agent/config.yml`), while language + `nativeWorkers.maxWorkers` + setup receipt metadata are written to `~/.pi-oven/config.json`, shared by every project. The wizard's **Step 0.5** lets you choose per-project instead:
 
 | | `--scope global` (default) | `--scope project` |
 |---|---|---|
 | Per-role overrides | global `config.yml` — profiles A/B/C/D all write all 24 roles | `<repoRoot>/.omp/settings.json` — **all 24 roles for EVERY profile, including A** |
+| workflow-skill ownership | global `config.yml` — `skills.includeSkills = ["pi-oven:*"]` | `<repoRoot>/.omp/settings.json` — same filter, project layer wins because arrays replace |
 | `modelRoles` + `retry.fallbackChains` | global `config.yml` | `<repoRoot>/.omp/settings.json` |
-| language + setup marker | global `~/.pi-oven/config.json` | `<repoRoot>/.pi-oven/config.json` |
-| memory/async infra | global `config.yml` (`/pi-oven:setup --repair-prereqs` repairs just this layer) | global-only (not written under project scope) |
+| language + setup receipt metadata + `nativeWorkers.maxWorkers` | global `~/.pi-oven/config.json` | `<repoRoot>/.pi-oven/config.json` |
+| machine-global prerequisites | global `config.yml` (`/pi-oven:setup --repair-prereqs` repairs just this layer) | global-only (not written under project scope) |
 
-omp reads `<repoRoot>/.omp/settings.json` at project level and **deep-merges it over** your global config (record settings merge key-by-key; arrays replace), so a project override wins per-role over global — even over a Profile-A frontmatter default. That means a single project can pin *different* models from your global default. The file is **committable** (share routing with a team) or **gitignorable** (machine-local) — your choice. Launch omp from the **repo root** so the project settings are discovered. The setup notice at session start shows a `↳ project model routing active (N roles)` line whenever this file carries `pi-oven:*` overrides.
+The shared readiness model follows those live facts directly: global readiness comes from machine-global routing plus the machine-global prerequisites, while project readiness comes from live `.omp/settings.json` routing. `setupCompletedAt` remains receipt metadata only.
+
+omp reads `<repoRoot>/.omp/settings.json` at project level and **deep-merges it over** your global config (record settings merge key-by-key; arrays replace), so a project override wins per-role over global — even over a Profile-A frontmatter default. The same array-replace rule is why workflow-skill ownership is judged on the *effective* visible surface: success means the resolved `skills.includeSkills` value is exactly `["pi-oven:*"]`, not any incidental state under `~/.claude/skills`. Empty `~/.claude/skills` is not the target state, and legacy compatibility aids alone still do not stop `claude-plugins` or namespaced marketplace workflow skills. That means a single project can pin *different* models from your global default while still filtering workflow skills to pi-oven-only. The file is **committable** (share routing with a team) or **gitignorable** (machine-local) — your choice. Launch omp from the **repo root** so the project settings are discovered. The setup notice at session start shows a `↳ project model routing active (N roles)` line whenever this file carries `pi-oven:*` overrides.
 
 ```sh
 /pi-oven:setup --apply --profile A --scope project   # write Profile A's 24 roles to this repo's .omp/settings.json
@@ -301,16 +304,16 @@ omp does not read the repo-root `CLAUDE.md` natively. The pi-oven runtime extens
 
 For gated work, pi-oven opens the control plane only through explicit runtime proofs: `requiredSkills`, exact plugin-owned `SKILL.md` reads captured in `ownedSkillReadTargets`/`skillReads`, `.pi-oven/state/branch-contract.json`, and external execution consent where relevant. That is the user-visible contract. Bootstrap message injection, tool remap, and discovery-layer compatibility toggles are not normal control-plane paths.
 
-- `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` are **visibility/guard layers only**. They report and persist routing configuration, but the runtime still owns the current-session provider-family choice.
-- The sanctioned deep-interview completion path persists the final spec and seeds the paired root-level `approvalFlow` receipt. After that receipt exists, approval may remain pending while `deepInterview.phase` is already `complete`; approval ownership no longer lives nested under `deepInterview`.
-- `pi-oven_ask` affordances are semantic: expect `Ask about these choices` for approval/routing clarification branches, and expect `Other (type your own)` only when free text is actually valid.
+- `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` are **visibility/guard layers only**. They report and persist routing configuration, but the runtime still owns the current-session provider-family choice. The session-start setup notice is deduped per repo/session start path and summarizes repo state from the same truth sources.
+- Ownership truth surfaces use three labels: `owned-surface active` when the effective `skills.includeSkills` surface is exactly `["pi-oven:*"]`; `compatibility aids only` when legacy aids are active but the mainline ownership filter is still missing or wrong; `ownership not established` otherwise. Empty `~/.claude/skills` is not the target state in any branch. A repo is `healthy setup` only when project routing is active and ownership is `owned-surface active`; missing project routing remains its own warning state.
+- Secondary track only: bootstrap-level gajae parity remains visible as an OMP/architecture follow-up, but it is not a blocker for the owned-surface success above.
 
 ## Temporary compatibility boundary
 
 - Scope: vendored native worker runtime under `scripts/pi-oven-team/*` only.
 - Owner: pi-oven maintainers.
 - Removal condition: remove this boundary once native worker startup/scale is owned end-to-end by the omp-native control plane and no runtime path depends on `scripts/pi-oven-team/*`.
-- Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.
+- Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only compatibility aids, owned by pi-oven maintainers. They never establish workflow-skill ownership by themselves, do not fully stop `claude-plugins` / namespaced marketplace workflow skills, and must be removed once the omp-native control plane owns those surfaces end-to-end.
 
 ---
 

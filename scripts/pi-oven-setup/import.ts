@@ -8,7 +8,7 @@
 
 import { promises as fs } from "node:fs";
 import { ROLES, type Role, type ModelEntry } from "./profiles";
-import { setAgentModelOverride } from "./config-yml";
+import { setAgentModelOverride, setPiOvenIncludedSkills } from "./config-yml";
 import { isResolvableModelId } from "./model-id-validator";
 
 const ALLOWED_THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh"] as const;
@@ -29,6 +29,7 @@ export interface ValidateImportOpts {
 
 export interface RunImportOpts {
   allowAnthropic?: boolean;
+  scope?: "global" | "project";
   spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
   /** Injectable `omp models` output for EXACT-ID-ONLY validation (tests). */
   listModelsOutput?: string;
@@ -129,6 +130,13 @@ export async function runImport(
   filePath: string,
   opts?: RunImportOpts
 ): Promise<{ exitCode: number; output: string }> {
+  if (opts?.scope === "project") {
+    return {
+      exitCode: 1,
+      output:
+        "--import is global-only today: it writes machine-global task.agentModelOverrides and does not support --scope project.\n",
+    };
+  }
   // 1. Read file
   let raw: string;
   try {
@@ -164,9 +172,13 @@ export async function runImport(
 
   // No models block → write 0 entries, succeed
   if (!models || Object.keys(models).length === 0) {
+    await setPiOvenIncludedSkills(opts?.spawnFn ? { spawnFn: opts.spawnFn } : undefined);
     return {
       exitCode: 0,
-      output: `Import complete. No models specified; 0 overrides written.\nNote: registry_alternate/thinkingLevel ignored (override = single model).\n`,
+      output:
+        `Import complete. No models specified; 0 overrides written.\n` +
+        `Workflow-skill ownership filter applied via skills.includeSkills = ["pi-oven:*"].\n` +
+        `Note: registry_alternate/thinkingLevel ignored (override = single model).\n`,
     };
   }
 
@@ -209,11 +221,13 @@ export async function runImport(
   for (const { colonKey, primary } of toWrite) {
     await setAgentModelOverride(colonKey, primary, configYmlOpts);
   }
+  await setPiOvenIncludedSkills(configYmlOpts);
 
   return {
     exitCode: 0,
     output:
       `Import complete. ${toWrite.length} override(s) written to task.agentModelOverrides.\n` +
+      `Workflow-skill ownership filter applied via skills.includeSkills = ["pi-oven:*"].\n` +
       `Note: registry_alternate/thinkingLevel ignored (override = single model).\n`,
   };
 }

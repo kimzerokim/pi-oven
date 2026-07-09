@@ -25,6 +25,10 @@ import {
   deriveVerifierRisk,
   type VerifierDepthDecision,
 } from "./verifier-depth-policy";
+import type {
+  AutonomyBlockedReason,
+  AutonomyNextAction,
+} from "./gate-state";
 
 export interface StopGuardState {
   autonomousActive: boolean;
@@ -45,6 +49,8 @@ export interface StopGuardDecision {
   state: StopGuardState;
   shouldQueueContinuation: boolean;
   reason: "explicit-continue" | "polite-stop" | "verifier-pending" | null;
+  blockedReason?: AutonomyBlockedReason;
+  nextAction?: AutonomyNextAction;
   note?: string;
 }
 
@@ -141,6 +147,11 @@ export const STOP_GUARD_MESSAGE = [
   "Only ask the user when a destructive action needs explicit consent or when a required external input is missing.",
 ].join("\n");
 
+const RUN_DEEP_VERIFIER_NEXT_ACTION: AutonomyNextAction = {
+  kind: "run-deep-verifier",
+  message: "Run the deep verifier lane before exit.",
+};
+
 export function createStopGuardState(): StopGuardState {
   return {
     autonomousActive: false,
@@ -217,6 +228,8 @@ export function decideStopGuardOnTurnEnd(
       },
       shouldQueueContinuation: false,
       reason: null,
+      blockedReason: undefined,
+      nextAction: undefined,
     };
   }
 
@@ -229,6 +242,8 @@ export function decideStopGuardOnTurnEnd(
       },
       shouldQueueContinuation: false,
       reason: null,
+      blockedReason: undefined,
+      nextAction: undefined,
     };
   }
 
@@ -262,6 +277,16 @@ export function decideStopGuardOnTurnEnd(
           },
           shouldQueueContinuation: false,
           reason: null,
+          blockedReason: {
+            kind: "verifier-depth-hard-cap",
+            message:
+              `pi-oven: autonomy paused — deep verifier follow-up hit the policy cap before the run could safely finish (${verifierDepth.reason}).`,
+          },
+          nextAction: {
+            kind: "continue-in-same-repo",
+            message:
+              "Run the deep verifier lane, then continue in the same repo/branch if more work remains.",
+          },
           note,
         };
       }
@@ -269,6 +294,12 @@ export function decideStopGuardOnTurnEnd(
         state: nextState,
         shouldQueueContinuation: true,
         reason: "verifier-pending",
+        blockedReason: {
+          kind: "verifier-pending",
+          message:
+            `pi-oven: autonomous exit paused — deep verifier lane must run before completion (${verifierDepth.reason}).`,
+        },
+        nextAction: RUN_DEEP_VERIFIER_NEXT_ACTION,
         note,
       };
     }
@@ -281,6 +312,8 @@ export function decideStopGuardOnTurnEnd(
       },
       shouldQueueContinuation: false,
       reason: null,
+      blockedReason: undefined,
+      nextAction: undefined,
     };
   }
 
@@ -294,6 +327,16 @@ export function decideStopGuardOnTurnEnd(
       },
       shouldQueueContinuation: false,
       reason: null,
+      blockedReason: {
+        kind: "branch-contract",
+        message:
+          "pi-oven: autonomy paused — the branch contract is still missing destination/branch/pr_mode for code-write.",
+      },
+      nextAction: {
+        kind: "write-branch-contract",
+        message:
+          "Write .pi-oven/state/branch-contract.json with destination, branch, and pr_mode, then continue in the same repo/branch.",
+      },
     };
   }
 
@@ -314,6 +357,20 @@ export function decideStopGuardOnTurnEnd(
       },
       shouldQueueContinuation: false,
       reason: null,
+      blockedReason: triggered
+        ? {
+            kind: "max-consecutive-auto-continues",
+            message:
+              "pi-oven: autonomy paused — the max consecutive auto-continue cap was reached before the run could safely finish.",
+          }
+        : undefined,
+      nextAction: triggered
+        ? {
+            kind: "continue-in-same-repo",
+            message:
+              "Continue manually in the same repo/branch when more work remains, or ask for an explicit continue after reviewing the last stop.",
+          }
+        : undefined,
     };
   }
 
@@ -328,6 +385,8 @@ export function decideStopGuardOnTurnEnd(
     },
     shouldQueueContinuation: true,
     reason: triggeredByExplicit ? "explicit-continue" : "polite-stop",
+    blockedReason: undefined,
+    nextAction: undefined,
   };
 }
 

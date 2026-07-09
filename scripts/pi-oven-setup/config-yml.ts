@@ -628,7 +628,18 @@ export async function setToolEnablementConfig(opts?: ConfigYmlOpts): Promise<voi
 }
 
 // ---------------------------------------------------------------------------
-// skills.ignoredSkills (ARRAY) — opt-in sibling-skill suppression (§3.4).
+// skills.includeSkills (ARRAY) — canonical workflow-skill ownership mainline.
+// This controls ONLY the visible workflow-skill surface. It is intentionally
+// orthogonal to commands / agents / hooks / MCP and intentionally does NOT rely
+// on an empty ~/.claude/skills tree. Populated Claude skills may continue to
+// exist for other users; pi-oven owns workflow-skill visibility by writing an
+// explicit include filter instead.
+// ---------------------------------------------------------------------------
+
+export const PI_OVEN_WORKFLOW_SKILL_INCLUDE = ["pi-oven:*"] as const;
+
+// ---------------------------------------------------------------------------
+// skills.ignoredSkills (ARRAY) — legacy opt-in sibling-skill suppression (§3.4).
 // Same transport as disabledProviders: omp config get skills.ignoredSkills --json
 // → in-memory union/diff → omp config set skills.ignoredSkills '<whole-merged-json>'.
 // ---------------------------------------------------------------------------
@@ -697,6 +708,49 @@ export async function readIgnoredSkillsDisplay(
 ): Promise<string[] | null> {
   const result = await readIgnoredSkillsDisplayState(opts);
   return result.state === "present" ? result.value : null;
+}
+
+/**
+ * GRACEFUL read of `skills.includeSkills` for DISPLAY / diagnostic paths only.
+ * Distinguishes a genuinely absent key from unreadable / malformed output.
+ */
+export async function readIncludedSkillsDisplayState(
+  opts?: ConfigYmlOpts
+): Promise<DisplayReadResult<string[]>> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "get", "skills.includeSkills", "--json"]);
+  if (result.exitCode !== 0) return classifyDisplayReadFailure(result);
+
+  const parsed = parseGetArrayOutput(result.stdout?.toString() ?? "");
+  return parsed.ok ? { state: "present", value: parsed.list } : { state: "unknown", error: parsed.error };
+}
+
+export async function readIncludedSkillsDisplay(
+  opts?: ConfigYmlOpts
+): Promise<string[] | null> {
+  const result = await readIncludedSkillsDisplayState(opts);
+  return result.state === "present" ? result.value : null;
+}
+
+/**
+ * Write the canonical workflow-skill ownership surface into omp's global config.
+ * This is the mainline ownership policy for workflow skills only: populated
+ * `~/.claude/skills` may continue to exist, but the effective visible workflow
+ * skill surface is filtered to `pi-oven:*`. Commands / agents / hooks / MCP are
+ * explicitly out of scope for this write.
+ */
+export async function setPiOvenIncludedSkills(opts?: ConfigYmlOpts): Promise<string[]> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const includeSkills = [...PI_OVEN_WORKFLOW_SKILL_INCLUDE];
+  const setResult = spawn("omp", ["config", "set", "skills.includeSkills", JSON.stringify(includeSkills)]);
+
+  if (setResult.exitCode !== 0) {
+    throw new Error(
+      `setPiOvenIncludedSkills: omp config set failed (exit ${String(setResult.exitCode)}): ${setResult.stderr?.toString() ?? ""}`
+    );
+  }
+
+  return includeSkills;
 }
 
 /**
@@ -866,6 +920,21 @@ export async function readDisabledProvidersStrict(
 
   const stdout = result.stdout?.toString() ?? "";
   return parseGetArrayOutput(stdout);
+}
+
+/**
+ * GRACEFUL read of `disabledProviders` for DISPLAY / diagnostic paths only.
+ * Distinguishes a genuinely absent key from unreadable / malformed output.
+ */
+export async function readDisabledProvidersDisplayState(
+  opts?: ConfigYmlOpts
+): Promise<DisplayReadResult<string[]>> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "get", "disabledProviders", "--json"]);
+  if (result.exitCode !== 0) return classifyDisplayReadFailure(result);
+
+  const parsed = parseGetArrayOutput(result.stdout?.toString() ?? "");
+  return parsed.ok ? { state: "present", value: parsed.list } : { state: "unknown", error: parsed.error };
 }
 
 /**

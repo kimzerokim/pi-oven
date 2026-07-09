@@ -44,6 +44,12 @@ export function createHaltedByPolicyMarker(policy: string): HaltedByPolicyMarker
   return { kind: "halted-by-policy", policy };
 }
 
+export function isRearmableContinuationMarker(
+  value: ContinuationMarker | undefined
+): value is AutonomousLoopResumeMarker | VerifierPendingMarker {
+  return value?.kind === "autonomous-loop-resume" || value?.kind === "verifier-pending";
+}
+
 export function isValidContinuationMarker(value: unknown): value is ContinuationMarker {
   if (typeof value !== "object" || value === null) return false;
   if (!("kind" in value) || typeof value.kind !== "string") return false;

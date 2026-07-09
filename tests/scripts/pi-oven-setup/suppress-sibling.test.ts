@@ -306,19 +306,21 @@ const LEGACY_FRONT_DOOR_BOUNDARY_LINE =
   "global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.";
 
 describe("runSuppressSibling — enable", () => {
-  it("writes skills.ignoredSkills with managed globs and reports what was hidden", async () => {
+  it("writes skills.ignoredSkills with managed globs and reports compatibility-only behavior", async () => {
     const { fn, calls } = makeSpawnFn([
       okGetArrayResult("skills.ignoredSkills", []),
       okSetResult(),
     ]);
     const result = await runSuppressSibling({ enable: true, spawnFn: fn });
     expect(result.exitCode).toBe(0);
-    // Should name the globs that were hidden
+    expect(result.output).toContain("legacy skill-visibility compatibility aid");
+    expect(result.output).toContain("compatibility helper only");
+    expect(result.output).toContain("Empty ~/.claude/skills is not the target state");
     expect(result.output).toContain("superpowers:*");
     expect(result.output).toContain("oh-my-claudecode:*");
-    // Should include a restart hint
+    expect(result.output).toContain("claude-plugins");
+    expect(result.output).toContain("namespaced marketplace workflow skills");
     expect(result.output.toLowerCase()).toMatch(/restart/);
-    // Should note provenance-loss
     expect(result.output).toMatch(/provenance|also removes|identical/i);
     expect(result.output).toContain(LEGACY_FRONT_DOOR_BOUNDARY_LINE);
     expect(JSON.parse(calls[1][4])).toEqual([...PI_OVEN_SIBLING_SKILL_GLOBS]);
@@ -339,30 +341,31 @@ describe("runSuppressSibling — enable", () => {
     const { fn, calls } = makeSpawnFn([errorGetResult()]);
     const result = await runSuppressSibling({ enable: true, spawnFn: fn });
     expect(result.exitCode).toBe(1);
-    expect(result.output).toMatch(/failed/i);
+    expect(result.output).toMatch(/compatibility aid failed/i);
     expect(calls.filter((c) => c[2] === "set").length).toBe(0);
   });
 });
 
 describe("runSuppressSibling — disable (--no-suppress-sibling-skills)", () => {
-  it("removes managed globs and reports what was cleared", async () => {
+  it("removes managed globs and reports what compatibility aid was cleared", async () => {
     const { fn, calls } = makeSpawnFn([
       okGetArrayResult("skills.ignoredSkills", [...PI_OVEN_SIBLING_SKILL_GLOBS]),
       okSetResult(),
     ]);
     const result = await runSuppressSibling({ enable: false, spawnFn: fn });
     expect(result.exitCode).toBe(0);
-    expect(result.output).toMatch(/re-enabled|cleared|removed/i);
+    expect(result.output).toMatch(/compatibility aid/i);
+    expect(result.output).toMatch(/cleared|removed/i);
     expect(JSON.parse(calls[1][4])).toEqual([]);
   });
 
-  it("reports nothing-to-undo when no managed globs present (no set call)", async () => {
+  it("reports no compatibility aid to undo when no managed globs present (no set call)", async () => {
     const { fn, calls } = makeSpawnFn([
       okGetArrayResult("skills.ignoredSkills", []),
     ]);
     const result = await runSuppressSibling({ enable: false, spawnFn: fn });
     expect(result.exitCode).toBe(0);
-    expect(result.output).toMatch(/nothing|already|no.*suppress/i);
+    expect(result.output).toMatch(/no compatibility aid to undo/i);
     expect(calls.filter((c) => c[2] === "set").length).toBe(0);
   });
 
@@ -370,7 +373,7 @@ describe("runSuppressSibling — disable (--no-suppress-sibling-skills)", () => 
     const { fn, calls } = makeSpawnFn([errorGetResult()]);
     const result = await runSuppressSibling({ enable: false, spawnFn: fn });
     expect(result.exitCode).toBe(1);
-    expect(result.output).toMatch(/failed/i);
+    expect(result.output).toMatch(/compatibility aid failed/i);
     expect(calls.filter((c) => c[2] === "set").length).toBe(0);
   });
 });

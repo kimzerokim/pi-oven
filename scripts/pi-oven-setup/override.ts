@@ -6,8 +6,12 @@
 
 import { ROLES, type Role } from "./profiles";
 import { isResolvableModelId, type ModelIdValidatorOpts } from "./model-id-validator";
-import { setAgentModelOverride, type ConfigYmlOpts } from "./config-yml";
-import { setProjectAgentModelOverrides } from "./project-settings";
+import {
+  setAgentModelOverride,
+  setPiOvenIncludedSkills,
+  type ConfigYmlOpts,
+} from "./config-yml";
+import { setProjectAgentModelOverrides, setProjectIncludedSkills } from "./project-settings";
 
 export interface OverrideOptions {
   /** Raw "role=model" entries from --override (repeatable). */
@@ -120,11 +124,13 @@ export async function runOverride(
       applied.push({ colonKey, model });
     }
     await setProjectAgentModelOverrides(record, { cwd: opts.cwd });
+    await setProjectIncludedSkills({ cwd: opts.cwd });
   } else {
     for (const { colonKey, model } of parsed) {
       await setAgentModelOverride(colonKey, model, configOpts);
       applied.push({ colonKey, model });
     }
+    await setPiOvenIncludedSkills(configOpts);
   }
 
   const lines = applied.map((a) => `  ${a.colonKey} = ${a.model}`).join("\n");

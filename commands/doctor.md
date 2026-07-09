@@ -74,20 +74,24 @@ Exit code: `0` when there are no FAILs (WARNs are acceptable), `1` when any chec
 
 ### Step 2 — Interpret the report
 
-Relay the report to the user, then walk each non-PASS line. The script still prints the 11-check matrix first, but now also appends a **Standalone truth surface** section. Treat that section as part of the diagnostic output — it carries the same operator-facing warnings status shows.
+Relay the report to the user, then walk each non-PASS line. The script still prints the 11-check matrix first, but now also appends a **Standalone truth surface** section. Treat that section as part of the diagnostic output — it carries the same readiness model status shows.
 
-If the standalone truth surface reports provider-family or routing-boundary state, make the boundary explicit: `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` are visibility/guard layers only. They can report or persist routing configuration, but the runtime still owns the current-session provider-family choice.
+If the standalone truth surface reports provider-family or routing-boundary state, make the boundary explicit: `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` are visibility/guard layers only. They can report or persist routing configuration, but the runtime still owns the current-session provider-family choice. The shared readiness model is: global readiness comes from live `~/.omp/agent/config.yml` routing plus the machine-global prerequisites; project readiness comes from live `.omp/settings.json` routing; `setupCompletedAt` remains receipt metadata only. For workflow skills specifically, the success condition is the effective visible workflow-skill surface resolving to `skills.includeSkills = ["pi-oven:*"]`; a populated `~/.claude/skills` source may remain on disk, but it must be explicitly filtered out rather than assumed empty. Empty `~/.claude/skills` is not the target state, and legacy compatibility aids alone do not stop `claude-plugins` or namespaced marketplace workflow skills.
+
+Ownership truth surfaces use three labels: `owned-surface active`, `compatibility aids only`, and `ownership not established`. Treat `compatibility aids only` as non-owning: the mainline filter is still missing or wrong even if legacy maintenance flags are active. The session-start setup notice combines that ownership label with project routing state: `healthy setup` means project routing is active **and** ownership is `owned-surface active`; `missing project routing` is a separate repo-state warning even when global routing or compatibility aids exist.
+
+Bootstrap-level gajae parity is a **secondary OMP/architecture track** only. Surface it when present in the standalone truth section, but do not treat it as a blocker for Task 1 ownership success.
 
 ## Temporary compatibility boundary
 
 - Scope: vendored native worker runtime under `scripts/pi-oven-team/*` only.
 - Owner: pi-oven maintainers.
 - Removal condition: remove this boundary once native worker startup/scale is owned end-to-end by the omp-native control plane and no runtime path depends on `scripts/pi-oven-team/*`.
-- Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.
+- Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only compatibility aids, owned by pi-oven maintainers. They never establish workflow-skill ownership by themselves and must be removed once the omp-native control plane owns those surfaces end-to-end.
 
 - **FAIL** — a hard blocker. Surface the `fix:` hint from that line and tell the user this must be resolved before pi-oven works correctly. If multiple checks FAIL, list them in priority order (binaries/git first, then skills/agents, then eval).
-- **WARN** — non-blocking, but worth noting. Explain what is degraded (e.g. eval cannot run live, project-scope routing still needs a separate global setup step) and the optional remediation.
-- **INFO** in the standalone section — state you should surface, not ignore (for example installed-topology evidence, the explicit control-plane front door, current-session provider-family ownership, or the native worker boundary state). It does not affect the exit code, but it is still part of the truth surface.
+- **WARN** — non-blocking, but worth noting. Explain what is degraded (e.g. eval cannot run live, project-scope routing still needs a separate global setup step, or the workflow-skill surface is not actually filtered to pi-oven-only) and the optional remediation.
+- **INFO** in the standalone section — state you should surface, not ignore (for example installed-topology evidence, the explicit control-plane front door, effective workflow-skill ownership via `skills.includeSkills = ["pi-oven:*"]`, bootstrap-level gajae parity as a secondary track, current-session provider-family ownership, or the native worker boundary state). It does not affect the exit code, but it is still part of the truth surface.
 - **PASS** — no action; only mention in the summary count.
 
 If `overall PASS` or `overall WARN`, tell the user the install is healthy (or healthy-with-warnings). If `overall FAIL`, tell them the install needs attention and summarize the failing checks.
@@ -132,7 +136,7 @@ Check #11 probes `omp config get` for memory, `task.enableLsp`, and killer-tool 
 | 10 | UC5 ops connector | `skills/aws`, `skills/bitbucket-pipeline`, `skills/cloudflare` present + credential file (`.external-credentials` or `.external_certificate`; legacy `.external_cerficate` alias also accepted) detected | skill files present but no credential file | any connector skill file missing |
 | 11 | memory / killer-tools | `memory.backend == "mnemopi"` AND `mnemopi.noEmbeddings` + `mnemopi.llmMode` present AND `async.enabled == true` AND `task.enableLsp == true` | any of: backend not mnemopi, mnemopi config keys absent, async disabled, or `task.enableLsp != true` | — |
 
-Checks 5 can only WARN (never FAIL) — MCP is environmental, not an install-integrity defect. Check 10 WARN is also environmental (credential file not yet onboarded). Check 11 can only WARN — memory/async/`task.enableLsp` are configuration choices, not install-integrity defects. The standalone truth-surface section may add WARN/INFO lines for installed-topology evidence, the explicit control-plane front door, the vendored native worker boundary, and project-scope remediation, but those lines do NOT change the exit code. Checks 4, 6, 7, 9-runner-absent, and 10-missing-skills are FAILs. The script's exit code reflects only FAILs.
+Checks 5 can only WARN (never FAIL) — MCP is environmental, not an install-integrity defect. Check 10 WARN is also environmental (credential file not yet onboarded). Check 11 can only WARN — memory/async/`task.enableLsp` are configuration choices, not install-integrity defects. The standalone truth-surface section may add WARN/INFO lines for installed-topology evidence, the explicit control-plane front door, workflow-skill ownership via `skills.includeSkills = ["pi-oven:*"]`, the vendored native worker boundary, and project-scope remediation, but those lines do NOT change the exit code. Checks 4, 6, 7, 9-runner-absent, and 10-missing-skills are FAILs. The script's exit code reflects only FAILs.
 
 ## Important rules
 

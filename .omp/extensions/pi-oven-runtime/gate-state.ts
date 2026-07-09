@@ -67,6 +67,62 @@ export interface ExternalExecConsent {
   tempCredentials?: TemporaryAwsCredentials;
 }
 
+export type AutonomyOwnershipStatus =
+  | "owned-surface active"
+  | "compatibility aids only"
+  | "ownership not established";
+
+export interface AutonomyBlockedReason {
+  kind:
+    | "approval-pending"
+    | "branch-contract"
+    | "max-consecutive-auto-continues"
+    | "skill-proof-incomplete"
+    | "verifier-depth-hard-cap"
+    | "verifier-pending";
+  message: string;
+}
+
+export interface AutonomyNextAction {
+  kind:
+    | "complete-skill-proof"
+    | "continue-in-same-repo"
+    | "resolve-approval"
+    | "run-deep-verifier"
+    | "write-branch-contract";
+  message: string;
+}
+
+export interface AutonomyResumeTarget {
+  repoRoot: string;
+  branch: string;
+  capturedAt: string;
+}
+
+export function deriveAutonomyOwnershipStatus(
+  requiredSkills: string[] | undefined,
+  ownedSkillReadTargets: string[] | undefined
+): AutonomyOwnershipStatus {
+  const requiredCount = requiredSkills?.filter((skill) => typeof skill === "string" && skill.length > 0).length ?? 0;
+  const ownedCount =
+    ownedSkillReadTargets?.filter((target) => typeof target === "string" && target.length > 0).length ?? 0;
+  if (requiredCount > 0 && ownedCount >= requiredCount) {
+    return "owned-surface active";
+  }
+  if (requiredCount > 0 || ownedCount > 0) {
+    return "compatibility aids only";
+  }
+  return "ownership not established";
+}
+
+export function matchesAutonomyResumeTarget(
+  target: AutonomyResumeTarget | undefined,
+  repoRoot: string,
+  branch: string
+): boolean {
+  return target?.repoRoot === repoRoot && target.branch === branch;
+}
+
 export interface FsmState {
   active: boolean;
   gateCache: { commit?: string; regression?: string };
@@ -80,6 +136,10 @@ export interface FsmState {
   ownershipTrace?: OwnershipTraceEntry[];
   explicitForeignAgents?: string[];
   ownedSkillReadTargets?: string[];
+  ownershipStatus?: AutonomyOwnershipStatus;
+  blockedReason?: AutonomyBlockedReason;
+  nextAction?: AutonomyNextAction;
+  resumeTarget?: AutonomyResumeTarget;
   continuationMarker?: ContinuationMarker;
   externalExecConsent?: ExternalExecConsent;
   consumedExternalExecConsentMessageId?: string;
@@ -88,6 +148,56 @@ export interface FsmState {
 }
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isValidAutonomyOwnershipStatus(value: unknown): value is AutonomyOwnershipStatus {
+  return (
+    value === "owned-surface active" ||
+    value === "compatibility aids only" ||
+    value === "ownership not established"
+  );
+}
+
+function isValidAutonomyBlockedReason(value: unknown): value is AutonomyBlockedReason {
+  if (typeof value !== "object" || value === null) return false;
+  const reason = value as Record<string, unknown>;
+  return (
+    (reason.kind === "approval-pending" ||
+      reason.kind === "branch-contract" ||
+      reason.kind === "max-consecutive-auto-continues" ||
+      reason.kind === "skill-proof-incomplete" ||
+      reason.kind === "verifier-depth-hard-cap" ||
+      reason.kind === "verifier-pending") &&
+    typeof reason.message === "string" &&
+    reason.message.length > 0
+  );
+}
+
+function isValidAutonomyNextAction(value: unknown): value is AutonomyNextAction {
+  if (typeof value !== "object" || value === null) return false;
+  const action = value as Record<string, unknown>;
+  return (
+    (action.kind === "complete-skill-proof" ||
+      action.kind === "continue-in-same-repo" ||
+      action.kind === "resolve-approval" ||
+      action.kind === "run-deep-verifier" ||
+      action.kind === "write-branch-contract") &&
+    typeof action.message === "string" &&
+    action.message.length > 0
+  );
+}
+
+function isValidAutonomyResumeTarget(value: unknown): value is AutonomyResumeTarget {
+  if (typeof value !== "object" || value === null) return false;
+  const target = value as Record<string, unknown>;
+  return (
+    typeof target.repoRoot === "string" &&
+    target.repoRoot.length > 0 &&
+    typeof target.branch === "string" &&
+    target.branch.length > 0 &&
+    typeof target.capturedAt === "string" &&
+    target.capturedAt.length > 0
+  );
 }
 
 function isValidOwnershipTraceEntry(value: unknown): value is OwnershipTraceEntry {
@@ -269,6 +379,31 @@ function isValidState(v: unknown): v is FsmState {
   ) {
     return false;
   }
+
+  if (
+    o.ownershipStatus !== undefined &&
+    !isValidAutonomyOwnershipStatus(o.ownershipStatus)
+  ) {
+    return false;
+  }
+  if (
+    o.blockedReason !== undefined &&
+    !isValidAutonomyBlockedReason(o.blockedReason)
+  ) {
+    return false;
+  }
+  if (
+    o.nextAction !== undefined &&
+    !isValidAutonomyNextAction(o.nextAction)
+  ) {
+    return false;
+  }
+  if (
+    o.resumeTarget !== undefined &&
+    !isValidAutonomyResumeTarget(o.resumeTarget)
+  ) {
+    return false;
+  }
   if (
     o.externalExecConsent !== undefined &&
     !isValidExternalExecConsent(o.externalExecConsent)
@@ -443,6 +578,10 @@ export class GateStateStore {
               ownershipTrace: [],
               explicitForeignAgents: [],
               ownedSkillReadTargets: [],
+              ownershipStatus: undefined,
+              blockedReason: undefined,
+              nextAction: undefined,
+              resumeTarget: undefined,
               externalExecConsent: undefined,
               continuationMarker: undefined,
               consumedExternalExecConsentMessageId: undefined,

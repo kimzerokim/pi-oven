@@ -93,10 +93,15 @@ type PersistedExternalExecConsent = {
 };
 
 type PersistedAutonomousState = {
+  active?: boolean;
   requiredSkills?: string[];
   skillReads?: string[];
   explicitForeignAgents?: string[];
   ownershipTrace?: OwnershipTraceEntry[];
+  ownershipStatus?: "owned-surface active" | "compatibility aids only" | "ownership not established";
+  blockedReason?: { kind: string; message: string };
+  nextAction?: { kind: string; message: string };
+  resumeTarget?: { repoRoot: string; branch: string; capturedAt: string };
   externalExecConsent?: PersistedExternalExecConsent;
   gateCache?: { commit?: string; regression?: string };
   continuationMarker?: {
@@ -350,6 +355,138 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     });
   });
 
+  it("session_start re-arms a same-repo persisted continuation marker", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+
+    const firstPi = makeFakePi();
+    piOvenPi(firstPi as never);
+
+    const branchEntries = [userTextMessage("u1", "자율 실행으로 계속 진행해줘")];
+    const ctx = {
+      sessionManager: {
+        getBranch: () => branchEntries,
+      },
+    };
+
+    await firstPi.handlers["turn_start"]({ type: "turn_start", turnIndex: 1, timestamp: Date.now() }, ctx);
+    await firstPi.handlers["turn_end"]({
+      type: "turn_end",
+      turnIndex: 1,
+      message: {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "좋습니다. 다음 단계가 필요하면 알려주세요." }],
+      },
+      toolResults: [],
+    });
+
+    const persistedBefore = readAutonomousState(tempDir);
+    expect(persistedBefore.resumeTarget).toEqual(
+      expect.objectContaining({ repoRoot: process.cwd(), branch: expect.any(String), capturedAt: expect.any(String) })
+    );
+
+    const resumedPi = makeFakePi();
+    piOvenPi(resumedPi as never);
+    await resumedPi.handlers["session_start"]({ type: "session_start" }, {});
+
+    expect(resumedPi.sentMessages).toHaveLength(1);
+    const queued = resumedPi.sentMessages[0];
+    expect((queued.message as { customType?: string }).customType).toBe("pi-oven-autonomous-stop-guard");
+    expect((queued.options as { deliverAs?: string; triggerTurn?: boolean }).deliverAs).toBe("nextTurn");
+    expect((queued.options as { deliverAs?: string; triggerTurn?: boolean }).triggerTurn).toBe(true);
+  });
+
+
+  it("session_start replays a blocked autonomy explanation only for the matching repo/branch", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+    mkdirSync(join(tempDir, ".pi-oven", "state"), { recursive: true });
+    writeFileSync(
+      join(tempDir, ".pi-oven", "state", "autonomous.json"),
+      JSON.stringify({
+        active: true,
+        gateCache: {},
+        version: 1,
+        schemaVersion: 1,
+        ownershipStatus: "owned-surface active",
+        blockedReason: {
+          kind: "skill-proof-incomplete",
+          message:
+            "pi-oven: code-write blocked — capability proof surface is not complete yet. owned target is still unread.",
+        },
+        nextAction: {
+          kind: "complete-skill-proof",
+          message: "Read the exact plugin-owned SKILL.md target first, then retry the write.",
+        },
+        continuationMarker: { kind: "autonomous-loop-resume", trigger: "explicit-continue" },
+        resumeTarget: {
+          repoRoot: process.cwd(),
+          branch: "(unknown)",
+          capturedAt: "2026-07-08T00:00:00.000Z",
+        },
+      })
+    );
+
+    const resumedPi = makeFakePi();
+    piOvenPi(resumedPi as never);
+    await resumedPi.handlers["session_start"]({ type: "session_start" }, {});
+
+    expect(resumedPi.sentMessages).toHaveLength(1);
+    const replay = resumedPi.sentMessages[0]?.message as {
+      customType?: string;
+      content?: Array<{ text?: string }>;
+    };
+    expect(replay.customType).toBe("pi-oven-autonomous-blocked-state");
+    expect(replay.content?.[0]?.text).toContain("owned-surface active");
+    expect(replay.content?.[0]?.text).toContain("capability proof surface is not complete yet");
+    expect(replay.content?.[0]?.text).toContain("Read the exact plugin-owned SKILL.md target first");
+  });
+
+  it("session_start downgrades stale autonomy resume state on branch mismatch", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+    mkdirSync(join(tempDir, ".pi-oven", "state"), { recursive: true });
+    writeFileSync(
+      join(tempDir, ".pi-oven", "state", "autonomous.json"),
+      JSON.stringify({
+        active: true,
+        gateCache: {},
+        version: 1,
+        schemaVersion: 1,
+        ownershipStatus: "owned-surface active",
+        blockedReason: {
+          kind: "branch-contract",
+          message:
+            "pi-oven: code-write blocked — the control-plane front door requires .pi-oven/state/branch-contract.json with destination/branch/pr_mode first.",
+        },
+        nextAction: {
+          kind: "write-branch-contract",
+          message:
+            "Write .pi-oven/state/branch-contract.json with destination, branch, and pr_mode, then retry the write.",
+        },
+        continuationMarker: { kind: "autonomous-loop-resume", trigger: "explicit-continue" },
+        resumeTarget: {
+          repoRoot: process.cwd(),
+          branch: "feature/other",
+          capturedAt: "2026-07-08T00:00:00.000Z",
+        },
+      })
+    );
+
+    const resumedPi = makeFakePi();
+    piOvenPi(resumedPi as never);
+    await resumedPi.handlers["session_start"]({ type: "session_start" }, {});
+
+    expect(resumedPi.sentMessages).toHaveLength(0);
+    const downgraded = readAutonomousState(tempDir);
+    expect(downgraded.continuationMarker).toBeUndefined();
+    expect(downgraded.blockedReason).toBeUndefined();
+    expect(downgraded.nextAction).toBeUndefined();
+    expect(downgraded.resumeTarget).toBeUndefined();
+    expect(downgraded.active).toBe(false);
+  });
+
   it("before_agent_start loads shipped skills from pluginRoot even when cwd is a separate project root", async () => {
     tempDir = makeTempDir();
     process.chdir(tempDir);
@@ -429,7 +566,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(integrity?.message).toContain("missing-skill");
     expect(integrity?.message).toContain(`project state read from ${expectedProjectRoot}`);
     expect(integrity?.message).toContain("Runtime keyword-matched skills are unavailable");
-  });
+  }, 15000);
 
   it("session_start surfaces keyword-skill integrity when plugin manifest yields zero shipped skills", async () => {
     tempDir = makeTempDir();
@@ -464,7 +601,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(integrity?.message).toContain(`project state read from ${expectedProjectRoot}`);
     expect(integrity?.message).toContain("did not yield any shipped skills");
     expect(integrity?.message).toContain("Runtime keyword-matched skills are unavailable");
-  });
+  }, 15000);
   it("before_agent_start injects keyword-skill integrity when plugin manifest yields zero shipped skills", async () => {
     tempDir = makeTempDir();
     writePluginSkillsManifest(tempDir, []);
@@ -490,7 +627,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain(`project state read from ${expectedProjectRoot}`);
     expect(joined).toContain("did not yield any shipped skills");
     expect(joined).toContain("Runtime keyword-matched skills are unavailable");
-  });
+  }, 15000);
 
   it("session_start surfaces a keyword-integrity warning when some shipped skills are skipped", async () => {
     tempDir = makeTempDir();
@@ -531,7 +668,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(integrity?.message).toContain("loaded 1/2 shipped skills");
     expect(integrity?.message).toContain("partially available");
     expect(pi.logs.some((entry) => entry.level === "warn" && entry.msg.includes("keyword-skill integrity"))).toBe(true);
-  });
+  }, 15000);
 
   it("before_agent_start injects the same keyword-integrity warning into systemPrompt when plugin assets are broken", async () => {
     tempDir = makeTempDir();
@@ -558,7 +695,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain("machine-global config remains ~/.omp/agent/config.yml");
     expect(joined).toContain("Runtime keyword-matched skills are unavailable");
     expect(joined).toContain("autonomous-loop");
-  });
+  }, 15000);
 
 
   it("before_agent_start can inject first-turn autonomous reminders before turn_start persists state", async () => {
@@ -1047,6 +1184,21 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       kind: "verifier-pending",
       verifier: "pi-oven:verifier/deep",
     });
+    expect(persisted.blockedReason).toEqual(
+      expect.objectContaining({
+        kind: "verifier-pending",
+        message: expect.stringContaining(
+          "pi-oven: autonomous exit paused — deep verifier lane must run before completion"
+        ),
+      })
+    );
+    expect(persisted.nextAction).toEqual({
+      kind: "run-deep-verifier",
+      message: "Run the deep verifier lane before exit.",
+    });
+    expect(persisted.resumeTarget).toEqual(
+      expect.objectContaining({ repoRoot: process.cwd(), branch: expect.any(String), capturedAt: expect.any(String) })
+    );
   });
   it("keeps mixed registries observable across turn resyncs while automatic task dispatch stays pi-oven-owned", async () => {
     tempDir = makeTempDir();

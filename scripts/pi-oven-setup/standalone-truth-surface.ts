@@ -5,13 +5,27 @@ import {
   loadSkillKeywordIndexReport,
 } from "../../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
 import {
-  SUBAGENT_RUNTIME_PREREQUISITES,
+  PI_OVEN_WORKFLOW_SKILL_INCLUDE,
+  PI_OVEN_SIBLING_SKILL_GLOBS,
+  PI_OVEN_MANAGED_PROVIDERS,
+  PI_OVEN_DEPRECATED_PROVIDERS,
   readConfigValueDisplayState,
+  readDisabledProvidersDisplayState,
   readIgnoredSkillsDisplayState,
+  readIncludedSkillsDisplayState,
   type ConfigYmlOpts,
   type DisplayReadResult,
 } from "./config-yml";
-import { readProjectSettingsDisplayState } from "./project-settings";
+import {
+  SETUP_GLOBAL_PREREQUISITES,
+  classifySetupPrerequisiteState,
+  countPiOvenRoutingEntries,
+  type SetupPrerequisiteTruthState,
+} from "./project-config";
+import {
+  readProjectSettingsDisplayState,
+  type ProjectSettingsDisplayState,
+} from "./project-settings";
 import {
   describeNativeWorkerRuntime,
   resolveNativeWorkerRuntimeStatus,
@@ -27,13 +41,7 @@ export interface StandaloneTruthSignal {
   fix?: string;
 }
 
-type GlobalPrerequisiteTruthState = "configured" | "not-configured" | "unknown";
 type KeywordIndexTruthState = "ok" | "partial" | "unavailable" | "unknown";
-
-type GlobalPrerequisiteExpectation = {
-  key: string;
-  expected: boolean | string;
-};
 
 export interface StandaloneTruthFacts {
   pluginAssetPath: string;
@@ -41,9 +49,11 @@ export interface StandaloneTruthFacts {
   projectSettingsFile: string;
   projectRoutingRoleCount: number | null;
   projectRoutingState: "present" | "absent" | "unknown";
-  globalPrerequisiteStates: Array<{ key: string; state: GlobalPrerequisiteTruthState }>;
-  disabledProvidersState: DisplayReadResult<string[]>;
-  ignoredSkillsState: DisplayReadResult<string[]>;
+  globalPrerequisiteStates: Array<{ key: string; state: SetupPrerequisiteTruthState }>;
+  globalIncludedSkillsState: DisplayReadResult<string[]>;
+  globalIgnoredSkillsState: DisplayReadResult<string[]>;
+  globalDisabledProvidersState: DisplayReadResult<string[]>;
+  projectIncludedSkillsState: DisplayReadResult<string[]>;
   keywordIndexTruth?: {
     state: KeywordIndexTruthState;
     loadedCount: number;
@@ -63,36 +73,15 @@ export const NATIVE_WORKER_RUNTIME_FIX =
   "Restore the vendored native worker launcher under scripts/pi-oven-team/ or reinstall pi-oven@kzk.";
 export const KEYWORD_SKILL_INTEGRITY_FIX =
   "Sync .claude-plugin/plugin.json skills[], shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries. Reinstall pi-oven@kzk if installed assets are stale.";
+export const WORKFLOW_SKILL_OWNERSHIP_FIX =
+  'Run /pi-oven:setup on the intended scope so the effective workflow-skill surface writes skills.includeSkills = ["pi-oven:*"] at that omp config layer.';
+export const WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME = "workflow-skill ownership";
+export const BOOTSTRAP_PARITY_TRACK_SIGNAL_NAME = "bootstrap parity track";
 
-const PROJECT_SCOPE_GLOBAL_PREREQUISITES: GlobalPrerequisiteExpectation[] = [
-  { key: "memory.backend", expected: "mnemopi" },
-  { key: "mnemopi.noEmbeddings", expected: true },
-  { key: "mnemopi.llmMode", expected: "none" },
-  { key: "async.enabled", expected: true },
-  ...Object.keys(SUBAGENT_RUNTIME_PREREQUISITES).map((key) => ({ key, expected: true })),
-];
-
-function countProjectRoutingRoles(data: Record<string, unknown>): number {
-  const task = data["task"];
-  if (typeof task !== "object" || task === null || Array.isArray(task)) return 0;
-  const overrides = (task as Record<string, unknown>)["agentModelOverrides"];
-  if (typeof overrides !== "object" || overrides === null || Array.isArray(overrides)) return 0;
-  return Object.keys(overrides as Record<string, unknown>).filter((key) => key.startsWith("pi-oven:")).length;
-}
-
-function classifyGlobalPrerequisiteState(
-  value: DisplayReadResult<unknown>,
-  expected: boolean | string
-): GlobalPrerequisiteTruthState {
-  if (value.state === "unknown") return "unknown";
-  if (value.state === "absent") return "not-configured";
-  if (typeof expected === "boolean") {
-    return value.value === expected || value.value === String(expected)
-      ? "configured"
-      : "not-configured";
-  }
-  return value.value === expected ? "configured" : "not-configured";
-}
+const CLAUDE_SKILLS_PRESERVATION_NOTE =
+  "Empty ~/.claude/skills is not the target state; populated Claude user workflow skills should remain intact for other users.";
+const LEGACY_COMPATIBILITY_AIDS_LIMITATION =
+  "Legacy compatibility aids do not by themselves stop claude-plugins or namespaced marketplace workflow skills.";
 
 function normalizeStringArrayDisplayState(
   value: DisplayReadResult<unknown>
@@ -102,6 +91,180 @@ function normalizeStringArrayDisplayState(
     return { state: "unknown", error: "value is not array-like" };
   }
   return { state: "present", value: value.value.map((entry) => String(entry)) };
+}
+
+function readProjectIncludedSkillsState(
+  projectState: ProjectSettingsDisplayState
+): DisplayReadResult<string[]> {
+  if (projectState.state === "unknown") {
+    return { state: "unknown", error: projectState.error };
+  }
+  if (projectState.state === "absent") {
+    return { state: "absent" };
+  }
+  const skills = projectState.data["skills"];
+  if (skills === undefined) {
+    return { state: "absent" };
+  }
+  if (typeof skills !== "object" || skills === null || Array.isArray(skills)) {
+    return { state: "unknown", error: `present but malformed skills block: ${projectState.file}` };
+  }
+  const includeSkills = (skills as Record<string, unknown>)["includeSkills"];
+  if (includeSkills === undefined) {
+    return { state: "absent" };
+  }
+  const normalized = normalizeStringArrayDisplayState({ state: "present", value: includeSkills });
+  return normalized.state === "unknown"
+    ? {
+        state: "unknown",
+        error: `present but malformed skills.includeSkills in ${projectState.file}: ${normalized.error}`,
+      }
+    : normalized;
+}
+
+function isCanonicalWorkflowSkillSurface(list: readonly string[]): boolean {
+  return (
+    list.length === PI_OVEN_WORKFLOW_SKILL_INCLUDE.length &&
+    list.every((entry, index) => entry === PI_OVEN_WORKFLOW_SKILL_INCLUDE[index])
+  );
+}
+
+function formatStringList(list: readonly string[]): string {
+  return `[${list.map((entry) => JSON.stringify(entry)).join(", ")}]`;
+}
+
+function describeActiveLegacyCompatibilityAids(
+  facts: StandaloneTruthFacts
+): string[] {
+  const aids: string[] = [];
+
+  if (facts.globalDisabledProvidersState.state === "present") {
+    const disabledProviders = facts.globalDisabledProvidersState.value;
+    const activeProviders = [...PI_OVEN_MANAGED_PROVIDERS, ...PI_OVEN_DEPRECATED_PROVIDERS].filter(
+      (entry) => disabledProviders.includes(entry)
+    );
+    if (activeProviders.length > 0) {
+      aids.push(`disabledProviders = ${formatStringList(activeProviders)}`);
+    }
+  }
+
+  if (facts.globalIgnoredSkillsState.state === "present") {
+    const ignoredSkills = facts.globalIgnoredSkillsState.value;
+    const activeGlobs = [...PI_OVEN_SIBLING_SKILL_GLOBS].filter((entry) =>
+      ignoredSkills.includes(entry)
+    );
+    if (activeGlobs.length > 0) {
+      aids.push(`skills.ignoredSkills = ${formatStringList(activeGlobs)}`);
+    }
+  }
+
+  return aids;
+}
+
+function buildWorkflowSkillOwnershipSignal(
+  facts: StandaloneTruthFacts
+): StandaloneTruthSignal {
+  const projectState = facts.projectIncludedSkillsState;
+  const globalState = facts.globalIncludedSkillsState;
+  const canonicalList = formatStringList(PI_OVEN_WORKFLOW_SKILL_INCLUDE);
+  const sourceLabel =
+    projectState.state === "present"
+      ? `${facts.projectSettingsFile} (project layer)`
+      : `${GLOBAL_CONFIG_PATH} (machine-global layer)`;
+  const activeLegacyAids = describeActiveLegacyCompatibilityAids(facts);
+  const activeLegacyAidsSentence =
+    activeLegacyAids.length > 0
+      ? ` Active legacy compatibility aids: ${activeLegacyAids.join("; ")}. These are compatibility helpers only; ${LEGACY_COMPATIBILITY_AIDS_LIMITATION}`
+      : "";
+
+  if (projectState.state === "unknown") {
+    return {
+      level: "WARN",
+      name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
+      detail:
+        `classification: ownership not established. effective workflow-skill ownership is unknown because ${projectState.error}. ` +
+        `Success is judged by the visible workflow-skill surface resolving to pi-oven-only via skills.includeSkills = ${canonicalList}, ` +
+        `not by incidental ~/.claude/skills state on disk. ${CLAUDE_SKILLS_PRESERVATION_NOTE}` +
+        activeLegacyAidsSentence,
+      fix: PROJECT_SCOPE_FILE_REPAIR_FIX,
+    };
+  }
+
+  if (projectState.state === "present") {
+    if (isCanonicalWorkflowSkillSurface(projectState.value)) {
+      return {
+        level: "INFO",
+        name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
+        detail:
+          `classification: owned-surface active. effective workflow-skill surface is pi-oven-only via skills.includeSkills = ${canonicalList} from ${sourceLabel}. ` +
+          "This preserves the populated Claude workflow-skill source for other users instead of deleting it, and it applies only to workflow skills — not commands, agents, hooks, or MCP. " +
+          CLAUDE_SKILLS_PRESERVATION_NOTE,
+      };
+    }
+    return {
+      level: "WARN",
+      name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
+      detail:
+        `classification: ${activeLegacyAids.length > 0 ? "compatibility aids only" : "ownership not established"}. ` +
+        `project skills.includeSkills in ${facts.projectSettingsFile} is ${formatStringList(projectState.value)}, not the canonical workflow-skill filter ${canonicalList}. ` +
+        `${CLAUDE_SKILLS_PRESERVATION_NOTE} ` +
+        (activeLegacyAids.length > 0
+          ? `Ownership is not established until the effective visible workflow-skill surface resolves to pi-oven-only. ${activeLegacyAidsSentence.slice(1)}`
+          : `${LEGACY_COMPATIBILITY_AIDS_LIMITATION} Ownership succeeds only when the effective visible workflow-skill surface resolves to pi-oven-only.`),
+      fix: WORKFLOW_SKILL_OWNERSHIP_FIX,
+    };
+  }
+
+  if (globalState.state === "unknown") {
+    return {
+      level: "WARN",
+      name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
+      detail:
+        `classification: ownership not established. effective workflow-skill ownership could not be verified from ${GLOBAL_CONFIG_PATH}. ` +
+        `Success is judged by the visible workflow-skill surface resolving to pi-oven-only via skills.includeSkills = ${canonicalList}, ` +
+        `not by incidental ~/.claude/skills state on disk. ${CLAUDE_SKILLS_PRESERVATION_NOTE}` +
+        activeLegacyAidsSentence,
+      fix: WORKFLOW_SKILL_OWNERSHIP_FIX,
+    };
+  }
+
+  if (globalState.state === "present") {
+    if (isCanonicalWorkflowSkillSurface(globalState.value)) {
+      return {
+        level: "INFO",
+        name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
+        detail:
+          `classification: owned-surface active. effective workflow-skill surface is pi-oven-only via skills.includeSkills = ${canonicalList} from ${sourceLabel}. ` +
+          "This preserves the populated Claude workflow-skill source for other users instead of deleting it, and it applies only to workflow skills — not commands, agents, hooks, or MCP. " +
+          CLAUDE_SKILLS_PRESERVATION_NOTE,
+      };
+    }
+    return {
+      level: "WARN",
+      name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
+      detail:
+        `classification: ${activeLegacyAids.length > 0 ? "compatibility aids only" : "ownership not established"}. ` +
+        `${GLOBAL_CONFIG_PATH} currently exposes skills.includeSkills = ${formatStringList(globalState.value)}, not the canonical workflow-skill filter ${canonicalList}. ` +
+        `${CLAUDE_SKILLS_PRESERVATION_NOTE} ` +
+        (activeLegacyAids.length > 0
+          ? `Ownership is not established until the effective visible workflow-skill surface resolves to pi-oven-only. ${activeLegacyAidsSentence.slice(1)}`
+          : `${LEGACY_COMPATIBILITY_AIDS_LIMITATION} Ownership succeeds only when the effective visible workflow-skill surface resolves to pi-oven-only.`),
+      fix: WORKFLOW_SKILL_OWNERSHIP_FIX,
+    };
+  }
+
+  return {
+    level: "WARN",
+    name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
+    detail:
+      `classification: ${activeLegacyAids.length > 0 ? "compatibility aids only" : "ownership not established"}. ` +
+      `no effective skills.includeSkills workflow-skill policy was found in ${facts.projectSettingsFile} or ${GLOBAL_CONFIG_PATH}. ` +
+      `${CLAUDE_SKILLS_PRESERVATION_NOTE} ` +
+      (activeLegacyAids.length > 0
+        ? `Ownership is not established until the effective visible workflow-skill surface resolves to pi-oven-only via skills.includeSkills = ${canonicalList}. ${activeLegacyAidsSentence.slice(1)}`
+        : `${LEGACY_COMPATIBILITY_AIDS_LIMITATION} Ownership succeeds only when the effective visible workflow-skill surface resolves to pi-oven-only via skills.includeSkills = ${canonicalList}.`),
+    fix: WORKFLOW_SKILL_OWNERSHIP_FIX,
+  };
 }
 
 export function buildStandaloneTruthSignals(
@@ -121,6 +284,13 @@ export function buildStandaloneTruthSignals(
       name: "control-plane front door",
       detail:
         "automatic pi-oven routing enters gated lanes only through explicit capability proofs: `requiredSkills`, exact plugin-owned SKILL.md reads, the branch contract, and external execution consent where relevant. Bootstrap message injection, tool remap, and discovery-layer compatibility toggles are not normal control-plane paths.",
+    },
+    buildWorkflowSkillOwnershipSignal(facts),
+    {
+      level: "INFO",
+      name: BOOTSTRAP_PARITY_TRACK_SIGNAL_NAME,
+      detail:
+        "Secondary OMP/architecture track only: bootstrap-level gajae parity remains open. Task 1 ownership success comes from the effective workflow-skill filter plus runtime capability proofs; matching gajae-style bootstrap exclusivity is visible here but is not a blocker yet.",
     },
     {
       level: facts.nativeWorkerRuntime.active ? "INFO" : "WARN",
@@ -228,7 +398,6 @@ export function buildStandaloneTruthSignals(
   }
 
   return signals;
-
 }
 
 export async function collectStandaloneTruthSignals(
@@ -240,17 +409,19 @@ export async function collectStandaloneTruthSignals(
 ): Promise<StandaloneTruthSignal[]> {
   const projectSettings = await readProjectSettingsDisplayState({ cwd: opts.projectRoot });
   const globalPrerequisiteStates: StandaloneTruthFacts["globalPrerequisiteStates"] = await Promise.all(
-    PROJECT_SCOPE_GLOBAL_PREREQUISITES.map(async ({ key, expected }) => {
+    SETUP_GLOBAL_PREREQUISITES.map(async ({ key, expected }) => {
       const value = await readConfigValueDisplayState(key, opts);
       return {
         key,
-        state: classifyGlobalPrerequisiteState(value, expected),
+        state: classifySetupPrerequisiteState(value, expected),
       };
     })
   );
-  const disabledProvidersState = normalizeStringArrayDisplayState(
-    await readConfigValueDisplayState("disabledProviders", opts)
-  );
+
+  const globalIncludedSkillsState = await readIncludedSkillsDisplayState(opts);
+  const globalIgnoredSkillsState = await readIgnoredSkillsDisplayState(opts);
+  const globalDisabledProvidersState = await readDisabledProvidersDisplayState(opts);
+  const projectIncludedSkillsState = readProjectIncludedSkillsState(projectSettings);
 
   const nativeWorkerRuntime = await resolveNativeWorkerRuntimeStatus({
     pluginRoot: opts.pluginAssetPath,
@@ -304,14 +475,19 @@ export async function collectStandaloneTruthSignals(
     projectSettingsFile: projectSettings.file,
     projectRoutingRoleCount:
       projectSettings.state === "present"
-        ? countProjectRoutingRoles(projectSettings.data)
+        ? countPiOvenRoutingEntries(
+            ((projectSettings.data["task"] as Record<string, unknown> | undefined)
+              ?.["agentModelOverrides"] as Record<string, unknown> | undefined) ?? {}
+          )
         : projectSettings.state === "absent"
           ? 0
           : null,
     projectRoutingState: projectSettings.state,
     globalPrerequisiteStates,
-    disabledProvidersState,
-    ignoredSkillsState: await readIgnoredSkillsDisplayState(opts),
+    globalIncludedSkillsState,
+    globalIgnoredSkillsState,
+    globalDisabledProvidersState,
+    projectIncludedSkillsState,
     keywordIndexTruth,
     nativeWorkerRuntime,
   });

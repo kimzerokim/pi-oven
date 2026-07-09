@@ -33,10 +33,12 @@ export async function runIsolate(
       return {
         exitCode: 0,
         output:
-          "Applied the legacy home-layer compatibility mode for omp.\n" +
+          "Applied the legacy home-layer compatibility aid for omp.\n" +
           `  disabledProviders = [${list.join(", ")}] in ~/.omp/agent/config.yml\n` +
-          "  This mode hides the ~/.claude home layer from omp while leaving claude-plugins enabled so pi-oven still loads.\n" +
-          "  Note: marketplace plugin commands that still load via claude-plugins remain visible.\n" +
+          "  This is a compatibility helper only; it does not establish workflow-skill ownership.\n" +
+          "  It hides the ~/.claude home layer from omp while leaving claude-plugins enabled so pi-oven still loads.\n" +
+          "  Empty ~/.claude/skills is not the target state; populated Claude user workflow skills can stay in place for other users.\n" +
+          "  Note: claude-plugins and namespaced marketplace workflow skills that still load through it remain visible.\n" +
           "  pi-oven injects the repo-root CLAUDE.md in place of the global one.\n" +
           `  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n` +
           "  Restart omp to apply. Real Claude Code sessions are unaffected.\n",
@@ -49,13 +51,13 @@ export async function runIsolate(
       exitCode: 0,
       output:
         removed.length > 0
-          ? `Cleared the legacy home-layer compatibility mode in omp (removed ${removed.join(", ")} from disabledProviders).\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n  Restart omp to apply.\n`
-          : `No pi-oven-managed legacy home-layer providers (${undoSet.join(", ")}) were disabled — nothing to undo.\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n`,
+          ? `Cleared the legacy home-layer compatibility aid in omp (removed ${removed.join(", ")} from disabledProviders).\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n  Restart omp to apply.\n`
+          : `No pi-oven-managed legacy home-layer providers (${undoSet.join(", ")}) were disabled — no compatibility aid to undo.\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n`,
     };
   } catch (err) {
     return {
       exitCode: 1,
-      output: `Legacy home-layer compatibility toggle failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      output: `Legacy home-layer compatibility aid failed: ${err instanceof Error ? err.message : String(err)}\n`,
     };
   }
 }

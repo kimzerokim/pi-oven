@@ -87,13 +87,19 @@ const spawnFn = mockSpawn
   ? (_cmd: string, args: string[]) => {
       // Return valid JSON for `omp config get <key> --json`
       if (args[0] === "config" && args[1] === "get") {
-        // disabledProviders and skills.ignoredSkills are ARRAY-typed settings; everything else is a record.
-        if (args[2] === "disabledProviders" || args[2] === "skills.ignoredSkills") {
-          const payload = JSON.stringify({ key: args[2], value: [], type: "array", description: "" });
-          return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") } as any;
+        // disabledProviders, skills.includeSkills, and skills.ignoredSkills are
+        // ARRAY-typed settings; everything else is a record.
+        if (
+          args[2] === "disabledProviders" ||
+          args[2] === "skills.includeSkills" ||
+          args[2] === "skills.ignoredSkills"
+        ) {
+          const value = args[2] === "skills.includeSkills" ? ["pi-oven:*"] : [];
+          const payload = JSON.stringify({ key: args[2], value, type: "array", description: "" });
+          return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
         }
         const payload = JSON.stringify({ key: args[2], value: {}, type: "record", description: "" });
-        return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") } as any;
+        return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
       }
       // Return a minimal `omp models` fixture for model-id validation / auth detection
       if (args[0] === "models") {
@@ -112,9 +118,9 @@ const spawnFn = mockSpawn
           "  4          opencode-zen/claude-opus-4-8          opencode-zen",
           "",
         ].join("\n");
-        return { exitCode: 0, stdout: Buffer.from(fixture), stderr: Buffer.from("") } as any;
+        return { exitCode: 0, stdout: Buffer.from(fixture), stderr: Buffer.from("") };
       }
-      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") };
     }
   : undefined;
 
@@ -190,14 +196,14 @@ const wantIsolate = Boolean(values.isolate);
 const wantNoIsolate = Boolean(values["no-isolate"]);
 if (wantIsolate && wantNoIsolate) {
   process.stderr.write(
-    "--isolate and --no-isolate are mutually exclusive legacy compatibility toggles.\n"
+    "--isolate and --no-isolate are mutually exclusive legacy compatibility aids.\n"
   );
   process.exit(1);
 }
 const hasIsolate = wantIsolate || wantNoIsolate;
 if (hasIsolate && scope === "project") {
   process.stderr.write(
-    "--isolate and --no-isolate are global-only legacy compatibility toggles: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+    "--isolate and --no-isolate are global-only legacy compatibility aids: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
   );
   process.exit(1);
 }
@@ -208,14 +214,14 @@ const wantSuppressSibling = Boolean(values["suppress-sibling-skills"]);
 const wantNoSuppressSibling = Boolean(values["no-suppress-sibling-skills"]);
 if (wantSuppressSibling && wantNoSuppressSibling) {
   process.stderr.write(
-    "--suppress-sibling-skills and --no-suppress-sibling-skills are mutually exclusive legacy compatibility toggles.\n"
+    "--suppress-sibling-skills and --no-suppress-sibling-skills are mutually exclusive legacy compatibility aids.\n"
   );
   process.exit(1);
 }
 const hasSuppressSibling = wantSuppressSibling || wantNoSuppressSibling;
 if (hasSuppressSibling && scope === "project") {
   process.stderr.write(
-    "--suppress-sibling-skills and --no-suppress-sibling-skills are global-only legacy compatibility toggles: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
+    "--suppress-sibling-skills and --no-suppress-sibling-skills are global-only legacy compatibility aids: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
   );
   process.exit(1);
 }
@@ -239,7 +245,7 @@ if (
     hasSuppressSibling)
 ) {
   process.stderr.write(
-    "--repair-prereqs is a standalone repair-only action. Do not combine it with --status, --reset, --import, --apply/--profile, --override, or any legacy compatibility toggle.\n"
+    "--repair-prereqs is a standalone repair-only action. Do not combine it with --status, --reset, --import, --apply/--profile, --override, or any legacy compatibility aid.\n"
   );
   process.exit(1);
 }
@@ -256,8 +262,9 @@ if (
 
 let result: { exitCode: number; output: string };
 // Whether the selected dispatch path actually records MODEL ROUTING (default
-// --apply / --profile / --import / standalone --override). Only these mark the
-// project "set up" — never --status, --reset, --language, or --validate-only.
+// --apply / --profile / --import / standalone --override). Successful routing
+// writes still refresh the setup receipt metadata, but readiness now comes from
+// live routing + prerequisite state — never this receipt alone.
 let markRouting = false;
 
 if (repairPrereqs) {
@@ -280,7 +287,7 @@ if (repairPrereqs) {
 } else if (values.reset) {
   result = await runReset({ spawnFn, full: Boolean(values.full), scope });
 } else if (values.import !== undefined) {
-  result = await runImport(values.import as string, { spawnFn });
+  result = await runImport(values.import as string, { spawnFn, scope });
   markRouting = true;
 } else if (values.profile || values.apply) {
   const profile = (values.profile as string | undefined) ?? "A";
@@ -337,9 +344,9 @@ if (hasSuppressSibling && result.exitCode === 0) {
 // Output + exit
 // ---------------------------------------------------------------------------
 
-// Record the setup-completion marker only for a SUCCESSFUL model-routing path
-// (default --apply / --profile / --import / standalone --override). Placed just
-// before the success exit so a failure (exitCode !== 0) never marks the project.
+// Refresh the setup receipt metadata only for a SUCCESSFUL model-routing path
+// (default --apply / --profile / --import / standalone --override). Readiness
+// is derived elsewhere from live routing + prerequisite facts.
 if (markRouting && result.exitCode === 0) {
   if (scope === "project") {
     await seedProjectNativeWorkerMax();

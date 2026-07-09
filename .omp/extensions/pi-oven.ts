@@ -22,6 +22,17 @@ import {
   type SkillKeywordIndexIssue,
 } from "./pi-oven-runtime/skill-keyword-loader";
 import {
+  collectStandaloneTruthSignals,
+  formatStandaloneTruthSignals,
+  WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
+  BOOTSTRAP_PARITY_TRACK_SIGNAL_NAME,
+} from "../../scripts/pi-oven-setup/standalone-truth-surface";
+import {
+  buildSetupReadinessNotice as buildSharedSetupReadinessNotice,
+  collectSetupReadiness,
+  type SetupReadiness,
+} from "../../scripts/pi-oven-setup/project-config";
+import {
   STOP_GUARD_MESSAGE,
   createStopGuardState,
   decideStopGuardOnTurnEnd,
@@ -34,8 +45,12 @@ import {
 } from "./pi-oven-runtime/rules-injector";
 import {
   GateStateStore,
+  deriveAutonomyOwnershipStatus,
   fingerprintExternalExecSecret,
+  matchesAutonomyResumeTarget,
+  type AutonomyResumeTarget,
   type ExternalExecConsent,
+  type FsmState,
   type OwnershipTraceEntry,
 } from "./pi-oven-runtime/gate-state";
 import {
@@ -52,6 +67,7 @@ import {
   DEEP_INTERVIEW_CONTRACT_DEDUP_KEY,
   buildDeepInterviewContractPrompt,
 } from "./pi-oven-runtime/deep-interview-render";
+import { isRearmableContinuationMarker } from "./pi-oven-runtime/continuation-marker";
 import {
   normalizeApprovalFlowState,
   normalizeDeepInterviewState,
@@ -89,6 +105,14 @@ export interface SessionModelCapture extends SessionProviderFamilyResolution {
 export interface SetupChecklistNotice {
   message: string;
   level: "info" | "warning";
+}
+export type WorkflowSkillOwnershipClassification =
+  | "owned-surface active"
+  | "compatibility aids only"
+  | "ownership not established";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const INSTALLED_TOPOLOGY_SIGNAL_NAME = "installed topology";
@@ -177,42 +201,36 @@ function buildRuntimeKeywordIntegrityNotice(
 // ---------------------------------------------------------------------------
 
 /**
- * Build the always-shown 2-line (optionally 3-line) setup checklist notice.
+ * Build the always-shown setup checklist from routing/prerequisite truth.
  *
- * - Line 1: header "pi-oven setup".
- * - Line 2: Global  marker (~/.pi-oven/config.json).
- * - Line 3: Project marker (.pi-oven/config.json) — appends " — run /pi-oven:setup"
- *   only while the project layer is incomplete.
- * - Optional routing line: when the project `.omp/settings.json` declares any
- *   `pi-oven:*` model overrides, append "  ↳ project model routing active (N roles)".
- * - Uninstall hint appended ONLY when neither layer is complete.
- *
- * Level is "info" once the project layer is complete (or both), else "warning".
+ * Receipts in `.pi-oven/config.json` remain metadata only; readiness is derived
+ * from live routing + prerequisite state.
  */
 export function buildSetupChecklistNotice(
-  globalComplete: boolean,
-  projectComplete: boolean,
-  routingRoleCount: number = 0
+  readiness: SetupReadiness,
+  opts?: {
+    workflowSkillOwnershipStatus?: WorkflowSkillOwnershipClassification | null;
+  }
 ): SetupChecklistNotice {
-  const mark = (done: boolean) => (done ? "✓" : "✗");
-  const lines = [
-    "pi-oven setup",
-    `  [${mark(globalComplete)}] Global   (~/.pi-oven/config.json)`,
-    `  [${mark(projectComplete)}] Project  (.pi-oven/config.json)${
-      projectComplete ? "" : " — run /pi-oven:setup"
-    }`,
-  ];
-  if (routingRoleCount > 0) {
-    lines.push(`  ↳ project model routing active (${routingRoleCount} roles)`);
+  const notice = buildSharedSetupReadinessNotice(readiness);
+  const workflowSkillOwnershipStatus = opts?.workflowSkillOwnershipStatus;
+  if (!workflowSkillOwnershipStatus) {
+    return notice;
   }
-  if (!globalComplete && !projectComplete) {
-    lines.push(
-      "  To stop seeing this, uninstall the plugin: omp plugin uninstall pi-oven@kzk"
-    );
+
+  const lines = notice.message.split("\n");
+  lines.push(`  ↳ workflow-skill ownership: ${workflowSkillOwnershipStatus}`);
+  if (!readiness.projectReady) {
+    lines.push("  ↳ repo setup state: missing project routing for this repo");
+  } else if (workflowSkillOwnershipStatus === "owned-surface active") {
+    lines.push("  ↳ repo setup state: healthy setup");
+  } else {
+    lines.push(`  ↳ repo setup state: ${workflowSkillOwnershipStatus}`);
   }
+
   return {
+    ...notice,
     message: lines.join("\n"),
-    level: projectComplete ? "info" : "warning",
   };
 }
 
@@ -776,6 +794,260 @@ function mergeOwnershipTrace(
   return [...skillTrace, ...priorAgentTrace];
 }
 
+function readCurrentRepoBranch(repoRoot: string): string {
+  const gitPath = path.join(repoRoot, ".git");
+  try {
+    const gitStat = statSync(gitPath);
+    const headPath = (() => {
+      if (gitStat.isDirectory()) {
+        return path.join(gitPath, "HEAD");
+      }
+      const gitDirRef = readFileSync(gitPath, "utf-8").trim();
+      const match = gitDirRef.match(/^gitdir:\s*(.+)$/i);
+      if (!match) return null;
+      return path.resolve(repoRoot, match[1].trim(), "HEAD");
+    })();
+    if (!headPath || !existsSync(headPath)) return "(unknown)";
+    const head = readFileSync(headPath, "utf-8").trim();
+    const match = head.match(/^ref:\s+refs\/heads\/(.+)$/);
+    return match?.[1]?.trim() || "(unknown)";
+  } catch {
+    return "(unknown)";
+  }
+}
+
+function buildAutonomyResumeTarget(
+  repoRoot: string,
+  capturedAt: string = new Date().toISOString()
+): AutonomyResumeTarget {
+  return {
+    repoRoot,
+    branch: readCurrentRepoBranch(repoRoot),
+    capturedAt,
+  };
+}
+
+function buildSessionStartAutonomyReplay(state: FsmState): {
+  message: Record<string, unknown>;
+  options?: { deliverAs: "nextTurn"; triggerTurn: true };
+} | null {
+  if (
+    state.blockedReason &&
+    state.nextAction &&
+    state.blockedReason.kind !== "verifier-pending"
+  ) {
+    const ownershipStatus =
+      state.ownershipStatus ??
+      deriveAutonomyOwnershipStatus(state.requiredSkills, state.ownedSkillReadTargets);
+    return {
+      message: {
+        customType: "pi-oven-autonomous-blocked-state",
+        content: [
+          {
+            type: "text",
+            text: [
+              "pi-oven resumed the last blocked autonomy state for this repo/branch.",
+              `Ownership status: ${ownershipStatus}`,
+              `Blocked reason: ${state.blockedReason.message}`,
+              `Next action: ${state.nextAction.message}`,
+            ].join("\n"),
+          },
+        ],
+        display: true,
+        details: {
+          ownershipStatus,
+          blockedReason: state.blockedReason.kind,
+          nextAction: state.nextAction.kind,
+          resumeTarget: state.resumeTarget,
+        },
+      },
+    };
+  }
+  if (isRearmableContinuationMarker(state.continuationMarker)) {
+    const reason =
+      state.continuationMarker.kind === "autonomous-loop-resume"
+        ? state.continuationMarker.trigger
+        : "verifier-pending";
+    const text =
+      state.continuationMarker.kind === "verifier-pending"
+        ? `${STOP_GUARD_MESSAGE}
+${state.nextAction?.message ?? "Run the deep verifier lane before exit."}`
+        : STOP_GUARD_MESSAGE;
+    return {
+      message: {
+        customType: "pi-oven-autonomous-stop-guard",
+        content: [{ type: "text", text }],
+        display: true,
+        details: {
+          reason,
+          blockedReason: state.blockedReason?.kind,
+          nextAction: state.nextAction?.kind,
+          resumeTarget: state.resumeTarget,
+        },
+      },
+      options: { deliverAs: "nextTurn", triggerTurn: true },
+    };
+  }
+  if (state.blockedReason && state.nextAction) {
+    const ownershipStatus =
+      state.ownershipStatus ??
+      deriveAutonomyOwnershipStatus(state.requiredSkills, state.ownedSkillReadTargets);
+    return {
+      message: {
+        customType: "pi-oven-autonomous-blocked-state",
+        content: [
+          {
+            type: "text",
+            text: [
+              "pi-oven resumed the last blocked autonomy state for this repo/branch.",
+              `Ownership status: ${ownershipStatus}`,
+              `Blocked reason: ${state.blockedReason.message}`,
+              `Next action: ${state.nextAction.message}`,
+            ].join("\n"),
+          },
+        ],
+        display: true,
+        details: {
+          ownershipStatus,
+          blockedReason: state.blockedReason.kind,
+          nextAction: state.nextAction.kind,
+          resumeTarget: state.resumeTarget,
+        },
+      },
+    };
+  }
+  return null;
+}
+function isWorkflowSkillOwnershipClassification(
+  value: string
+): value is WorkflowSkillOwnershipClassification {
+  return (
+    value === "owned-surface active" ||
+    value === "compatibility aids only" ||
+    value === "ownership not established"
+  );
+}
+
+function extractWorkflowSkillOwnershipClassification(
+  signals: Array<{ name: string; detail: string }>
+): WorkflowSkillOwnershipClassification | null {
+  const ownershipSignal = signals.find(
+    (signal) => signal.name === WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME
+  );
+  if (!ownershipSignal) {
+    return null;
+  }
+  const classification = ownershipSignal.detail.match(
+    /classification:\s+(owned-surface active|compatibility aids only|ownership not established)\./
+  )?.[1];
+  return classification && isWorkflowSkillOwnershipClassification(classification)
+    ? classification
+    : null;
+}
+
+function buildSessionStartSetupNoticeKey(event: unknown, repoRoot: string): string {
+  if (isRecord(event)) {
+    const sessionId = event.sessionId;
+    if (typeof sessionId === "string" && sessionId.length > 0) {
+      return `${repoRoot}::${sessionId}`;
+    }
+  }
+  return `${repoRoot}::session-start`;
+}
+
+function getSessionStartNotifier(
+  ctx: unknown
+): ((message: string, level: "info" | "warning") => void) | null {
+  if (!isRecord(ctx) || ctx.hasUI !== true || !isRecord(ctx.ui)) {
+    return null;
+  }
+  const { notify } = ctx.ui;
+  if (typeof notify !== "function") {
+    return null;
+  }
+  return (message, level) => notify(message, level);
+}
+
+function getSessionStartModel(ctx: unknown): unknown | null {
+  if (!isRecord(ctx) || typeof ctx.getModel !== "function") {
+    return null;
+  }
+  return ctx.getModel();
+}
+
+function getSessionStartPreserveData(event: unknown): Record<string, unknown> | null {
+  if (!isRecord(event) || !isRecord(event.preserveData)) {
+    return null;
+  }
+  return event.preserveData;
+}
+
+function stringifySessionModelId(activeModel: unknown): string {
+  if (typeof activeModel === "string") {
+    return activeModel;
+  }
+  if (isRecord(activeModel) && typeof activeModel.id === "string") {
+    return activeModel.id;
+  }
+  return String(activeModel);
+}
+
+export function emitSessionStartSetupNotice(
+  notify: (message: string, level: "info" | "warning") => void,
+  event: unknown,
+  repoRoot: string,
+  readiness: SetupReadiness,
+  truthSignals: Array<{ name: string; detail: string; level: "INFO" | "WARN" }>,
+  emittedKeys: Set<string>
+): void {
+  const noticeKey = buildSessionStartSetupNoticeKey(event, repoRoot);
+  if (emittedKeys.has(noticeKey)) {
+    return;
+  }
+  const workflowSkillOwnershipStatus =
+    extractWorkflowSkillOwnershipClassification(truthSignals);
+  const notice = buildSetupChecklistNotice(readiness, {
+    workflowSkillOwnershipStatus,
+  });
+  notify(notice.message, notice.level);
+  emittedKeys.add(noticeKey);
+}
+
+function notifySessionStartTruthSignals(
+  notify: (message: string, level: "info" | "warning") => void,
+  truthSignals: Array<{ name: string; detail: string; level: "INFO" | "WARN" }>
+): void {
+  for (const signal of truthSignals) {
+    notify(
+      formatStandaloneTruthSignals([signal]).join("\n"),
+      signal.level === "WARN" ? "warning" : "info"
+    );
+  }
+}
+
+function notifySessionStartAuxiliaryNotice(
+  notify: (message: string, level: "info" | "warning") => void,
+  notice: SetupChecklistNotice | null
+): void {
+  if (!notice) {
+    return;
+  }
+  notify(notice.message, notice.level);
+}
+
+function isSessionTruthSignal(
+  signal: { name: string }
+): signal is { name: string; detail: string; level: "INFO" | "WARN" } {
+  return shouldNotifySessionStartTruthSignal(signal.name);
+}
+
+export function shouldNotifySessionStartTruthSignal(name: string): boolean {
+  return (
+    name === WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME ||
+    name === BOOTSTRAP_PARITY_TRACK_SIGNAL_NAME
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Extension entrypoint
 // ---------------------------------------------------------------------------
@@ -797,18 +1069,11 @@ export default function piOvenPi(
   const injector = new RulesInjector();
 
   // -------------------------------------------------------------------------
-  // Setup detection: compute the global and project completion markers as two
-  // SEPARATE booleans so session_start can render the always-shown checklist
-  // (Spec project-scoped-model-routing §4). A layer is "complete" iff
-  // `setupCompletedAt` is a non-empty string in its `.pi-oven/config.json`.
-  // Mere installation (agent files present) does NOT count as setup complete.
-  // Fail-soft: any FS/parse error → treat as NOT complete so the notice shows.
+  // Project/global `.pi-oven/config.json` remain the language + metadata store.
+  // Setup readiness no longer trusts `setupCompletedAt`; session_start now reads
+  // live routing + prerequisite facts through `collectSetupReadiness`.
   const globalConfigPath = path.resolve(os.homedir(), ".pi-oven", "config.json");
   const projectConfigPath = path.resolve(repoRoot, ".pi-oven", "config.json");
-  const projectSettingsPath = path.resolve(repoRoot, ".omp", "settings.json");
-  const globalComplete = readSetupComplete(globalConfigPath);
-  const projectComplete = readSetupComplete(projectConfigPath);
-  const projectRoutingRoleCount = countProjectRoutingRoles(projectSettingsPath);
 
   // Read config: GLOBAL language first, then PROJECT-LOCAL overrides.
   // Resolution order: project language > global language > no language set.
@@ -859,6 +1124,7 @@ export default function piOvenPi(
   let skillKeywordIndex = [] as ReturnType<typeof loadSkillKeywordIndexReport>["index"];
   let installedTopologyNotice: SetupChecklistNotice | null = null;
   let keywordIntegrityNotice: SetupChecklistNotice | null = null;
+  const emittedSessionStartSetupNoticeKeys = new Set<string>();
   try {
     const keywordIndexReport = loadSkillKeywordIndexReport(pluginRoot);
     skillKeywordIndex = keywordIndexReport.index;
@@ -920,6 +1186,7 @@ export default function piOvenPi(
     store,
     logger: pi.logger,
     getEnv: () => process.env,
+    getAutonomyResumeTarget: async () => buildAutonomyResumeTarget(repoRoot),
     isParentSession,
     roots: { repoRoot, homeDir: os.homedir() },
     runtimeTraceState,
@@ -1087,49 +1354,92 @@ export default function piOvenPi(
 
   pi.on("session_start", async (_event, ctx) => {
     try {
-      const uiCtx = ctx as unknown as {
-        hasUI?: boolean;
-        ui?: { notify?: (message: string, level: string) => void };
-      };
-      if (uiCtx.hasUI && uiCtx.ui && typeof uiCtx.ui.notify === "function") {
-        const notice = buildSetupChecklistNotice(
-          globalComplete,
-          projectComplete,
-          projectRoutingRoleCount
+      const notify = getSessionStartNotifier(ctx);
+      if (notify) {
+        const truthSignals = (
+          await collectStandaloneTruthSignals({
+            pluginAssetPath: pluginRoot,
+            projectRoot: repoRoot,
+          })
+        ).filter(isSessionTruthSignal);
+        emitSessionStartSetupNotice(
+          notify,
+          _event,
+          repoRoot,
+          await collectSetupReadiness({ cwd: repoRoot }),
+          truthSignals,
+          emittedSessionStartSetupNoticeKeys
         );
-        uiCtx.ui.notify(notice.message, notice.level);
-        if (installedTopologyNotice) {
-          uiCtx.ui.notify(installedTopologyNotice.message, installedTopologyNotice.level);
-        }
-        if (keywordIntegrityNotice) {
-          uiCtx.ui.notify(keywordIntegrityNotice.message, keywordIntegrityNotice.level);
-        }
+        notifySessionStartAuxiliaryNotice(notify, installedTopologyNotice);
+        notifySessionStartAuxiliaryNotice(notify, keywordIntegrityNotice);
+        notifySessionStartTruthSignals(notify, truthSignals);
       }
     } catch (err) {
       pi.logger.debug(`pi-oven: setup-state notice skipped: ${err}`);
     }
 
-    const ctxAny = ctx as unknown as { getModel?: () => unknown };
-    const activeModel = ctxAny.getModel?.();
-    if (activeModel) {
-      const modelId: string =
-        typeof (activeModel as { id?: unknown }).id === "string"
-          ? (activeModel as { id: string }).id
-          : String(activeModel);
+    const activeModel = getSessionStartModel(ctx);
+    if (activeModel !== null) {
       try {
-        await captureSessionModel(modelId, sessionModelPath);
+        await captureSessionModel(stringifySessionModelId(activeModel), sessionModelPath);
       } catch (err) {
         pi.logger.debug(`pi-oven: failed to capture parent session model: ${err}`);
       }
     }
 
     try {
-      const evtAny = _event as unknown as { preserveData?: Record<string, unknown> };
-      if (evtAny.preserveData) {
-        injector.rehydrateFromPreserveData(evtAny.preserveData);
+      const preserveData = getSessionStartPreserveData(_event);
+      if (preserveData) {
+        injector.rehydrateFromPreserveData(preserveData);
       }
     } catch (err) {
       pi.logger.debug(`pi-oven: session_start rehydrate skipped: ${err}`);
+    }
+
+    if (!isParentSession) return;
+    try {
+      const stateView = await store.readState();
+      if (stateView.kind === "OK" && stateView.state.resumeTarget) {
+        const currentBranch = readCurrentRepoBranch(repoRoot);
+        if (!matchesAutonomyResumeTarget(stateView.state.resumeTarget, repoRoot, currentBranch)) {
+          await store.mutate((current) => ({
+            ...current,
+            active: false,
+            version: current.version + 1,
+            blockedReason: undefined,
+            nextAction: undefined,
+            resumeTarget: undefined,
+            continuationMarker: undefined,
+          }));
+          pi.logger.info(
+            `pi-oven: discarded stale autonomy resume state for ${stateView.state.resumeTarget.repoRoot}#${stateView.state.resumeTarget.branch}`
+          );
+          return;
+        }
+        const replay = buildSessionStartAutonomyReplay(stateView.state);
+        if (replay) {
+          pi.sendMessage(replay.message as never, replay.options as never);
+          pi.logger.info(
+            `pi-oven: replayed persisted autonomy ${
+              (replay.message as { customType?: string }).customType === "pi-oven-autonomous-stop-guard"
+                ? "continuation"
+                : "blocked-state"
+            } for ${repoRoot}#${currentBranch}`
+          );
+        }
+        if (stateView.state.ownershipStatus === undefined) {
+          await store.mutate((current) => ({
+            ...current,
+            version: current.version + 1,
+            ownershipStatus: deriveAutonomyOwnershipStatus(
+              current.requiredSkills,
+              current.ownedSkillReadTargets
+            ),
+          }));
+        }
+      }
+    } catch (err) {
+      pi.logger.debug(`pi-oven: session_start autonomy replay skipped: ${err}`);
     }
   });
 
@@ -1150,6 +1460,7 @@ export default function piOvenPi(
       const ownedSkillReadTargets = skillKeywordState.matchedSkills.map(
         (skill) => skill.ownedReadTarget
       );
+      const ownershipStatus = deriveAutonomyOwnershipStatus(requiredSkills, ownedSkillReadTargets);
       const sameUserMessage = current.requiredSkillsMessageId === skillKeywordState.lastUserMessageId;
       const persistedReads = sameUserMessage ? current.skillReads ?? [] : [];
       const extractedExternalExecConsent = latestUserMessage
@@ -1190,6 +1501,10 @@ export default function piOvenPi(
           ? extractExplicitForeignAgents(latestTextUserMessage.text)
           : current.explicitForeignAgents ?? [],
         ownedSkillReadTargets,
+        ownershipStatus,
+        blockedReason: sameUserMessage ? current.blockedReason : undefined,
+        nextAction: sameUserMessage ? current.nextAction : undefined,
+        resumeTarget: sameUserMessage ? current.resumeTarget : undefined,
         externalExecConsent,
         consumedExternalExecConsentMessageId,
         continuationMarker,
@@ -1208,7 +1523,20 @@ export default function piOvenPi(
       verifierDepth,
     });
     stopGuardState = decision.state;
-    await store.setContinuationMarker(decision.state.continuationMarker);
+    await store.mutate((current) => ({
+      ...current,
+      version: current.version + 1,
+      continuationMarker: decision.state.continuationMarker,
+      ownershipStatus:
+        current.ownershipStatus ??
+        deriveAutonomyOwnershipStatus(current.requiredSkills, current.ownedSkillReadTargets),
+      blockedReason: decision.blockedReason,
+      nextAction: decision.nextAction,
+      resumeTarget:
+        decision.state.continuationMarker !== undefined || decision.blockedReason !== undefined
+          ? buildAutonomyResumeTarget(repoRoot)
+          : undefined,
+    }));
 
     if (!decision.shouldQueueContinuation) return;
 

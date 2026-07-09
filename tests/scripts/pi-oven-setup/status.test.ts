@@ -8,6 +8,7 @@ import {
 } from "../../helpers/installed-topology";
 import { runStatus } from "../../../scripts/pi-oven-setup/status";
 import { ROLES, PROFILE_A } from "../../../scripts/pi-oven-setup/profiles";
+import { SETUP_GLOBAL_PREREQUISITES } from "../../../scripts/pi-oven-setup/project-config";
 
 const REPO_AGENTS_DIR = resolve(__dirname, "../../../agents");
 
@@ -53,7 +54,9 @@ function makeSpawnFn(opts: {
   listModelsOutput?: string;
   getExitCode?: number;
   scalarValues?: Record<string, unknown>;
+  includedSkills?: string[] | null;
   ignoredSkills?: string[] | null;
+  disabledProviders?: string[] | null;
 }): (cmd: string, args: string[]) => { exitCode: number | null; stdout: Buffer; stderr: Buffer } {
   return (cmd, args) => {
     const argStr = args.join(" ");
@@ -70,6 +73,17 @@ function makeSpawnFn(opts: {
       const payload = JSON.stringify({ key: "task.agentModelOverrides", value: record, type: "record" });
       return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
     }
+    if (cmd === "omp" && args[0] === "config" && args[1] === "get" && args[2] === "skills.includeSkills") {
+      if (opts.includedSkills === null) {
+        return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("missing key") };
+      }
+      const payload = JSON.stringify({
+        key: "skills.includeSkills",
+        value: opts.includedSkills ?? ["pi-oven:*"],
+        type: "array",
+      });
+      return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
+    }
     if (cmd === "omp" && args[0] === "config" && args[1] === "get" && args[2] === "skills.ignoredSkills") {
       if (opts.ignoredSkills === null) {
         return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("missing key") };
@@ -77,6 +91,17 @@ function makeSpawnFn(opts: {
       const payload = JSON.stringify({
         key: "skills.ignoredSkills",
         value: opts.ignoredSkills ?? [],
+        type: "array",
+      });
+      return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
+    }
+    if (cmd === "omp" && args[0] === "config" && args[1] === "get" && args[2] === "disabledProviders") {
+      if (opts.disabledProviders === null) {
+        return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("missing key") };
+      }
+      const payload = JSON.stringify({
+        key: "disabledProviders",
+        value: opts.disabledProviders ?? [],
         type: "array",
       });
       return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
@@ -97,6 +122,10 @@ function makeSpawnFn(opts: {
     return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("unexpected command") };
   };
 }
+
+const configuredSetupScalars = Object.fromEntries(
+  SETUP_GLOBAL_PREREQUISITES.map(({ key, expected }) => [key, expected])
+);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -336,6 +365,90 @@ describe("runStatus — project layer", () => {
     expect(result.output).not.toContain("no pi-oven project routing detected");
   });
 
+  it("summary marks the global layer ready from live routing + prerequisites even without a setup receipt", async () => {
+    const spawnFn = makeSpawnFn({
+      overrides: Object.fromEntries(
+        ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+      ),
+      scalarValues: configuredSetupScalars,
+    });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain(
+      "[✓] Global   (~/.omp/agent/config.yml routing + machine-global prerequisites)"
+    );
+    expect(result.output).toContain(
+      "[✗] Project  (.omp/settings.json routing) — run /pi-oven:setup --scope project"
+    );
+  });
+
+  it("summary marks both layers ready when global prerequisites and project routing are configured", async () => {
+    seedProject({
+      task: {
+        agentModelOverrides: Object.fromEntries(
+          ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+        ),
+      },
+    });
+    const spawnFn = makeSpawnFn({
+      overrides: Object.fromEntries(
+        ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+      ),
+      scalarValues: configuredSetupScalars,
+    });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain(
+      "[✓] Global   (~/.omp/agent/config.yml routing + machine-global prerequisites)"
+    );
+    expect(result.output).toContain("[✓] Project  (.omp/settings.json routing)");
+    expect(result.output).toContain("↳ project model routing active (24 roles)");
+  });
+
+  it("does not treat stray pi-oven:* keys as active routing in the readiness summary", async () => {
+    seedProject({
+      task: {
+        agentModelOverrides: { "pi-oven:stale-role": "openai-codex/gpt-5.5:high" },
+      },
+    });
+    const spawnFn = makeSpawnFn({
+      overrides: { "pi-oven:stale-role": "openai-codex/gpt-5.5:high" },
+      scalarValues: configuredSetupScalars,
+    });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain(
+      "[✗] Global   (~/.omp/agent/config.yml routing + machine-global prerequisites)"
+    );
+    expect(result.output).toContain(
+      "[✗] Project  (.omp/settings.json routing) — run /pi-oven:setup --scope project"
+    );
+    expect(result.output).not.toContain("project model routing active");
+    expect(result.output).toContain('WARNING: unknown role override key "pi-oven:stale-role"');
+  });
+
+  it("ignores non-string project override payloads for both readiness and role display", async () => {
+    seedProject({
+      task: {
+        agentModelOverrides: {
+          "pi-oven:critic": { model: "openai-codex/gpt-5.5:high" },
+        },
+      },
+    });
+    const spawnFn = makeSpawnFn({ overrides: {}, scalarValues: configuredSetupScalars });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
+
+    expect(result.output).toContain(
+      "[✗] Project  (.omp/settings.json routing) — run /pi-oven:setup --scope project"
+    );
+    expect(result.output).not.toContain("project model routing active");
+    expect(result.output).toContain("no pi-oven project routing detected");
+    expect(criticLine).not.toContain("[object Object]");
+    expect(criticLine).toContain("default(frontmatter)");
+  });
+
 
   it("a project-layer role is labelled project(.omp/settings.json)", async () => {
     seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
@@ -473,6 +586,70 @@ describe("runStatus — project layer", () => {
     expect(result.output).toContain("tool remap");
   });
 
+  it("reports owned-surface active workflow-skill ownership only when the visible includeSkills surface is pi-oven-only", async () => {
+    const spawnFn = makeSpawnFn({ overrides: {}, includedSkills: ["pi-oven:*"] });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("workflow-skill ownership");
+    expect(result.output).toContain("classification: owned-surface active");
+    expect(result.output).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(result.output).toContain("workflow skills — not commands, agents, hooks, or MCP");
+    expect(result.output).toContain("Empty ~/.claude/skills is not the target state");
+  });
+
+  it("warns with ownership-not-established when no effective workflow-skill include policy is present", async () => {
+    const spawnFn = makeSpawnFn({ overrides: {}, includedSkills: null });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("workflow-skill ownership");
+    expect(result.output).toContain("classification: ownership not established");
+    expect(result.output).toContain("no effective skills.includeSkills workflow-skill policy");
+    expect(result.output).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(result.output).toContain("Empty ~/.claude/skills is not the target state");
+    expect(result.output).toContain("claude-plugins");
+  });
+
+  it("treats legacy aids as compatibility-only when ownership mainline is still missing", async () => {
+    const spawnFn = makeSpawnFn({
+      overrides: {},
+      includedSkills: null,
+      ignoredSkills: ["superpowers:*"],
+      disabledProviders: ["claude"],
+    });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("workflow-skill ownership");
+    expect(result.output).toContain("classification: compatibility aids only");
+    expect(result.output).toContain('disabledProviders = ["claude"]');
+    expect(result.output).toContain('skills.ignoredSkills = ["superpowers:*"]');
+    expect(result.output).toContain("do not by themselves stop claude-plugins");
+    expect(result.output).toContain("namespaced marketplace workflow skills");
+  });
+
+  it("treats a malformed project skills block as unknown instead of falling through to healthy global ownership", async () => {
+    seedProject({ skills: "broken" });
+    const spawnFn = makeSpawnFn({ overrides: {}, includedSkills: ["pi-oven:*"] });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("workflow-skill ownership");
+    expect(result.output).toContain("classification: ownership not established");
+    expect(result.output).toContain("effective workflow-skill ownership is unknown");
+    expect(result.output).toContain("present but malformed skills block");
+    expect(result.output).not.toContain("from ~/.omp/agent/config.yml (machine-global layer)");
+  });
+
+  it("treats the project includeSkills layer as authoritative when it conflicts with a healthy global filter", async () => {
+    seedProject({ skills: { includeSkills: ["other:*"] } });
+    const spawnFn = makeSpawnFn({ overrides: {}, includedSkills: ["pi-oven:*"] });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("workflow-skill ownership");
+    expect(result.output).toContain('project skills.includeSkills');
+    expect(result.output).toContain('["other:*"]');
+    expect(result.output).toContain('canonical workflow-skill filter ["pi-oven:*"]');
+    expect(result.output).not.toContain("effective workflow-skill surface is pi-oven-only via skills.includeSkills");
+  });
+
   it("does not advertise legacy skill-visibility config even when skills.ignoredSkills is unreadable", async () => {
     const baseSpawn = makeSpawnFn({ overrides: {} });
     const spawnFn = (cmd: string, args: string[]) => {
@@ -500,13 +677,20 @@ describe("runStatus — project layer", () => {
     expect(result.output).not.toContain("sibling-skill suppression");
   });
 
+  it("surfaces bootstrap-level gajae parity as a secondary non-blocking track", async () => {
+    const spawnFn = makeSpawnFn({ overrides: {}, ignoredSkills: [] });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain("bootstrap parity track");
+    expect(result.output).toContain("gajae parity");
+    expect(result.output).toContain("not a blocker yet");
+  });
+
   it("treats the vendored native worker runtime as the only temporary adapter boundary", async () => {
     const spawnFn = makeSpawnFn({
       overrides: {},
       ignoredSkills: [],
-      scalarValues: {
-        disabledProviders: ["claude"],
-      },
+      disabledProviders: ["claude"],
     });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });

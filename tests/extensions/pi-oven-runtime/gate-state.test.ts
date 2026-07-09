@@ -4,6 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
   GateStateStore,
+  deriveAutonomyOwnershipStatus,
   fingerprintExternalExecSecret,
   type FsmState,
 } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
@@ -546,6 +547,45 @@ describe("GateStateStore — continuation marker persistence", () => {
     );
     expect(view.state.gateCache).toEqual({ commit: "PASS", regression: "PASS" });
   });
+
+  it("round-trips ownership status, blocked reason, next action, and resume target inside autonomous.json", async () => {
+    const store = new GateStateStore(dir);
+    const state: FsmState = {
+      active: true,
+      gateCache: { commit: "PASS" },
+      version: 2,
+      schemaVersion: 1,
+      requiredSkills: ["autonomous-loop"],
+      ownedSkillReadTargets: ["/plugin/skills/autonomous-loop/SKILL.md"],
+      ownershipStatus: deriveAutonomyOwnershipStatus(
+        ["autonomous-loop"],
+        ["/plugin/skills/autonomous-loop/SKILL.md"]
+      ),
+      blockedReason: {
+        kind: "skill-proof-incomplete",
+        message: "pi-oven: code-write blocked — capability proof surface is not complete yet.",
+      },
+      nextAction: {
+        kind: "complete-skill-proof",
+        message: "Read the exact plugin-owned SKILL.md targets first, then retry the write.",
+      },
+      resumeTarget: {
+        repoRoot: "/tmp/pi-oven",
+        branch: "feature/task4",
+        capturedAt: "2026-07-08T00:00:00.000Z",
+      },
+    };
+
+    await store.writeState(state);
+
+    const view = await store.readState();
+    expect(view.kind).toBe("OK");
+    if (view.kind !== "OK") return;
+    expect(view.state.ownershipStatus).toBe("owned-surface active");
+    expect(view.state.blockedReason).toEqual(state.blockedReason);
+    expect(view.state.nextAction).toEqual(state.nextAction);
+    expect(view.state.resumeTarget).toEqual(state.resumeTarget);
+  });
 });
 
 describe("GateStateStore — branch contract marker", () => {
@@ -599,6 +639,20 @@ describe("GateStateStore — project-state migration compatibility", () => {
       schemaVersion: 1,
       requiredSkills: ["autonomous-loop"],
       skillReads: ["/plugin/skills/autonomous-loop/SKILL.md"],
+      ownershipStatus: "owned-surface active",
+      blockedReason: {
+        kind: "verifier-pending",
+        message: "pi-oven: autonomous exit paused — deep verifier lane must run before completion.",
+      },
+      nextAction: {
+        kind: "run-deep-verifier",
+        message: "Run the deep verifier lane before exit.",
+      },
+      resumeTarget: {
+        repoRoot: "/tmp/pi-oven",
+        branch: "feature/task4",
+        capturedAt: "2026-07-08T00:00:00.000Z",
+      },
     };
 
     await store.writeState(state);

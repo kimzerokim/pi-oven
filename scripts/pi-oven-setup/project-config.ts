@@ -19,6 +19,15 @@ import { promises as fs, readFileSync } from "fs";
 import * as path from "path";
 import * as os from "os";
 import { resolveLanguage } from "../../.omp/extensions/pi-oven-runtime/language";
+import {
+  readAgentModelOverrides,
+  readConfigValueDisplayState,
+  SUBAGENT_RUNTIME_PREREQUISITES,
+  type ConfigYmlOpts,
+  type DisplayReadResult,
+} from "./config-yml";
+import { ROLES } from "./profiles";
+import { readProjectAgentModelOverrides } from "./project-settings";
 
 /**
  * Canonical project response language. `"ko"` / `"en"` are the canonical codes
@@ -28,6 +37,147 @@ import { resolveLanguage } from "../../.omp/extensions/pi-oven-runtime/language"
 export type ProjectLanguage = string;
 
 export const DEFAULT_NATIVE_WORKER_MAX = 100;
+
+export type SetupPrerequisiteTruthState = "configured" | "not-configured" | "unknown";
+
+export type SetupGlobalPrerequisiteExpectation = {
+  key: string;
+  expected: boolean | string;
+};
+
+export interface SetupReadiness {
+  globalReady: boolean;
+  projectReady: boolean;
+  globalRoutingRoleCount: number;
+  projectRoutingRoleCount: number;
+  missingGlobalPrerequisites: string[];
+  unknownGlobalPrerequisites: string[];
+}
+
+export const SETUP_GLOBAL_PREREQUISITES: SetupGlobalPrerequisiteExpectation[] = [
+  { key: "memory.backend", expected: "mnemopi" },
+  { key: "mnemopi.noEmbeddings", expected: true },
+  { key: "mnemopi.llmMode", expected: "none" },
+  { key: "async.enabled", expected: true },
+  ...Object.keys(SUBAGENT_RUNTIME_PREREQUISITES).map((key) => ({
+    key,
+    expected: true,
+  })),
+];
+
+export function countPiOvenRoutingEntries(
+  record: Record<string, unknown> | null | undefined
+): number {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    return 0;
+  }
+  return Object.entries(record).filter(([key, value]) => {
+    if (!key.startsWith("pi-oven:")) return false;
+    if (typeof value !== "string") return false;
+    return (ROLES as readonly string[]).includes(key.slice("pi-oven:".length));
+  }).length;
+}
+
+export function classifySetupPrerequisiteState(
+  value: DisplayReadResult<unknown>,
+  expected: boolean | string
+): SetupPrerequisiteTruthState {
+  if (value.state === "unknown") return "unknown";
+  if (value.state === "absent") return "not-configured";
+  if (typeof expected === "boolean") {
+    return value.value === expected || value.value === String(expected)
+      ? "configured"
+      : "not-configured";
+  }
+  return value.value === expected ? "configured" : "not-configured";
+}
+
+export function classifySetupReadiness(input: {
+  globalRoutingRoleCount: number;
+  projectRoutingRoleCount: number;
+  globalPrerequisiteStates: Array<{ key: string; state: SetupPrerequisiteTruthState }>;
+}): SetupReadiness {
+  const missingGlobalPrerequisites = input.globalPrerequisiteStates
+    .filter(({ state }) => state === "not-configured")
+    .map(({ key }) => key);
+  const unknownGlobalPrerequisites = input.globalPrerequisiteStates
+    .filter(({ state }) => state === "unknown")
+    .map(({ key }) => key);
+
+  return {
+    globalReady:
+      input.globalRoutingRoleCount > 0 &&
+      missingGlobalPrerequisites.length === 0 &&
+      unknownGlobalPrerequisites.length === 0,
+    projectReady: input.projectRoutingRoleCount > 0,
+    globalRoutingRoleCount: input.globalRoutingRoleCount,
+    projectRoutingRoleCount: input.projectRoutingRoleCount,
+    missingGlobalPrerequisites,
+    unknownGlobalPrerequisites,
+  };
+}
+
+export async function collectSetupReadiness(
+  opts?: { cwd?: string } & ConfigYmlOpts
+): Promise<SetupReadiness> {
+  const cwd = opts?.cwd ?? process.cwd();
+  const globalOverrides = await readAgentModelOverrides(opts);
+  const projectOverrides = await readProjectAgentModelOverrides({ cwd });
+  const globalPrerequisiteStates = await Promise.all(
+    SETUP_GLOBAL_PREREQUISITES.map(async ({ key, expected }) => {
+      const value = await readConfigValueDisplayState(key, opts);
+      return {
+        key,
+        state: classifySetupPrerequisiteState(value, expected),
+      };
+    })
+  );
+
+  return classifySetupReadiness({
+    globalRoutingRoleCount: countPiOvenRoutingEntries(globalOverrides),
+    projectRoutingRoleCount: countPiOvenRoutingEntries(projectOverrides),
+    globalPrerequisiteStates,
+  });
+}
+
+export function buildSetupReadinessNotice(readiness: SetupReadiness): {
+  message: string;
+  level: "info" | "warning";
+} {
+  const mark = (ready: boolean) => (ready ? "✓" : "✗");
+  const lines = [
+    "pi-oven setup",
+    `  [${mark(readiness.globalReady)}] Global   (~/.omp/agent/config.yml routing + machine-global prerequisites)`,
+    `  [${mark(readiness.projectReady)}] Project  (.omp/settings.json routing)${
+      readiness.projectReady ? "" : " — run /pi-oven:setup --scope project"
+    }`,
+  ];
+
+  if (readiness.projectRoutingRoleCount > 0) {
+    lines.push(`  ↳ project model routing active (${readiness.projectRoutingRoleCount} roles)`);
+  }
+  if (!readiness.globalReady && readiness.globalRoutingRoleCount > 0) {
+    if (readiness.unknownGlobalPrerequisites.length > 0) {
+      lines.push(
+        "  ↳ machine-global routing is present, but some prerequisites could not be fully verified"
+      );
+    } else if (readiness.missingGlobalPrerequisites.length > 0) {
+      lines.push(
+        "  ↳ machine-global routing is present, but required prerequisites are missing or mismatched"
+      );
+    }
+  }
+  if (!readiness.globalReady && !readiness.projectReady) {
+    lines.push(
+      "  To stop seeing this, uninstall the plugin: omp plugin uninstall pi-oven@kzk"
+    );
+  }
+
+  return {
+    message: lines.join("\n"),
+    level: readiness.projectReady ? "info" : "warning",
+  };
+}
 
 function normalizeNativeWorkerMax(value: unknown): number | null {
   return typeof value === "number" &&
@@ -168,10 +318,9 @@ export async function seedProjectNativeWorkerMax(opts?: {
 }
 
 /**
- * Key under which the setup-completion timestamp is stored. Its presence (as a
- * non-empty string) is the "this project has been set up" signal the runtime
- * extension reads to decide whether to show the once-per-session "not set up"
- * notice. Stored alongside `language` in the same machine-local config.json.
+ * Key under which the setup receipt timestamp is stored. The receipt survives as
+ * metadata for successful routing writes, but runtime/CLI readiness now derives
+ * from routing + prerequisite facts instead of trusting this field alone.
  */
 const SETUP_COMPLETE_KEY = "setupCompletedAt";
 
@@ -195,8 +344,9 @@ async function readConfigObject(file: string): Promise<Record<string, unknown>> 
 
 /**
  * Mark this project as set up by writing `setupCompletedAt` (current ISO-8601
- * timestamp) into `<cwd>/.pi-oven/config.json`. Read-merges so `language` and
- * any other keys survive. Creates the directory if missing.
+ * timestamp) into `<cwd>/.pi-oven/config.json`. This accompanies successful
+ * routing / workflow-skill-ownership writes; read-merges so `language` and any
+ * other keys survive. Creates the directory if missing.
  */
 export async function markSetupComplete(opts?: { cwd?: string }): Promise<void> {
   const cwd = opts?.cwd ?? process.cwd();

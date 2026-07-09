@@ -14,6 +14,7 @@ import type { ConfigYmlOpts } from "./config-yml";
 import { clearSetupComplete, clearSetupCompleteGlobal } from "./project-config";
 import {
   clearProjectAgentModelOverrides,
+  clearProjectIncludedSkills,
   clearProjectOrchestrator,
   projectSettingsPath,
 } from "./project-settings";
@@ -67,6 +68,7 @@ export async function runReset(
   // -------------------------------------------------------------------------
   if (scope === "project") {
     const removedKeys = await clearProjectAgentModelOverrides({ cwd: opts?.cwd });
+    const removedIncludedSkills = await clearProjectIncludedSkills({ cwd: opts?.cwd });
 
     // Full reset: also drop the project orchestrator routing (modelRoles +
     // retry.fallbackChains) from the project settings file.
@@ -82,12 +84,17 @@ export async function runReset(
     const fullSuffix = opts?.full
       ? `Cleared project modelRoles + retry.fallbackChains from ${file}.\n`
       : "";
+    const ownershipSuffix = removedIncludedSkills
+      ? `Cleared project workflow-skill ownership filter from ${file}.\n`
+      : "";
 
     if (removedKeys.length === 0) {
       return {
         exitCode: 0,
         output:
-          `Already cleared — no pi-oven:* overrides in ${file}.\n` + fullSuffix,
+          `Already cleared — no pi-oven:* overrides in ${file}.\n` +
+          ownershipSuffix +
+          fullSuffix,
       };
     }
 
@@ -96,6 +103,7 @@ export async function runReset(
       exitCode: 0,
       output:
         `Cleared ${removedKeys.length} pi-oven:* override(s) from ${file}:\n${list}\n` +
+        ownershipSuffix +
         fullSuffix +
         "Run /pi-oven:setup --status to verify, or /pi-oven:setup --scope project to reconfigure.\n",
     };
@@ -115,6 +123,10 @@ export async function runReset(
     // Already empty or key not present — nothing to clear.
   }
 
+  // Clear the canonical workflow-skill ownership filter on the global config so
+  // `/pi-oven:setup --reset` actually undoes the Task 1 ownership mainline.
+  await resetConfigKey("skills.includeSkills", opts);
+
   // Full reset: return the remaining pi-oven-managed keys to omp defaults.
   if (opts?.full) {
     for (const key of FULL_RESET_KEYS) {
@@ -129,12 +141,15 @@ export async function runReset(
   const fullSuffix = opts?.full
     ? `Reset pi-oven-managed config keys to defaults: ${FULL_RESET_KEYS.join(", ")}.\n`
     : "";
+  const ownershipSuffix =
+    'Cleared machine-global workflow-skill ownership filter: skills.includeSkills = ["pi-oven:*"].\n';
 
   if (removedKeys.length === 0) {
     return {
       exitCode: 0,
       output:
         "Already cleared — no pi-oven:* overrides in task.agentModelOverrides.\n" +
+        ownershipSuffix +
         fullSuffix,
     };
   }
@@ -144,6 +159,7 @@ export async function runReset(
     exitCode: 0,
     output:
       `Cleared ${removedKeys.length} pi-oven:* override(s):\n${list}\n` +
+      ownershipSuffix +
       fullSuffix +
       "Run /pi-oven:setup --status to verify, or /pi-oven:setup to reconfigure.\n",
   };

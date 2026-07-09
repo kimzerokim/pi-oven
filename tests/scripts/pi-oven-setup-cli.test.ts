@@ -94,8 +94,11 @@ describe("pi-oven-setup CLI dispatcher", () => {
       PI_OVEN_MOCK_SPAWN: "1",
     });
     expect(exitCode).toBe(0);
+    expect(stdout).toContain("pi-oven setup");
     expect(stdout).toContain("machine-global");
     expect(stdout).toContain("default(frontmatter)");
+    expect(stdout).toContain("workflow-skill ownership");
+    expect(stdout).toContain('skills.includeSkills = ["pi-oven:*"]');
   });
 
   it("--status with no agent files: shows (no agent file) for all roles", async () => {
@@ -173,6 +176,34 @@ describe("pi-oven-setup CLI dispatcher", () => {
       PI_OVEN_VALIDATE_MODE: "none",
     });
     expect(exitCode).toBe(0);
+  });
+
+  it("--import --scope project is rejected with a global-only error", async () => {
+    const importFile = join(tempDir, "config.json");
+    writeFileSync(
+      importFile,
+      JSON.stringify({
+        "pi-oven": {
+          profile: "A",
+          models: {
+            executor: { primary: "openai-codex/gpt-5.5" },
+          },
+        },
+      }),
+      "utf-8"
+    );
+
+    const scopedHome = join(tempDir, "home");
+    mkdirSync(scopedHome, { recursive: true });
+    const { exitCode, stdout: out, stderr } = await runCLIInCwd(
+      ["--import", importFile, "--scope", "project"],
+      tempDir,
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: scopedHome }
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr + out).toMatch(/--import.*global-only|scope.*project/i);
+    expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
   });
 
   it("--profile B: exits 0 with validateMode=none", async () => {
@@ -651,10 +682,10 @@ describe("pi-oven-setup CLI --scope", () => {
       readFileSync(join(tempDir, ".pi-oven", "config.json"), "utf-8")
     );
     expect(projectCfg.nativeWorkers.maxWorkers).toBe(100);
+    expect(stdout).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(stdout).toContain("workflow skills only");
     expect(stdout).toContain("nativeWorkers.maxWorkers=100");
     expect(stdout).toContain("scripts/pi-oven-team/index.ts");
-    expect(stdout).toContain("8-12");
-    expect(stdout).not.toContain("does NOT control omp-core worker scheduling");
   });
 
   it("--scope global --apply seeds nativeWorkers.maxWorkers in global config", async () => {
@@ -669,8 +700,9 @@ describe("pi-oven-setup CLI --scope", () => {
       readFileSync(join(homeDir, ".pi-oven", "config.json"), "utf-8")
     );
     expect(globalCfg.nativeWorkers.maxWorkers).toBe(100);
+    expect(stdout).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(stdout).toContain("workflow skills only");
     expect(stdout).toContain("nativeWorkers.maxWorkers=100");
-    expect(stdout).toContain("scripts/pi-oven-team/index.ts");
   });
 
   it("--scope project --apply writes the project .omp/settings.json", async () => {
@@ -683,8 +715,9 @@ describe("pi-oven-setup CLI --scope", () => {
     const settings = JSON.parse(
       readFileSync(join(tempDir, ".omp", "settings.json"), "utf-8")
     );
-    // Profile A under project scope writes ALL 24 overrides.
+    // Profile A under project scope writes ALL 24 overrides plus the workflow-skill include filter.
     expect(Object.keys(settings.task.agentModelOverrides).length).toBe(ROLES.length);
+    expect(settings.skills.includeSkills).toEqual(["pi-oven:*"]);
   });
 });
 
@@ -765,7 +798,7 @@ describe("pi-oven-setup CLI --suppress-sibling-skills", () => {
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
     expect(exitCode).toBe(0);
-    expect(out).toContain("legacy home-layer compatibility mode");
+    expect(out).toContain("legacy home-layer compatibility aid");
     expect(out).toContain("disabledProviders = [claude]");
     expect(out).toContain("~/.claude home layer");
     expect(out).toContain("Legacy front doors");

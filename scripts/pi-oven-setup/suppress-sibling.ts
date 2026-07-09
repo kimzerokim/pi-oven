@@ -32,10 +32,13 @@ export async function runSuppressSibling(
       return {
         exitCode: 0,
         output:
-          "omp will now apply the legacy skill-visibility compatibility filter.\n" +
+          "omp will now apply the legacy skill-visibility compatibility aid.\n" +
           `  skills.ignoredSkills = [${list.join(", ")}] in ~/.omp/agent/config.yml\n` +
           `  Filtered globs: ${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}\n` +
+          "  This is a compatibility helper only; it does not establish workflow-skill ownership.\n" +
+          "  Empty ~/.claude/skills is not the target state; populated Claude user workflow skills can stay in place for other users.\n" +
           "  pi-oven:* skills are unaffected and remain fully available.\n" +
+          "  Note: this does not disable claude-plugins or unrelated namespaced marketplace workflow skills.\n" +
           "  Note (provenance): clearing this later also removes identical user-set globs.\n" +
           `  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n` +
           "  Restart omp to apply.\n",
@@ -47,13 +50,13 @@ export async function runSuppressSibling(
       exitCode: 0,
       output:
         removed.length > 0
-          ? `Cleared the legacy skill-visibility compatibility filter in omp (removed ${removed.join(", ")} from skills.ignoredSkills).\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n  Restart omp to apply.\n`
-          : `No pi-oven-managed legacy skill-filter globs (${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}) were active — nothing to undo.\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n`,
+          ? `Cleared the legacy skill-visibility compatibility aid in omp (removed ${removed.join(", ")} from skills.ignoredSkills).\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n  Restart omp to apply.\n`
+          : `No pi-oven-managed legacy skill-filter globs (${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}) were active — no compatibility aid to undo.\n  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n`,
     };
   } catch (err) {
     return {
       exitCode: 1,
-      output: `Legacy skill-visibility toggle failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      output: `Legacy skill-visibility compatibility aid failed: ${err instanceof Error ? err.message : String(err)}\n`,
     };
   }
 }

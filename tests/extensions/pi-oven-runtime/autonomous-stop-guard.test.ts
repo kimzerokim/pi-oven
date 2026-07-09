@@ -75,6 +75,16 @@ describe("autonomous-stop-guard", () => {
 
     expect(decision.shouldQueueContinuation).toBe(false);
     expect(decision.reason).toBeNull();
+    expect(decision.blockedReason).toEqual({
+      kind: "branch-contract",
+      message:
+        "pi-oven: autonomy paused — the branch contract is still missing destination/branch/pr_mode for code-write.",
+    });
+    expect(decision.nextAction).toEqual({
+      kind: "write-branch-contract",
+      message:
+        "Write .pi-oven/state/branch-contract.json with destination, branch, and pr_mode, then continue in the same repo/branch.",
+    });
     expect(decision.state.continuationMarker).toEqual({
       kind: "halted-by-policy",
       policy: "branch-contract",
@@ -117,6 +127,16 @@ describe("autonomous-stop-guard", () => {
 
     expect(decision.shouldQueueContinuation).toBe(false);
     expect(decision.state.consecutiveAutoContinues).toBe(0);
+    expect(decision.blockedReason).toEqual({
+      kind: "max-consecutive-auto-continues",
+      message:
+        "pi-oven: autonomy paused — the max consecutive auto-continue cap was reached before the run could safely finish.",
+    });
+    expect(decision.nextAction).toEqual({
+      kind: "continue-in-same-repo",
+      message:
+        "Continue manually in the same repo/branch when more work remains, or ask for an explicit continue after reviewing the last stop.",
+    });
     expect(decision.state.continuationMarker).toEqual({
       kind: "halted-by-policy",
       policy: "max-consecutive-auto-continues",

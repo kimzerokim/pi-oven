@@ -568,6 +568,18 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
     );
     expect(r.block).toBe(true);
     expect(r.reason).toMatch(/branch-contract\.json/i);
+    expect(r.autonomyStopBoundary).toEqual({
+      blockedReason: {
+        kind: "branch-contract",
+        message:
+          "pi-oven: code-write blocked — the control-plane front door requires .pi-oven/state/branch-contract.json with destination/branch/pr_mode first.",
+      },
+      nextAction: {
+        kind: "write-branch-contract",
+        message:
+          "Write .pi-oven/state/branch-contract.json with destination, branch, and pr_mode, then retry the write.",
+      },
+    });
   });
 
   it("allows bootstrap write of the branch-contract marker before the marker exists", () => {
@@ -615,6 +627,11 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
     expect(r.block).toBe(true);
     expect(r.reason).toMatch(/capability proof|owned skill proof/i);
     expect(r.reason).toContain(delegationTarget);
+    expect(r.autonomyStopBoundary?.blockedReason.kind).toBe("skill-proof-incomplete");
+    expect(r.autonomyStopBoundary?.nextAction).toEqual({
+      kind: "complete-skill-proof",
+      message: "Read the exact plugin-owned SKILL.md targets first, then retry the write.",
+    });
   });
 
   it("blocks code-write when a required skill has no plugin-owned proof target", () => {
@@ -633,6 +650,11 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
     expect(r.block).toBe(true);
     expect(r.reason).toMatch(/ownership/i);
     expect(r.reason).toMatch(/autonomous-loop/i);
+    expect(r.autonomyStopBoundary?.nextAction).toEqual({
+      kind: "complete-skill-proof",
+      message:
+        "Repair the exact plugin-owned skill proof surface so every required skill has a matching owned SKILL target, then retry the write.",
+    });
   });
 
   it("allows code-write once the branch contract exists and every exact owned proof target was read", () => {
@@ -704,6 +726,17 @@ describe("decideGate — brainstorming mutation guard", () => {
     );
     expect(r.block).toBe(true);
     expect(r.reason).toMatch(/brainstorming|deep-interview|docs\/specs/i);
+    expect(r.autonomyStopBoundary).toEqual({
+      blockedReason: {
+        kind: "approval-pending",
+        message: r.reason!,
+      },
+      nextAction: {
+        kind: "resolve-approval",
+        message:
+          "Resolve the pending approval/deep-interview handoff through the sanctioned runtime completion path before retrying the write.",
+      },
+    });
   });
 
   it("blocks direct docs/specs writes during handoff; only the runtime-owned sanctioned completion path may persist them", () => {

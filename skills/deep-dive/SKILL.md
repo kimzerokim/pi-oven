@@ -1,14 +1,14 @@
 ---
-name: deep-dive
+name: pov:deep-dive
 version: 0.1.0
-description: "Read this skill for trace-first deep bug investigation before planning. It dispatches 3 parallel pi-oven:tracer lanes, then a bounded clarification of only the unknowns the trace could not resolve."
+description: "Read this skill for trace-first deep bug investigation before planning. It dispatches 3 parallel pov:tracer lanes, then a bounded clarification of only the unknowns the trace could not resolve."
 ---
 
 # deep-dive
 
 ## Purpose
 
-This is the bug-investigation tool. It follows trace lanes **autonomously**: Stage 1 dispatches `pi-oven:tracer` (agent file: `agents/pi-oven-tracer.md`) across 3 parallel causal investigation lanes. Stage 2 is a **bounded clarification** — the main agent asks only the per-lane critical unknowns the trace genuinely could not resolve, preferring to run the recommended discriminating probe over asking. The trace findings feed forward via a 3-point injection mechanism, producing a spec grounded in evidence rather than assumptions.
+This is the bug-investigation tool. It follows trace lanes **autonomously**: Stage 1 dispatches `pov:tracer` (agent file: `agents/pov-tracer.md`) across 3 parallel causal investigation lanes. Stage 2 is a **bounded clarification** — the main agent asks only the per-lane critical unknowns the trace genuinely could not resolve, preferring to run the recommended discriminating probe over asking. The trace findings feed forward via a 3-point injection mechanism, producing a spec grounded in evidence rather than assumptions.
 
 deep-dive is **not** a relentless requirements interview — when full spec convergence is needed, that is `brainstorming`'s job. Solving the context-loss problem that occurs when trace and clarification are run separately: findings discovered in the trace carry directly into the clarification's starting point, codebase context, and first questions.
 
@@ -31,13 +31,13 @@ deep-dive is **not** a relentless requirements interview — when full spec conv
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
 **Do NOT run this skill's substantive work in the main context.** Main's direct-action budget is narrow: 1–2 file simple edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`).
-**Right-agent routing** (model-fit + role-fit is first-class — use these exact names): causal investigation → `pi-oven:tracer`; deep analysis → `pi-oven:analyst`; broad read → `pi-oven:explorer`; prior-art / known-issues research → `pi-oven:deep-researcher` (co-spawned sibling in Phase 3); REPL log/trace data execution → `pi-oven:data-runner` (conditional post-lane probe in Phase 3).
+**Right-agent routing** (model-fit + role-fit is first-class — use these exact names): causal investigation → `pov:tracer`; deep analysis → `pov:analyst`; broad read → `pov:explorer`; prior-art / known-issues research → `pov:deep-researcher` (co-spawned sibling in Phase 3); REPL log/trace data execution → `pov:data-runner` (conditional post-lane probe in Phase 3).
 
 ## Phase 1: Initialize
 
 1. Parse the user's idea from the trigger input
 2. Generate a slug: kebab-case from the first 5 words, lowercased, special characters stripped
-3. Detect brownfield vs greenfield: dispatch `pi-oven:explorer` (model: haiku) to check whether the working directory has existing source files, package files, or git history
+3. Detect brownfield vs greenfield: dispatch `pov:explorer` (model: haiku) to check whether the working directory has existing source files, package files, or git history
 4. Generate 3 trace lane hypotheses. Default lanes (use unless the problem strongly suggests a better partition):
    - **Lane 1**: Code-path / implementation cause
    - **Lane 2**: Config / environment / orchestration cause
@@ -80,9 +80,9 @@ Present the 3 hypotheses to the user via `ask` for a single confirmation round:
 
 ## Phase 3: Trace execution
 
-Dispatch `pi-oven:tracer` (agent file: `agents/pi-oven-tracer.md`) for each confirmed hypothesis, and co-spawn `pi-oven:deep-researcher` as ONE additional sibling in the same `task` call. All agents run concurrently — one task entry per tracer lane plus one for deep-researcher, all in the same response turn, each with `run_in_background: true`.
+Dispatch `pov:tracer` (agent file: `agents/pov-tracer.md`) for each confirmed hypothesis, and co-spawn `pov:deep-researcher` as ONE additional sibling in the same `task` call. All agents run concurrently — one task entry per tracer lane plus one for deep-researcher, all in the same response turn, each with `run_in_background: true`.
 
-`pi-oven:deep-researcher` is NOT a numbered hypothesis lane. Its role is to surface prior art and known issues for the problem area. Its output feeds Phase-4 Injection-2 (codebase/context) — not the `## Ranked Hypotheses` table. Do not use "4th parallel lane" framing; lane count = N confirmed hypotheses.
+`pov:deep-researcher` is NOT a numbered hypothesis lane. Its role is to surface prior art and known issues for the problem area. Its output feeds Phase-4 Injection-2 (codebase/context) — not the `## Ranked Hypotheses` table. Do not use "4th parallel lane" framing; lane count = N confirmed hypotheses.
 
 **irc coordination.** Each tracer and deep-researcher should call `irc(op:"list")` on start to discover co-resident sibling peer ids. When a tracer lane confirms the root cause, it broadcasts in plain prose: `irc(op:"send", to:"all", message:"root cause confirmed in <component>: <summary>")` — other lanes may terminate early on receiving this. When deep-researcher completes its prior-art sweep, it broadcasts: `irc(op:"send", to:"all", message:"prior-art research complete: <key finding>")`.
 
@@ -95,13 +95,13 @@ Each tracer lane must use `ast_grep` for structural pattern analysis and `lsp re
 - Name the critical unknown for the lane
 - Recommend the best discriminating probe
 
-After all tracer lanes and deep-researcher complete, dispatch `pi-oven:analyst` to synthesize the lanes (this is deep-dive's own "deep analysis → `pi-oven:analyst`" routing — see Dispatch discipline). The analyst:
+After all tracer lanes and deep-researcher complete, dispatch `pov:analyst` to synthesize the lanes (this is deep-dive's own "deep analysis → `pov:analyst`" routing — see Dispatch discipline). The analyst:
 - Ranks hypotheses by confidence and identifies convergence (if two hypotheses reduce to the same mechanism, merge explicitly)
 - Extracts the per-lane critical unknowns
 - Recommends the best discriminating probe (the single next probe that would collapse uncertainty fastest)
 
 Then:
-- **Conditional REPL probe:** if static trace analysis is insufficient (e.g., log parsing, metric correlation, or trace file analysis is needed to confirm/rule out a hypothesis), dispatch `pi-oven:data-runner` via `task` to run a targeted REPL probe. This is a conditional post-lane dispatch — not a hypothesis lane and not part of the parallel fan-out. Dispatch only when static analysis leaves a hypothesis unresolved by evidence.
+- **Conditional REPL probe:** if static trace analysis is insufficient (e.g., log parsing, metric correlation, or trace file analysis is needed to confirm/rule out a hypothesis), dispatch `pov:data-runner` via `task` to run a targeted REPL probe. This is a conditional post-lane dispatch — not a hypothesis lane and not part of the parallel fan-out. Dispatch only when static analysis leaves a hypothesis unresolved by evidence.
 - Produce the trace output structure (see below)
 - Save to `.pi-oven/specs/deep-dive-trace-{slug}.md`
 
@@ -182,8 +182,8 @@ Any option whose path writes code must follow `tdd-strict` — the failing test 
 ## Tool usage
 
 - `ask` for lane confirmation (Phase 2) and each bounded clarification question (Phase 4) — prefer `pi-oven_ask` with `{label, description}` options for single-select choices so rationales show beside each option; keep built-in `ask` for multi-select / free-form
-- `task` with `run_in_background: true` to dispatch 3 parallel `pi-oven:tracer` lanes (Phase 3)
-- `pi-oven:explorer` (model: haiku) for brownfield codebase detection (Phase 1)
+- `task` with `run_in_background: true` to dispatch 3 parallel `pov:tracer` lanes (Phase 3)
+- `pov:explorer` (model: haiku) for brownfield codebase detection (Phase 1)
 - `write` to save trace result to `.pi-oven/specs/deep-dive-trace-{slug}.md` and final spec to `.pi-oven/specs/deep-dive-{slug}.md`
 
 ## Stop conditions
@@ -207,7 +207,7 @@ User: deep dive into why our auth token expires early
 
 [Phase 2] User confirms hypotheses.
 
-[Phase 3] 3 parallel pi-oven:tracer dispatches (run_in_background: true).
+[Phase 3] 3 parallel pov:tracer dispatches (run_in_background: true).
   Synthesis: Most likely = clock skew (Lane 2, High confidence)
   Per-lane critical unknowns:
     Lane 1: where TTL is set vs. where it is validated

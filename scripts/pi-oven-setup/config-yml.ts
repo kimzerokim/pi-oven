@@ -3,9 +3,224 @@
  * Transport: omp config get → in-memory merge → omp config set (whole-record replace).
  */
 
+import { ROLES, type Role } from "./profiles";
+
 export interface ConfigYmlOpts {
   /** Injectable spawn for omp config get/set (tests). Default: Bun.spawnSync wrapper. */
   spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
+}
+
+export const GLOBAL_OVERRIDE_PREFIX = "pov:";
+export const LEGACY_GLOBAL_OVERRIDE_PREFIX = "pi-oven:";
+
+const MANAGED_ROLE_MAP: Record<string, true> = Object.fromEntries(
+  ROLES.map((role) => [role, true] as const)
+);
+
+export interface ManagedOverrideConflict {
+  role: Role;
+  canonicalKey: string;
+  canonicalValue: string;
+  legacyKey: string;
+  legacyValue: string;
+}
+
+export interface ManagedOverrideState {
+  role: Role;
+  canonicalKey: string;
+  canonicalValue?: string;
+  legacyKey: string;
+  legacyValue?: string;
+  effectiveValue?: string;
+  kind: "absent" | "canonical" | "legacy-only" | "conflict";
+}
+
+function canonicalOverrideKey(role: Role): string {
+  return `${GLOBAL_OVERRIDE_PREFIX}${role}`;
+}
+
+function legacyOverrideKey(role: Role): string {
+  return `${LEGACY_GLOBAL_OVERRIDE_PREFIX}${role}`;
+}
+
+function managedRoleFromKey(key: string): Role | null {
+  const role = key.startsWith(GLOBAL_OVERRIDE_PREFIX)
+    ? key.slice(GLOBAL_OVERRIDE_PREFIX.length)
+    : key.startsWith(LEGACY_GLOBAL_OVERRIDE_PREFIX)
+      ? key.slice(LEGACY_GLOBAL_OVERRIDE_PREFIX.length)
+      : null;
+  if (role === null || !MANAGED_ROLE_MAP[role]) {
+    return null;
+  }
+  return role as Role;
+}
+
+export function getManagedOverrideState(
+  current: Record<string, string>,
+  role: Role
+): ManagedOverrideState {
+  const canonicalKey = canonicalOverrideKey(role);
+  const legacyKey = legacyOverrideKey(role);
+  const canonicalValue = current[canonicalKey];
+  const legacyValue = current[legacyKey];
+
+  if (canonicalValue !== undefined && legacyValue !== undefined) {
+    return {
+      role,
+      canonicalKey,
+      canonicalValue,
+      legacyKey,
+      legacyValue,
+      effectiveValue: canonicalValue,
+      kind: "conflict",
+    };
+  }
+
+  if (canonicalValue !== undefined) {
+    return {
+      role,
+      canonicalKey,
+      canonicalValue,
+      legacyKey,
+      effectiveValue: canonicalValue,
+      kind: "canonical",
+    };
+  }
+
+  if (legacyValue !== undefined) {
+    return {
+      role,
+      canonicalKey,
+      legacyKey,
+      legacyValue,
+      effectiveValue: legacyValue,
+      kind: "legacy-only",
+    };
+  }
+
+  return {
+    role,
+    canonicalKey,
+    legacyKey,
+    kind: "absent",
+  };
+}
+
+function collectManagedOverrideConflicts(
+  current: Record<string, string>
+): ManagedOverrideConflict[] {
+  return ROLES.flatMap((role) => {
+    const state = getManagedOverrideState(current, role);
+    return state.kind === "conflict"
+      ? [{
+          role,
+          canonicalKey: state.canonicalKey,
+          canonicalValue: state.canonicalValue!,
+          legacyKey: state.legacyKey,
+          legacyValue: state.legacyValue!,
+        }]
+      : [];
+  });
+}
+
+function buildNormalizedGlobalOverrideRecord(
+  current: Record<string, string>,
+  desired: Record<string, string> = {}
+): {
+  normalized: Record<string, string>;
+  migratedLegacyKeys: string[];
+  conflicts: ManagedOverrideConflict[];
+} {
+  const conflicts = collectManagedOverrideConflicts(current);
+  const normalized: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(current)) {
+    if (managedRoleFromKey(key) === null) {
+      normalized[key] = value;
+    }
+  }
+
+  const migratedLegacyKeys: string[] = [];
+
+  for (const role of ROLES) {
+    const state = getManagedOverrideState(current, role);
+    const desiredValue = desired[canonicalOverrideKey(role)];
+
+    if (state.kind === "conflict") {
+      continue;
+    }
+
+    if (desiredValue !== undefined) {
+      normalized[canonicalOverrideKey(role)] = desiredValue;
+      if (state.legacyValue !== undefined) {
+        migratedLegacyKeys.push(state.legacyKey);
+      }
+      continue;
+    }
+
+    if (state.canonicalValue !== undefined) {
+      normalized[state.canonicalKey] = state.canonicalValue;
+      continue;
+    }
+
+    if (state.legacyValue !== undefined) {
+      normalized[state.canonicalKey] = state.legacyValue;
+      migratedLegacyKeys.push(state.legacyKey);
+    }
+  }
+
+  return {
+    normalized,
+    migratedLegacyKeys: migratedLegacyKeys.filter((key, index) => migratedLegacyKeys.indexOf(key) === index).sort(),
+    conflicts,
+  };
+}
+
+function buildGlobalOverrideCompatibilityRecord(
+  current: Record<string, string>
+): Record<string, string> {
+  const compatible = { ...current };
+
+  for (const role of ROLES) {
+    const state = getManagedOverrideState(current, role);
+    if (state.effectiveValue === undefined) {
+      continue;
+    }
+    if (compatible[state.canonicalKey] === undefined) {
+      compatible[state.canonicalKey] = state.effectiveValue;
+    }
+    if (compatible[state.legacyKey] === undefined) {
+      compatible[state.legacyKey] = state.effectiveValue;
+    }
+  }
+
+  return compatible;
+}
+
+function buildClearedGlobalOverrideRecord(
+  current: Record<string, string>
+): { cleared: Record<string, string>; removedKeys: string[] } {
+  const cleared: Record<string, string> = {};
+  const removedKeys: string[] = [];
+
+  for (const [key, value] of Object.entries(current)) {
+    if (managedRoleFromKey(key) !== null) {
+      removedKeys.push(key);
+      continue;
+    }
+    cleared[key] = value;
+  }
+
+  return { cleared, removedKeys: removedKeys.sort() };
+}
+
+function formatManagedOverrideConflicts(conflicts: ManagedOverrideConflict[]): string {
+  return conflicts
+    .map(
+      ({ role, canonicalKey, legacyKey, canonicalValue, legacyValue }) =>
+        `${role} (${canonicalKey}=${canonicalValue}, ${legacyKey}=${legacyValue})`
+    )
+    .join("; ");
 }
 
 // ---------------------------------------------------------------------------
@@ -13,10 +228,10 @@ export interface ConfigYmlOpts {
 // ---------------------------------------------------------------------------
 
 /**
- * PURE merge helper (no IO). Given the current record + a mutation, return the new record.
+ * PURE low-level merge helper (no IO). Given the current record + a mutation, return the new record.
  * - op "set": returns { ...current, [colonKey]: model }
  * - op "delete-pi-oven": returns current with every /^pi-oven:/ key removed
- * Preserves all sibling keys (non-pi-oven:* and other pi-oven:*) by construction.
+ * Preserves all sibling keys by construction.
  */
 export function mergeOverrideRecord(
   current: Record<string, string>,
@@ -25,10 +240,9 @@ export function mergeOverrideRecord(
   if (mutation.op === "set") {
     return { ...current, [mutation.colonKey]: mutation.model };
   }
-  // op === "delete-pi-oven": remove all /^pi-oven:/ keys
   const result: Record<string, string> = {};
   for (const [k, v] of Object.entries(current)) {
-    if (!k.startsWith("pi-oven:")) {
+    if (!k.startsWith(LEGACY_GLOBAL_OVERRIDE_PREFIX)) {
       result[k] = v;
     }
   }
@@ -154,7 +368,10 @@ export async function readOverridesStrict(
 // ---------------------------------------------------------------------------
 
 /**
- * GRACEFUL read for the DISPLAY path only (status). Returns {} on any error/absent.
+ * GRACEFUL compatibility read for DISPLAY / setup-readiness paths only.
+ * Returns the raw record plus any missing managed aliases, preferring `pov:*`
+ * when both keys exist and backfilling `pi-oven:*` only for compatibility
+ * readers that still count legacy-shaped entries.
  * MUST NOT be used by write paths (set/delete).
  */
 export async function readAgentModelOverrides(
@@ -164,7 +381,7 @@ export async function readAgentModelOverrides(
   if (!result.ok) {
     return {};
   }
-  return result.record;
+  return buildGlobalOverrideCompatibilityRecord(result.record);
 }
 
 /**
@@ -238,17 +455,23 @@ export async function readBooleanSettingDisplay(
 // ---------------------------------------------------------------------------
 
 /**
- * SET one override: readOverridesStrict → if !ok ABORT(throw) → mergeOverrideRecord(set)
- * → `omp config set task.agentModelOverrides '<whole-merged-json>'`.
- * colonKey MUST start with "pi-oven:". Throws on non-pi-oven colonKey, strict-read !ok, or set non-zero exit.
+ * SET one global override: readOverridesStrict → normalize current scope to
+ * canonical `pov:*` keys (migrating any old-only `pi-oven:*` roles) → apply the
+ * requested `pov:<role>` value → `omp config set task.agentModelOverrides
+ * '<whole-normalized-json>'`.
+ *
+ * Same-scope dual-key conflicts are explicit and abort the write.
  */
 export async function setAgentModelOverride(
   colonKey: string,
   model: string,
   opts?: ConfigYmlOpts
 ): Promise<void> {
-  if (!colonKey.startsWith("pi-oven:")) {
-    throw new Error(`setAgentModelOverride: colonKey must start with "pi-oven:", got: ${colonKey}`);
+  const role = managedRoleFromKey(colonKey);
+  if (role === null || !colonKey.startsWith(GLOBAL_OVERRIDE_PREFIX)) {
+    throw new Error(
+      `setAgentModelOverride: colonKey must be canonical "pov:<role>", got: ${colonKey}`
+    );
   }
 
   const readResult = await readOverridesStrict(opts);
@@ -256,18 +479,22 @@ export async function setAgentModelOverride(
     throw new Error(`setAgentModelOverride: readOverridesStrict failed — ${readResult.error}`);
   }
 
-  const merged = mergeOverrideRecord(readResult.record, {
-    op: "set",
-    colonKey,
-    model,
-  });
+  const { normalized, conflicts } = buildNormalizedGlobalOverrideRecord(
+    readResult.record,
+    { [canonicalOverrideKey(role)]: model }
+  );
+  if (conflicts.length > 0) {
+    throw new Error(
+      `setAgentModelOverride: same-scope dual-key conflict(s): ${formatManagedOverrideConflicts(conflicts)}`
+    );
+  }
 
   const spawn = opts?.spawnFn ?? defaultSpawn;
   const setResult = spawn("omp", [
     "config",
     "set",
     "task.agentModelOverrides",
-    JSON.stringify(merged),
+    JSON.stringify(normalized),
   ]);
 
   if (setResult.exitCode !== 0) {
@@ -278,24 +505,26 @@ export async function setAgentModelOverride(
 }
 
 // ---------------------------------------------------------------------------
-// setAgentModelOverrides — bulk WRITE path (Profile C only)
+// setAgentModelOverrides — bulk WRITE path
 // ---------------------------------------------------------------------------
 
 /**
- * Bulk-set multiple task.agentModelOverrides entries atomically: ONE read →
- * merge all provided pi-oven:* entries into the existing record (overwriting
- * those roles, preserving all non-pi-oven:* keys and any pi-oven:* keys NOT
- * in `record`) → ONE `omp config set task.agentModelOverrides '<merged-json>'`.
- * Every key in `record` MUST start with "pi-oven:". Throws on any non-pi-oven
- * key, strict-read failure, or non-zero set exit.
+ * Bulk-set multiple global task.agentModelOverrides entries atomically: ONE read →
+ * normalize current scope to canonical `pov:*` keys → merge all provided
+ * `pov:<role>` entries → ONE `omp config set task.agentModelOverrides
+ * '<normalized-json>'`.
+ *
+ * Same-scope dual-key conflicts are explicit and abort the write.
  */
 export async function setAgentModelOverrides(
   record: Record<string, string>,
   opts?: ConfigYmlOpts
 ): Promise<void> {
   for (const key of Object.keys(record)) {
-    if (!key.startsWith("pi-oven:")) {
-      throw new Error(`setAgentModelOverrides: every key must start with "pi-oven:", got: ${key}`);
+    if (managedRoleFromKey(key) === null || !key.startsWith(GLOBAL_OVERRIDE_PREFIX)) {
+      throw new Error(
+        `setAgentModelOverrides: every key must be canonical "pov:<role>", got: ${key}`
+      );
     }
   }
 
@@ -304,14 +533,22 @@ export async function setAgentModelOverrides(
     throw new Error(`setAgentModelOverrides: readOverridesStrict failed — ${readResult.error}`);
   }
 
-  const merged = { ...readResult.record, ...record };
+  const { normalized, conflicts } = buildNormalizedGlobalOverrideRecord(
+    readResult.record,
+    record
+  );
+  if (conflicts.length > 0) {
+    throw new Error(
+      `setAgentModelOverrides: same-scope dual-key conflict(s): ${formatManagedOverrideConflicts(conflicts)}`
+    );
+  }
 
   const spawn = opts?.spawnFn ?? defaultSpawn;
   const setResult = spawn("omp", [
     "config",
     "set",
     "task.agentModelOverrides",
-    JSON.stringify(merged),
+    JSON.stringify(normalized),
   ]);
 
   if (setResult.exitCode !== 0) {
@@ -322,45 +559,40 @@ export async function setAgentModelOverrides(
 }
 
 // ---------------------------------------------------------------------------
-// deletePiOvenAgentModelOverrides — WRITE path
+// deleteGlobalAgentModelOverrides — WRITE path
 // ---------------------------------------------------------------------------
 
 /**
- * DELETE all /^pi-oven:/ keys: readOverridesStrict → if !ok ABORT(throw) → mergeOverrideRecord(delete-pi-oven)
- * → `omp config set task.agentModelOverrides '<whole-merged-json>'`.
- * Returns the sorted list of removed colon keys. Preserves non-pi-oven:* keys.
+ * DELETE all managed global overrides for known roles (both `pov:*` and legacy
+ * `pi-oven:*` keys): readOverridesStrict → prune the managed keys →
+ * `omp config set task.agentModelOverrides '<whole-pruned-json>'`.
+ * Returns the sorted list of removed keys. Preserves non-managed siblings.
  */
-export async function deletePiOvenAgentModelOverrides(
+export async function deleteGlobalAgentModelOverrides(
   opts?: ConfigYmlOpts
 ): Promise<string[]> {
   const readResult = await readOverridesStrict(opts);
   if (!readResult.ok) {
-    throw new Error(`deletePiOvenAgentModelOverrides: readOverridesStrict failed — ${readResult.error}`);
+    throw new Error(`deleteGlobalAgentModelOverrides: readOverridesStrict failed — ${readResult.error}`);
   }
 
-  const current = readResult.record;
-  const removedKeys = Object.keys(current)
-    .filter((k) => k.startsWith("pi-oven:"))
-    .sort();
+  const { cleared, removedKeys } = buildClearedGlobalOverrideRecord(readResult.record);
 
-  // No-op: nothing to remove, skip the set call entirely
   if (removedKeys.length === 0) {
     return removedKeys;
   }
-
-  const merged = mergeOverrideRecord(current, { op: "delete-pi-oven" });
 
   const spawn = opts?.spawnFn ?? defaultSpawn;
   const setResult = spawn("omp", [
     "config",
     "set",
     "task.agentModelOverrides",
-    JSON.stringify(merged),
+    JSON.stringify(cleared),
   ]);
 
   if (setResult.exitCode !== 0) {
     throw new Error(
-      `deletePiOvenAgentModelOverrides: omp config set failed (exit ${String(setResult.exitCode)}): ${setResult.stderr?.toString() ?? ""}`
+      `deleteGlobalAgentModelOverrides: omp config set failed (exit ${String(setResult.exitCode)}): ${setResult.stderr?.toString() ?? ""}`
     );
   }
 
@@ -636,7 +868,7 @@ export async function setToolEnablementConfig(opts?: ConfigYmlOpts): Promise<voi
 // explicit include filter instead.
 // ---------------------------------------------------------------------------
 
-export const PI_OVEN_WORKFLOW_SKILL_INCLUDE = ["pi-oven:*"] as const;
+export const PI_OVEN_WORKFLOW_SKILL_INCLUDE = ["pov:*"] as const;
 
 // ---------------------------------------------------------------------------
 // skills.ignoredSkills (ARRAY) — legacy opt-in sibling-skill suppression (§3.4).
@@ -736,7 +968,7 @@ export async function readIncludedSkillsDisplay(
  * Write the canonical workflow-skill ownership surface into omp's global config.
  * This is the mainline ownership policy for workflow skills only: populated
  * `~/.claude/skills` may continue to exist, but the effective visible workflow
- * skill surface is filtered to `pi-oven:*`. Commands / agents / hooks / MCP are
+ * skill surface is filtered to `pov:*`. Commands / agents / hooks / MCP are
  * explicitly out of scope for this write.
  */
 export async function setPiOvenIncludedSkills(opts?: ConfigYmlOpts): Promise<string[]> {

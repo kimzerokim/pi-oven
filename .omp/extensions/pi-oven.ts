@@ -22,11 +22,21 @@ import {
   type SkillKeywordIndexIssue,
 } from "./pi-oven-runtime/skill-keyword-loader";
 import {
-  collectStandaloneTruthSignals,
-  formatStandaloneTruthSignals,
-  WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
   BOOTSTRAP_PARITY_TRACK_SIGNAL_NAME,
+  buildKeywordSkillIntegritySignal,
+  collectStandaloneTruthSignals,
+  DUAL_PLUGIN_SURFACE_LABEL,
+  extractWorkflowSkillOwnershipClassification,
+  formatStandaloneTruthSignals,
+  HEALTHY_SINGLE_POV_SURFACE_LABEL,
+  WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
+  type WorkflowSkillOwnershipClassification,
 } from "../../scripts/pi-oven-setup/standalone-truth-surface";
+import {
+  getAgentRoleFromFileName,
+  isAgentMarkdownFile,
+  isLegacyAgentMarkdownFile,
+} from "../../scripts/pi-oven-setup/agent-rewriter";
 import {
   buildSetupReadinessNotice as buildSharedSetupReadinessNotice,
   collectSetupReadiness,
@@ -75,7 +85,7 @@ import {
   type DeepInterviewState,
 } from "./pi-oven-runtime/deep-interview-state";
 
-import { createGateHandler } from "./pi-oven-runtime/gate-handler";
+import { createGateHandler, hasPersistedDeepInterviewState } from "./pi-oven-runtime/gate-handler";
 import { registerPiOvenAsk } from "./pi-oven-runtime/pi-oven-ask";
 import { resolveLanguage } from "./pi-oven-runtime/language";
 import {
@@ -106,10 +116,6 @@ export interface SetupChecklistNotice {
   message: string;
   level: "info" | "warning";
 }
-export type WorkflowSkillOwnershipClassification =
-  | "owned-surface active"
-  | "compatibility aids only"
-  | "ownership not established";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -168,30 +174,32 @@ function buildRuntimeInstalledTopologyNotice(
   };
 }
 
-const RUNTIME_KEYWORD_INTEGRITY_FIX =
-  "Sync .claude-plugin/plugin.json, shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries; reinstall pi-oven@kzk if installed assets are stale.";
 
-function buildRuntimeKeywordIntegrityNotice(
+export function buildRuntimeKeywordIntegrityNotice(
   pluginRoot: string,
   projectRoot: string,
   issues: SkillKeywordIndexIssue[],
   loadedCount: number,
   shippedSkillCount: number
 ): SetupChecklistNotice {
-  const availability =
-    loadedCount === 0
-      ? "Runtime keyword-matched skills are unavailable."
-      : "Runtime keyword-matched skills are partially available.";
-  const driftDetail =
-    shippedSkillCount === 0 && issues.length === 0
-      ? "plugin.json skills[] did not yield any shipped skills."
-      : `skipped ${issues.length}: ${formatSkillKeywordIndexIssues(issues)}.`;
+  const detail = buildKeywordSkillIntegritySignal({
+    pluginAssetPath: pluginRoot,
+    keywordIndexTruth: {
+      state: loadedCount === 0 ? "unavailable" : "partial",
+      loadedCount,
+      shippedSkillCount,
+      issues:
+        shippedSkillCount === 0 && issues.length === 0
+          ? ["plugin.json skills[] did not yield any shipped skills"]
+          : [formatSkillKeywordIndexIssues(issues)],
+    },
+  });
   return {
     level: "warning",
     message: [
       "Standalone truth surface:",
-      `  [WARN] keyword-skill integrity: runtime keyword index loaded ${loadedCount}/${shippedSkillCount} shipped skills from ${pluginRoot}; project state read from ${projectRoot}; machine-global config remains ${RUNTIME_GLOBAL_CONFIG_PATH}; ${driftDetail} ${availability}`,
-      `         fix: ${RUNTIME_KEYWORD_INTEGRITY_FIX}`,
+      `  [WARN] keyword-skill integrity: ${detail?.detail ?? "runtime keyword index probe failed."} Project state read from ${projectRoot}; machine-global config remains ${RUNTIME_GLOBAL_CONFIG_PATH}.`,
+      `         fix: ${detail?.fix ?? "Reinstall pi-oven@kzk if installed assets are stale."}`,
     ].join("\n"),
   };
 }
@@ -223,9 +231,13 @@ export function buildSetupChecklistNotice(
   if (!readiness.projectReady) {
     lines.push("  ↳ repo setup state: missing project routing for this repo");
   } else if (workflowSkillOwnershipStatus === "owned-surface active") {
-    lines.push("  ↳ repo setup state: healthy setup");
+    lines.push(
+      `  ↳ repo setup state: healthy setup — ${HEALTHY_SINGLE_POV_SURFACE_LABEL}`
+    );
   } else {
-    lines.push(`  ↳ repo setup state: ${workflowSkillOwnershipStatus}`);
+    lines.push(
+      `  ↳ repo setup state: ${workflowSkillOwnershipStatus} — not the ${HEALTHY_SINGLE_POV_SURFACE_LABEL}`
+    );
   }
 
   return {
@@ -252,7 +264,7 @@ export function readSetupComplete(configPath: string): boolean {
 }
 
 /**
- * Count `pi-oven:*` keys in `<repoRoot>/.omp/settings.json`
+ * Count canonical `pov:*` keys in `<repoRoot>/.omp/settings.json`
  * `task.agentModelOverrides` (the project model-routing layer). Fail-soft → 0.
  */
 export function countProjectRoutingRoles(settingsPath: string): number {
@@ -263,7 +275,7 @@ export function countProjectRoutingRoles(settingsPath: string): number {
     };
     const overrides = parsed.task?.agentModelOverrides;
     if (!overrides || typeof overrides !== "object") return 0;
-    return Object.keys(overrides).filter((k) => k.startsWith("pi-oven:")).length;
+    return Object.keys(overrides).filter((k) => k.startsWith("pov:")).length;
   } catch {
     return 0;
   }
@@ -341,12 +353,18 @@ function extractModels(frontmatter: Record<string, unknown>): string[] {
   return [];
 }
 
+function extractName(frontmatter: Record<string, unknown>): string | undefined {
+  const raw = frontmatter.name;
+  return typeof raw === "string" ? raw : undefined;
+}
+
+
 // ---------------------------------------------------------------------------
 // validateAgentRegistry (two-pass — Spec B §10.5)
 // ---------------------------------------------------------------------------
 
 /**
- * Validate all pi-oven-*.md agent files in agentsDir.
+ * Validate all agent markdown files in agentsDir.
  * Pass 1: Parse all files and extract models.
  * Pass 2: Ensure all models use an allowed provider prefix.
  * Errors are logged via pi.logger.error.
@@ -355,13 +373,21 @@ export function validateAgentRegistry(
   agentsDir: string,
   logger: { error(msg: string): void }
 ): void {
-  const agentFiles: AgentFileEntry[] = [];
+  const agentFiles: Array<{
+    file: string;
+    name: string | undefined;
+    modelArray: string[];
+  }> = [];
   try {
-    const files = readdirSync(agentsDir).filter(isPiOvenAgentFile);
+    const files = readdirSync(agentsDir).filter(isAgentMarkdownFile);
     for (const file of files) {
       const content = readFileSync(path.join(agentsDir, file), "utf-8");
       const frontmatter = parseFrontmatter(content);
-      agentFiles.push({ modelArray: extractModels(frontmatter) });
+      agentFiles.push({
+        file,
+        name: extractName(frontmatter),
+        modelArray: extractModels(frontmatter),
+      });
     }
   } catch (err) {
     logger.error(`pi-oven: failed to read agent registry: ${err}`);
@@ -371,6 +397,20 @@ export function validateAgentRegistry(
   const ABSOLUTE_BLACKLIST = ["google"];
   let hasOpenAICodex = false;
   for (const agent of agentFiles) {
+    const role = getAgentRoleFromFileName(agent.file);
+    if (isLegacyAgentMarkdownFile(agent.file)) {
+      logger.error(
+        `pi-oven: ${agent.file} is agent namespace drift — legacy filename still uses pi-oven-. Rename it to pov-<role>.md so the registry stays on the ${HEALTHY_SINGLE_POV_SURFACE_LABEL}.`
+      );
+    }
+    if (role !== null) {
+      const expectedName = `pov:${role}`;
+      if (agent.name !== expectedName) {
+        logger.error(
+          `pi-oven: ${agent.file} is agent namespace drift — frontmatter name "${agent.name ?? "(missing)"}" does not match the healthy registry contract ${expectedName}.`
+        );
+      }
+    }
     if (agent.modelArray.length === 0) {
       logger.error(
         `Profile A guarantee broken — agent file missing "model" field.`
@@ -464,9 +504,6 @@ export async function captureSessionModel(
   writeFileSync(targetPath, JSON.stringify(data, null, 2), "utf-8");
 }
 
-function isPiOvenAgentFile(name: string): boolean {
-  return name.startsWith("pi-oven-") && name.endsWith(".md");
-}
 
 // ---------------------------------------------------------------------------
 // readProjectInstructions — repo-root CLAUDE.md reader (project-local)
@@ -571,14 +608,37 @@ function getLatestTextUserBranchMessage(
   return null;
 }
 
+const EXPLICIT_FOREIGN_AGENT_NEGATION_CONTEXT =
+  /\b(?:do\s+not|don't|dont|never|avoid|without|instead of|rather than)\b[^.!?\n;]*$/;
+const EXPLICIT_FOREIGN_AGENT_ILLUSTRATIVE_CONTEXT =
+  /\b(?:example|examples|for example|e\.g\.|such as)\b[^.!?\n;]*$/;
+
+function shouldSuppressExplicitForeignAgentMention(text: string, matchIndex: number): boolean {
+  const clauseStart = Math.max(
+    text.lastIndexOf(".", matchIndex - 1),
+    text.lastIndexOf("!", matchIndex - 1),
+    text.lastIndexOf("?", matchIndex - 1),
+    text.lastIndexOf(";", matchIndex - 1),
+    text.lastIndexOf("\n", matchIndex - 1)
+  );
+  const clause = text.slice(clauseStart + 1, matchIndex).toLowerCase();
+  if (clause.trim().length === 0) return false;
+  return (
+    EXPLICIT_FOREIGN_AGENT_NEGATION_CONTEXT.test(clause) ||
+    EXPLICIT_FOREIGN_AGENT_ILLUSTRATIVE_CONTEXT.test(clause)
+  );
+}
+
 export function extractExplicitForeignAgents(text: string): string[] {
-  const matches = text.match(/\b[a-z0-9-]+:[a-z0-9-]+\b/gi) ?? [];
   const seen = new Set<string>();
   const explicitForeignAgents: string[] = [];
-  for (const match of matches) {
-    const normalized = match.toLowerCase();
+  for (const match of text.matchAll(/\b[a-z0-9-]+:[a-z0-9-]+\b/gi)) {
+    const requested = match[0];
+    if (!requested) continue;
+    if (shouldSuppressExplicitForeignAgentMention(text, match.index ?? 0)) continue;
+    const normalized = requested.toLowerCase();
     const namespace = normalized.split(":", 1)[0];
-    if (namespace === "pi-oven") continue;
+    if (namespace === "pi-oven" || namespace === "pov") continue;
     if (seen.has(normalized)) continue;
     seen.add(normalized);
     explicitForeignAgents.push(normalized);
@@ -770,6 +830,19 @@ function getRemainingOwnedSkillReadTargets(
   return ownedSkillReadTargets.filter((target) => !readSet.has(target));
 }
 
+export const AUTONOMOUS_LOOP_PUBLIC_SKILL_NAME = "pov:autonomous-loop";
+
+export function shouldEnableAutonomousReminder(
+  activeFsm: boolean,
+  matchedSkills: Array<{ name: string }>
+): boolean {
+  if (activeFsm) return true;
+  for (const skill of matchedSkills) {
+    if (skill.name === AUTONOMOUS_LOOP_PUBLIC_SKILL_NAME) return true;
+  }
+  return false;
+}
+
 function buildSkillOwnershipTrace(
   matchedSkills: Array<{ name: string; ownedReadTarget: string }>
 ) {
@@ -918,32 +991,6 @@ ${state.nextAction?.message ?? "Run the deep verifier lane before exit."}`
   }
   return null;
 }
-function isWorkflowSkillOwnershipClassification(
-  value: string
-): value is WorkflowSkillOwnershipClassification {
-  return (
-    value === "owned-surface active" ||
-    value === "compatibility aids only" ||
-    value === "ownership not established"
-  );
-}
-
-function extractWorkflowSkillOwnershipClassification(
-  signals: Array<{ name: string; detail: string }>
-): WorkflowSkillOwnershipClassification | null {
-  const ownershipSignal = signals.find(
-    (signal) => signal.name === WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME
-  );
-  if (!ownershipSignal) {
-    return null;
-  }
-  const classification = ownershipSignal.detail.match(
-    /classification:\s+(owned-surface active|compatibility aids only|ownership not established)\./
-  )?.[1];
-  return classification && isWorkflowSkillOwnershipClassification(classification)
-    ? classification
-    : null;
-}
 
 function buildSessionStartSetupNoticeKey(event: unknown, repoRoot: string): string {
   if (isRecord(event)) {
@@ -1004,8 +1051,9 @@ export function emitSessionStartSetupNotice(
   if (emittedKeys.has(noticeKey)) {
     return;
   }
-  const workflowSkillOwnershipStatus =
-    extractWorkflowSkillOwnershipClassification(truthSignals);
+  const workflowSkillOwnershipStatus = extractWorkflowSkillOwnershipClassification(
+    truthSignals.find((signal) => signal.name === WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME)?.detail ?? ""
+  );
   const notice = buildSetupChecklistNotice(readiness, {
     workflowSkillOwnershipStatus,
   });
@@ -1226,19 +1274,7 @@ export default function piOvenPi(
           const fsmRecord = fsm.state as unknown as Record<string, unknown>;
           if (fsmRecord.deepInterview !== undefined) {
             const normalized = normalizeDeepInterviewState(fsmRecord.deepInterview);
-            if (
-              normalized.active ||
-              normalized.state.rounds.length > 0 ||
-              normalized.pendingQuestion !== undefined ||
-              normalized.spec !== undefined ||
-              normalized.approvalHandoff !== undefined ||
-              normalized.routingApproval !== undefined ||
-              normalized.threshold !== undefined ||
-              normalized.state.topology !== undefined ||
-              normalized.state.milestone !== undefined ||
-              normalized.state.nextTarget !== undefined ||
-              normalized.state.currentAmbiguity !== undefined
-            ) {
+            if (hasPersistedDeepInterviewState(normalized)) {
               persistedDeepInterviewState = normalized;
             }
           }
@@ -1258,9 +1294,10 @@ export default function piOvenPi(
             : effectiveMatchedSkills.map((skill) => skill.ownedReadTarget);
         const reminders: string[] = [];
         const branchContract = await store.readBranchContract();
-        needsAutonomousReminder =
-          (fsm.kind === "OK" && fsm.state.active) ||
-          effectiveMatchedSkills.some((skill) => skill.name === "autonomous-loop");
+        needsAutonomousReminder = shouldEnableAutonomousReminder(
+          fsm.kind === "OK" && fsm.state.active,
+          effectiveMatchedSkills
+        );
         if (needsAutonomousReminder) {
           if (branchContract.kind !== "OK") {
             reminders.push(
@@ -1356,12 +1393,13 @@ export default function piOvenPi(
     try {
       const notify = getSessionStartNotifier(ctx);
       if (notify) {
-        const truthSignals = (
-          await collectStandaloneTruthSignals({
-            pluginAssetPath: pluginRoot,
-            projectRoot: repoRoot,
-          })
-        ).filter(isSessionTruthSignal);
+        const standaloneTruthSignals = await collectStandaloneTruthSignals({
+          pluginAssetPath: pluginRoot,
+          projectRoot: repoRoot,
+        });
+        const truthSignals = standaloneTruthSignals.filter(isSessionTruthSignal);
+        const pluginSurfaceDriftSignal =
+          standaloneTruthSignals.find((signal) => signal.name === DUAL_PLUGIN_SURFACE_LABEL) ?? null;
         emitSessionStartSetupNotice(
           notify,
           _event,
@@ -1372,6 +1410,15 @@ export default function piOvenPi(
         );
         notifySessionStartAuxiliaryNotice(notify, installedTopologyNotice);
         notifySessionStartAuxiliaryNotice(notify, keywordIntegrityNotice);
+        notifySessionStartAuxiliaryNotice(
+          notify,
+          pluginSurfaceDriftSignal
+            ? {
+                level: "warning",
+                message: formatStandaloneTruthSignals([pluginSurfaceDriftSignal]).join("\n"),
+              }
+            : null
+        );
         notifySessionStartTruthSignals(notify, truthSignals);
       }
     } catch (err) {

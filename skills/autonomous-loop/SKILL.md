@@ -1,5 +1,5 @@
 ---
-name: autonomous-loop
+name: pov:autonomous-loop
 version: 0.1.0
 description: "Read this skill for multi-cycle autonomous or unattended execution. Meta orchestrator: delegation-first loop, ASK-FIRST 3-slot branch contract, three modes (ultrawork/ralph/autopilot), exhaustive sweep before self-improvement plans, fresh-agent verifier exit gate."
 ---

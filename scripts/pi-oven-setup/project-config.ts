@@ -20,6 +20,7 @@ import * as path from "path";
 import * as os from "os";
 import { resolveLanguage } from "../../.omp/extensions/pi-oven-runtime/language";
 import {
+  getManagedOverrideState,
   readAgentModelOverrides,
   readConfigValueDisplayState,
   SUBAGENT_RUNTIME_PREREQUISITES,
@@ -71,11 +72,17 @@ export function countPiOvenRoutingEntries(
   if (!record || typeof record !== "object" || Array.isArray(record)) {
     return 0;
   }
-  return Object.entries(record).filter(([key, value]) => {
-    if (!key.startsWith("pi-oven:")) return false;
-    if (typeof value !== "string") return false;
-    return (ROLES as readonly string[]).includes(key.slice("pi-oven:".length));
-  }).length;
+
+  const stringEntries: Record<string, string> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value === "string") {
+      stringEntries[key] = value;
+    }
+  }
+
+  return ROLES.filter(
+    (role) => getManagedOverrideState(stringEntries, role).effectiveValue !== undefined
+  ).length;
 }
 
 export function classifySetupPrerequisiteState(
@@ -224,6 +231,44 @@ function configPath(cwd: string): string {
   return path.resolve(cwd, CONFIG_DIR, CONFIG_FILE);
 }
 
+type ConfigObjectReadResult =
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; error: string };
+
+async function atomicWriteConfig(
+  file: string,
+  data: Record<string, unknown>
+): Promise<void> {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(data, null, 2) + "\n", "utf-8");
+  await fs.rename(tmp, file);
+}
+
+async function readConfigObjectStrict(file: string): Promise<ConfigObjectReadResult> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf-8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === "ENOENT") {
+      return { ok: true, data: {} };
+    }
+    return { ok: false, error: `unreadable file: ${file}` };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: `present but unparsable JSON: ${file}` };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: `present but not a plain object: ${file}` };
+  }
+  return { ok: true, data: parsed as Record<string, unknown> };
+}
+
 /**
  * Normalize a human-supplied language token. Canonical: ko / KO / korean / 한국어
  * → "ko"; en / EN / english → "en". Any other SAFE language name (letters,
@@ -243,7 +288,8 @@ export function normalizeLanguage(input: string): ProjectLanguage {
 
 /**
  * Write `{ language }` to `<cwd>/.pi-oven/config.json`.
- * Creates the directory if missing and read-merges to preserve other keys.
+ * Creates the directory if missing, fails closed on a present-but-malformed
+ * file, and read-merges to preserve other keys atomically.
  */
 export async function setProjectLanguage(
   lang: ProjectLanguage,
@@ -251,22 +297,13 @@ export async function setProjectLanguage(
 ): Promise<void> {
   const cwd = opts?.cwd ?? process.cwd();
   const file = configPath(cwd);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-
-  // Read-merge: preserve any other keys an earlier/other writer may have left.
-  let existing: Record<string, unknown> = {};
-  try {
-    const raw = await fs.readFile(file, "utf-8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      existing = parsed as Record<string, unknown>;
-    }
-  } catch {
-    // absent or unparsable — start from an empty object
+  const read = await readConfigObjectStrict(file);
+  if (!read.ok) {
+    throw new Error(`setProjectLanguage: ${read.error}`);
   }
 
-  const merged = { ...existing, language: lang };
-  await fs.writeFile(file, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+  const merged = { ...read.data, language: lang };
+  await atomicWriteConfig(file, merged);
 }
 
 /**
@@ -306,14 +343,16 @@ export async function seedProjectNativeWorkerMax(opts?: {
 }): Promise<number> {
   const cwd = opts?.cwd ?? process.cwd();
   const file = configPath(cwd);
-  await fs.mkdir(path.dirname(file), { recursive: true });
+  const read = await readConfigObjectStrict(file);
+  if (!read.ok) {
+    throw new Error(`seedProjectNativeWorkerMax: ${read.error}`);
+  }
 
-  const existing = await readConfigObject(file);
-  const current = readNativeWorkerMaxFromConfig(existing);
+  const current = readNativeWorkerMaxFromConfig(read.data);
   if (current !== null) return current;
 
   const value = normalizeNativeWorkerMax(opts?.maxWorkers) ?? DEFAULT_NATIVE_WORKER_MAX;
-  await fs.writeFile(file, JSON.stringify(withNativeWorkerMax(existing, value), null, 2) + "\n", "utf-8");
+  await atomicWriteConfig(file, withNativeWorkerMax(read.data, value));
   return value;
 }
 
@@ -326,20 +365,12 @@ const SETUP_COMPLETE_KEY = "setupCompletedAt";
 
 /**
  * Read `<cwd>/.pi-oven/config.json` and return it as a plain object, or `{}`
- * when the file is absent or its contents are not a JSON object. Used by the
- * read-merge writers so any OTHER keys survive a write.
+ * when the file is absent or its contents are not a JSON object. Used by
+ * fail-soft readers; write paths MUST use `readConfigObjectStrict`.
  */
 async function readConfigObject(file: string): Promise<Record<string, unknown>> {
-  try {
-    const raw = await fs.readFile(file, "utf-8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    // absent or unparsable — start from an empty object
-  }
-  return {};
+  const read = await readConfigObjectStrict(file);
+  return read.ok ? read.data : {};
 }
 
 /**
@@ -351,11 +382,13 @@ async function readConfigObject(file: string): Promise<Record<string, unknown>> 
 export async function markSetupComplete(opts?: { cwd?: string }): Promise<void> {
   const cwd = opts?.cwd ?? process.cwd();
   const file = configPath(cwd);
-  await fs.mkdir(path.dirname(file), { recursive: true });
+  const read = await readConfigObjectStrict(file);
+  if (!read.ok) {
+    throw new Error(`markSetupComplete: ${read.error}`);
+  }
 
-  const existing = await readConfigObject(file);
-  const merged = { ...existing, [SETUP_COMPLETE_KEY]: new Date().toISOString() };
-  await fs.writeFile(file, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+  const merged = { ...read.data, [SETUP_COMPLETE_KEY]: new Date().toISOString() };
+  await atomicWriteConfig(file, merged);
 }
 /**
  * Synchronously report whether this project has been set up: `true` iff
@@ -380,37 +413,30 @@ export function isSetupComplete(opts?: { cwd?: string }): boolean {
 }
 
 /**
- * Clear the setup-completion marker: read-merge that DELETES `setupCompletedAt`
- * while preserving `language` and any other keys. No-op when the config file is
- * absent (does not create one).
+ * Clear the setup-completion marker: strict-read the existing project
+ * `.pi-oven/config.json`, fail closed on a present-but-malformed file, then
+ * delete `setupCompletedAt` via atomic read-merge-write while preserving
+ * `language` and any other keys. No-op when the config file is absent (does not
+ * create one).
  */
 export async function clearSetupComplete(opts?: { cwd?: string }): Promise<void> {
   const cwd = opts?.cwd ?? process.cwd();
   const file = configPath(cwd);
 
-  // No-op when absent — never create a config file just to clear a missing key.
-  let raw: string;
   try {
-    raw = await fs.readFile(file, "utf-8");
+    await fs.access(file);
   } catch {
     return;
   }
 
-  let existing: Record<string, unknown> = {};
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      existing = parsed as Record<string, unknown>;
-    }
-  } catch {
-    // unparsable — nothing to clear; leave the file untouched
-    return;
+  const read = await readConfigObjectStrict(file);
+  if (!read.ok) {
+    throw new Error(`clearSetupComplete: ${read.error}`);
   }
+  if (!(SETUP_COMPLETE_KEY in read.data)) return;
 
-  if (!(SETUP_COMPLETE_KEY in existing)) return;
-
-  const { [SETUP_COMPLETE_KEY]: _removed, ...rest } = existing;
-  await fs.writeFile(file, JSON.stringify(rest, null, 2) + "\n", "utf-8");
+  const { [SETUP_COMPLETE_KEY]: _removed, ...rest } = read.data;
+  await atomicWriteConfig(file, rest);
 }
 
 // ---------------------------------------------------------------------------
@@ -426,7 +452,8 @@ function globalConfigPath(homeDir: string): string {
 
 /**
  * Write `{ language }` to `~/.pi-oven/config.json` (or homeDir/.pi-oven/config.json).
- * Creates the directory if missing and read-merges to preserve other keys.
+ * Creates the directory if missing, fails closed on a present-but-malformed
+ * file, and read-merges to preserve other keys atomically.
  * The `lang` value must already be validated (pass through resolveLanguage first).
  */
 export async function setGlobalLanguage(
@@ -435,11 +462,13 @@ export async function setGlobalLanguage(
 ): Promise<void> {
   const homeDir = opts?.homeDir ?? os.homedir();
   const file = globalConfigPath(homeDir);
-  await fs.mkdir(path.dirname(file), { recursive: true });
+  const read = await readConfigObjectStrict(file);
+  if (!read.ok) {
+    throw new Error(`setGlobalLanguage: ${read.error}`);
+  }
 
-  const existing = await readConfigObject(file);
-  const merged = { ...existing, language: lang };
-  await fs.writeFile(file, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+  const merged = { ...read.data, language: lang };
+  await atomicWriteConfig(file, merged);
 }
 
 /**
@@ -480,14 +509,16 @@ export async function seedGlobalNativeWorkerMax(opts?: {
 }): Promise<number> {
   const homeDir = opts?.homeDir ?? os.homedir();
   const file = globalConfigPath(homeDir);
-  await fs.mkdir(path.dirname(file), { recursive: true });
+  const read = await readConfigObjectStrict(file);
+  if (!read.ok) {
+    throw new Error(`seedGlobalNativeWorkerMax: ${read.error}`);
+  }
 
-  const existing = await readConfigObject(file);
-  const current = readNativeWorkerMaxFromConfig(existing);
+  const current = readNativeWorkerMaxFromConfig(read.data);
   if (current !== null) return current;
 
   const value = normalizeNativeWorkerMax(opts?.maxWorkers) ?? DEFAULT_NATIVE_WORKER_MAX;
-  await fs.writeFile(file, JSON.stringify(withNativeWorkerMax(existing, value), null, 2) + "\n", "utf-8");
+  await atomicWriteConfig(file, withNativeWorkerMax(read.data, value));
   return value;
 }
 
@@ -498,46 +529,40 @@ export async function seedGlobalNativeWorkerMax(opts?: {
 export async function markSetupCompleteGlobal(opts?: { homeDir?: string }): Promise<void> {
   const homeDir = opts?.homeDir ?? os.homedir();
   const file = globalConfigPath(homeDir);
-  await fs.mkdir(path.dirname(file), { recursive: true });
+  const read = await readConfigObjectStrict(file);
+  if (!read.ok) {
+    throw new Error(`markSetupCompleteGlobal: ${read.error}`);
+  }
 
-  const existing = await readConfigObject(file);
-  const merged = { ...existing, [SETUP_COMPLETE_KEY]: new Date().toISOString() };
-  await fs.writeFile(file, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+  const merged = { ...read.data, [SETUP_COMPLETE_KEY]: new Date().toISOString() };
+  await atomicWriteConfig(file, merged);
 }
 
 /**
- * Clear the GLOBAL setup-completion marker: read-merge that DELETES
- * `setupCompletedAt` from `~/.pi-oven/config.json` while preserving `language`
- * and any other keys. No-op when the global config file is absent (does not
- * create one). Mirrors `clearSetupComplete` for the global path.
+ * Clear the GLOBAL setup-completion marker: strict-read the existing global
+ * `.pi-oven/config.json`, fail closed on a present-but-malformed file, then
+ * delete `setupCompletedAt` via atomic read-merge-write while preserving
+ * `language` and any other keys. No-op when the global config file is absent
+ * (does not create one). Mirrors `clearSetupComplete` for the global path.
  */
 export async function clearSetupCompleteGlobal(opts?: { homeDir?: string }): Promise<void> {
   const homeDir = opts?.homeDir ?? os.homedir();
   const file = globalConfigPath(homeDir);
 
-  // No-op when absent — never create a config file just to clear a missing key.
-  let raw: string;
   try {
-    raw = await fs.readFile(file, "utf-8");
+    await fs.access(file);
   } catch {
     return;
   }
 
-  let existing: Record<string, unknown> = {};
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      existing = parsed as Record<string, unknown>;
-    }
-  } catch {
-    // unparsable — nothing to clear; leave the file untouched
-    return;
+  const read = await readConfigObjectStrict(file);
+  if (!read.ok) {
+    throw new Error(`clearSetupCompleteGlobal: ${read.error}`);
   }
+  if (!(SETUP_COMPLETE_KEY in read.data)) return;
 
-  if (!(SETUP_COMPLETE_KEY in existing)) return;
-
-  const { [SETUP_COMPLETE_KEY]: _removed, ...rest } = existing;
-  await fs.writeFile(file, JSON.stringify(rest, null, 2) + "\n", "utf-8");
+  const { [SETUP_COMPLETE_KEY]: _removed, ...rest } = read.data;
+  await atomicWriteConfig(file, rest);
 }
 
 /**

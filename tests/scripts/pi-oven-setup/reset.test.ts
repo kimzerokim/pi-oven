@@ -53,10 +53,14 @@ function makeSpawn(getResponse: object): {
 // ---------------------------------------------------------------------------
 
 describe("runReset", () => {
-  it("reset removes only pi-oven:* keys, preserves non-pi-oven", async () => {
+  it("reset removes canonical+legacy managed global keys, preserves non-managed siblings", async () => {
     const getResponse = {
       type: "record",
-      value: { "pi-oven:critic": "anthropic/claude-opus-4-8", "claude-code:foo": "model-x" },
+      value: {
+        "pov:critic": "anthropic/claude-opus-4-8",
+        "pi-oven:executor": "opencode-zen/claude-opus-4-8",
+        "claude-code:foo": "model-x",
+      },
     };
     const { spawnFn, calls } = makeSpawn(getResponse);
 
@@ -68,10 +72,11 @@ describe("runReset", () => {
     const setCall = calls.find((c) => c.args[0] === "config" && c.args[1] === "set");
     expect(setCall).toBeDefined();
     const writtenJson = JSON.parse(setCall!.args[3]);
-    // non-pi-oven key preserved
+    // non-managed key preserved
     expect(writtenJson["claude-code:foo"]).toBe("model-x");
-    // pi-oven:* key removed
-    expect(writtenJson["pi-oven:critic"]).toBeUndefined();
+    // managed global keys removed regardless of canonical/legacy prefix
+    expect(writtenJson["pov:critic"]).toBeUndefined();
+    expect(writtenJson["pi-oven:executor"]).toBeUndefined();
   });
 
   it("reset does NOT touch agents/ files (no agent-rewriter invocation)", async () => {
@@ -80,7 +85,7 @@ describe("runReset", () => {
     // inspecting that no filesystem writes to agents/ occur.
     const getResponse = {
       type: "record",
-      value: { "pi-oven:orchestrator": "anthropic/claude-opus-4-8" },
+      value: { "pov:critic": "anthropic/claude-opus-4-8" },
     };
     const { spawnFn } = makeSpawn(getResponse);
 
@@ -103,12 +108,12 @@ describe("runReset", () => {
     expect(setCall).toBeUndefined();
   });
 
-  it("reset lists removed roles in output", async () => {
+  it("reset lists removed managed global keys in output", async () => {
     const getResponse = {
       type: "record",
       value: {
-        "pi-oven:critic": "anthropic/claude-opus-4-8",
-        "pi-oven:orchestrator": "opencode-zen/claude-opus-4-8",
+        "pov:critic": "anthropic/claude-opus-4-8",
+        "pi-oven:executor": "opencode-zen/claude-opus-4-8",
       },
     };
     const { spawnFn } = makeSpawn(getResponse);
@@ -116,8 +121,7 @@ describe("runReset", () => {
     const result = await runReset({ spawnFn });
 
     expect(result.exitCode).toBe(0);
-    // Output should mention removed roles
-    expect(result.output).toMatch(/pi-oven:critic|pi-oven:orchestrator/);
+    expect(result.output).toMatch(/pov:critic|pi-oven:executor/);
   });
 
   it("reset propagates error when readOverridesStrict fails", async () => {
@@ -133,7 +137,7 @@ describe("runReset", () => {
   it("non-full reset preserves modelRoles/disabledProviders/setupVersion but still clears skills.includeSkills", async () => {
     const getResponse = {
       type: "record",
-      value: { "pi-oven:critic": "anthropic/claude-opus-4-8" },
+      value: { "pov:critic": "anthropic/claude-opus-4-8" },
     };
     const { spawnFn, calls } = makeSpawn(getResponse);
 
@@ -148,22 +152,27 @@ describe("runReset", () => {
 });
 
 describe("runReset — --full mode", () => {
-  it("full reset removes pi-oven:* overrides AND resets modelRoles/disabledProviders/setupVersion", async () => {
+  it("full reset removes canonical+legacy managed global overrides AND resets modelRoles/disabledProviders/setupVersion", async () => {
     const getResponse = {
       type: "record",
-      value: { "pi-oven:critic": "anthropic/claude-opus-4-8", "claude-code:foo": "model-x" },
+      value: {
+        "pov:critic": "anthropic/claude-opus-4-8",
+        "pi-oven:executor": "opencode-zen/claude-opus-4-8",
+        "claude-code:foo": "model-x",
+      },
     };
     const { spawnFn, calls } = makeSpawn(getResponse);
 
     const result = await runReset({ spawnFn, full: true });
     expect(result.exitCode).toBe(0);
 
-    // pi-oven:* overrides still removed via the whole-record set (non-pi-oven preserved)
+    // Managed global overrides still removed via the whole-record set (non-managed preserved)
     const setCall = calls.find((c) => c.args[0] === "config" && c.args[1] === "set");
     expect(setCall).toBeDefined();
     const writtenJson = JSON.parse(setCall!.args[3]);
     expect(writtenJson["claude-code:foo"]).toBe("model-x");
-    expect(writtenJson["pi-oven:critic"]).toBeUndefined();
+    expect(writtenJson["pov:critic"]).toBeUndefined();
+    expect(writtenJson["pi-oven:executor"]).toBeUndefined();
 
     // The pi-oven-managed keys are reset to defaults, including the workflow-skill filter.
     const resetKeys = calls
@@ -192,7 +201,7 @@ describe("runReset — --full mode", () => {
     );
   });
 
-  it("full reset still clears managed keys when there are no pi-oven:* overrides", async () => {
+  it("full reset still clears managed keys when there are no managed global overrides", async () => {
     const getResponse = { type: "record", value: {} };
     const { spawnFn, calls } = makeSpawn(getResponse);
 
@@ -232,7 +241,7 @@ describe("runReset — global scope clears the GLOBAL marker, not the project ma
   it("global reset does NOT clear the PROJECT marker (it targets the global marker now)", async () => {
     const getResponse = {
       type: "record",
-      value: { "pi-oven:critic": "anthropic/claude-opus-4-8" },
+      value: { "pov:critic": "anthropic/claude-opus-4-8" },
     };
     const { spawnFn } = makeSpawn(getResponse);
 
@@ -266,7 +275,7 @@ describe("runReset — global scope clears the GLOBAL marker (isolated homeDir)"
   it("after a successful global reset the GLOBAL marker is cleared", async () => {
     const getResponse = {
       type: "record",
-      value: { "pi-oven:critic": "anthropic/claude-opus-4-8" },
+      value: { "pov:critic": "anthropic/claude-opus-4-8" },
     };
     const { spawnFn } = makeSpawn(getResponse);
 
@@ -327,7 +336,7 @@ describe("runReset — project scope", () => {
   it("project reset also clears the project workflow-skill include filter", async () => {
     seedProjectSettings(cwd, {
       task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } },
-      skills: { includeSkills: ["pi-oven:*"] },
+      skills: { includeSkills: ["pov:*"] },
     });
     const { spawnFn } = makeSpawn({ type: "record", value: {} });
 

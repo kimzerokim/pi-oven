@@ -156,7 +156,7 @@ export async function runApply(
       const cwd = opts.cwd ?? process.cwd();
       const overrideRecord: Record<string, string> = {};
       for (const role of ROLES) {
-        overrideRecord[`pi-oven:${role}`] = modelOverrideValue(
+        overrideRecord[`pov:${role}`] = modelOverrideValue(
           opts.profile,
           profileMap[role]
         );
@@ -175,7 +175,7 @@ export async function runApply(
       });
       scopeLine = `✓ project visibility matrix written to ${projectSettingsPath(cwd)} (all 24 roles pinned + skills.includeSkills + modelRoles + retry.fallbackChains; Profiles A/B include reasoning-effort suffixes)\n`;
       workflowSkillLine =
-        '✓ workflow-skill ownership: skills.includeSkills = ["pi-oven:*"] written to project .omp/settings.json (workflow skills only; populated ~/.claude/skills remains explicitly non-owning)\n';
+        '✓ workflow-skill ownership: skills.includeSkills = ["pov:*"] written to project .omp/settings.json (workflow skills only; populated ~/.claude/skills remains explicitly non-owning)\n';
       projectRemediationLine =
         "Project scope kept ~/.omp/agent/config.yml untouched.\n" +
         formatStandaloneTruthSignals(standaloneSignals).join("\n") +
@@ -193,11 +193,12 @@ export async function runApply(
       );
       await setRetryFallbackChains(fallbackChains, { spawnFn: opts.spawnFn });
 
-      // Bulk-write all 24 per-role task.agentModelOverrides. Profiles A/B values
-      // include :<thinkingLevel> model-selector suffixes.
+      // Bulk-write all 24 per-role task.agentModelOverrides. Global persisted
+      // routing is canonical `pov:*`; successful writes also migrate any old-only
+      // `pi-oven:*` state in the same scope.
       const overrideRecord: Record<string, string> = {};
       for (const role of ROLES) {
-        overrideRecord[`pi-oven:${role}`] = modelOverrideValue(
+        overrideRecord[`pov:${role}`] = modelOverrideValue(
           opts.profile,
           profileMap[role]
         );
@@ -205,7 +206,7 @@ export async function runApply(
       await setAgentModelOverrides(overrideRecord, { spawnFn: opts.spawnFn });
       await setPiOvenIncludedSkills({ spawnFn: opts.spawnFn });
       workflowSkillLine =
-        '✓ workflow-skill ownership: skills.includeSkills = ["pi-oven:*"] written to ~/.omp/agent/config.yml (workflow skills only; populated ~/.claude/skills remains explicitly non-owning)\n';
+        '✓ workflow-skill ownership: skills.includeSkills = ["pov:*"] written to ~/.omp/agent/config.yml (workflow skills only; populated ~/.claude/skills remains explicitly non-owning)\n';
 
       // Write mnemopi memory backend + async.enabled for native memory/irc.
       await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });

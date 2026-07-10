@@ -33,7 +33,7 @@ function makeAgentFile(
   thinkingLevel: string
 ): void {
   const content = `---
-name: pi-oven:${role}
+name: pov:${role}
 description: Test agent for ${role}
 model:
   - ${primary}
@@ -46,9 +46,9 @@ blocked_tools: ${JSON.stringify(profile[role as keyof typeof profile].blocked_to
 
 ## Role
 
-You are pi-oven:${role}.
+You are pov:${role}.
 `;
-  writeFileSync(join(agentsDir, `pi-oven-${role}.md`), content, "utf-8");
+  writeFileSync(join(agentsDir, `pov-${role}.md`), content, "utf-8");
 }
 
 function populateAgents(agentsDir: string, profile: typeof PROFILE_A): void {
@@ -257,8 +257,87 @@ describe("runApply", () => {
     expect(overrideWrites.length).toBe(1);
     const written = JSON.parse(overrideWrites[0].args[3]);
     for (const role of ROLES) {
-      expect(written[`pi-oven:${role}`]).toBe(`${PROFILE_B[role].primary}:${PROFILE_B[role].thinkingLevel}`);
+      expect(written[`pov:${role}`]).toBe(`${PROFILE_B[role].primary}:${PROFILE_B[role].thinkingLevel}`);
     }
+  });
+
+
+  it("runApply WITHOUT agentsDir migrates legacy-only global override state to canonical keys", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      if (args[0] === "config" && args[1] === "get" && args[2] === "modelRoles") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: { someSibling: "keep" }, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "retry.fallbackChains") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "retry.fallbackChains", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "task.agentModelOverrides", value: { "pi-oven:critic": "legacy-model", "claude-code:foo": "keep" }, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    await runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn });
+
+    const overrideWrite = spawnCalls.find(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
+    );
+    expect(overrideWrite).toBeDefined();
+    const written = JSON.parse(overrideWrite!.args[3]);
+    expect(written["pov:critic"]).toBe(PROFILE_B.critic.primary + ":" + PROFILE_B.critic.thinkingLevel);
+    expect(written["pi-oven:critic"]).toBeUndefined();
+    expect(written["claude-code:foo"]).toBe("keep");
+  });
+
+  it("runApply WITHOUT agentsDir rejects same-scope global dual-key conflicts", async () => {
+    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (cmd: string, args: string[]) => {
+      spawnCalls.push({ cmd, args });
+      if (args[0] === "config" && args[1] === "get" && args[2] === "modelRoles") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "modelRoles", value: { someSibling: "keep" }, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "retry.fallbackChains") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "retry.fallbackChains", value: {}, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "task.agentModelOverrides", value: { "pov:critic": "canonical-model", "pi-oven:critic": "legacy-model" }, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        } as any;
+      }
+      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
+    };
+
+    await expect(
+      runApply({ profile: "A", validateMode: "none", spawnFn: mockSpawnFn })
+    ).rejects.toThrow(/dual-key conflict/i);
+
+    const overrideWriteCount = spawnCalls.filter(
+      (c) => c.args[0] === "config" && c.args[1] === "set" && c.args[2] === "task.agentModelOverrides"
+    ).length;
+    expect(overrideWriteCount).toBe(0);
   });
 
   it("runApply WITHOUT agentsDir writes codex-only release-default orchestrator values + empty visibility fallback chains for profile A", async () => {
@@ -522,9 +601,9 @@ describe("runApply", () => {
     // One set call for the bulk write (all 24 roles in one call)
     expect(overrideWrites.length).toBe(1);
     const written = JSON.parse(overrideWrites[0].args[3]);
-    // All 24 pi-oven:* keys must be present with correct anthropic models
+    // All 24 canonical global pov:* keys must be present with correct anthropic models
     for (const role of ROLES) {
-      expect(written[`pi-oven:${role}`]).toBe(PROFILE_C[role].primary);
+      expect(written[`pov:${role}`]).toBe(PROFILE_C[role].primary);
     }
   });
 
@@ -563,13 +642,13 @@ describe("runApply", () => {
     );
     const written = JSON.parse(overrideWrite!.args[3]);
     // critic (xhigh) → opus-4-8
-    expect(written["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(written["pov:critic"]).toBe("anthropic/claude-opus-4-8");
     // explorer (medium) → sonnet-4-6
-    expect(written["pi-oven:explorer"]).toBe("anthropic/claude-sonnet-4-6");
+    expect(written["pov:explorer"]).toBe("anthropic/claude-sonnet-4-6");
     // git-master (low) → sonnet-4-6 (haiku-4-5 disabled on this account)
-    expect(written["pi-oven:git-master"]).toBe("anthropic/claude-sonnet-4-6");
+    expect(written["pov:git-master"]).toBe("anthropic/claude-sonnet-4-6");
     // qa-tester (high thinkingLevel, strict tier → opus-4-8)
-    expect(written["pi-oven:qa-tester"]).toBe("anthropic/claude-opus-4-8");
+    expect(written["pov:qa-tester"]).toBe("anthropic/claude-opus-4-8");
   });
 
   it("runApply profile A WITHOUT agentsDir writes all 24 task.agentModelOverrides entries with codex selectors", async () => {
@@ -583,10 +662,10 @@ describe("runApply", () => {
     expect(overrideWrites.length).toBe(1);
 
     const written = JSON.parse(overrideWrites[0].args[3]);
-    expect(written["pi-oven:critic"]).toBe("openai-codex/gpt-5.5:xhigh");
-    expect(written["pi-oven:document-specialist"]).toBe("openai-codex/gpt-5.4:medium");
-    expect(written["pi-oven:git-master"]).toBe("openai-codex/gpt-5.4:medium");
-    expect(written["pi-oven:multimodal-looker"]).toBe("openai-codex/gpt-5.4:medium");
+    expect(written["pov:critic"]).toBe("openai-codex/gpt-5.5:xhigh");
+    expect(written["pov:document-specialist"]).toBe("openai-codex/gpt-5.4:medium");
+    expect(written["pov:git-master"]).toBe("openai-codex/gpt-5.4:medium");
+    expect(written["pov:multimodal-looker"]).toBe("openai-codex/gpt-5.4:medium");
   });
 
   // -------------------------------------------------------------------------
@@ -629,14 +708,14 @@ describe("runApply", () => {
     // One set call for the bulk write (all 24 roles in one call)
     expect(overrideWrites.length).toBe(1);
     const written = JSON.parse(overrideWrites[0].args[3]);
-    // All 24 pi-oven:* keys must be present with PROFILE_B model selectors
+    // All 24 canonical global pov:* keys must be present with PROFILE_B model selectors
     // including reasoning effort suffixes.
     for (const role of ROLES) {
-      expect(written[`pi-oven:${role}`]).toBe(`${PROFILE_B[role].primary}:${PROFILE_B[role].thinkingLevel}`);
+      expect(written[`pov:${role}`]).toBe(`${PROFILE_B[role].primary}:${PROFILE_B[role].thinkingLevel}`);
     }
     // All models must start with "openai-codex/"
     for (const role of ROLES) {
-      expect(written[`pi-oven:${role}`]).toMatch(/^openai-codex\//);
+      expect(written[`pov:${role}`]).toMatch(/^openai-codex\//);
     }
   });
 
@@ -724,15 +803,15 @@ describe("runApply", () => {
     );
     const written = JSON.parse(overrideWrite!.args[3]);
     // critic (xhigh review) → gpt-5.5:xhigh
-    expect(written["pi-oven:critic"]).toBe("openai-codex/gpt-5.5:xhigh");
+    expect(written["pov:critic"]).toBe("openai-codex/gpt-5.5:xhigh");
     // explorer (medium fan-out) → gpt-5.4:medium
-    expect(written["pi-oven:explorer"]).toBe("openai-codex/gpt-5.4:medium");
+    expect(written["pov:explorer"]).toBe("openai-codex/gpt-5.4:medium");
     // git-master (medium mechanical) → gpt-5.4:medium
-    expect(written["pi-oven:git-master"]).toBe("openai-codex/gpt-5.4:medium");
+    expect(written["pov:git-master"]).toBe("openai-codex/gpt-5.4:medium");
     // executor (high implementation) → gpt-5.5:high
-    expect(written["pi-oven:executor"]).toBe("openai-codex/gpt-5.5:high");
+    expect(written["pov:executor"]).toBe("openai-codex/gpt-5.5:high");
     // architect (xhigh architecture) → gpt-5.5:xhigh
-    expect(written["pi-oven:architect"]).toBe("openai-codex/gpt-5.5:xhigh");
+    expect(written["pov:architect"]).toBe("openai-codex/gpt-5.5:xhigh");
   });
 
   // -------------------------------------------------------------------------
@@ -808,8 +887,8 @@ describe("runApply", () => {
     expect(overrideWrites.length).toBe(1);
     const written = JSON.parse(overrideWrites[0].args[3]);
     for (const role of ROLES) {
-      expect(written[`pi-oven:${role}`]).toBe(PROFILE_D[role].primary);
-      expect(written[`pi-oven:${role}`]).toMatch(/^opencode-zen\//);
+      expect(written[`pov:${role}`]).toBe(PROFILE_D[role].primary);
+      expect(written[`pov:${role}`]).toMatch(/^opencode-zen\//);
     }
   });
 
@@ -932,7 +1011,7 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
 
     const overrides = await readProjectAgentModelOverrides({ cwd });
     for (const role of ROLES) {
-      expect(overrides[`pi-oven:${role}`]).toBe(
+      expect(overrides[`pov:${role}`]).toBe(
         `${PROFILE_A[role].primary}:${PROFILE_A[role].thinkingLevel}`
       );
     }
@@ -953,10 +1032,10 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
     });
 
     const overrides = await readProjectAgentModelOverrides({ cwd });
-    expect(overrides["pi-oven:critic"]).toBe("openai-codex/gpt-5.5:xhigh");
-    expect(overrides["pi-oven:executor"]).toBe("openai-codex/gpt-5.5:high");
-    expect(overrides["pi-oven:architect"]).toBe("openai-codex/gpt-5.5:xhigh");
-    expect(overrides["pi-oven:explorer"]).toBe("openai-codex/gpt-5.4:medium");
+    expect(overrides["pov:critic"]).toBe("openai-codex/gpt-5.5:xhigh");
+    expect(overrides["pov:executor"]).toBe("openai-codex/gpt-5.5:high");
+    expect(overrides["pov:architect"]).toBe("openai-codex/gpt-5.5:xhigh");
+    expect(overrides["pov:explorer"]).toBe("openai-codex/gpt-5.4:medium");
 
     const configSetCalls = spawnCalls.filter((c) => c.args[0] === "config" && c.args[1] === "set");
     expect(configSetCalls.length).toBe(0);
@@ -993,8 +1072,8 @@ describe("runApply — scope:project (writes .omp/settings.json)", () => {
 
     const overrides = await readProjectAgentModelOverrides({ cwd });
     for (const role of ROLES) {
-      expect(overrides[`pi-oven:${role}`]).toBe(PROFILE_D[role].primary);
-      expect(overrides[`pi-oven:${role}`]).toMatch(/^opencode-zen\//);
+      expect(overrides[`pov:${role}`]).toBe(PROFILE_D[role].primary);
+      expect(overrides[`pov:${role}`]).toMatch(/^opencode-zen\//);
     }
     const data = (await readProjectSettingsSoft({ cwd })) as any;
     expect(data.modelRoles.default).toBe(PROFILE_D_ORCHESTRATOR.default);

@@ -1,5 +1,5 @@
 ---
-name: html-research-orchestrator
+name: pov:html-research-orchestrator
 version: 0.1.0
 description: "Read this skill to produce a research-backed HTML report, citation-backed HTML deliverable, or synthesized HTML output written to a temp directory. Orchestrates document-specialist research + writer synthesis and forbids repo commits of generated artifacts."
 ---

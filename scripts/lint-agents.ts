@@ -2,16 +2,23 @@
 /**
  * CI-time hard lint for pi-oven agent files.
  * Usage: bun scripts/lint-agents.ts [agentsDir]
- * Walks agentsDir for pi-oven-*.md files. Validates each has a non-empty model:
- * field AND that model/thinkingLevel match profiles.ts PROFILE_A (SoT).
+ * Walks agentsDir for shipped agent markdown files (`pov-*.md` in the current
+ * contract). Validates each has a non-empty model: field AND that
+ * model/thinkingLevel match profiles.ts PROFILE_A (SoT).
  * Exits 0 on success, 1 on any violation.
  */
 
 import { readdirSync } from "fs";
 import { join } from "path";
-import { PROFILE_A, ROLES, type Role } from "./pi-oven-setup/profiles";
+import {
+  getAgentRoleFromFileName,
+  isAgentMarkdownFile,
+  isLegacyAgentMarkdownFile,
+} from "./pi-oven-setup/agent-rewriter";
+import { PROFILE_A, type Role } from "./pi-oven-setup/profiles";
 
-const agentsDir = process.argv[2] ?? join(import.meta.dir, "..", "agents");
+const defaultAgentsDir = join(import.meta.dir, "..", "agents");
+const agentsDir = process.argv[2] ?? defaultAgentsDir;
 
 function parseFrontmatter(content: string): Record<string, unknown> {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
@@ -35,6 +42,7 @@ function extractName(frontmatter: Record<string, unknown>): string | undefined {
   const raw = frontmatter["name"];
   return typeof raw === "string" ? raw : undefined;
 }
+
 
 /** First-class omp tool names. MCP tools (e.g. context7) are intentionally
  *  excluded — they are not governed by the agent `tools:` allowlist the same
@@ -93,16 +101,13 @@ function instructedTools(body: string): Set<string> {
 
 let files: string[];
 try {
-  files = readdirSync(agentsDir).filter(
-    (f) => f.startsWith("pi-oven-") && f.endsWith(".md")
-  );
+  files = readdirSync(agentsDir).filter(isAgentMarkdownFile);
 } catch {
   // Directory does not exist — treat as empty (no violations)
   files = [];
 }
 
 let violations = 0;
-const roleSet = new Set<string>(ROLES as readonly string[]);
 
 for (const file of files) {
   const content = await Bun.file(join(agentsDir, file)).text();
@@ -112,12 +117,18 @@ for (const file of files) {
   if (models.length === 0) {
     console.error(
       `lint-agents: ERROR: ${file} has no non-empty model: field. ` +
-        `All pi-oven-*.md files must declare model: <provider>/<name>.`
+        `All agent markdown files must declare model: <provider>/<name>.`
     );
     violations++;
   }
 
-  const role = file.replace(/^pi-oven-/, "").replace(/\.md$/, "");
+  const role = getAgentRoleFromFileName(file);
+  if (isLegacyAgentMarkdownFile(file)) {
+    console.error(
+      `lint-agents: ERROR: ${file} uses the legacy pi-oven filename prefix. Rename it to pov-<role>.md.`
+    );
+    violations++;
+  }
   // Instructed-but-not-granted: every first-class tool named in the body must
   // be callable — i.e. in frontmatter tools: (or ["*"]), accounting for the
   // auto-injected irc, spawns→task, exec→eval/bash, minus blocked_tools.
@@ -141,9 +152,9 @@ for (const file of files) {
   // 1. tools: ["*"] and non-empty blocked_tools is a contradiction (block is ignored).
   const rawTools = extractStringList(frontmatter, "tools");
   const rawBlocked = extractStringList(frontmatter, "blocked_tools");
-  if (rawTools.includes("*") && roleSet.has(role)) {
+  if (rawTools.includes("*") && role !== null) {
     console.error(
-      `lint-agents: ERROR: ${file} uses \`tools: ["*"]\`, but shipped pi-oven agents must declare an explicit allowlist. Update profiles.ts and the agent frontmatter in lockstep.`
+      `lint-agents: ERROR: ${file} uses \`tools: ["*"]\`, but shipped pov agents must declare an explicit allowlist. Update profiles.ts and the agent frontmatter in lockstep.`
     );
     violations++;
   } else if (rawTools.includes("*") && rawBlocked.length > 0) {
@@ -166,16 +177,13 @@ for (const file of files) {
 
   // SoT alignment: agent file model + thinkingLevel must match PROFILE_A.
   // profiles.ts is the source of truth; agent files are derived artifacts.
-  if (!roleSet.has(role)) continue;
+  if (role === null) continue;
 
-  // Colon-name invariant: frontmatter `name` must equal "pi-oven:" + role.
-  // This ensures the omp registry key (colon form) matches the override key
-  // used by task.agentModelOverrides — preventing silent hyphen/colon mismatch.
+  const expectedName = `pov:${role}`;
   const name = extractName(frontmatter);
-  const expectedName = `pi-oven:${role}`;
   if (name !== expectedName) {
     console.error(
-      `lint-agents: ERROR: ${file} name="${name ?? "(missing)"}" must equal "${expectedName}" (colon registry key invariant).`
+      `lint-agents: ERROR: ${file} name="${name ?? "(missing)"}" must equal "${expectedName}".`
     );
     violations++;
   }

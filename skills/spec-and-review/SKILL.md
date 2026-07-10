@@ -1,5 +1,5 @@
 ---
-name: spec-and-review
+name: pov:spec-and-review
 version: 0.1.0
 description: "Read this skill when drafting a new spec, plan, or architectural design document, or when a design needs current-session critic pressure before lock-in. Runs one fresh same-provider-family critic by default and widens to same-family multi-lane review only when risk justifies it."
 ---
@@ -107,7 +107,7 @@ Every finding from every critic response must be assigned one of these three cat
 
 ---
 
-Pattern loop detail: skill://pi-oven:spec-and-review/references/pattern-loop.md
+Pattern loop detail: skill://pov:spec-and-review/references/pattern-loop.md
 
 ## Agent Dispatch (omp)
 

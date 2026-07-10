@@ -1,5 +1,5 @@
 ---
-name: fresh-verifier
+name: pov:fresh-verifier
 version: 0.1.0
 description: "Read this skill before declaring a cycle complete, committing a MILESTONE:/CYCLE-EXIT:/STUB-CLEAR: marker, or crossing any pre-completion gate. Mandatory fresh-agent verifier — no-self-verification rule, 4 sub-checks, 4 Q-halt patterns; main self-declared PASS/done is FORBIDDEN without this skill."
 ---
@@ -8,13 +8,13 @@ description: "Read this skill before declaring a cycle complete, committing a MI
 
 ## Memory — recall prior verification failures at dispatch
 
-Before dispatching the fresh `pi-oven:verifier`, call `recall(query="prior verification failures and BLOCK verdicts for this project")` to surface previously failed sub-checks, known recurring BLOCK patterns, and past `Q-VERIFIER-FAIL` entries. Pass any matching recalled failures as explicit checklist items in the verifier dispatch prompt so the fresh agent focuses its investigation on historically problematic areas first.
+Before dispatching the fresh `pov:verifier`, call `recall(query="prior verification failures and BLOCK verdicts for this project")` to surface previously failed sub-checks, known recurring BLOCK patterns, and past `Q-VERIFIER-FAIL` entries. Pass any matching recalled failures as explicit checklist items in the verifier dispatch prompt so the fresh agent focuses its investigation on historically problematic areas first.
 
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
 Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1-2 file simple edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews; never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
 
-Call the RIGHT agent — model-fit + role-fit is first-class. Completion verification → freshly-dispatched `pi-oven:verifier` (no shared context); main may not self-declare PASS.
+Call the RIGHT agent — model-fit + role-fit is first-class. Completion verification → freshly-dispatched `pov:verifier` (no shared context); main may not self-declare PASS.
 
 ## When to use
 
@@ -48,10 +48,10 @@ Main agent cannot verify its own work in any of these situations:
 
 - Main wrote the code → main runs the tests → main declares PASS. **Invalid**: same context produced and verified the claim.
 - Executor subagent writes code and then says "tests pass" based on its own tool call output without a fresh dispatch. **Invalid**: same agent context.
-- Any autonomous loop where main self-declares "verification PASS", "loop exit", or "done" without a prior `VERDICT: PASS` from a freshly-dispatched `pi-oven:verifier`.
+- Any autonomous loop where main self-declares "verification PASS", "loop exit", or "done" without a prior `VERDICT: PASS` from a freshly-dispatched `pov:verifier`.
 
 Valid verification paths:
-- Freshly-dispatched `pi-oven:verifier` agent (dispatch via `task` primitive, `background=false`, agent file `agents/pi-oven-verifier.md`)
+- Freshly-dispatched `pov:verifier` agent (dispatch via `task` primitive, `background=false`, agent file `agents/pov-verifier.md`)
 - User manually confirms
 - CI pipeline returns green on the pushed branch
 
@@ -111,7 +111,7 @@ Any response that does not match this pattern triggers `Q-VERIFIER-INVALID`.
 
 | Pattern | Trigger condition | Action |
 |---|---|---|
-| `Q-VERIFIER-FAIL` | 2 consecutive BLOCK verdicts on the same cycle | Dispatch `pi-oven:oracle` for final strategic consultation; if oracle also returns no resolvable path, append to `docs/harness/user-queue.md` and halt cycle |
+| `Q-VERIFIER-FAIL` | 2 consecutive BLOCK verdicts on the same cycle | Dispatch `pov:oracle` for final strategic consultation; if oracle also returns no resolvable path, append to `docs/harness/user-queue.md` and halt cycle |
 | `Q-VERIFIER-INVALID` | Verifier response first line does not match `VERDICT: (PASS\|BLOCK)` | Re-dispatch once; second mismatch appends Q entry |
 | `Q-VERIFIER-DISPATCH-FAIL` | `task` call throws or returns no agent response | Log error + append Q entry; do not self-verify as fallback |
 | `Q-COMPLETION-SELF-VERIFY` | Main agent emits "verification PASS" / "done" / "loop exit" without prior fresh-agent VERDICT | Immediate Q entry; cycle marked incomplete |
@@ -136,5 +136,5 @@ Any response that does not match this pattern triggers `Q-VERIFIER-INVALID`.
 
 ---
 
-References: `skill://pi-oven:fresh-verifier/references/4-sub-check.md` — 4 sub-check detail.
+References: `skill://pov:fresh-verifier/references/4-sub-check.md` — 4 sub-check detail.
 Sources: omc `verify` skill (evidence-first workflow); `superpowers:verification-before-completion` (evidence before claims principle).

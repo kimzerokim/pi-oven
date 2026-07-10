@@ -47,6 +47,10 @@ function ownedSkillTarget(repoRoot: string, skillName: ShippedSkillName): string
   return path.resolve(repoRoot, skillPath);
 }
 
+function publicSkillName(skillName: string): string {
+  return `pov:${skillName}`;
+}
+
 afterEach(() => {
   while (fixtures.length > 0) fixtures.pop()!.cleanup();
 });
@@ -70,27 +74,30 @@ describe("skill-keyword-loader", () => {
     const repoRoot = path.resolve(__dirname, "../../..");
     const index = loadSkillKeywordIndex(repoRoot);
     expect(index).toHaveLength(SHIPPED_SKILL_COUNT);
-    expect(index.map((entry) => entry.name).sort()).toEqual([...SHIPPED_SKILL_NAMES].sort());
+    expect(index.map((entry) => entry.name).sort()).toEqual([...SHIPPED_SKILL_NAMES].map(publicSkillName).sort());
 
-    const autonomous = index.find((entry) => entry.name === "autonomous-loop");
-    const delegation = index.find((entry) => entry.name === "large-task-delegation");
-    const htmlDecision = index.find((entry) => entry.name === "html-spec-decision-maker");
+    const autonomous = index.find((entry) => entry.name === publicSkillName("autonomous-loop"));
+    const delegation = index.find((entry) => entry.name === publicSkillName("large-task-delegation"));
+    const htmlDecision = index.find((entry) => entry.name === publicSkillName("html-spec-decision-maker"));
 
     expect(autonomous).toEqual(
       expect.objectContaining({
         ownedReadTarget: ownedSkillTarget(repoRoot, "autonomous-loop"),
+        pluginRoot: repoRoot,
         phrases: expect.arrayContaining(["자율 실행", "autopilot", "ralph로 돌려"]),
       })
     );
     expect(delegation).toEqual(
       expect.objectContaining({
         ownedReadTarget: ownedSkillTarget(repoRoot, "large-task-delegation"),
+        pluginRoot: repoRoot,
         phrases: expect.arrayContaining(["큰 작업", "large task", "multi-file refactor"]),
       })
     );
     expect(htmlDecision).toEqual(
       expect.objectContaining({
         ownedReadTarget: ownedSkillTarget(repoRoot, "html-spec-decision-maker"),
+        pluginRoot: repoRoot,
         phrases: expect.arrayContaining(["html spec", "의사결정 html", "decision worksheet"]),
       })
     );
@@ -108,9 +115,9 @@ describe("skill-keyword-loader", () => {
     const report = loadSkillKeywordIndexReport(repoRoot);
 
     expect(report.shippedSkillCount).toBe(2);
-    expect(report.index.map((entry) => entry.name)).toEqual(["brainstorming"]);
+    expect(report.index.map((entry) => entry.name)).toEqual([publicSkillName("brainstorming")]);
     expect(report.issues).toHaveLength(1);
-    expect(report.issues[0]?.skillName).toBe("keyword-gap");
+    expect(report.issues[0]?.skillName).toBe(publicSkillName("keyword-gap"));
     expect(report.issues[0]?.reason).toContain("missing keyword whitelist");
   });
 
@@ -125,10 +132,29 @@ describe("skill-keyword-loader", () => {
     const report = loadSkillKeywordIndexReport(repoRoot);
 
     expect(report.shippedSkillCount).toBe(2);
-    expect(report.index.map((entry) => entry.name)).toEqual(["brainstorming"]);
+    expect(report.index.map((entry) => entry.name)).toEqual([publicSkillName("brainstorming")]);
     expect(report.issues).toHaveLength(1);
-    expect(report.issues[0]?.skillName).toBe("missing-skill");
+    expect(report.issues[0]?.skillName).toBe(publicSkillName("missing-skill"));
     expect(report.issues[0]?.reason).toContain("ENOENT");
+  });
+
+  it("reports stale bare skill frontmatter drift from the active plugin root", () => {
+    const repoRoot = makeTempRepo();
+    writePluginSkillsManifest(repoRoot, ["./skills/autonomous-loop/SKILL.md"]);
+    writeShippedSkill(repoRoot, "autonomous-loop", {
+      frontmatterName: "autonomous-loop",
+    });
+
+    const report = loadSkillKeywordIndexReport(repoRoot);
+
+    expect(report.shippedSkillCount).toBe(1);
+    expect(report.index).toHaveLength(0);
+    expect(report.issues).toHaveLength(1);
+    expect(report.issues[0]?.skillName).toBe(publicSkillName("autonomous-loop"));
+    expect(report.issues[0]?.reason).toContain("public skill frontmatter drift");
+    expect(report.issues[0]?.reason).toContain(path.join(repoRoot, "skills", "autonomous-loop", "SKILL.md"));
+    expect(report.issues[0]?.reason).toContain('"autonomous-loop"');
+    expect(report.issues[0]?.reason).toContain('"pov:autonomous-loop"');
   });
 
   it("matches user text to multiple skills and builds a plugin-owned must-read prompt", () => {
@@ -143,22 +169,26 @@ describe("skill-keyword-loader", () => {
     expect(started.matchedSkills).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: "autonomous-loop",
+          name: publicSkillName("autonomous-loop"),
           ownedReadTarget: ownedSkillTarget(repoRoot, "autonomous-loop"),
+          pluginRoot: repoRoot,
         }),
         expect.objectContaining({
-          name: "large-task-delegation",
+          name: publicSkillName("large-task-delegation"),
           ownedReadTarget: ownedSkillTarget(repoRoot, "large-task-delegation"),
+          pluginRoot: repoRoot,
         }),
         expect.objectContaining({
-          name: "spec-and-review",
+          name: publicSkillName("spec-and-review"),
           ownedReadTarget: ownedSkillTarget(repoRoot, "spec-and-review"),
+          pluginRoot: repoRoot,
         }),
       ])
     );
 
     const prompt = buildKeywordMatchedSkillsPrompt(started.matchedSkills);
     expect(prompt).toContain(KEYWORD_SKILL_DEDUP_KEY);
+    expect(prompt).toContain(`Active plugin root: \`${repoRoot}\``);
     expect(prompt).toContain(ownedSkillTarget(repoRoot, "autonomous-loop"));
     expect(prompt).toContain(ownedSkillTarget(repoRoot, "large-task-delegation"));
     expect(prompt).toContain(ownedSkillTarget(repoRoot, "spec-and-review"));
@@ -169,14 +199,16 @@ describe("skill-keyword-loader", () => {
     expect(prompt).toContain("skillReads");
     expect(prompt).toContain("Bootstrap message injection");
     expect(prompt).toContain("tool remap");
+    expect(prompt).toContain("same active plugin root");
   });
 
   it("the matched-skills prompt frames exact plugin-owned reads as the explicit control-plane front door", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
       {
-        name: "spec-and-review",
+        name: publicSkillName("spec-and-review"),
         rawMatchedPhrases: ["write a spec"],
         ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
+        pluginRoot: "/plugin",
       },
     ]);
     expect(prompt).not.toBeNull();
@@ -194,9 +226,10 @@ describe("skill-keyword-loader", () => {
   it("adds registry-driven deep-interview routing guidance to the matched-skills prompt", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
       {
-        name: "spec-and-review",
+        name: publicSkillName("spec-and-review"),
         rawMatchedPhrases: ["design doc"],
         ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
+        pluginRoot: "/plugin",
       },
     ]);
     expect(prompt).not.toBeNull();
@@ -208,14 +241,16 @@ describe("skill-keyword-loader", () => {
   it("renders raw matched phrases while keeping provider policy symbolic", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
       {
-        name: "spec-and-review",
+        name: publicSkillName("spec-and-review"),
         rawMatchedPhrases: ["codex review", "design doc"],
         ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
+        pluginRoot: "/plugin",
       },
       {
-        name: "receiving-code-review",
+        name: publicSkillName("receiving-code-review"),
         rawMatchedPhrases: ["codex review 결과 반영"],
         ownedReadTarget: "/plugin/skills/receiving-code-review/SKILL.md",
+        pluginRoot: "/plugin",
       },
     ]);
     expect(prompt).not.toBeNull();
@@ -227,17 +262,19 @@ describe("skill-keyword-loader", () => {
   it("retains raw matched phrases for debugging while keeping injected provider policy symbolic", () => {
     const matched = matchSkillsForText("Please do a codex review before we lock this in.", [
       {
-        name: "spec-and-review",
+        name: publicSkillName("spec-and-review"),
         description: "critic-gated spec loop",
         phrases: ["codex review"],
         ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
+        pluginRoot: "/plugin",
       },
     ]);
     expect(matched).toEqual([
       {
-        name: "spec-and-review",
+        name: publicSkillName("spec-and-review"),
         rawMatchedPhrases: ["codex review"],
         ownedReadTarget: "/plugin/skills/spec-and-review/SKILL.md",
+        pluginRoot: "/plugin",
       },
     ]);
     const prompt = buildKeywordMatchedSkillsPrompt(matched);
@@ -248,14 +285,16 @@ describe("skill-keyword-loader", () => {
   it("buildKeywordMatchedSkillsPrompt emits exact SKILL.md file targets, not skill:// aliases", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
       {
-        name: "brainstorming",
+        name: publicSkillName("brainstorming"),
         rawMatchedPhrases: ["brainstorm"],
         ownedReadTarget: "/plugin/skills/brainstorming/SKILL.md",
+        pluginRoot: "/plugin",
       },
     ]);
     expect(prompt).not.toBeNull();
     expect(prompt!).toContain("/plugin/skills/brainstorming/SKILL.md");
-    expect(prompt!).not.toContain("skill://pi-oven:brainstorming");
+    expect(prompt!).toContain(publicSkillName("brainstorming"));
+    expect(prompt!).not.toContain("skill://pov:brainstorming");
     const lines = prompt!.split("\n");
     const skillLines = lines.filter((l) => l.startsWith("- `") && l.includes("matched by:"));
     expect(skillLines.every((l) => l.includes("/SKILL.md"))).toBe(true);
@@ -266,19 +305,22 @@ describe("skill-keyword-loader", () => {
     const matched = matchSkillsForText("자율 실행, 리팩토링 기회 찾아줘", index);
     expect(matched).toEqual([
       {
-        name: "code-quality-discipline",
+        name: publicSkillName("code-quality-discipline"),
         rawMatchedPhrases: ["리팩토링"],
         ownedReadTarget: ownedSkillTarget(repoRoot, "code-quality-discipline"),
+        pluginRoot: repoRoot,
       },
       {
-        name: "autonomous-loop",
+        name: publicSkillName("autonomous-loop"),
         rawMatchedPhrases: ["자율 실행"],
         ownedReadTarget: ownedSkillTarget(repoRoot, "autonomous-loop"),
+        pluginRoot: repoRoot,
       },
       {
-        name: "improve-codebase-architecture",
+        name: publicSkillName("improve-codebase-architecture"),
         rawMatchedPhrases: ["리팩토링 기회"],
         ownedReadTarget: ownedSkillTarget(repoRoot, "improve-codebase-architecture"),
+        pluginRoot: repoRoot,
       },
     ]);
   });
@@ -287,26 +329,26 @@ describe("skill-keyword-loader", () => {
     const index = loadSkillKeywordIndex(path.resolve(__dirname, "../../.."));
     const cases: Array<{ text: string; expect: string }> = [
       // debugging
-      { text: "debug this please", expect: "systematic-debugging" },
-      { text: "fix the bug in the parser", expect: "systematic-debugging" },
-      { text: "why is it failing", expect: "systematic-debugging" },
+      { text: "debug this please", expect: publicSkillName("systematic-debugging") },
+      { text: "fix the bug in the parser", expect: publicSkillName("systematic-debugging") },
+      { text: "why is it failing", expect: publicSkillName("systematic-debugging") },
       // research
-      { text: "research this topic", expect: "deep-dive" },
-      { text: "I need a research report", expect: "html-research-orchestrator" },
-      { text: "의사결정 html로 정리해줘", expect: "html-spec-decision-maker" },
-      { text: "Create a pre-decision html worksheet", expect: "html-spec-decision-maker" },
+      { text: "research this topic", expect: publicSkillName("deep-dive") },
+      { text: "I need a research report", expect: publicSkillName("html-research-orchestrator") },
+      { text: "의사결정 html로 정리해줘", expect: publicSkillName("html-spec-decision-maker") },
+      { text: "Create a pre-decision html worksheet", expect: publicSkillName("html-spec-decision-maker") },
       // spec
-      { text: "write a spec for this", expect: "spec-and-review" },
-      { text: "let's write a design doc", expect: "spec-and-review" },
+      { text: "write a spec for this", expect: publicSkillName("spec-and-review") },
+      { text: "let's write a design doc", expect: publicSkillName("spec-and-review") },
       // plan
-      { text: "give me an implementation plan", expect: "writing-plans" },
-      { text: "break it down into steps", expect: "writing-plans" },
+      { text: "give me an implementation plan", expect: publicSkillName("writing-plans") },
+      { text: "break it down into steps", expect: publicSkillName("writing-plans") },
       // tdd
-      { text: "use test driven development", expect: "tdd-strict" },
-      { text: "write tests first", expect: "tdd-strict" },
+      { text: "use test driven development", expect: publicSkillName("tdd-strict") },
+      { text: "write tests first", expect: publicSkillName("tdd-strict") },
       // commit
-      { text: "commit this now", expect: "pre-commit-gate" },
-      { text: "ready to commit", expect: "pre-commit-gate" },
+      { text: "commit this now", expect: publicSkillName("pre-commit-gate") },
+      { text: "ready to commit", expect: publicSkillName("pre-commit-gate") },
     ];
     for (const c of cases) {
       const matched = matchSkillsForText(c.text, index).map((m) => m.name);

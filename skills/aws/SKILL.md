@@ -1,5 +1,5 @@
 ---
-name: aws
+name: pov:aws
 version: 0.1.0
 description: "Read this skill for consent-gated AWS infrastructure inspection, production-state queries, and cloud ops debugging across S3, CloudFront, EC2, ECR, Route53, and CloudWatch."
 ---

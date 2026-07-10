@@ -1,5 +1,5 @@
 ---
-name: large-task-delegation
+name: pov:large-task-delegation
 version: 0.1.0
 description: "Read this skill when the task is large enough to require dispatch-first orchestration: multi-file edits, 200+ LoC, 5+ file reads, or a multi-stage workflow. Governs the dispatch-only main role: scope → subagent → review → commit gate."
 ---
@@ -122,4 +122,4 @@ Hard rules that survive any override:
 
 ---
 
-Anti-patterns + dispatch template: skill://pi-oven:large-task-delegation/references/dispatch-anatomy.md
+Anti-patterns + dispatch template: skill://pov:large-task-delegation/references/dispatch-anatomy.md

@@ -555,10 +555,10 @@ describe("GateStateStore — continuation marker persistence", () => {
       gateCache: { commit: "PASS" },
       version: 2,
       schemaVersion: 1,
-      requiredSkills: ["autonomous-loop"],
+      requiredSkills: ["pov:autonomous-loop"],
       ownedSkillReadTargets: ["/plugin/skills/autonomous-loop/SKILL.md"],
       ownershipStatus: deriveAutonomyOwnershipStatus(
-        ["autonomous-loop"],
+        ["pov:autonomous-loop"],
         ["/plugin/skills/autonomous-loop/SKILL.md"]
       ),
       blockedReason: {
@@ -637,7 +637,7 @@ describe("GateStateStore — project-state migration compatibility", () => {
       gateCache: { commit: "PASS", regression: "PASS" },
       version: 3,
       schemaVersion: 1,
-      requiredSkills: ["autonomous-loop"],
+      requiredSkills: ["pov:autonomous-loop"],
       skillReads: ["/plugin/skills/autonomous-loop/SKILL.md"],
       ownershipStatus: "owned-surface active",
       blockedReason: {

@@ -619,9 +619,9 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
           kind: "OK",
           contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
         },
-        requiredSkills: ["autonomous-loop", "large-task-delegation"],
+        requiredSkills: ["pov:autonomous-loop", "pov:large-task-delegation"],
         ownedSkillReadTargets: [autonomousTarget, delegationTarget],
-        skillReads: [autonomousTarget, "skill://large-task-delegation"],
+        skillReads: [autonomousTarget, "skill://pov:large-task-delegation"],
       })
     );
     expect(r.block).toBe(true);
@@ -642,7 +642,7 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
           kind: "OK",
           contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
         },
-        requiredSkills: ["autonomous-loop"],
+        requiredSkills: ["pov:autonomous-loop"],
         ownedSkillReadTargets: [],
         skillReads: [],
       })
@@ -666,7 +666,7 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
           kind: "OK",
           contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
         },
-        requiredSkills: ["autonomous-loop"],
+        requiredSkills: ["pov:autonomous-loop"],
         ownedSkillReadTargets: [autonomousTarget],
         skillReads: [autonomousTarget],
       })

@@ -10,8 +10,8 @@
 //     a Promise.race against a self-deadline (default 1500 ms). On overrun the
 //     handler THROWS → omp converts to {block:true} = fail-CLOSED (SAFE).
 //   - Bash calls are inspected for commit/push/forbidden gating. Task calls are
-//     inspected for strict pi-oven identity (allow exact `pi-oven:<role>` only;
-//     block bare aliases and foreign namespaces). Any other tool, or any
+//     inspected for canonical pi-oven dispatch ownership (allow exact `pov:<role>`,
+//     rewrite bare owned roles to `pov:<role>`, and surface legacy `pi-oven:<role>` as explicit migration feedback). Any other tool, or any
 //   - Subagent sessions (isParentSession=false) are still GATED (read-only
 //     lookup) but NEVER mutate the FSM (single-writer rule, B4).
 //   - File push-consent is consumed (single-use) inside the mutex before the
@@ -125,10 +125,13 @@ export function getTargetPath(input: ToolCallEventLike["input"]): string | null 
 
 export function getSkillReadName(event: ToolCallEventLike): string | null {
   if (event.toolName !== "read") return null;
-  const targetPath = event.input?.path;
-  if (typeof targetPath !== "string") return null;
-  const prefix = "skill://pi-oven:";
-  if (!targetPath.startsWith(prefix)) return null;
+  const rawTargetPath = event.input?.path;
+  if (typeof rawTargetPath !== "string") return null;
+  const targetPath = rawTargetPath.trim();
+  if (targetPath.length === 0) return null;
+  const prefixes = ["skill://pov:", "skill://pi-oven:"] as const;
+  const prefix = prefixes.find((candidate) => targetPath.startsWith(candidate));
+  if (!prefix) return null;
   const remainder = targetPath.slice(prefix.length);
   const end = remainder.search(/[:/?#]/);
   const name = (end === -1 ? remainder : remainder.slice(0, end)).trim();
@@ -152,7 +155,8 @@ function decideCurrentVerifierDepth(
   });
 }
 
-const PI_OVEN_AGENT_PREFIX = "pi-oven:";
+const POV_AGENT_PREFIX = "pov:";
+const LEGACY_PI_OVEN_AGENT_PREFIX = "pi-oven:";
 const CANONICAL_AGENT_PATTERN = /^[a-z0-9-]+:[a-z0-9-]+$/;
 const BARE_AGENT_ROLE_PATTERN = /^[a-z0-9-]+$/;
 
@@ -167,6 +171,7 @@ function normalizeAgentName(agent: string): string {
   return agent.trim().toLowerCase();
 }
 
+
 function classifyTaskAgent(
   agent: string,
   explicitForeignAgents: string[]
@@ -174,6 +179,61 @@ function classifyTaskAgent(
   const requested = agent.trim();
   const normalized = normalizeAgentName(agent);
   const explicitForeign = new Set(explicitForeignAgents.map(normalizeAgentName));
+
+  if (normalized.startsWith(LEGACY_PI_OVEN_AGENT_PREFIX)) {
+    const role = normalized.slice(LEGACY_PI_OVEN_AGENT_PREFIX.length);
+    const canonicalRole = BARE_AGENT_ROLE_PATTERN.test(role) ? `\`pov:${role}\`` : "`pov:<role>`";
+    const bareRole = BARE_AGENT_ROLE_PATTERN.test(role) ? `\`${role}\`` : "the bare role name";
+    return {
+      block: true,
+      reason: `pi-oven: task dispatch blocked — legacy automatic namespace \`pi-oven:<role>\` is stale runtime state and no longer dispatches successfully. Re-dispatch with ${canonicalRole} or ${bareRole}; automatic owned-agent flows now canonicalize only to \`pov:<role>\` (received \`${requested}\`).`,
+      trace: {
+        origin: "pi-oven-auto",
+        kind: "agent",
+        requested,
+        canonical: normalized,
+        resolved: requested,
+        status: "blocked",
+        reason: "legacy pi-oven namespace requires explicit migration to pov",
+      },
+    };
+  }
+
+  if (normalized.startsWith(POV_AGENT_PREFIX) && CANONICAL_AGENT_PATTERN.test(normalized)) {
+    return {
+      block: false,
+      nextAgent: normalized,
+      trace: {
+        origin: "pi-oven-auto",
+        kind: "agent",
+        requested,
+        canonical: normalized,
+        resolved: normalized,
+        status: normalized === requested ? "resolved" : "rewritten",
+        reason:
+          normalized === requested
+            ? "resolved canonical pov-owned agent dispatch"
+            : "canonicalized pov agent dispatch casing",
+      },
+    };
+  }
+
+  if (BARE_AGENT_ROLE_PATTERN.test(normalized)) {
+    const canonical = `${POV_AGENT_PREFIX}${normalized}`;
+    return {
+      block: false,
+      nextAgent: canonical,
+      trace: {
+        origin: "pi-oven-auto",
+        kind: "agent",
+        requested,
+        canonical,
+        resolved: canonical,
+        status: "rewritten",
+        reason: "canonicalized bare agent dispatch to pov namespace",
+      },
+    };
+  }
 
   if (explicitForeign.has(normalized)) {
     return {
@@ -191,46 +251,10 @@ function classifyTaskAgent(
     };
   }
 
-  if (normalized.startsWith(PI_OVEN_AGENT_PREFIX) && CANONICAL_AGENT_PATTERN.test(normalized)) {
-    return {
-      block: false,
-      nextAgent: normalized,
-      trace: {
-        origin: "pi-oven-auto",
-        kind: "agent",
-        requested,
-        canonical: normalized,
-        resolved: normalized,
-        status: normalized === requested ? "resolved" : "rewritten",
-        reason:
-          normalized === requested
-            ? "resolved pi-oven-owned agent dispatch"
-            : "canonicalized pi-oven agent dispatch casing",
-      },
-    };
-  }
-
-  if (BARE_AGENT_ROLE_PATTERN.test(normalized)) {
-    const canonical = `${PI_OVEN_AGENT_PREFIX}${normalized}`;
-    return {
-      block: false,
-      nextAgent: canonical,
-      trace: {
-        origin: "pi-oven-auto",
-        kind: "agent",
-        requested,
-        canonical,
-        resolved: canonical,
-        status: "rewritten",
-        reason: "canonicalized bare agent dispatch to pi-oven namespace",
-      },
-    };
-  }
-
   return {
     block: true,
     reason:
-      `pi-oven: task dispatch blocked — automatic flows must resolve to the exact registered pi-oven name \`pi-oven:<role>\`; foreign namespaces require an exact user-explicit allowlist entry (received \`${requested}\`).`,
+      `pi-oven: task dispatch blocked — automatic flows must resolve to the exact registered pov name \`pov:<role>\`; foreign namespaces require an exact user-explicit allowlist entry (received \`${requested}\`).`,
     trace: {
       origin: "foreign-auto",
       kind: "agent",
@@ -337,7 +361,7 @@ async function observeSkillRead(
   }
 }
 
-function hasPersistedDeepInterviewState(state: DeepInterviewState): boolean {
+export function hasPersistedDeepInterviewState(state: DeepInterviewState): boolean {
   return (
     state.active ||
     state.pendingQuestion !== undefined ||

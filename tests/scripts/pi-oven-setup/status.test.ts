@@ -27,7 +27,7 @@ function makeTempDir(): string {
 
 function makeAgentFile(agentsDir: string, role: string, primary: string): void {
   const content = `---
-name: pi-oven:${role}
+name: pov:${role}
 description: Test agent for ${role}
 model:
   - ${primary}
@@ -40,9 +40,9 @@ blocked_tools: ${JSON.stringify(PROFILE_A[role as keyof typeof PROFILE_A].blocke
 
 ## Role
 
-You are pi-oven:${role}.
+You are pov:${role}.
 `;
-  writeFileSync(join(agentsDir, `pi-oven-${role}.md`), content, "utf-8");
+  writeFileSync(join(agentsDir, `pov-${role}.md`), content, "utf-8");
 }
 
 /**
@@ -79,7 +79,7 @@ function makeSpawnFn(opts: {
       }
       const payload = JSON.stringify({
         key: "skills.includeSkills",
-        value: opts.includedSkills ?? ["pi-oven:*"],
+        value: opts.includedSkills ?? ["pov:*"],
         type: "array",
       });
       return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
@@ -171,7 +171,7 @@ describe("runStatus", () => {
       makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
     }
     const overrideModel = "opencode-zen/claude-opus-4-8";
-    const spawnFn = makeSpawnFn({ overrides: { "pi-oven:critic": overrideModel } });
+    const spawnFn = makeSpawnFn({ overrides: { "pov:critic": overrideModel } });
 
     const result = await runStatus({ spawnFn, agentsDir });
     expect(result.exitCode).toBe(0);
@@ -187,7 +187,7 @@ describe("runStatus", () => {
     // Use a retired model id that won't appear in list-models
     const retiredModel = "anthropic/claude-opus-4-7";
     const spawnFn = makeSpawnFn({
-      overrides: { "pi-oven:critic": retiredModel },
+      overrides: { "pov:critic": retiredModel },
       // list-models fixture that does NOT include the retired model
       listModelsOutput: JSON.stringify([
         { id: "anthropic/claude-opus-4-8" },
@@ -210,7 +210,7 @@ describe("runStatus", () => {
       makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
     }
     const spawnFn = makeSpawnFn({
-      overrides: { "pi-oven:critic": "openai-codex/gpt-5.5:xhigh" },
+      overrides: { "pov:critic": "openai-codex/gpt-5.5:xhigh" },
     });
 
     const result = await runStatus({
@@ -231,15 +231,18 @@ describe("runStatus", () => {
     expect(result.output).toContain("machine-global");
   });
 
-  it("status has NO drift warning, NO Profile line", async () => {
+  it("status has no dual-plugin-surface warning under an isolated empty HOME cache, and no Profile line", async () => {
     for (const role of ROLES) {
       makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
     }
     const spawnFn = makeSpawnFn({ overrides: {} });
+    const homeDir = makeTempDir();
 
-    const result = await runStatus({ spawnFn, agentsDir });
-    expect(result.output).not.toMatch(/drift/i);
+    const result = await runStatus({ spawnFn, agentsDir, homeDir });
+    expect(result.output).not.toContain("[WARN] dual plugin surface:");
     expect(result.output).not.toMatch(/Profile [AB] active/);
+
+    rmSync(homeDir, { recursive: true, force: true });
   });
 
   it("status shows all ROLES in output", async () => {
@@ -263,11 +266,31 @@ describe("runStatus", () => {
     expect(result.output).toContain("no agent file");
   });
 
+  it("status surfaces agent namespace drift when the agents dir still contains legacy filenames", async () => {
+    writeFileSync(
+      join(agentsDir, "pi-oven-executor.md"),
+      [
+        "---",
+        "name: pi-oven:executor",
+        "model:",
+        "  - openai-codex/gpt-5.5",
+        "---",
+      ].join("\n"),
+      "utf-8"
+    );
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir });
+    expect(result.output).toContain("agent namespace drift");
+    expect(result.output).toContain("Legacy agent filenames detected");
+    expect(result.output).toContain("pov-<role>.md");
+  });
+
   it("status warns on unknown role override (stray key)", async () => {
     for (const role of ROLES) {
       makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
     }
-    const spawnFn = makeSpawnFn({ overrides: { "pi-oven:unknown-role-xyz": "some/model" } });
+    const spawnFn = makeSpawnFn({ overrides: { "pov:unknown-role-xyz": "some/model" } });
 
     const result = await runStatus({ spawnFn, agentsDir });
     expect(result.exitCode).toBe(0);
@@ -368,7 +391,7 @@ describe("runStatus — project layer", () => {
   it("summary marks the global layer ready from live routing + prerequisites even without a setup receipt", async () => {
     const spawnFn = makeSpawnFn({
       overrides: Object.fromEntries(
-        ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+        ROLES.map((role) => [`pov:${role}`, "openai-codex/gpt-5.5:high"])
       ),
       scalarValues: configuredSetupScalars,
     });
@@ -386,13 +409,13 @@ describe("runStatus — project layer", () => {
     seedProject({
       task: {
         agentModelOverrides: Object.fromEntries(
-          ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+          ROLES.map((role) => [`pov:${role}`, "openai-codex/gpt-5.5:high"])
         ),
       },
     });
     const spawnFn = makeSpawnFn({
       overrides: Object.fromEntries(
-        ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+        ROLES.map((role) => [`pov:${role}`, "openai-codex/gpt-5.5:high"])
       ),
       scalarValues: configuredSetupScalars,
     });
@@ -412,7 +435,7 @@ describe("runStatus — project layer", () => {
       },
     });
     const spawnFn = makeSpawnFn({
-      overrides: { "pi-oven:stale-role": "openai-codex/gpt-5.5:high" },
+      overrides: { "pov:stale-role": "openai-codex/gpt-5.5:high" },
       scalarValues: configuredSetupScalars,
     });
 
@@ -424,7 +447,7 @@ describe("runStatus — project layer", () => {
       "[✗] Project  (.omp/settings.json routing) — run /pi-oven:setup --scope project"
     );
     expect(result.output).not.toContain("project model routing active");
-    expect(result.output).toContain('WARNING: unknown role override key "pi-oven:stale-role"');
+    expect(result.output).toContain('WARNING: unknown role override key "pov:stale-role"');
   });
 
   it("ignores non-string project override payloads for both readiness and role display", async () => {
@@ -450,38 +473,129 @@ describe("runStatus — project layer", () => {
   });
 
 
-  it("a project-layer role is labelled project(.omp/settings.json)", async () => {
+  it("status labels a project canonical role as the healthy single pov surface", async () => {
+    seedProject({ task: { agentModelOverrides: { "pov:critic": "opencode-zen/kimi-k2.6" } } });
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
+    expect(criticLine).toContain("opencode-zen/kimi-k2.6");
+    expect(criticLine).toContain("project(.omp/settings.json healthy single pov surface)");
+  });
+
+  it("flags partial project apply when routing exists without the setup-owned companion keys", async () => {
+    seedProject({ task: { agentModelOverrides: { "pov:critic": "opencode-zen/kimi-k2.6" } } });
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain(
+      'PARTIAL: project routing is present but setup-owned companion keys are missing or malformed: skills.includeSkills=["pov:*"], modelRoles.default/title, retry.fallbackChains'
+    );
+  });
+  it("status distinguishes project old-only state when no machine-global override exists", async () => {
     seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({ overrides: {} });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
     expect(criticLine).toContain("opencode-zen/kimi-k2.6");
-    expect(criticLine).toContain("project(.omp/settings.json)");
+    expect(criticLine).toContain("project(.omp/settings.json old config keys)");
+    expect(result.output).toContain(
+      "old config keys: project override pi-oven:critic=opencode-zen/kimi-k2.6 still uses pi-oven:* in .omp/settings.json"
+    );
   });
 
-  it("project layer WINS over the global override for the same role", async () => {
+  it("status distinguishes global new + project old for the same role", async () => {
     seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
-    // Global override sets a DIFFERENT model for critic — project must win.
-    const spawnFn = makeSpawnFn({ overrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } });
+    const spawnFn = makeSpawnFn({ overrides: { "pov:critic": "anthropic/claude-opus-4-8" } });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
     expect(criticLine).toContain("opencode-zen/kimi-k2.6");
-    expect(criticLine).toContain("project(.omp/settings.json)");
-    expect(criticLine).not.toContain("override(config.yml)");
+    expect(criticLine).toContain("project(.omp/settings.json old config keys)");
+    expect(criticLine).not.toContain("override(config.yml healthy single pov surface)");
+    expect(result.output).toContain(
+      "mixed migration state: project pi-oven:critic=opencode-zen/kimi-k2.6 still uses old config keys while machine-global pov:critic=anthropic/claude-opus-4-8 is already on the healthy single pov surface; project still wins for critic"
+    );
   });
 
-  it("a role only in the global layer still shows override(config.yml)", async () => {
-    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+  it("legacy-only global overrides are shown as migration candidates when no project override exists", async () => {
     const spawnFn = makeSpawnFn({ overrides: { "pi-oven:executor": "openai-codex/gpt-5.3-codex" } });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     const executorLine = result.output.split("\n").find((l) => /^\s*executor\s/.test(l))!;
     expect(executorLine).toContain("openai-codex/gpt-5.3-codex");
-    expect(executorLine).toContain("override(config.yml)");
+    expect(executorLine).toContain("override(config.yml old config keys)");
+    expect(result.output).toContain(
+      "old config keys: machine-global pi-oven:executor=openai-codex/gpt-5.3-codex is legacy-only; next successful global write rewrites it to pov:executor"
+    );
+  });
+  it("status distinguishes global old + project new for the same role", async () => {
+    seedProject({ task: { agentModelOverrides: { "pov:critic": "opencode-zen/kimi-k2.6" } } });
+    const spawnFn = makeSpawnFn({ overrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
+    expect(criticLine).toContain("opencode-zen/kimi-k2.6");
+    expect(criticLine).toContain("project(.omp/settings.json healthy single pov surface)");
+    expect(result.output).toContain(
+      "mixed migration state: machine-global pi-oven:critic=anthropic/claude-opus-4-8 still uses old config keys while project pov:critic=opencode-zen/kimi-k2.6 is already on the healthy single pov surface; project still wins for critic"
+    );
   });
 
+  it("surfaces a same-scope project dual-key conflict and prefers pov:* for display", async () => {
+    seedProject({
+      task: {
+        agentModelOverrides: {
+          "pov:critic": "opencode-zen/kimi-k2.6",
+          "pi-oven:critic": "anthropic/claude-opus-4-8",
+        },
+      },
+    });
+    const spawnFn = makeSpawnFn({ overrides: {} });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
+    expect(criticLine).toContain("opencode-zen/kimi-k2.6");
+    expect(criticLine).toContain("project(.omp/settings.json mixed migration state; preferring pov:*)");
+    expect(result.output).toContain(
+      "mixed migration state: project scope has both pov:critic=opencode-zen/kimi-k2.6 and pi-oven:critic=anthropic/claude-opus-4-8; status prefers pov:*"
+    );
+  });
+
+  it("surfaces a same-scope global dual-key conflict and prefers pov:* for display", async () => {
+    const spawnFn = makeSpawnFn({
+      overrides: {
+        "pov:critic": "openai-codex/gpt-5.5:xhigh",
+        "pi-oven:critic": "anthropic/claude-opus-4-8",
+      },
+    });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
+    expect(criticLine).toContain("openai-codex/gpt-5.5:xhigh");
+    expect(criticLine).toContain("override(config.yml mixed migration state; preferring pov:*)");
+    expect(result.output).toContain(
+      "mixed migration state: global scope has both pov:critic=openai-codex/gpt-5.5:xhigh and pi-oven:critic=anthropic/claude-opus-4-8; status prefers pov:* and global write paths refuse this mixed state"
+    );
+  });
+  it("reports the healthy all-pov state when no live pi-oven:* keys remain in either scope", async () => {
+    seedProject({
+      task: { agentModelOverrides: { "pov:critic": "opencode-zen/kimi-k2.6" } },
+      skills: { includeSkills: ["pov:*"] },
+      modelRoles: { default: "openai-codex/gpt-5.5", title: "openai/gpt-5" },
+      retry: { fallbackChains: { default: ["openai/gpt-5"] } },
+    });
+    const spawnFn = makeSpawnFn({ overrides: { "pov:executor": "openai-codex/gpt-5.5:xhigh" } });
+
+    const result = await runStatus({ spawnFn, agentsDir, cwd });
+    expect(result.output).toContain(
+      "healthy single pov surface: all live managed overrides use canonical pov:* keys across project and machine-global scopes"
+    );
+    expect(result.output).not.toContain("old config keys:");
+    expect(result.output).not.toContain("mixed migration state:");
+    expect(result.output).not.toContain("PARTIAL:");
+  });
   it("a role in neither layer shows default(frontmatter)", async () => {
     seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({ overrides: {} });
@@ -586,15 +700,15 @@ describe("runStatus — project layer", () => {
     expect(result.output).toContain("tool remap");
   });
 
-  it("reports owned-surface active workflow-skill ownership only when the visible includeSkills surface is pi-oven-only", async () => {
-    const spawnFn = makeSpawnFn({ overrides: {}, includedSkills: ["pi-oven:*"] });
+  it("reports owned-surface active workflow-skill ownership only when the visible includeSkills surface is pov-only", async () => {
+    const spawnFn = makeSpawnFn({ overrides: {}, includedSkills: ["pov:*"] });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toContain("workflow-skill ownership");
     expect(result.output).toContain("classification: owned-surface active");
-    expect(result.output).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(result.output).toContain("healthy single pov surface");
+    expect(result.output).toContain('skills.includeSkills = ["pov:*"]');
     expect(result.output).toContain("workflow skills — not commands, agents, hooks, or MCP");
-    expect(result.output).toContain("Empty ~/.claude/skills is not the target state");
   });
 
   it("warns with ownership-not-established when no effective workflow-skill include policy is present", async () => {
@@ -603,10 +717,10 @@ describe("runStatus — project layer", () => {
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toContain("workflow-skill ownership");
     expect(result.output).toContain("classification: ownership not established");
+    expect(result.output).toContain("This is not the healthy single pov surface");
     expect(result.output).toContain("no effective skills.includeSkills workflow-skill policy");
-    expect(result.output).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(result.output).toContain('skills.includeSkills = ["pov:*"]');
     expect(result.output).toContain("Empty ~/.claude/skills is not the target state");
-    expect(result.output).toContain("claude-plugins");
   });
 
   it("treats legacy aids as compatibility-only when ownership mainline is still missing", async () => {
@@ -620,34 +734,34 @@ describe("runStatus — project layer", () => {
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toContain("workflow-skill ownership");
     expect(result.output).toContain("classification: compatibility aids only");
+    expect(result.output).toContain("This is not the healthy single pov surface");
     expect(result.output).toContain('disabledProviders = ["claude"]');
     expect(result.output).toContain('skills.ignoredSkills = ["superpowers:*"]');
     expect(result.output).toContain("do not by themselves stop claude-plugins");
-    expect(result.output).toContain("namespaced marketplace workflow skills");
   });
 
   it("treats a malformed project skills block as unknown instead of falling through to healthy global ownership", async () => {
     seedProject({ skills: "broken" });
-    const spawnFn = makeSpawnFn({ overrides: {}, includedSkills: ["pi-oven:*"] });
+    const spawnFn = makeSpawnFn({ overrides: {}, includedSkills: ["pov:*"] });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toContain("workflow-skill ownership");
     expect(result.output).toContain("classification: ownership not established");
     expect(result.output).toContain("effective workflow-skill ownership is unknown");
+    expect(result.output).toContain("healthy single pov surface could not be verified yet");
     expect(result.output).toContain("present but malformed skills block");
-    expect(result.output).not.toContain("from ~/.omp/agent/config.yml (machine-global layer)");
   });
 
   it("treats the project includeSkills layer as authoritative when it conflicts with a healthy global filter", async () => {
     seedProject({ skills: { includeSkills: ["other:*"] } });
-    const spawnFn = makeSpawnFn({ overrides: {}, includedSkills: ["pi-oven:*"] });
+    const spawnFn = makeSpawnFn({ overrides: {}, includedSkills: ["pov:*"] });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toContain("workflow-skill ownership");
     expect(result.output).toContain('project skills.includeSkills');
     expect(result.output).toContain('["other:*"]');
-    expect(result.output).toContain('canonical workflow-skill filter ["pi-oven:*"]');
-    expect(result.output).not.toContain("effective workflow-skill surface is pi-oven-only via skills.includeSkills");
+    expect(result.output).toContain('canonical workflow-skill filter ["pov:*"]');
+    expect(result.output).not.toContain("workflow-skill surface is on the healthy single pov surface via skills.includeSkills");
   });
 
   it("does not advertise legacy skill-visibility config even when skills.ignoredSkills is unreadable", async () => {
@@ -710,6 +824,44 @@ describe("runStatus — project layer", () => {
     expect(result.output).not.toContain(`pi-oven shipped assets read from ${agentsDir};`);
   });
 
+  it("surfaces duplicate plugin surface drift with exact active and stale cache paths", async () => {
+    const homeDir = makeTempDir();
+    const cachePluginRoot = join(
+      homeDir,
+      ".omp",
+      "plugins",
+      "cache",
+      "plugins",
+      "kzk___pi-oven___0.2.2"
+    );
+    mkdirSync(join(cachePluginRoot, "agents"), { recursive: true });
+    writeFileSync(join(cachePluginRoot, "agents", "pov-executor.md"), "# executor\n", "utf-8");
+    writePluginSkillsManifest(tempDir, ["./skills/autonomous-loop/SKILL.md"]);
+    writeShippedSkill(tempDir, "autonomous-loop");
+    writePluginSkillsManifest(cachePluginRoot, ["./skills/autonomous-loop/SKILL.md"]);
+    writeShippedSkill(cachePluginRoot, "autonomous-loop", {
+      frontmatterName: "autonomous-loop",
+    });
+
+    const spawnFn = makeSpawnFn({ overrides: {} });
+    const result = await runStatus({
+      spawnFn,
+      agentsDir,
+      cwd,
+      pluginAssetPath: tempDir,
+      homeDir,
+    });
+
+    expect(result.output).toContain("dual plugin surface");
+    expect(result.output).toContain(`active plugin root is ${tempDir}`);
+    expect(result.output).toContain(cachePluginRoot);
+    expect(result.output).toContain("public skill frontmatter drift");
+    expect(result.output).toContain('"autonomous-loop"');
+    expect(result.output).toContain('"pov:autonomous-loop"');
+
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
   it("surfaces keyword-skill integrity drift when plugin assets reference a missing shipped skill file", async () => {
     writePluginSkillsManifest(tempDir, ["./skills/missing-skill/SKILL.md"]);
 
@@ -721,6 +873,39 @@ describe("runStatus — project layer", () => {
     expect(result.output).toContain(tempDir);
     expect(result.output).toContain(cwd);
     expect(result.output).toContain("Runtime keyword-matched skills are unavailable");
+  });
+
+  it("preserves keyword-skill diagnostics by inferring the plugin root from cwd when agentsDir is unavailable", async () => {
+    writePluginSkillsManifest(tempDir, ["./skills/missing-skill/SKILL.md"]);
+
+    const spawnFn = makeSpawnFn({ overrides: {} });
+    const result = await runStatus({ spawnFn, cwd: tempDir });
+
+    expect(result.output).toContain("keyword-skill integrity");
+    expect(result.output).toContain("missing-skill");
+    expect(result.output).toContain(tempDir);
+    expect(result.output).toContain("Runtime keyword-matched skills are unavailable");
+  });
+
+  it("explicitly degrades keyword-skill diagnostics when no plugin root can be resolved", async () => {
+    const unrelatedCwd = makeTempDir();
+    const isolatedHomeDir = makeTempDir();
+
+    try {
+      const spawnFn = makeSpawnFn({ overrides: {} });
+      const result = await runStatus({
+        spawnFn,
+        cwd: unrelatedCwd,
+        homeDir: isolatedHomeDir,
+      });
+
+      expect(result.output).toContain("keyword-skill integrity");
+      expect(result.output).toContain("plugin root unavailable");
+      expect(result.output).toContain("could not be probed");
+    } finally {
+      rmSync(unrelatedCwd, { recursive: true, force: true });
+      rmSync(isolatedHomeDir, { recursive: true, force: true });
+    }
   });
 
   it("surfaces keyword-skill integrity drift when plugin assets contain a shipped skill without whitelist coverage", async () => {

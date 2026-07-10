@@ -241,8 +241,8 @@ describe("runApply user path — memory + async keys written", () => {
     mkdirSync(dir, { recursive: true });
     for (const role of ROLES) {
       writeFileSync(
-        join(dir, `pi-oven-${role}.md`),
-        `---\nname: pi-oven:${role}\ndescription: test\nmodel:\n  - ${PROFILE_A[role].primary}\n  - ${PROFILE_A[role].registry_alternate}\nthinkingLevel: ${PROFILE_A[role].thinkingLevel}\nmode: subagent\ntools: ["*"]\nblocked_tools: []\n---\n\nBody.\n`,
+        join(dir, `pov-${role}.md`),
+        `---\nname: pov:${role}\ndescription: test\nmodel:\n  - ${PROFILE_A[role].primary}\n  - ${PROFILE_A[role].registry_alternate}\nthinkingLevel: ${PROFILE_A[role].thinkingLevel}\nmode: subagent\ntools: ["*"]\nblocked_tools: []\n---\n\nBody.\n`,
         "utf-8"
       );
     }

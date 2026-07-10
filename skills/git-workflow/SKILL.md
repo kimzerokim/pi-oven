@@ -1,5 +1,5 @@
 ---
-name: git-workflow
+name: pov:git-workflow
 version: 0.1.0
 description: "Read this skill when starting isolated feature work, executing inside a worktree, or finishing and integrating a branch. Manages the two boundaries of a development branch: set up a worktree at the start, integrate at the finish."
 ---

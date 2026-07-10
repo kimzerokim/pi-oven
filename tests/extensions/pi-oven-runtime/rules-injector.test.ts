@@ -61,10 +61,10 @@ describe("RulesInjector — inject (AC3 step 1)", () => {
   it("includes the optional autonomous reminder in the discipline block", () => {
     const inj = new RulesInjector();
     inj.setPhase("BUILD");
-    inj.setReminder("Before code-write, read skill://autonomous-loop.");
+    inj.setReminder("Before code-write, read skill://pov:autonomous-loop.");
     const block = inj.buildSystemPromptBlock();
     expect(block).toContain("Current autonomous reminder:");
-    expect(block).toContain("skill://autonomous-loop");
+    expect(block).toContain("skill://pov:autonomous-loop");
   });
 
   it("states that commit blocking also depends on the verifier risk matrix when heavy verification is required", () => {
@@ -214,8 +214,8 @@ describe("orchestrator conduct block", () => {
     expect(b.startsWith(`<!-- ${ORCHESTRATOR_CONDUCT_DEDUP_KEY} -->`)).toBe(true);
   });
 
-  it("ORCHESTRATOR_CONDUCT_DEDUP_KEY ends with @v2", () => {
-    expect(ORCHESTRATOR_CONDUCT_DEDUP_KEY).toMatch(/@v2$/);
+  it("ORCHESTRATOR_CONDUCT_DEDUP_KEY ends with @v3", () => {
+    expect(ORCHESTRATOR_CONDUCT_DEDUP_KEY).toMatch(/@v3$/);
   });
 
   it("interactive: does not point agents at unresolved namespaced skill aliases", () => {
@@ -242,11 +242,14 @@ describe("orchestrator conduct block", () => {
     expect(b).toMatch(/pi-oven skills are authoritative|SKILL PRECEDENCE/i);
   });
 
-  it("interactive: contains AGENT NAMING rule that keeps foreign namespaces user-explicit only", () => {
+  it("interactive: contains AGENT NAMING rule that points automatic dispatch only at pov and keeps foreign namespaces user-explicit only", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: false });
     expect(b).toContain("kzk:");
-    expect(b).toMatch(/pi-oven:<role>|AGENT NAMING/i);
+    expect(b).toContain("pov:explorer");
+    expect(b).not.toContain("pi-oven:explorer");
+    expect(b).toMatch(/pov:<role>|AGENT NAMING/i);
+    expect(b).toMatch(/stale-state migration feedback|silent success path/i);
     expect(b).toMatch(/user-explicit|explicitly asked/i);
   });
 
@@ -258,11 +261,14 @@ describe("orchestrator conduct block", () => {
     expect(b).toMatch(/pi-oven skills are authoritative|SKILL PRECEDENCE/i);
   });
 
-  it("autonomous: contains AGENT NAMING rule that keeps foreign namespaces user-explicit only", () => {
+  it("autonomous: contains AGENT NAMING rule that points automatic dispatch only at pov and keeps foreign namespaces user-explicit only", () => {
     const inj = new RulesInjector();
     const b = inj.buildOrchestratorConductBlock({ autonomousActive: true });
     expect(b).toContain("kzk:");
-    expect(b).toMatch(/pi-oven:<role>|AGENT NAMING/i);
+    expect(b).toContain("pov:explorer");
+    expect(b).not.toContain("pi-oven:explorer");
+    expect(b).toMatch(/pov:<role>|AGENT NAMING/i);
+    expect(b).toMatch(/stale-state migration feedback|silent success path/i);
     expect(b).toMatch(/user-explicit|explicitly asked/i);
   });
   it("interactive: routes ambiguous decisions through the native deep-interview contract", () => {

@@ -69,7 +69,7 @@ function makeSpawnFn(opts: {
 // ---------------------------------------------------------------------------
 
 describe("runOverride — happy path", () => {
-  it("standalone --override critic=<model> sets config via omp and exits 0", async () => {
+  it("standalone --override critic=<model> sets canonical global pov:* config via omp and exits 0", async () => {
     const setCalls: Array<{ args: string[] }> = [];
     const spawnFn = makeSpawnFn({ setCalls });
 
@@ -82,9 +82,10 @@ describe("runOverride — happy path", () => {
     expect(result.exitCode).toBe(0);
     expect(setCalls.length).toBe(2);
     const capturedJson = JSON.parse(setCalls[0].args[4]); // args: [omp, config, set, task.agentModelOverrides, <json>]
-    expect(capturedJson["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(capturedJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(capturedJson["pi-oven:critic"]).toBeUndefined();
     expect(setCalls[1].args[3]).toBe("skills.includeSkills");
-    expect(JSON.parse(setCalls[1].args[4])).toEqual(["pi-oven:*"]);
+    expect(JSON.parse(setCalls[1].args[4])).toEqual(["pov:*"]);
   });
 
   it("two --override entries both persist (MERGE)", async () => {
@@ -98,16 +99,17 @@ describe("runOverride — happy path", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.applied.map((a) => a.colonKey)).toContain("pi-oven:critic");
-    expect(result.applied.map((a) => a.colonKey)).toContain("pi-oven:executor");
-    expect(setCalls.length).toBe(3);
-    expect(JSON.parse(setCalls[0].args[4])["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
-    expect(JSON.parse(setCalls[1].args[4])["pi-oven:executor"]).toBe("opencode-zen/gpt-5.3-codex");
-    expect(setCalls[2].args[3]).toBe("skills.includeSkills");
-    expect(JSON.parse(setCalls[2].args[4])).toEqual(["pi-oven:*"]);
+    expect(result.applied.map((a) => a.colonKey)).toContain("pov:critic");
+    expect(result.applied.map((a) => a.colonKey)).toContain("pov:executor");
+    expect(setCalls.length).toBe(2);
+    const capturedJson = JSON.parse(setCalls[0].args[4]);
+    expect(capturedJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(capturedJson["pov:executor"]).toBe("opencode-zen/gpt-5.3-codex");
+    expect(setCalls[1].args[3]).toBe("skills.includeSkills");
+    expect(JSON.parse(setCalls[1].args[4])).toEqual(["pov:*"]);
   });
 
-  it("preserves sibling (non-pi-oven:*) keys in the record", async () => {
+  it("preserves sibling (non-managed) keys in the global record", async () => {
     const setCalls: Array<{ args: string[] }> = [];
     const spawnFn = makeSpawnFn({
       getRecord: { "claude-code:foo": "somemodel" },
@@ -122,10 +124,97 @@ describe("runOverride — happy path", () => {
 
     const capturedJson = JSON.parse(setCalls[0].args[4]);
     expect(capturedJson["claude-code:foo"]).toBe("somemodel");
-    expect(capturedJson["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(capturedJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
   });
 
-  it("role with hyphen (code-reviewer) maps to pi-oven:code-reviewer", async () => {
+
+  it("migrates old-only global pi-oven:* state while applying a canonical override", async () => {
+    const setCalls: Array<{ args: string[] }> = [];
+    const spawnFn = makeSpawnFn({
+      getRecord: { "pi-oven:executor": "legacy-model", "claude-code:foo": "somemodel" },
+      setCalls,
+    });
+
+    await runOverride({
+      entries: ["critic=anthropic/claude-opus-4-8"],
+      listModelsOutput: LIST_MODELS_FIXTURE,
+      spawnFn,
+    });
+
+    const capturedJson = JSON.parse(setCalls[0].args[4]);
+    expect(capturedJson["pov:executor"]).toBe("legacy-model");
+    expect(capturedJson["pi-oven:executor"]).toBeUndefined();
+    expect(capturedJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
+  });
+
+  it("rejects same-scope dual-key conflicts in the global override record", async () => {
+    const setCalls: Array<{ args: string[] }> = [];
+    const spawnFn = makeSpawnFn({
+      getRecord: { "pov:critic": "canonical-model", "pi-oven:critic": "legacy-model" },
+      setCalls,
+    });
+
+    await expect(
+      runOverride({
+        entries: ["executor=opencode-zen/gpt-5.3-codex"],
+        listModelsOutput: LIST_MODELS_FIXTURE,
+        spawnFn,
+      })
+    ).rejects.toThrow(/dual-key conflict/i);
+    expect(setCalls.length).toBe(0);
+  });
+
+
+  it("global override batches all roles into one task.agentModelOverrides write", async () => {
+    const setCalls: Array<{ args: string[] }> = [];
+    const spawnFn = makeSpawnFn({ setCalls });
+
+    const result = await runOverride({
+      entries: ["critic=anthropic/claude-opus-4-8", "executor=opencode-zen/gpt-5.3-codex"],
+      listModelsOutput: LIST_MODELS_FIXTURE,
+      spawnFn,
+    });
+
+    expect(result.exitCode).toBe(0);
+    const overrideSetCalls = setCalls.filter((call) => call.args[3] === "task.agentModelOverrides");
+    expect(overrideSetCalls).toHaveLength(1);
+    const parsed = JSON.parse(overrideSetCalls[0].args[4]);
+    expect(parsed["pov:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(parsed["pov:executor"]).toBe("opencode-zen/gpt-5.3-codex");
+  });
+
+  it("global override failure leaves the stored override record unchanged", async () => {
+    let storedRecord: Record<string, string> = { "claude-code:foo": "existingmodel" };
+    const setCalls: string[][] = [];
+    const spawnFn = (cmd: string, args: string[]) => {
+      setCalls.push([cmd, ...args]);
+      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ key: "task.agentModelOverrides", value: storedRecord, type: "record", description: "" })),
+          stderr: Buffer.from(""),
+        };
+      }
+      if (args[0] === "config" && args[1] === "set" && args[2] === "task.agentModelOverrides") {
+        return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("set failed") };
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    await expect(
+      runOverride({
+        entries: ["critic=anthropic/claude-opus-4-8", "executor=opencode-zen/gpt-5.3-codex"],
+        listModelsOutput: LIST_MODELS_FIXTURE,
+        spawnFn,
+      })
+    ).rejects.toThrow(/set failed/i);
+
+    expect(storedRecord).toEqual({ "claude-code:foo": "existingmodel" });
+    const overrideSetCalls = setCalls.filter((call) => call[1] === "config" && call[2] === "set" && call[3] === "task.agentModelOverrides");
+    expect(overrideSetCalls).toHaveLength(1);
+  });
+
+  it("role with hyphen (code-reviewer) maps to canonical global pov:code-reviewer", async () => {
     const setCalls: Array<{ args: string[] }> = [];
     const spawnFn = makeSpawnFn({ setCalls });
 
@@ -137,7 +226,7 @@ describe("runOverride — happy path", () => {
 
     expect(result.exitCode).toBe(0);
     const capturedJson = JSON.parse(setCalls[0].args[4]);
-    expect(capturedJson["pi-oven:code-reviewer"]).toBe("opencode-zen/gpt-5.3-codex");
+    expect(capturedJson["pov:code-reviewer"]).toBe("opencode-zen/gpt-5.3-codex");
   });
 
   it("returns applied array with colonKey and model for each successful entry", async () => {
@@ -151,7 +240,7 @@ describe("runOverride — happy path", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.applied).toHaveLength(1);
-    expect(result.applied[0].colonKey).toBe("pi-oven:executor");
+    expect(result.applied[0].colonKey).toBe("pov:executor");
     expect(result.applied[0].model).toBe("opencode-zen/gpt-5.3-codex");
   });
 });
@@ -314,9 +403,9 @@ describe("runOverride — stateful merge round-trip (AC#2)", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    // Both pi-oven keys persisted in the final stored record
-    expect(storedRecord["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
-    expect(storedRecord["pi-oven:executor"]).toBe("openai-codex/gpt-5.3-codex");
+    // Both canonical global pov:* keys persisted in the final stored record
+    expect(storedRecord["pov:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(storedRecord["pov:executor"]).toBe("openai-codex/gpt-5.3-codex");
     // Pre-existing non-pi-oven sibling survived all writes
     expect(storedRecord["claude-code:foo"]).toBe("existingmodel");
   });
@@ -361,10 +450,10 @@ describe("runOverride — scope:project", () => {
 
     // Both entries land in the project file in ONE write.
     const overrides = await readProjectAgentModelOverrides({ cwd });
-    expect(overrides["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
-    expect(overrides["pi-oven:executor"]).toBe("opencode-zen/gpt-5.3-codex");
+    expect(overrides["pov:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(overrides["pov:executor"]).toBe("opencode-zen/gpt-5.3-codex");
     const parsed = JSON.parse(readFileSync(projectSettingsPath(cwd), "utf-8"));
-    expect(parsed.skills.includeSkills).toEqual(["pi-oven:*"]);
+    expect(parsed.skills.includeSkills).toEqual(["pov:*"]);
 
     // The validator may spawn `omp models` only when no listModelsOutput is
     // injected; here it is injected, so no `config` spawn must occur at all.
@@ -385,8 +474,8 @@ describe("runOverride — scope:project", () => {
     });
 
     expect(result.applied.map((a) => a.colonKey).sort()).toEqual([
-      "pi-oven:critic",
-      "pi-oven:executor",
+      "pov:critic",
+      "pov:executor",
     ]);
   });
 
@@ -427,6 +516,6 @@ describe("runOverride — scope:project", () => {
 
     const parsed = JSON.parse(readFileSync(projectSettingsPath(cwd), "utf-8"));
     expect(parsed.extensions).toEqual(["keep"]);
-    expect(parsed.task.agentModelOverrides["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(parsed.task.agentModelOverrides["pov:critic"]).toBe("anthropic/claude-opus-4-8");
   });
 });

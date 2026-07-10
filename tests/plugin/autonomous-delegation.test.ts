@@ -3,16 +3,16 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 const SKILL_PATH = path.resolve(__dirname, "../../skills/autonomous-loop/SKILL.md");
-const PLANNER_PATH = path.resolve(__dirname, "../../agents/pi-oven-planner.md");
+const PLANNER_PATH = path.resolve(__dirname, "../../agents/pov-planner.md");
 const CODEBASE_SURVEY_ADVERSARIAL_PATH = path.resolve(__dirname, "../../evals/codebase-survey/scenarios/adversarial.yaml");
 
 describe("autonomous delegation-first policy", () => {
   it("skill defines broad exploration before first spec scope", async () => {
     const content = await readFile(SKILL_PATH, "utf-8");
     expect(content).toContain("-1 — Broad exploration");
-    expect(content).toContain("pi-oven:explorer");
-    expect(content).toContain("pi-oven:tracer");
-    expect(content).toContain("pi-oven:analyst");
+    expect(content).toContain("explorer");
+    expect(content).toContain("tracer");
+    expect(content).toContain("analyst");
     expect(content).toContain("at least 3 adjacent subsystems");
     expect(content).toContain("at least 2 alternative improvement directions");
   });

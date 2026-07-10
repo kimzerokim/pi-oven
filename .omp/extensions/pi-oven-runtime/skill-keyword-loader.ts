@@ -1,13 +1,12 @@
 import { readFileSync } from "fs";
 import * as path from "path";
 import {
-  resolveShippedSkillReadTarget,
-  shippedSkillNameFromPath,
+  resolveShippedSkillSurfaceEntry,
 } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
 import { getCapabilitiesByTag } from "./capability-registry";
 
 
-export const PI_OVEN_SKILL_NS = "pi-oven";
+export const PUBLIC_SKILL_NS = "pov";
 export const KEYWORD_SKILL_DEDUP_KEY = "pi-oven:keyword-skills@v1";
 const MAX_MATCHED_SKILLS = 8;
 
@@ -236,12 +235,14 @@ export interface SkillKeywordIndexEntry {
   description: string;
   phrases: string[];
   ownedReadTarget: string;
+  pluginRoot: string;
 }
 
 export interface MatchedSkill {
   name: string;
   rawMatchedPhrases: string[];
   ownedReadTarget: string;
+  pluginRoot: string;
 }
 
 export interface SkillKeywordLoaderState {
@@ -300,6 +301,18 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+function formatPublicSkillNameDrift(
+  expectedName: string,
+  actualName: unknown,
+  absolutePath: string
+): string {
+  const renderedActual =
+    typeof actualName === "string" && actualName.trim().length > 0
+      ? JSON.stringify(actualName.trim())
+      : "(missing frontmatter name)";
+  return `public skill frontmatter drift at ${absolutePath}: expected ${JSON.stringify(expectedName)}, found ${renderedActual}`;
+}
+
 export function matchSkillsForText(
   text: string,
   index: SkillKeywordIndexEntry[]
@@ -311,7 +324,12 @@ export function matchSkillsForText(
         normalizedText.includes(normalizeText(phrase))
       );
       return rawMatchedPhrases.length > 0
-        ? { name: entry.name, rawMatchedPhrases, ownedReadTarget: entry.ownedReadTarget }
+        ? {
+            name: entry.name,
+            rawMatchedPhrases,
+            ownedReadTarget: entry.ownedReadTarget,
+            pluginRoot: entry.pluginRoot,
+          }
         : null;
     })
     .filter((entry): entry is MatchedSkill => entry !== null)
@@ -319,8 +337,9 @@ export function matchSkillsForText(
 }
 
 
-export function loadSkillKeywordIndexReport(repoRoot: string): SkillKeywordIndexLoadResult {
-  const pluginPath = path.resolve(repoRoot, ".claude-plugin", "plugin.json");
+export function loadSkillKeywordIndexReport(pluginRoot: string): SkillKeywordIndexLoadResult {
+  const resolvedPluginRoot = path.resolve(pluginRoot);
+  const pluginPath = path.resolve(resolvedPluginRoot, ".claude-plugin", "plugin.json");
   const plugin = JSON.parse(readFileSync(pluginPath, "utf-8")) as { skills?: unknown };
   const skillPaths = Array.isArray(plugin.skills)
     ? plugin.skills.filter((value): value is string => typeof value === "string")
@@ -330,18 +349,31 @@ export function loadSkillKeywordIndexReport(repoRoot: string): SkillKeywordIndex
   const issues: SkillKeywordIndexIssue[] = [];
 
   for (const skillPath of skillPaths) {
-    const absolute = path.resolve(repoRoot, skillPath);
-    let name = skillPath;
+    let skillName = skillPath;
     try {
-      name = shippedSkillNameFromPath(skillPath);
-      const ownedReadTarget = resolveShippedSkillReadTarget(repoRoot, skillPath);
-      const content = readFileSync(absolute, "utf-8");
+      const surface = resolveShippedSkillSurfaceEntry(resolvedPluginRoot, skillPath);
+      skillName = surface.publicSkillName;
+      const content = readFileSync(surface.absolutePath, "utf-8");
       const frontmatter = parseFrontmatter(content);
-      name = typeof frontmatter.name === "string" ? frontmatter.name : name;
+      const frontmatterName =
+        typeof frontmatter.name === "string" ? frontmatter.name.trim() : undefined;
+      if (frontmatterName !== surface.publicSkillName) {
+        issues.push({
+          skillPath,
+          skillName,
+          reason: formatPublicSkillNameDrift(
+            surface.publicSkillName,
+            frontmatter.name,
+            surface.absolutePath
+          ),
+        });
+        continue;
+      }
+
       const description = typeof frontmatter.description === "string" ? frontmatter.description : "";
-      const whitelist = SKILL_KEYWORD_WHITELIST[name];
+      const whitelist = SKILL_KEYWORD_WHITELIST[surface.skillName];
       if (!whitelist || whitelist.length === 0) {
-        issues.push({ skillPath, skillName: name, reason: "missing keyword whitelist" });
+        issues.push({ skillPath, skillName, reason: "missing keyword whitelist" });
         continue;
       }
 
@@ -354,11 +386,17 @@ export function loadSkillKeywordIndexReport(repoRoot: string): SkillKeywordIndex
         phrases.push(phrase);
       }
 
-      index.push({ name, description, phrases, ownedReadTarget });
+      index.push({
+        name: surface.publicSkillName,
+        description,
+        phrases,
+        ownedReadTarget: surface.ownedReadTarget,
+        pluginRoot: surface.pluginRoot,
+      });
     } catch (err) {
       issues.push({
         skillPath,
-        skillName: name,
+        skillName,
         reason: normalizeIssueReason(err),
       });
     }
@@ -423,16 +461,21 @@ export function updateSkillKeywordLoaderOnTurnStart(
 export function buildKeywordMatchedSkillsPrompt(matchedSkills: MatchedSkill[]): string | null {
   if (matchedSkills.length === 0) return null;
 
+  const activePluginRoots = Array.from(new Set(matchedSkills.map((skill) => skill.pluginRoot)));
   const lines = [
     `<!-- ${KEYWORD_SKILL_DEDUP_KEY} -->`,
     "## Runtime keyword-matched skills",
     "",
-    "The latest user message matched these pi-oven skills from the curated keyword whitelist.",
+    "The latest user message matched these `pov:` workflow skills from the active pi-oven plugin root.",
     "You MUST load each listed skill by reading the exact plugin-owned SKILL.md target shown below before taking substantive action in this turn.",
     "This is a hard precondition, NOT a suggestion: do not begin any skill-governed work until the matching skill is loaded and followed.",
     "These exact reads are the single front door for the skill-gated control plane.",
+    activePluginRoots.length === 1
+      ? `Active plugin root: \`${activePluginRoots[0]}\``
+      : `Unexpected multiple plugin roots matched in one turn: ${activePluginRoots.map((root) => `\`${root}\``).join(", ")}`,
     "Runtime proof surface:",
-    "- `requiredSkills` records the matched pi-oven skill names.",
+    "- The public `pov:*` skill names below and their exact `SKILL.md` proof targets are both resolved from that same active plugin root.",
+    "- `requiredSkills` records the matched `pov:` public skill names.",
     "- `ownedSkillReadTargets` records the exact plugin-owned SKILL.md targets that must be read.",
     "- `skillReads` is the proof log that unlocks code-write once the exact targets above are read.",
     "- Bootstrap message injection and tool remap are NOT control-plane paths in pi-oven.",
@@ -442,7 +485,7 @@ export function buildKeywordMatchedSkillsPrompt(matchedSkills: MatchedSkill[]): 
   ];
   for (const skill of matchedSkills) {
     lines.push(
-      `- \`${skill.ownedReadTarget}\` — pi-oven skill \`${skill.name}\`, matched by: ${Array.from(new Set(skill.rawMatchedPhrases)).join(", ")}`
+      `- \`${skill.ownedReadTarget}\` — public skill \`${skill.name}\`, matched by: ${Array.from(new Set(skill.rawMatchedPhrases)).join(", ")}`
     );
   }
   if (getCapabilitiesByTag("deep-interview").includes("ask")) {

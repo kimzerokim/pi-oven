@@ -26,6 +26,34 @@ const RELEASE_DEFAULT_AGENT_MODELS = {
   analyst: "openai-codex/gpt-5.5",
 } as const;
 
+const T11_SKILL_EXAMPLE_CONTRACT = {
+  "deep-dive": {
+    povRefs: [
+      "pov:tracer",
+      "pov:deep-researcher",
+      "pov:analyst",
+      "pov:data-runner",
+      "pov:explorer",
+    ],
+    agentPaths: ["agents/pov-tracer.md"],
+  },
+  "fresh-verifier": {
+    povRefs: ["pov:verifier", "pov:oracle"],
+    agentPaths: ["agents/pov-verifier.md"],
+  },
+  "writing-plans": {
+    povRefs: [
+      "pov:planner",
+      "pov:architect",
+      "pov:metis",
+      "pov:explorer",
+      "pov:librarian",
+      "pov:document-specialist",
+    ],
+    agentPaths: [],
+  },
+} as const;
+
 async function readFrontmatterDescription(skill: string): Promise<string> {
   const skillPath = path.join(SKILLS_ROOT, skill, "SKILL.md");
   const content = await readFile(skillPath, "utf-8");
@@ -34,9 +62,17 @@ async function readFrontmatterDescription(skill: string): Promise<string> {
   return match![1];
 }
 
+async function readFrontmatterName(skill: string): Promise<string> {
+  const skillPath = path.join(SKILLS_ROOT, skill, "SKILL.md");
+  const content = await readFile(skillPath, "utf-8");
+  const match = content.match(/^name:\s*(.+)$/m);
+  expect(match).not.toBeNull();
+  return match![1].trim();
+}
+
 
 async function readAgentPrimaryModel(role: string): Promise<string> {
-  const agentPath = path.join(AGENTS_ROOT, `pi-oven-${role}.md`);
+  const agentPath = path.join(AGENTS_ROOT, `pov-${role}.md`);
   const content = await readFile(agentPath, "utf-8");
   const match = content.match(/^model:\s*\n\s*-\s*(.+)$/m);
   expect(match).not.toBeNull();
@@ -63,6 +99,12 @@ describe("skill activation metadata contract", () => {
     }
   });
 
+  it("keeps shipped skill frontmatter names on the public pov: namespace", async () => {
+    for (const skill of SHIPPED_SKILL_NAMES) {
+      expect(await readFrontmatterName(skill)).toBe(`pov:${skill}`);
+    }
+  });
+
   it("keeps plugin.json, the shipped-skill registry, and keyword whitelist keys in exact parity", async () => {
     expect(await readPluginSkillNames()).toEqual(SHIPPED_SKILL_NAMES);
     expect(Object.keys(SKILL_KEYWORD_WHITELIST).sort()).toEqual([...SHIPPED_SKILL_NAMES].sort());
@@ -73,6 +115,20 @@ describe("skill activation metadata contract", () => {
       const phrases = SKILL_KEYWORD_WHITELIST[skill];
       expect(Array.isArray(phrases)).toBe(true);
       expect(phrases.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the T11 skill live agent examples on pov namespace and pov agent paths", async () => {
+    for (const [skill, contract] of Object.entries(T11_SKILL_EXAMPLE_CONTRACT)) {
+      const content = await readFile(path.join(SKILLS_ROOT, skill, "SKILL.md"), "utf-8");
+      expect(content).not.toContain("pi-oven:");
+      expect(content).not.toContain("agents/pi-oven-");
+      for (const ref of contract.povRefs) {
+        expect(content).toContain(ref);
+      }
+      for (const agentPath of contract.agentPaths) {
+        expect(content).toContain(agentPath);
+      }
     }
   });
 });

@@ -46,7 +46,6 @@ describe("validateImport", () => {
   it("accepts a valid Profile A import with opencode-zen prefix", () => {
     const input = {
       "pi-oven": {
-        profile: "A",
         models: {
           executor: {
             primary: "opencode-zen/gpt-5.3-codex",
@@ -64,7 +63,6 @@ describe("validateImport", () => {
   it("accepts a valid Profile B import with anthropic prefix when allowAnthropic=true", () => {
     const input = {
       "pi-oven": {
-        profile: "B",
         models: {
           executor: {
             primary: "anthropic/claude-sonnet-4-6",
@@ -116,10 +114,9 @@ describe("validateImport", () => {
     expect(result.errors.some((e) => e.includes("gpt-4o"))).toBe(true);
   });
 
-  it("rejects unknown role name and enumerates all 24 allowed roles in error", () => {
+  it("rejects unknown role name", () => {
     const input = {
       "pi-oven": {
-        profile: "A",
         models: {
           "my-role": {
             primary: "opencode-zen/gpt-5.3-codex",
@@ -131,15 +128,10 @@ describe("validateImport", () => {
     };
     const result = validateImport(input);
     expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes("my-role"))).toBe(true);
-    // Error must enumerate all 24 roles
-    for (const role of ROLES) {
-      const allErrors = result.errors.join("\n");
-      expect(allErrors).toContain(role);
-    }
+    expect(result.errors).toContain("pi-oven.models.my-role: unknown role");
   });
 
-  it("rejects invalid profile value", () => {
+  it("rejects any profile field because baseline profiles are setup-only", () => {
     const input = {
       "pi-oven": {
         profile: "X",
@@ -148,10 +140,12 @@ describe("validateImport", () => {
     };
     const result = validateImport(input);
     expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes("profile"))).toBe(true);
+    expect(result.errors).toContain(
+      "profile is not importable; use /pi-oven:setup --profile for baseline routing"
+    );
   });
 
-  it("rejects 'custom' profile value", () => {
+  it("rejects 'custom' profile value for the same setup-only reason", () => {
     const input = {
       "pi-oven": {
         profile: "custom",
@@ -160,7 +154,9 @@ describe("validateImport", () => {
     };
     const result = validateImport(input);
     expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes("profile"))).toBe(true);
+    expect(result.errors).toContain(
+      "profile is not importable; use /pi-oven:setup --profile for baseline routing"
+    );
   });
 
   it("rejects invalid thinkingLevel value", () => {
@@ -184,7 +180,6 @@ describe("validateImport", () => {
   it("accepts partial models (only some roles specified)", () => {
     const input = {
       "pi-oven": {
-        profile: "A",
         models: {
           executor: {
             primary: "opencode-zen/gpt-5.3-codex",
@@ -278,11 +273,10 @@ describe("runImport", () => {
   // New tests: colon-key writes + validation
   // -------------------------------------------------------------------------
 
-  it("valid import sets pi-oven:executor via omp config set (colon key)", async () => {
+  it("valid import sets canonical global pov:executor via omp config set", async () => {
     const primary = "opencode-zen/gpt-5.3-codex";
     const p = writeJson(tempDir, "config.json", {
       "pi-oven": {
-        profile: "A",
         models: {
           executor: {
             primary,
@@ -318,7 +312,7 @@ describe("runImport", () => {
 
     expect(result.exitCode).toBe(0);
 
-    // A config set call must carry both the pi-oven:executor override and the
+    // A config set call must carry both the canonical global pov:executor override and the
     // canonical workflow-skill include filter.
     const setCalls = spawned.filter(
       (s) => s.args[0] === "config" && s.args[1] === "set"
@@ -329,7 +323,7 @@ describe("runImport", () => {
       const payload = s.args[3] ?? s.args[2];
       try {
         const parsed = JSON.parse(payload ?? "{}") as Record<string, string>;
-        return parsed["pi-oven:executor"] === primary;
+        return parsed["pov:executor"] === primary && parsed["pi-oven:executor"] === undefined;
       } catch {
         return false;
       }
@@ -337,14 +331,181 @@ describe("runImport", () => {
     expect(hasExecutorKey).toBe(true);
     const includeSkillsCall = setCalls.find((s) => s.args[2] === "skills.includeSkills");
     expect(includeSkillsCall).toBeDefined();
-    expect(JSON.parse(includeSkillsCall!.args[3])).toEqual(["pi-oven:*"]);
+    expect(JSON.parse(includeSkillsCall!.args[3])).toEqual(["pov:*"]);
+  });
+
+
+  it("migrates old-only global pi-oven:* state during import and removes the legacy key", async () => {
+    const primary = "opencode-zen/gpt-5.3-codex";
+    const p = writeJson(tempDir, "config.json", {
+      "pi-oven": {
+        models: {
+          executor: {
+            primary,
+            registry_alternate: "openai-codex/gpt-5.3-codex",
+            thinkingLevel: "high",
+          },
+        },
+      },
+    });
+
+    const spawned: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      spawned.push({ cmd: _cmd, args });
+      if (args.includes("get")) {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ type: "record", value: { "pi-oven:critic": "legacy-model" } })),
+          stderr: Buffer.from(""),
+        };
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    const result = await runImport(p, {
+      spawnFn: mockSpawnFn,
+      listModelsOutput: makeListModelsFixture([primary]),
+    });
+
+    expect(result.exitCode).toBe(0);
+    const overrideWrite = spawned.find(
+      (s) => s.args[0] === "config" && s.args[1] === "set" && s.args[2] === "task.agentModelOverrides"
+    );
+    expect(overrideWrite).toBeDefined();
+    const parsed = JSON.parse(overrideWrite!.args[3]);
+    expect(parsed["pov:critic"]).toBe("legacy-model");
+    expect(parsed["pi-oven:critic"]).toBeUndefined();
+    expect(parsed["pov:executor"]).toBe(primary);
+  });
+
+  it("rejects same-scope dual-key conflicts during global import", async () => {
+    const primary = "opencode-zen/gpt-5.3-codex";
+    const p = writeJson(tempDir, "config.json", {
+      "pi-oven": {
+        models: {
+          executor: {
+            primary,
+            registry_alternate: "openai-codex/gpt-5.3-codex",
+            thinkingLevel: "high",
+          },
+        },
+      },
+    });
+
+    const spawned: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      spawned.push({ cmd: _cmd, args });
+      if (args.includes("get")) {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ type: "record", value: { "pov:critic": "canonical-model", "pi-oven:critic": "legacy-model" } })),
+          stderr: Buffer.from(""),
+        };
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    await expect(
+      runImport(p, {
+        spawnFn: mockSpawnFn,
+        listModelsOutput: makeListModelsFixture([primary]),
+      })
+    ).rejects.toThrow(/dual-key conflict/i);
+
+    const overrideWriteCount = spawned.filter(
+      (s) => s.args[0] === "config" && s.args[1] === "set" && s.args[2] === "task.agentModelOverrides"
+    ).length;
+    expect(overrideWriteCount).toBe(0);
+  });
+
+
+  it("multi-role import batches all canonical global overrides into one write", async () => {
+    const executorPrimary = "opencode-zen/gpt-5.3-codex";
+    const criticPrimary = "openai-codex/gpt-5.5";
+    const p = writeJson(tempDir, "config.json", {
+      "pi-oven": {
+        models: {
+          executor: { primary: executorPrimary, registry_alternate: "openai-codex/gpt-5.3-codex", thinkingLevel: "high" },
+          critic: { primary: criticPrimary, registry_alternate: "opencode-zen/gpt-5.3-codex", thinkingLevel: "xhigh" },
+        },
+      },
+    });
+
+    const spawned: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      spawned.push({ cmd: _cmd, args });
+      if (args.includes("get")) {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ type: "record", value: {} })),
+          stderr: Buffer.from(""),
+        };
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    const result = await runImport(p, {
+      spawnFn: mockSpawnFn,
+      listModelsOutput: makeListModelsFixture([executorPrimary, criticPrimary]),
+    });
+
+    expect(result.exitCode).toBe(0);
+    const overrideSetCalls = spawned.filter(
+      (s) => s.args[0] === "config" && s.args[1] === "set" && s.args[2] === "task.agentModelOverrides"
+    );
+    expect(overrideSetCalls).toHaveLength(1);
+    const parsed = JSON.parse(overrideSetCalls[0].args[3]);
+    expect(parsed["pov:executor"]).toBe(executorPrimary);
+    expect(parsed["pov:critic"]).toBe(criticPrimary);
+  });
+
+  it("import failure leaves the stored override record unchanged", async () => {
+    const executorPrimary = "opencode-zen/gpt-5.3-codex";
+    const criticPrimary = "openai-codex/gpt-5.5";
+    const p = writeJson(tempDir, "config.json", {
+      "pi-oven": {
+        models: {
+          executor: { primary: executorPrimary, registry_alternate: "openai-codex/gpt-5.3-codex", thinkingLevel: "high" },
+          critic: { primary: criticPrimary, registry_alternate: "opencode-zen/gpt-5.3-codex", thinkingLevel: "xhigh" },
+        },
+      },
+    });
+
+    let storedRecord: Record<string, string> = { "claude-code:foo": "existingmodel" };
+    const spawned: Array<{ cmd: string; args: string[] }> = [];
+    const mockSpawnFn = (_cmd: string, args: string[]) => {
+      spawned.push({ cmd: _cmd, args });
+      if (args.includes("get")) {
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(JSON.stringify({ type: "record", value: storedRecord })),
+          stderr: Buffer.from(""),
+        };
+      }
+      if (args[0] === "config" && args[1] === "set" && args[2] === "task.agentModelOverrides") {
+        return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("set failed") };
+      }
+      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+    };
+
+    await expect(
+      runImport(p, {
+        spawnFn: mockSpawnFn,
+        listModelsOutput: makeListModelsFixture([executorPrimary, criticPrimary]),
+      })
+    ).rejects.toThrow(/set failed/i);
+
+    expect(storedRecord).toEqual({ "claude-code:foo": "existingmodel" });
+    const overrideSetCalls = spawned.filter(
+      (s) => s.args[0] === "config" && s.args[1] === "set" && s.args[2] === "task.agentModelOverrides"
+    );
+    expect(overrideSetCalls).toHaveLength(1);
   });
 
   it("import does NOT touch agents/ files (no agent-rewriter call)", async () => {
     const primary = "opencode-zen/gpt-5.3-codex";
     const p = writeJson(tempDir, "config.json", {
       "pi-oven": {
-        profile: "A",
         models: {
           executor: { primary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
         },
@@ -385,7 +546,6 @@ describe("runImport", () => {
     const primary = "opencode-zen/nonexistent-model";
     const p = writeJson(tempDir, "config.json", {
       "pi-oven": {
-        profile: "A",
         models: {
           executor: { primary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
         },
@@ -423,7 +583,6 @@ describe("runImport", () => {
   it("import with no models block still applies the workflow-skill filter and exits 0", async () => {
     const p = writeJson(tempDir, "config.json", {
       "pi-oven": {
-        profile: "A",
       },
     });
 
@@ -441,17 +600,16 @@ describe("runImport", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(result.output).toContain('skills.includeSkills = ["pov:*"]');
     expect(setCalls).toHaveLength(1);
     expect(setCalls[0][2]).toBe("skills.includeSkills");
-    expect(JSON.parse(setCalls[0][3])).toEqual(["pi-oven:*"]);
+    expect(JSON.parse(setCalls[0][3])).toEqual(["pov:*"]);
   });
 
   it("import does NOT write plugin-config namespace (no pi-oven.profile or pi-oven.models.* in args)", async () => {
     const primary = "opencode-zen/gpt-5.3-codex";
     const p = writeJson(tempDir, "config.json", {
       "pi-oven": {
-        profile: "A",
         models: {
           executor: { primary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
         },
@@ -489,7 +647,6 @@ describe("runImport", () => {
     const badPrimary = "opencode-zen/does-not-exist";
     const p = writeJson(tempDir, "config.json", {
       "pi-oven": {
-        profile: "A",
         models: {
           executor: { primary: goodPrimary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },
           planner: { primary: badPrimary, registry_alternate: "openai-codex/x", thinkingLevel: "low" },

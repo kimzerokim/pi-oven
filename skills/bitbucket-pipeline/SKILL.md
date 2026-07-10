@@ -1,5 +1,5 @@
 ---
-name: bitbucket-pipeline
+name: pov:bitbucket-pipeline
 version: 0.1.0
 description: "Read this skill for Bitbucket Pipelines CI/CD runs, build failures, step diagnostics, logs, and repository variable inspection. Provides deterministic connector for Bitbucket Cloud UC5 operations."
 ---

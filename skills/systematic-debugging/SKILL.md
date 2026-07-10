@@ -1,5 +1,5 @@
 ---
-name: systematic-debugging
+name: pov:systematic-debugging
 version: 0.1.0
 description: "Read this skill before proposing a fix for bugs, test failures, flaky tests, performance regressions, or unexpected behavior. Root-cause-first debugging discipline: investigate, trace to source, defend in depth."
 ---

@@ -1,5 +1,5 @@
 ---
-name: tdd-strict
+name: pov:tdd-strict
 version: 0.1.0
 description: "Read this skill when writing or editing source code in autonomous mode under a strict Red→Green→Refactor workflow with full touched-file coverage."
 ---
@@ -82,7 +82,7 @@ No other exemptions are recognized. "It's small" and "it's obvious" are not vali
 | 7 | **Skip TDD for 1-liners** — "it's a one-liner, no test needed" | Size does not exempt production code from coverage. A one-liner can carry a branch (`if`, ternary, `??`). Write the test. |
 | 8 | **Mock-all by default (ECC pattern — REJECTED)** — mock every dependency regardless of cost | pi-oven policy overrides ECC: mocks only when the real dependency is unavoidable. Overuse of mocks produces tests that pass against an imaginary system. |
 
-Deeper rationale: skill://pi-oven:tdd-strict/references/anti-patterns.md
+Deeper rationale: skill://pov:tdd-strict/references/anti-patterns.md
 
 ## Agent Dispatch (omp)
 

@@ -5,8 +5,10 @@ import { tmpdir } from "os";
 import {
   compareSemver,
   resolveCacheAgentsDir,
+  resolveCachePluginRoot,
   resolveDefaultAgentsDir,
   checkAgentsCachePopulated,
+  detectDuplicatePluginSurface,
 } from "../../../scripts/pi-oven-setup/cache-resolver";
 
 function makeTempDir(): string {
@@ -20,7 +22,7 @@ function makeTempDir(): string {
 
 /**
  * Creates a fake kzk___pi-oven___<version>/agents/ directory
- * inside cacheRoot and populates it with N fake pi-oven-*.md files.
+ * inside cacheRoot and populates it with N fake pov-*.md files.
  */
 function makeFakeCacheEntry(
   cacheRoot: string,
@@ -30,7 +32,7 @@ function makeFakeCacheEntry(
   const agentsDir = join(cacheRoot, `kzk___pi-oven___${version}`, "agents");
   mkdirSync(agentsDir, { recursive: true });
   for (let i = 0; i < agentCount; i++) {
-    writeFileSync(join(agentsDir, `pi-oven-agent-${i}.md`), `# agent ${i}\n`);
+    writeFileSync(join(agentsDir, `pov-agent-${i}.md`), `# agent ${i}\n`);
   }
   return agentsDir;
 }
@@ -88,6 +90,60 @@ describe("resolveCacheAgentsDir", () => {
   });
 });
 
+describe("resolveCachePluginRoot", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("returns the parent plugin root of the latest cache entry", async () => {
+    makeFakeCacheEntry(tempDir, "0.2.0", 1);
+    const pluginRoot = await resolveCachePluginRoot(tempDir);
+    expect(pluginRoot).toBe(join(tempDir, "kzk___pi-oven___0.2.0"));
+  });
+
+  it("returns null when no cache plugin root exists", async () => {
+    expect(await resolveCachePluginRoot(tempDir)).toBeNull();
+  });
+});
+
+describe("detectDuplicatePluginSurface", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("returns null when the active root is the cache root itself", async () => {
+    makeFakeCacheEntry(tempDir, "0.2.0", 1);
+    const pluginRoot = join(tempDir, "kzk___pi-oven___0.2.0");
+    expect(await detectDuplicatePluginSurface(pluginRoot, tempDir)).toBeNull();
+  });
+
+  it("reports both paths when a duplicate cache surface exists beside the active root", async () => {
+    makeFakeCacheEntry(tempDir, "0.2.0", 1);
+    const activePluginRoot = join(makeTempDir(), "linked-plugin");
+    mkdirSync(activePluginRoot, { recursive: true });
+
+    const drift = await detectDuplicatePluginSurface(activePluginRoot, tempDir);
+    expect(drift).toEqual({
+      activePluginRoot,
+      cachePluginRoot: join(tempDir, "kzk___pi-oven___0.2.0"),
+    });
+
+    rmSync(join(activePluginRoot, ".."), { recursive: true, force: true });
+  });
+});
+
 describe("resolveDefaultAgentsDir (self-locate, cwd-independent)", () => {
   let tempDir: string;
 
@@ -99,13 +155,13 @@ describe("resolveDefaultAgentsDir (self-locate, cwd-independent)", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("returns <scriptDir>/../agents when that sibling holds pi-oven-*.md (dev + install)", async () => {
+  it("returns <scriptDir>/../agents when that sibling holds pov-*.md (dev + install)", async () => {
     // Mirror the shipped layout: <root>/scripts/pi-oven-setup.ts + <root>/agents/.
     const scriptDir = join(tempDir, "scripts");
     const agentsDir = join(tempDir, "agents");
     mkdirSync(scriptDir, { recursive: true });
     mkdirSync(agentsDir, { recursive: true });
-    writeFileSync(join(agentsDir, "pi-oven-executor.md"), "# executor\n");
+    writeFileSync(join(agentsDir, "pov-executor.md"), "# executor\n");
 
     // cacheRoot points at an EMPTY dir so a fallback would be observable; we
     // expect the script-relative dir to win regardless.
@@ -118,11 +174,25 @@ describe("resolveDefaultAgentsDir (self-locate, cwd-independent)", () => {
     const cacheRoot = makeTempDir();
     mkdirSync(scriptDir, { recursive: true });
     mkdirSync(agentsDir, { recursive: true });
-    writeFileSync(join(agentsDir, "pi-oven-executor.md"), "# executor\n");
+    writeFileSync(join(agentsDir, "pov-executor.md"), "# executor\n");
     makeFakeCacheEntry(cacheRoot, "9.9.9", 1);
 
     const result = await resolveDefaultAgentsDir(scriptDir, cacheRoot);
     expect(result).toBe(agentsDir);
+    rmSync(cacheRoot, { recursive: true, force: true });
+  });
+
+  it("does not treat a legacy-only sibling agents dir as the healthy default path", async () => {
+    const scriptDir = join(tempDir, "scripts");
+    const agentsDir = join(tempDir, "agents");
+    const cacheRoot = makeTempDir();
+    const cacheAgents = makeFakeCacheEntry(cacheRoot, "1.2.3", 1);
+    mkdirSync(scriptDir, { recursive: true });
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(join(agentsDir, "pi-oven-executor.md"), "# stale legacy executor\n");
+
+    const result = await resolveDefaultAgentsDir(scriptDir, cacheRoot);
+    expect(result).toBe(cacheAgents);
     rmSync(cacheRoot, { recursive: true, force: true });
   });
 
@@ -173,13 +243,24 @@ describe("checkAgentsCachePopulated", () => {
     expect(result.foundCount).toBe(0);
   });
 
-  it("ok: true when agents dir has enough pi-oven-*.md files", async () => {
+  it("ok: true when agents dir has enough pov-*.md files", async () => {
     makeFakeCacheEntry(tempDir, "0.1.0", 5);
     const result = await checkAgentsCachePopulated({
       cacheRoot: tempDir,
       expected: 5,
     });
     expect(result.ok).toBe(true);
+    expect(result.foundCount).toBe(5);
+  });
+
+  it("ok: false when legacy pi-oven filenames are present in the cache agents dir", async () => {
+    const agentsDir = makeFakeCacheEntry(tempDir, "0.1.0", 5);
+    writeFileSync(join(agentsDir, "pi-oven-executor.md"), "# stale legacy executor\n");
+    const result = await checkAgentsCachePopulated({
+      cacheRoot: tempDir,
+      expected: 5,
+    });
+    expect(result.ok).toBe(false);
     expect(result.foundCount).toBe(5);
   });
 

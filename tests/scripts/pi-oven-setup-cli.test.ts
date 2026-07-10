@@ -25,7 +25,7 @@ function makeAgentFile(
   thinkingLevel: string
 ): void {
   const content = `---
-name: pi-oven:${role}
+name: pov:${role}
 description: Test agent for ${role}
 model:
   - ${primary}
@@ -38,9 +38,9 @@ blocked_tools: []
 
 ## Role
 
-You are pi-oven:${role}.
+You are pov:${role}.
 `;
-  writeFileSync(join(agentsDir, `pi-oven-${role}.md`), content, "utf-8");
+  writeFileSync(join(agentsDir, `pov-${role}.md`), content, "utf-8");
 }
 
 /**
@@ -98,7 +98,8 @@ describe("pi-oven-setup CLI dispatcher", () => {
     expect(stdout).toContain("machine-global");
     expect(stdout).toContain("default(frontmatter)");
     expect(stdout).toContain("workflow-skill ownership");
-    expect(stdout).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(stdout).toContain("healthy single pov surface");
+    expect(stdout).toContain('skills.includeSkills = ["pov:*"]');
   });
 
   it("--status with no agent files: shows (no agent file) for all roles", async () => {
@@ -158,7 +159,6 @@ describe("pi-oven-setup CLI dispatcher", () => {
       importFile,
       JSON.stringify({
         "pi-oven": {
-          profile: "A",
           models: {
             executor: {
               primary: "opencode-zen/gpt-5.3-codex",
@@ -682,7 +682,7 @@ describe("pi-oven-setup CLI --scope", () => {
       readFileSync(join(tempDir, ".pi-oven", "config.json"), "utf-8")
     );
     expect(projectCfg.nativeWorkers.maxWorkers).toBe(100);
-    expect(stdout).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(stdout).toContain('skills.includeSkills = ["pov:*"]');
     expect(stdout).toContain("workflow skills only");
     expect(stdout).toContain("nativeWorkers.maxWorkers=100");
     expect(stdout).toContain("scripts/pi-oven-team/index.ts");
@@ -700,24 +700,43 @@ describe("pi-oven-setup CLI --scope", () => {
       readFileSync(join(homeDir, ".pi-oven", "config.json"), "utf-8")
     );
     expect(globalCfg.nativeWorkers.maxWorkers).toBe(100);
-    expect(stdout).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(stdout).toContain('skills.includeSkills = ["pov:*"]');
     expect(stdout).toContain("workflow skills only");
     expect(stdout).toContain("nativeWorkers.maxWorkers=100");
   });
 
-  it("--scope project --apply writes the project .omp/settings.json", async () => {
+  it("--scope project --apply writes canonical pov:* keys to the project .omp/settings.json", async () => {
+    const legacySettingsPath = join(tempDir, ".omp", "settings.json");
+    mkdirSync(join(tempDir, ".omp"), { recursive: true });
+    writeFileSync(
+      legacySettingsPath,
+      JSON.stringify(
+        {
+          task: {
+            agentModelOverrides: {
+              "pi-oven:critic": "anthropic/claude-opus-4-8",
+            },
+          },
+        },
+        null,
+        2
+      ) + "\n",
+      "utf-8"
+    );
+
     const { exitCode } = await runCLIInCwd(["--apply", "--scope", "project"], tempDir, {
       PI_OVEN_MOCK_SPAWN: "1",
       PI_OVEN_VALIDATE_MODE: "none",
       HOME: homeDir,
     });
     expect(exitCode).toBe(0);
-    const settings = JSON.parse(
-      readFileSync(join(tempDir, ".omp", "settings.json"), "utf-8")
-    );
-    // Profile A under project scope writes ALL 24 overrides plus the workflow-skill include filter.
+    const settings = JSON.parse(readFileSync(legacySettingsPath, "utf-8"));
     expect(Object.keys(settings.task.agentModelOverrides).length).toBe(ROLES.length);
-    expect(settings.skills.includeSkills).toEqual(["pi-oven:*"]);
+    expect(Object.keys(settings.task.agentModelOverrides).every((key) => key.startsWith("pov:"))).toBe(
+      true
+    );
+    expect(settings.task.agentModelOverrides["pi-oven:critic"]).toBeUndefined();
+    expect(settings.skills.includeSkills).toEqual(["pov:*"]);
   });
 });
 

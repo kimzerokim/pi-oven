@@ -159,6 +159,18 @@ describe("project-config — set / read symmetry", () => {
     const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
     expect(parsed.language).toBe("Español");
   });
+
+  it("fails closed on a malformed existing project config and leaves the file untouched", async () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), "{ bad", "utf-8");
+    await expect(setProjectLanguage("ko", { cwd })).rejects.toThrow(/present but unparsable JSON/i);
+    expect(readFileSync(configFile(cwd), "utf-8")).toBe("{ bad");
+  });
+
+  it("writes atomically with no lingering .tmp file", async () => {
+    await setProjectLanguage("ko", { cwd });
+    expect(existsSync(configFile(cwd) + ".tmp")).toBe(false);
+  });
 });
 
 describe("project-config — readProjectLanguage edge cases", () => {
@@ -316,7 +328,7 @@ describe("project-config — setup readiness truth", () => {
       cwd,
       spawnFn: makeSetupSpawnFn({
         overrides: Object.fromEntries(
-          ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+          ROLES.map((role) => [`pov:${role}`, "openai-codex/gpt-5.5:high"])
         ),
         scalarValues: configuredSetupScalars,
       }),
@@ -333,7 +345,7 @@ describe("project-config — setup readiness truth", () => {
     const readiness = await collectSetupReadiness({
       cwd,
       spawnFn: makeSetupSpawnFn({
-        overrides: { "pi-oven:critic": "openai-codex/gpt-5.5:high" },
+        overrides: { "pov:critic": "openai-codex/gpt-5.5:high" },
         scalarValues: configuredSetupScalars,
       }),
     });
@@ -351,7 +363,7 @@ describe("project-config — setup readiness truth", () => {
         {
           task: {
             agentModelOverrides: Object.fromEntries(
-              ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+              ROLES.map((role) => [`pov:${role}`, "openai-codex/gpt-5.5:high"])
             ),
           },
         },
@@ -365,7 +377,7 @@ describe("project-config — setup readiness truth", () => {
       cwd,
       spawnFn: makeSetupSpawnFn({
         overrides: Object.fromEntries(
-          ROLES.map((role) => [`pi-oven:${role}`, "openai-codex/gpt-5.5:high"])
+          ROLES.map((role) => [`pov:${role}`, "openai-codex/gpt-5.5:high"])
         ),
         scalarValues: configuredSetupScalars,
       }),
@@ -374,6 +386,40 @@ describe("project-config — setup readiness truth", () => {
     expect(readiness.globalReady).toBe(true);
     expect(readiness.projectReady).toBe(true);
     expect(readiness.projectRoutingRoleCount).toBe(ROLES.length);
+  });
+
+  it("dedupes legacy/canonical dual-key mixes to one active role per managed role", async () => {
+    mkdirSync(join(cwd, ".omp"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".omp", "settings.json"),
+      JSON.stringify(
+        {
+          task: {
+            agentModelOverrides: {
+              "pov:critic": "openai-codex/gpt-5.5:high",
+              "pi-oven:critic": "anthropic/claude-opus-4-8",
+            },
+          },
+        },
+        null,
+        2
+      ) + "\n",
+      "utf-8"
+    );
+
+    const readiness = await collectSetupReadiness({
+      cwd,
+      spawnFn: makeSetupSpawnFn({
+        overrides: {
+          "pov:critic": "openai-codex/gpt-5.5:high",
+          "pi-oven:critic": "anthropic/claude-opus-4-8",
+        },
+        scalarValues: configuredSetupScalars,
+      }),
+    });
+
+    expect(readiness.globalRoutingRoleCount).toBe(1);
+    expect(readiness.projectRoutingRoleCount).toBe(1);
   });
 });
 describe("project-config — setup-completion marker", () => {
@@ -455,6 +501,13 @@ describe("project-config — setup-completion marker", () => {
     // No file was created by the no-op clear
     expect(existsSync(configFile(cwd))).toBe(false);
   });
+
+  it("fails closed on a malformed existing project config and leaves the file untouched", async () => {
+    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
+    writeFileSync(configFile(cwd), "{ bad", "utf-8");
+    await expect(clearSetupComplete({ cwd })).rejects.toThrow(/present but unparsable JSON/i);
+    expect(readFileSync(configFile(cwd), "utf-8")).toBe("{ bad");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -504,6 +557,13 @@ describe("project-config — setGlobalLanguage / readGlobalLanguage round-trip",
     const parsed = JSON.parse(readFileSync(globalConfigFile(homeDir), "utf-8"));
     expect(parsed.language).toBe("ko");
     expect(parsed.keepMe).toBe(true);
+  });
+
+  it("fails closed on a malformed existing global config and leaves the file untouched", async () => {
+    mkdirSync(join(homeDir, ".pi-oven"), { recursive: true });
+    writeFileSync(globalConfigFile(homeDir), "{ bad", "utf-8");
+    await expect(setGlobalLanguage("ko", { homeDir })).rejects.toThrow(/present but unparsable JSON/i);
+    expect(readFileSync(globalConfigFile(homeDir), "utf-8")).toBe("{ bad");
   });
 
   it("readGlobalLanguage returns null when file is absent", async () => {
@@ -648,5 +708,12 @@ describe("project-config — clearSetupCompleteGlobal", () => {
     await clearSetupCompleteGlobal({ homeDir });
     const parsed = JSON.parse(readFileSync(globalConfigFile(homeDir), "utf-8"));
     expect(parsed.language).toBe("ko");
+  });
+
+  it("fails closed on a malformed existing global config and leaves the file untouched", async () => {
+    mkdirSync(join(homeDir, ".pi-oven"), { recursive: true });
+    writeFileSync(globalConfigFile(homeDir), "{ bad", "utf-8");
+    await expect(clearSetupCompleteGlobal({ homeDir })).rejects.toThrow(/present but unparsable JSON/i);
+    expect(readFileSync(globalConfigFile(homeDir), "utf-8")).toBe("{ bad");
   });
 });

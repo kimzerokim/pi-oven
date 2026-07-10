@@ -37,7 +37,7 @@ export async function runSuppressSibling(
           `  Filtered globs: ${[...PI_OVEN_SIBLING_SKILL_GLOBS].join(", ")}\n` +
           "  This is a compatibility helper only; it does not establish workflow-skill ownership.\n" +
           "  Empty ~/.claude/skills is not the target state; populated Claude user workflow skills can stay in place for other users.\n" +
-          "  pi-oven:* skills are unaffected and remain fully available.\n" +
+          "  pov:* skills are unaffected and remain fully available.\n" +
           "  Note: this does not disable claude-plugins or unrelated namespaced marketplace workflow skills.\n" +
           "  Note (provenance): clearing this later also removes identical user-set globs.\n" +
           `  ${LEGACY_FRONT_DOOR_BOUNDARY_LINE}\n` +

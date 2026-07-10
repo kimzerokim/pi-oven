@@ -94,7 +94,7 @@ const spawnFn = mockSpawn
           args[2] === "skills.includeSkills" ||
           args[2] === "skills.ignoredSkills"
         ) {
-          const value = args[2] === "skills.includeSkills" ? ["pi-oven:*"] : [];
+          const value = args[2] === "skills.includeSkills" ? ["pov:*"] : [];
           const payload = JSON.stringify({ key: args[2], value, type: "array", description: "" });
           return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
         }
@@ -169,7 +169,7 @@ const hasOverride = overrideEntries.length > 0;
 if (hasOverride) {
   if (values.reset) {
     process.stderr.write(
-      "--override and --reset are mutually exclusive. Use --override to write individual role overrides, or --reset to clear all pi-oven:* overrides.\n"
+      "--override and --reset are mutually exclusive. Use --override to write individual role overrides, or --reset to clear all pi-oven-managed role overrides.\n"
     );
     process.exit(1);
   }

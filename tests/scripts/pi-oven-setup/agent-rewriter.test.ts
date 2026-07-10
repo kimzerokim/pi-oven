@@ -23,7 +23,7 @@ function makeTempDir(): string {
 }
 
 /**
- * Minimal but realistic agent file matching the production pi-oven-executor.md format.
+ * Minimal but realistic agent file matching the production pov-executor.md format.
  * Verbatim frontmatter structure — YAML block list for model, thinkingLevel key.
  */
 function makeAgentFileContent(
@@ -33,7 +33,7 @@ function makeAgentFileContent(
   thinkingLevel: string
 ): string {
   return `---
-name: pi-oven:${role}
+name: pov:${role}
 description: Test agent for ${role}
 model:
   - ${primary}
@@ -46,7 +46,7 @@ blocked_tools: []
 
 ## Role
 
-You are pi-oven:${role}. This is the system prompt body.
+You are pov:${role}. This is the system prompt body.
 
 It must be preserved verbatim after rewrite.
 Multi-line content here.
@@ -54,7 +54,7 @@ Multi-line content here.
 }
 
 /**
- * Creates pi-oven-<role>.md files for a given set of roles inside agentsDir.
+ * Creates pov-<role>.md files for a given set of roles inside agentsDir.
  */
 function populateAgentsDir(
   agentsDir: string,
@@ -70,7 +70,7 @@ function populateAgentsDir(
       alternateFn(role),
       thinkingFn(role)
     );
-    writeFileSync(join(agentsDir, `pi-oven-${role}.md`), content, "utf-8");
+    writeFileSync(join(agentsDir, `pov-${role}.md`), content, "utf-8");
   }
 }
 
@@ -89,7 +89,7 @@ describe("readAgentFiles", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("reads N fake pi-oven-*.md files and returns N entries with parsed model arrays", async () => {
+  it("reads N fake pov-*.md files and returns N entries with parsed model arrays", async () => {
     const testRoles: Role[] = ["executor", "critic", "planner"];
     populateAgentsDir(
       tempDir,
@@ -116,7 +116,7 @@ describe("readAgentFiles", () => {
     expect(entries.length).toBe(0);
   });
 
-  it("ignores non-pi-oven-*.md files", async () => {
+  it("ignores non-agent markdown files", async () => {
     writeFileSync(join(tempDir, "README.md"), "not an agent");
     writeFileSync(join(tempDir, "other.txt"), "also not an agent");
     populateAgentsDir(
@@ -128,6 +128,20 @@ describe("readAgentFiles", () => {
     );
     const entries = await readAgentFiles(tempDir);
     expect(entries.length).toBe(1);
+  });
+
+  it("fails when a legacy pi-oven filename is present", async () => {
+    writeFileSync(
+      join(tempDir, "pi-oven-executor.md"),
+      makeAgentFileContent(
+        "executor",
+        PROFILE_A.executor.primary,
+        PROFILE_A.executor.registry_alternate,
+        PROFILE_A.executor.thinkingLevel
+      )
+    );
+
+    await expect(readAgentFiles(tempDir)).rejects.toThrow("Legacy agent filenames detected");
   });
 });
 
@@ -143,7 +157,7 @@ describe("rewriteAgentFile", () => {
   });
 
   it("updates model array in place; reread shows new values", async () => {
-    const filePath = join(tempDir, "pi-oven-executor.md");
+    const filePath = join(tempDir, "pov-executor.md");
     writeFileSync(
       filePath,
       makeAgentFileContent(
@@ -165,7 +179,7 @@ describe("rewriteAgentFile", () => {
   });
 
   it("preserves systemPrompt body verbatim after rewrite", async () => {
-    const filePath = join(tempDir, "pi-oven-executor.md");
+    const filePath = join(tempDir, "pov-executor.md");
     const original = makeAgentFileContent(
       "executor",
       PROFILE_A.executor.primary,
@@ -184,7 +198,7 @@ describe("rewriteAgentFile", () => {
   });
 
   it("is idempotent: rewrite same profile twice produces no diff", async () => {
-    const filePath = join(tempDir, "pi-oven-executor.md");
+    const filePath = join(tempDir, "pov-executor.md");
     writeFileSync(
       filePath,
       makeAgentFileContent(
@@ -252,10 +266,33 @@ describe("rewriteAllAgents", () => {
     expect(rewritten.length).toBe(3);
     expect(skipped.length).toBe(ROLES.length - 3);
   });
+
+  it("fails when a legacy pi-oven filename is present alongside canonical files", async () => {
+    populateAgentsDir(
+      tempDir,
+      ["executor"],
+      (r) => PROFILE_A[r].primary,
+      (r) => PROFILE_A[r].registry_alternate,
+      (r) => PROFILE_A[r].thinkingLevel
+    );
+    writeFileSync(
+      join(tempDir, "pi-oven-critic.md"),
+      makeAgentFileContent(
+        "critic",
+        PROFILE_A.critic.primary,
+        PROFILE_A.critic.registry_alternate,
+        PROFILE_A.critic.thinkingLevel
+      )
+    );
+
+    await expect(rewriteAllAgents(tempDir, PROFILE_B)).rejects.toThrow(
+      "Legacy agent filenames detected"
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
-// Bug 1: quoted name scalar in frontmatter (e.g. name: "pi-oven:metis")
+// Bug 1: quoted name scalar in frontmatter (e.g. name: "pov:metis")
 // The parser must strip surrounding double-quotes from the name value so that
 // the role resolves correctly instead of returning null.
 // ---------------------------------------------------------------------------
@@ -271,9 +308,9 @@ describe("readAgentFiles — quoted name scalar", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("parses a file with name: \"pi-oven:metis\" (quoted) and returns role=metis, non-empty model", async () => {
+  it("parses a file with name: \"pov:metis\" (quoted) and returns role=metis, non-empty model", async () => {
     const content = `---
-name: "pi-oven:metis"
+name: "pov:metis"
 description: "Test metis"
 model:
   - openai-codex/gpt-5.4
@@ -286,10 +323,10 @@ blocked_tools: ["write"]
 
 ## Role
 
-You are pi-oven:metis.
+You are pov:metis.
 `;
     writeFileSync(
-      join(tempDir, "pi-oven-metis.md"),
+      join(tempDir, "pov-metis.md"),
       content,
       "utf-8"
     );

@@ -55,7 +55,7 @@ export function writeShippedSkill(
     join(pluginRoot, "skills", skillDir, "SKILL.md"),
     [
       "---",
-      `name: ${opts?.frontmatterName ?? skillDir}`,
+      `name: ${opts?.frontmatterName ?? `pov:${skillDir}`}`,
       `description: ${opts?.description ?? "fixture"}`,
       "---",
       opts?.body ?? "",

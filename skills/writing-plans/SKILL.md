@@ -1,5 +1,5 @@
 ---
-name: writing-plans
+name: pov:writing-plans
 version: 0.1.0
 description: "Read this skill when an approved spec needs to be turned into a concrete implementation plan ready for subagent dispatch. Transforms an approved spec into a bite-sized, placeholder-free plan."
 ---
@@ -19,7 +19,7 @@ Do not invoke this skill without an approved spec in `docs/specs/`. If no spec e
 
 Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews; it never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
 
-Route to the RIGHT agent (model-fit + role-fit is first-class; use these exact `pi-oven:<role>` names): plan authoring from survey evidence → `pi-oven:planner`; architecture trade-offs → `pi-oven:architect`.
+Route to the RIGHT agent (model-fit + role-fit is first-class; use these exact `pov:<role>` names): plan authoring from survey evidence → `pov:planner`; architecture trade-offs → `pov:architect`.
 
 ## Plan document header
 
@@ -143,13 +143,13 @@ This path is the pi-oven project override. Do not use `docs/superpowers/plans/` 
 
 ---
 
-Header + task template: skill://pi-oven:writing-plans/references/template.md
+Header + task template: skill://pov:writing-plans/references/template.md
 
 ## Agent Dispatch (omp)
 
 When authoring an implementation plan inside omp:
 
-- Requirements gathering and ambiguity resolution: dispatch `pi-oven:metis` **once** for one-shot pre-analysis only — intent classification plus a few impact-ordered seed questions feeding the plan (it may in turn spawn `pi-oven:explorer` / `pi-oven:librarian` / `pi-oven:document-specialist`). The interactive multi-round convergence interview, when one is needed, is `brainstorming` run inline by the main agent — never delegated to `pi-oven:metis`.
-- Codebase context confirmation: dispatch `pi-oven:explorer`.
-- Atomic-task decomposition: dispatch `pi-oven:planner`.
-- Architectural risk and migration impact review: dispatch `pi-oven:architect`.
+- Requirements gathering and ambiguity resolution: dispatch `pov:metis` **once** for one-shot pre-analysis only — intent classification plus a few impact-ordered seed questions feeding the plan (it may in turn spawn `pov:explorer` / `pov:librarian` / `pov:document-specialist`). The interactive multi-round convergence interview, when one is needed, is `brainstorming` run inline by the main agent — never delegated to `pov:metis`.
+- Codebase context confirmation: dispatch `pov:explorer`.
+- Atomic-task decomposition: dispatch `pov:planner`.
+- Architectural risk and migration impact review: dispatch `pov:architect`.

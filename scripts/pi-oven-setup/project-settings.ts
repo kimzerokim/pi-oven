@@ -28,14 +28,86 @@
 
 import { promises as fs } from "fs";
 import * as path from "path";
-import { PI_OVEN_WORKFLOW_SKILL_INCLUDE } from "./config-yml";
+import {
+  GLOBAL_OVERRIDE_PREFIX,
+  LEGACY_GLOBAL_OVERRIDE_PREFIX,
+  PI_OVEN_WORKFLOW_SKILL_INCLUDE,
+  getManagedOverrideState,
+} from "./config-yml";
+import { ROLES } from "./profiles";
 
 /** Directory + file the per-project omp settings live in (relative to a cwd). */
 const SETTINGS_DIR = ".omp";
 const SETTINGS_FILE = "settings.json";
 
-/** The colon prefix every pi-oven agent override key MUST carry. */
-const PI_OVEN_PREFIX = "pi-oven:";
+const PROJECT_OVERRIDE_PREFIX = GLOBAL_OVERRIDE_PREFIX;
+const LEGACY_PROJECT_OVERRIDE_PREFIX = LEGACY_GLOBAL_OVERRIDE_PREFIX;
+
+const MANAGED_ROLE_MAP: Record<string, true> = Object.fromEntries(
+  ROLES.map((role) => [role, true] as const)
+);
+
+function managedProjectRoleFromKey(key: string): string | null {
+  const role = key.startsWith(PROJECT_OVERRIDE_PREFIX)
+    ? key.slice(PROJECT_OVERRIDE_PREFIX.length)
+    : key.startsWith(LEGACY_PROJECT_OVERRIDE_PREFIX)
+      ? key.slice(LEGACY_PROJECT_OVERRIDE_PREFIX.length)
+      : null;
+  if (role === null || !MANAGED_ROLE_MAP[role]) {
+    return null;
+  }
+  return role;
+}
+
+function readRawProjectOverrideRecord(
+  data: Record<string, unknown>
+): Record<string, unknown> {
+  const task = data["task"];
+  if (!isPlainObject(task)) return {};
+  const overrides = task["agentModelOverrides"];
+  if (!isPlainObject(overrides)) return {};
+  return overrides;
+}
+
+function buildNormalizedProjectOverrideRecord(
+  current: Record<string, unknown>,
+  desired: Record<string, string>
+): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+  const currentStringEntries: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(current)) {
+    if (typeof value === "string") {
+      currentStringEntries[key] = value;
+    }
+    if (managedProjectRoleFromKey(key) === null) {
+      normalized[key] = value;
+    }
+  }
+
+  for (const role of ROLES) {
+    const desiredState = getManagedOverrideState(desired, role);
+    if (desiredState.canonicalValue !== undefined) {
+      normalized[desiredState.canonicalKey] = desiredState.canonicalValue;
+      continue;
+    }
+    if (desiredState.legacyValue !== undefined) {
+      normalized[desiredState.canonicalKey] = desiredState.legacyValue;
+      continue;
+    }
+
+    const currentState = getManagedOverrideState(currentStringEntries, role);
+    if (currentState.canonicalValue !== undefined) {
+      normalized[currentState.canonicalKey] = currentState.canonicalValue;
+      continue;
+    }
+    if (currentState.legacyValue !== undefined) {
+      normalized[currentState.canonicalKey] = currentState.legacyValue;
+    }
+  }
+
+  return normalized;
+}
 
 /**
  * Resolve the absolute path of the project omp settings file for a given cwd:
@@ -193,21 +265,22 @@ async function atomicWrite(file: string, data: Record<string, unknown>): Promise
 // ---------------------------------------------------------------------------
 
 /**
- * SET project subagent overrides: every key MUST start with `pi-oven:` →
- * strict-read (abort on present-but-malformed) → deep-merge `record` into
- * `data.task.agentModelOverrides` (creating the nested path if absent) →
- * atomic write. Preserves non-`pi-oven:*` override keys, any sibling `task.*`,
- * and every unrelated top-level key. Throws on a non-`pi-oven:` key or a
- * present-but-malformed file.
+ * SET project subagent overrides: accepts canonical `pov:<role>` keys plus
+ * legacy `pi-oven:<role>` migration input → strict-read (abort on
+ * present-but-malformed) → canonicalize the WHOLE managed project override
+ * surface to `pov:*` → replace `data.task.agentModelOverrides` atomically.
+ * Preserves non-managed override keys, sibling `task.*`, and every unrelated
+ * top-level key. Throws on an unknown/non-managed key or a present-but-malformed
+ * file.
  */
 export async function setProjectAgentModelOverrides(
   record: Record<string, string>,
   opts?: { cwd?: string }
 ): Promise<void> {
   for (const key of Object.keys(record)) {
-    if (!key.startsWith(PI_OVEN_PREFIX)) {
+    if (managedProjectRoleFromKey(key) === null) {
       throw new Error(
-        `setProjectAgentModelOverrides: every key must start with "${PI_OVEN_PREFIX}", got: ${key}`
+        `setProjectAgentModelOverrides: every key must be a managed pov:/pi-oven: role key, got: ${key}`
       );
     }
   }
@@ -217,16 +290,25 @@ export async function setProjectAgentModelOverrides(
     throw new Error(`setProjectAgentModelOverrides: ${read.error}`);
   }
 
-  const merged = deepMerge(read.data, {
-    task: { agentModelOverrides: record },
-  });
+  const existingTask = isPlainObject(read.data["task"]) ? read.data["task"] : {};
+  const normalizedOverrides = buildNormalizedProjectOverrideRecord(
+    readRawProjectOverrideRecord(read.data),
+    record
+  );
+  const merged = {
+    ...read.data,
+    task: {
+      ...existingTask,
+      agentModelOverrides: normalizedOverrides,
+    },
+  };
 
   await atomicWrite(projectSettingsPath(opts?.cwd ?? process.cwd()), merged);
 }
 
 /**
  * SET the canonical workflow-skill include filter in the project layer:
- * strict-read → deep-merge `skills.includeSkills = ["pi-oven:*"]` → atomic write.
+ * strict-read → deep-merge `skills.includeSkills = ["pov:*"]` → atomic write.
  * This owns ONLY workflow-skill visibility. Commands / agents / hooks / MCP stay
  * out of scope, and populated `~/.claude/skills` remains explicitly non-owning.
  */
@@ -285,18 +367,17 @@ export async function setProjectRetryFallbackChains(
 // ---------------------------------------------------------------------------
 
 /**
- * SOFT read of the project layer's `task.agentModelOverrides`, returning only the
- * string-valued entries as `Record<string,string>`. `{}` on any fault or when the
- * path is absent. For status/extension display — NOT a write path.
+ * SOFT read of the project layer's `task.agentModelOverrides`, returning the raw
+ * string-valued entries as `Record<string,string>`. Legacy `pi-oven:*` entries
+ * are preserved here so status/readiness paths can diagnose migration input.
+ * `{}` on any fault or when the path is absent. For status/extension display —
+ * NOT a write path.
  */
 export async function readProjectAgentModelOverrides(opts?: {
   cwd?: string;
 }): Promise<Record<string, string>> {
   const data = await readProjectSettingsSoft(opts);
-  const task = data["task"];
-  if (!isPlainObject(task)) return {};
-  const overrides = task["agentModelOverrides"];
-  if (!isPlainObject(overrides)) return {};
+  const overrides = readRawProjectOverrideRecord(data);
 
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(overrides)) {
@@ -350,11 +431,12 @@ async function pruneAndPersist(
 }
 
 /**
- * CLEAR the project subagent overrides: SOFT-read → delete every `pi-oven:*` key
- * from `data.task.agentModelOverrides` → prune the now-empty
- * `task.agentModelOverrides`/`task` → if `data` becomes `{}` REMOVE the file, else
- * atomic-write. Returns the SORTED list of removed keys. No-op (returns `[]`,
- * never creates a file) when the file is absent or carries no `pi-oven:*` keys.
+ * CLEAR the project subagent overrides: SOFT-read → delete every managed
+ * `pov:*`/`pi-oven:*` role key from `data.task.agentModelOverrides` → prune the
+ * now-empty `task.agentModelOverrides`/`task` → if `data` becomes `{}` REMOVE the
+ * file, else atomic-write. Returns the SORTED list of removed keys. No-op
+ * (returns `[]`, never creates a file) when the file is absent or carries no
+ * managed project override keys.
  */
 export async function clearProjectAgentModelOverrides(opts?: {
   cwd?: string;
@@ -368,7 +450,7 @@ export async function clearProjectAgentModelOverrides(opts?: {
   if (!isPlainObject(overrides)) return [];
 
   const removed = Object.keys(overrides)
-    .filter((k) => k.startsWith(PI_OVEN_PREFIX))
+    .filter((k) => managedProjectRoleFromKey(k) !== null)
     .sort();
   if (removed.length === 0) return [];
 

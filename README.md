@@ -8,9 +8,9 @@
 
 ## What you get
 
-- **24 self-contained agents** under the `pi-oven:` namespace — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis, deep-researcher, data-runner. All 24 are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier use `report_finding` for structured findings. Each is a markdown file in `agents/` with locked model + tool whitelist.
+- **24 self-contained agents** on the visible runtime namespace `pov:*` — explorer, executor, verifier, critic, planner, code-reviewer, debugger, designer, writer, code-simplifier, qa-tester, security-reviewer, test-engineer, git-master, document-specialist, tracer, analyst, architect, librarian, multimodal-looker, oracle, metis, deep-researcher, data-runner. All 24 are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier use `report_finding` for structured findings. Source files live in canonical `agents/pov-*.md` package artifacts with frontmatter `name: pov:<role>`.
 - **23 runtime-loaded skills** that orchestrate the agents — code quality, TDD, brainstorming, planning, codebase survey, spec-and-review, large-task delegation, fresh verifier, pre-commit gate, subagent-driven development, autonomous loop, deep-init (hierarchical AGENTS.md), deep-dive (causal trace + Socratic interview), systematic-debugging, improve-codebase-architecture, receiving-code-review, html-research-orchestrator, html-spec-decision-maker, git-workflow, aws, bitbucket-pipeline, cloudflare, memory-discipline (mnemopi-backed retain/recall/reflect discipline with curated runtime keyword matching).
-- **`/pi-oven:setup` wizard** — Profile A (release default, openai-codex-only), Profile B (explicit openai-codex override profile), Profile C (all-Anthropic), or Profile D (opencode-zen-only), with explicit global/project routing layers and `--status` visibility.
+- **`/pi-oven:setup` wizard** — Profile A (release default, openai-codex-only), Profile B (explicit openai-codex override profile), Profile C (all-Anthropic), or Profile D (opencode-zen-only), with explicit global/project routing layers and `--status` visibility. Runtime agents and skills stay on `pov:*`; slash commands stay `/pi-oven:*`; install/uninstall identity stays `pi-oven@kzk`.
 - **CI-grade safety** — load-time model whitelist validator + CI-time hard lint that fails the build if any agent ships without a `model:` field.
 - **Explicit control-plane proofs** — gated work flows through `requiredSkills`, exact plugin-owned `SKILL.md` reads, the branch contract, external execution consent, and the `--status` truth surface. Bootstrap message injection, tool remap, and discovery-layer compatibility toggles are not normal control-plane paths.
 
@@ -71,6 +71,8 @@ After installation, run `/pi-oven:setup` inside an omp session. The wizard is **
 > /pi-oven:setup
 ```
 
+Namespace contract for this flow: runtime agents and skills use `pov:*`; `/pi-oven:*` stays the command surface; `pi-oven@kzk` stays the install identity.
+
 The wizard will:
 
 0. Ask your **default response language** first (Step 0) — pick `한국어 (Korean)`, `English`, or type your OWN language (e.g. `Español`, `日本語`, `Français`). This choice is persisted **globally** to `~/.pi-oven/config.json` as the default response language for all future sessions (with an optional per-project override in `.pi-oven/config.json`). The wizard conducts the rest of setup in that language and the pi-oven extension injects it at runtime so agents respond accordingly; if no config is set, the ambient project/global language preference is respected.
@@ -78,31 +80,31 @@ The wizard will:
 2. Offer Profile A (release default, openai-codex-only), Profile B (explicit openai-codex override profile), Profile C (all-Anthropic, if available), or Profile D (opencode-zen-only).
 3. Ask the setup scope: global machine config or this project's `.omp/settings.json`.
 4. Optionally let you override individual agent roles.
-5. Persist routing to the selected layer: global writes all 24 per-role `task.agentModelOverrides` for Profiles A/B/C/D plus the workflow-skill ownership filter `skills.includeSkills = ["pi-oven:*"]` and `modelRoles`/`retry.fallbackChains`; project scope writes the same 24-role override surface plus the same workflow-skill filter and `modelRoles`/`retry.fallbackChains` to `.omp/settings.json`. This explicitly filters a populated `~/.claude/skills` workflow-skill source without deleting it, and it stays scoped to workflow skills only — not commands, agents, hooks, or MCP. Empty `~/.claude/skills` is not the target state; populated Claude user workflow skills stay intact for other users, and legacy compatibility aids alone do not stop `claude-plugins` or namespaced marketplace workflow skills. User setup does not rewrite committed agent files, and `~/.pi-oven/config.json` / `.pi-oven/config.json` keep language, `nativeWorkers.maxWorkers`, and setup receipt metadata while readiness is judged from live routing + prerequisites rather than `setupCompletedAt` alone.
+5. Persist routing to the selected layer: global writes all 24 per-role `task.agentModelOverrides` entries for the runtime-visible `pov:*` roles plus the workflow-skill ownership filter `skills.includeSkills = ["pov:*"]` and `modelRoles`/`retry.fallbackChains`; project scope writes the same 24-role override surface plus the same workflow-skill filter and `modelRoles`/`retry.fallbackChains` to `.omp/settings.json`. This explicitly filters a populated `~/.claude/skills` workflow-skill source without deleting it, and it stays scoped to workflow skills only — not commands, agents, hooks, or MCP. Empty `~/.claude/skills` is not the target state; populated Claude user workflow skills stay intact for other users, and legacy compatibility aids alone do not stop `claude-plugins` or namespaced marketplace workflow skills. User setup does not rewrite committed agent files, and `~/.pi-oven/config.json` / `.pi-oven/config.json` keep language, `nativeWorkers.maxWorkers`, and setup receipt metadata while readiness is judged from live routing + prerequisites rather than `setupCompletedAt` alone.
 6. Run a smoke validation (7 MUST-tier roles pinged) and report the result.
 
 ### 2. Dispatch agents directly
 
-Inside any omp session, dispatch an agent by name:
+Inside any omp session, dispatch an agent by its runtime name:
 
 ```
-> Use pi-oven:explorer to find all files that touch the User model.
+> Use pov:explorer to find all files that touch the User model.
 ```
 
-Agents load from the marketplace plugin registry. Their committed frontmatter provides the default model/tool policy, and setup-selected routing can override per-role models through omp settings (`task.agentModelOverrides`) without rewriting committed agent files.
+Agents load from the marketplace plugin registry. Runtime dispatch names live on `pov:*`; source files live under canonical `agents/pov-*.md` with `name: pov:<role>` because package/install identity stays `pi-oven@kzk`. Their committed frontmatter provides the default model/tool policy, and setup-selected routing can override per-role models through omp settings (`task.agentModelOverrides`) without rewriting committed agent files.
 
 ### 3. How skills activate
 
 Skills activate through explicit control-plane proofs:
 
 1. **Runtime keyword whitelist** — on each `turn_start`, the pi-oven extension matches the latest user message against a curated, code-owned keyword list for each shipped skill. On a match, `before_agent_start` injects a system prompt block that tells the model it **MUST** read the exact plugin-owned `SKILL.md` file targets shown in that block before proceeding. Those exact targets become the `ownedSkillReadTargets` proof surface for the current turn.
-2. **Description-driven discovery** — even without a keyword hit, shipped skills are still surfaced through their `description:` field in the system prompt. If a pi-oven skill is needed, prefer the exact plugin-owned `SKILL.md` target from the runtime keyword block; do not invent namespaced skill aliases. `/pi-oven:*` entries such as `/pi-oven:setup` are commands, not skills.
+2. **Description-driven discovery** — even without a keyword hit, shipped skills are still surfaced through their `description:` field in the system prompt. If a `pov:` skill is needed, prefer the exact plugin-owned `SKILL.md` target from the runtime keyword block; do not invent skill aliases or `skill://` shortcuts. `/pi-oven:*` entries such as `/pi-oven:setup` are commands, not skills.
 
-For gated work, pi-oven uses `requiredSkills`, exact `ownedSkillReadTargets` reads, the branch contract, external execution consent, and the setup-written workflow-skill ownership filter `skills.includeSkills = ["pi-oven:*"]` as the single front door. That filter explicitly ignores a populated `~/.claude/skills` workflow-skill source rather than relying on emptiness, and it does not widen into commands/agents/hooks/MCP exclusivity. Empty `~/.claude/skills` is not the target state; compatibility aids alone still do not stop `claude-plugins` or namespaced marketplace workflow skills. Bootstrap message injection and tool remap are explicitly out of bounds as control-plane paths.
+For gated work, pi-oven uses `requiredSkills`, exact `ownedSkillReadTargets` reads, the branch contract, external execution consent, and the setup-written workflow-skill ownership filter `skills.includeSkills = ["pov:*"]` as the single front door. That filter explicitly ignores a populated `~/.claude/skills` workflow-skill source rather than relying on emptiness, and it does not widen into commands/agents/hooks/MCP exclusivity. Empty `~/.claude/skills` is not the target state; compatibility aids alone still do not stop `claude-plugins` or namespaced marketplace workflow skills. Bootstrap message injection and tool remap are explicitly out of bounds as control-plane paths.
 
 The autonomous stop-guard still exists as a separate runtime behavior: autonomous-mode keywords keep the agent looping until completion or explicit stop. That guard now complements skill loading instead of being the only keyword-driven behavior.
 
-See `skills/*/SKILL.md` for each skill's `description:` activation condition.
+See `skills/*/SKILL.md` for each shipped `pov:<skill>` entry's `description:` activation condition.
 
 ### 3.1 Verify UC5 ops connectors after install
 
@@ -112,7 +114,7 @@ Run inside omp:
 /pi-oven:doctor
 ```
 
-If the provider-auth check FAILs, authenticate `openai-codex` (release default), `opencode-zen`, or `anthropic` in omp first, then rerun the command.
+If the provider-auth check FAILs, authenticate `openai-codex` (release default), `opencode-zen`, or `anthropic` in omp first, then rerun the command. If doctor WARNs only on memory / async / `task.enableLsp` prerequisites, run `/pi-oven:setup --repair-prereqs` and rerun `/pi-oven:doctor`.
 
 ### 3.2 Dry-run release automation
 
@@ -125,7 +127,7 @@ Run inside omp from the pi-oven **source repo** checkout:
 Release automation is source-repo only. The **source repo** is the authoring target, the **release artifact** is the version-synced package/tag produced from that checkout, and the **installed cache** is an observation-only consumer snapshot under `~/.omp/plugins/cache/plugins/`. The helper refuses installed-cache roots, keeps local git pushes on the current branch plus the `vX.Y.Z` tag, and prints a `boundary` object in dry-run output so the source repo → release artifact → installed cache contract stays explicit.
 ### 4. Verify before claiming done
 
-The `fresh-verifier` skill enforces a hard rule: **the main agent cannot verify its own work**. When you finish a task and want to confirm completion, the skill auto-dispatches `pi-oven:verifier` (a fresh agent with no memory of the implementation) to run a 4-check audit:
+The `pov:fresh-verifier` skill enforces a hard rule: **the main agent cannot verify its own work**. When you finish a task and want to confirm completion, the skill auto-dispatches `pov:verifier` (a fresh agent with no memory of the implementation) to run a 4-check audit:
 
 1. Production build smoke (`bun run build`)
 2. Stub sweep (no `TODO`, `FIXME`, dead-stub patterns in touched files)
@@ -138,46 +140,46 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 
 ## Agent roster
 
-24 agents, grouped by purpose. All agents are omp-native (read/search/find/bash/web_search + killer tools debug/eval/browser/retain/recall/reflect/lsp/ast_grep; irc auto-injected). Each agent's `model:` field locks the committed baseline LLM choice; setup-selected routing can override per-role models through omp settings. The validator at plugin load rejects any agent whose model prefix is outside the committed pi-oven frontmatter contract: `openai-codex/` primaries plus `opencode-zen/` registry alternates. Anthropic remains setup/override compatibility only, not a committed-agent prefix.
+24 agents, grouped by purpose. Dispatch them at runtime as `pov:<role>`. Source files remain package artifacts under canonical `agents/pov-*.md` with `name: pov:<role>`, and setup-selected routing can override per-role models through omp settings. The validator at plugin load rejects any agent whose model prefix is outside the committed pi-oven frontmatter contract: `openai-codex/` primaries plus `opencode-zen/` registry alternates. Anthropic remains setup/override compatibility only, not a committed-agent prefix.
 
 ### MUST tier (always available, core workflow)
 
 | Dispatch name | Purpose |
 |---|---|
-| `pi-oven:executor` | Multi-step implementation, 3+ file edits |
-| `pi-oven:explorer` | Read-only codebase search and mapping |
-| `pi-oven:verifier` | Semantic verification (VERDICT: PASS / BLOCK) |
-| `pi-oven:critic` | Adversarial plan/design challenge |
-| `pi-oven:planner` | Plan authoring and task decomposition |
-| `pi-oven:code-reviewer` | Code quality review, spec compliance |
-| `pi-oven:debugger` | Root-cause investigation + fix (absorbs tracer pattern) |
+| `pov:executor` | Multi-step implementation, 3+ file edits |
+| `pov:explorer` | Read-only codebase search and mapping |
+| `pov:verifier` | Semantic verification (VERDICT: PASS / BLOCK) |
+| `pov:critic` | Adversarial plan/design challenge |
+| `pov:planner` | Plan authoring and task decomposition |
+| `pov:code-reviewer` | Code quality review, spec compliance |
+| `pov:debugger` | Root-cause investigation + fix (absorbs tracer pattern) |
 
 ### SHOULD tier (enabled by default, optional in Profile B/C trim)
 
 | Dispatch name | Purpose |
 |---|---|
-| `pi-oven:test-engineer` | Test strategy + authoring (TDD support) |
-| `pi-oven:security-reviewer` | OWASP / STRIDE / secrets detection |
-| `pi-oven:writer` | Documentation + prose |
-| `pi-oven:designer` | UI/UX design + accessibility |
-| `pi-oven:code-simplifier` | Dead code removal + AI-slop cleanup |
-| `pi-oven:qa-tester` | E2E + integration test execution (Playwright-aware) |
-| `pi-oven:git-master` | Atomic commits, branch hygiene, force-push guardrails |
-| `pi-oven:document-specialist` | External SDK + library docs lookup |
+| `pov:test-engineer` | Test strategy + authoring (TDD support) |
+| `pov:security-reviewer` | OWASP / STRIDE / secrets detection |
+| `pov:writer` | Documentation + prose |
+| `pov:designer` | UI/UX design + accessibility |
+| `pov:code-simplifier` | Dead code removal + AI-slop cleanup |
+| `pov:qa-tester` | E2E + integration test execution (Playwright-aware) |
+| `pov:git-master` | Atomic commits, branch hygiene, force-push guardrails |
+| `pov:document-specialist` | External SDK + library docs lookup |
 
 ### NICE tier (specialized; opt-in)
 
 | Dispatch name | Purpose |
 |---|---|
-| `pi-oven:tracer` | Pure causal trace (call graphs, execution traces) |
-| `pi-oven:analyst` | Data + metrics analysis |
-| `pi-oven:architect` | Cross-cutting architectural decisions |
-| `pi-oven:librarian` | Web research (no recursive dispatch) |
-| `pi-oven:multimodal-looker` | Vision / image / screenshot analysis |
-| `pi-oven:oracle` | Codebase knowledge Q&A |
-| `pi-oven:metis` | Requirements clarification (Socratic interview) |
-| `pi-oven:deep-researcher` | Web research + arxiv-PDF fetch + adversarial synthesis |
-| `pi-oven:data-runner` | Eval REPL data execution + batch result analysis |
+| `pov:tracer` | Pure causal trace (call graphs, execution traces) |
+| `pov:analyst` | Data + metrics analysis |
+| `pov:architect` | Cross-cutting architectural decisions |
+| `pov:librarian` | Web research (no recursive dispatch) |
+| `pov:multimodal-looker` | Vision / image / screenshot analysis |
+| `pov:oracle` | Codebase knowledge Q&A |
+| `pov:metis` | Requirements clarification (Socratic interview) |
+| `pov:deep-researcher` | Web research + arxiv-PDF fetch + adversarial synthesis |
+| `pov:data-runner` | Eval REPL data execution + batch result analysis |
 
 ---
 
@@ -185,29 +187,29 @@ Verdict: `PASS` (cycle exit allowed) or `BLOCK` (with evidence + remediation).
 
 | Skill | Tier | Trigger highlights |
 |---|---|---|
-| `code-quality-discipline` | core | DRY / YAGNI / KISS + deletion test |
-| `tdd-strict` | core | Red → Green → Refactor, touched-file coverage |
-| `brainstorming` | core | Socratic Q&A before any creative work |
-| `writing-plans` | core | bite-sized + no-placeholder + 3-item self-review |
-| `codebase-survey` | core | 8-step pre-planning + explore subagent delegation |
-| `spec-and-review` | core | Pattern loop with cross-vendor critic |
-| `large-task-delegation` | core | 3+ files / 200+ LoC threshold + dispatch routing |
-| `fresh-verifier` | core | cycle-exit 4 sub-check + no-self-verification rule |
-| `pre-commit-gate` | core | sequential gates 0-4.5 + bypass envs |
-| `subagent-driven-development` | core | per-task fresh subagent + 2-stage review |
-| `autonomous-loop` | core | meta orchestrator: ASK-FIRST 3-slot + autopilot / ralph / ultrawork modes |
-| `deep-init` | extended | hierarchical AGENTS.md auto-generation |
-| `deep-dive` | extended | causal trace × 3 lanes → Socratic requirements interview |
-| `systematic-debugging` | extended | reproduce → hypothesize → instrument → fix loop |
-| `improve-codebase-architecture` | extended | deepening-focused architecture refactor discovery |
-| `receiving-code-review` | extended | challenge/validate review comments before applying |
-| `html-research-orchestrator` | extended | fan-out research → cited HTML report assembly |
-| `html-spec-decision-maker` | extended | pre-decision HTML worksheet for unresolved user-facing questions |
-| `git-workflow` | extended | worktree-first branch start/finish lifecycle |
-| `aws` | ops (UC5) | AWS production read inspection and infra diagnostics |
-| `bitbucket-pipeline` | ops (UC5) | Bitbucket pipeline status/log/variables connector |
-| `cloudflare` | ops (UC5) | Cloudflare DNS/zone read connector |
-| `memory-discipline` | core | mnemopi-backed recall / retain / reflect discipline; setup writes `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true`, `task.enableLsp=true` |
+| `pov:code-quality-discipline` | core | DRY / YAGNI / KISS + deletion test |
+| `pov:tdd-strict` | core | Red → Green → Refactor, touched-file coverage |
+| `pov:brainstorming` | core | Socratic Q&A before any creative work |
+| `pov:writing-plans` | core | bite-sized + no-placeholder + 3-item self-review |
+| `pov:codebase-survey` | core | 8-step pre-planning + explore subagent delegation |
+| `pov:spec-and-review` | core | Pattern loop with cross-vendor critic |
+| `pov:large-task-delegation` | core | 3+ files / 200+ LoC threshold + dispatch routing |
+| `pov:fresh-verifier` | core | cycle-exit 4 sub-check + no-self-verification rule |
+| `pov:pre-commit-gate` | core | sequential gates 0-4.5 + bypass envs |
+| `pov:subagent-driven-development` | core | per-task fresh subagent + 2-stage review |
+| `pov:autonomous-loop` | core | meta orchestrator: ASK-FIRST 3-slot + autopilot / ralph / ultrawork modes |
+| `pov:deep-init` | extended | hierarchical AGENTS.md auto-generation |
+| `pov:deep-dive` | extended | causal trace × 3 lanes → Socratic requirements interview |
+| `pov:systematic-debugging` | extended | reproduce → hypothesize → instrument → fix loop |
+| `pov:improve-codebase-architecture` | extended | deepening-focused architecture refactor discovery |
+| `pov:receiving-code-review` | extended | challenge/validate review comments before applying |
+| `pov:html-research-orchestrator` | extended | fan-out research → cited HTML report assembly |
+| `pov:html-spec-decision-maker` | extended | pre-decision HTML worksheet for unresolved user-facing questions |
+| `pov:git-workflow` | extended | worktree-first branch start/finish lifecycle |
+| `pov:aws` | ops (UC5) | AWS production read inspection and infra diagnostics |
+| `pov:bitbucket-pipeline` | ops (UC5) | Bitbucket pipeline status/log/variables connector |
+| `pov:cloudflare` | ops (UC5) | Cloudflare DNS/zone read connector |
+| `pov:memory-discipline` | core | mnemopi-backed recall / retain / reflect discipline; setup writes `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true`, `task.enableLsp=true` |
 
 See `skills/<name>/SKILL.md` for the complete body and `evals/<skill>/scenarios/*.yaml` for behavioral test fixtures.
 
@@ -220,7 +222,7 @@ The wizard accepts subcommands:
 | Subcommand | Purpose |
 |---|---|
 | `/pi-oven:setup` | Interactive first-run flow (default) |
-| `/pi-oven:setup --status` | Show the shared setup readiness summary first — global readiness from machine-global routing + prerequisites, project readiness from `.omp/settings.json` routing — then show effective per-role models across project, global override, and frontmatter layers, plus the standalone workflow-skill ownership classifications (`owned-surface active` / `compatibility aids only` / `ownership not established`) and the secondary bootstrap-parity track |
+| `/pi-oven:setup --status` | Show the shared setup readiness summary first — global readiness from machine-global routing + prerequisites, project readiness from `.omp/settings.json` routing — then show effective per-role models across project, global override, and frontmatter layers, plus the standalone workflow-skill ownership classifications (`owned-surface active` / `compatibility aids only` / `ownership not established`) and the shared migration/install vocabulary (`healthy single pov surface`, `old config keys`, `mixed migration state`, `dual plugin surface`, `agent namespace drift`), plus the secondary bootstrap-parity track |
 | `/pi-oven:setup --reset` | Clear pi-oven-managed routing overrides; with `--scope project`, clear project `.omp/settings.json` routing |
 | `/pi-oven:setup --repair-prereqs` | Repair only the machine-global prerequisites: `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true`, `task.enableLsp=true`, and the 6 gated tool flags. Does not touch routing, project settings, or setup receipt metadata. |
 | `/pi-oven:setup --import <file>` | Apply a JSON config (validated against the 24-role schema + provider whitelist) |
@@ -275,14 +277,14 @@ By default, setup applies **globally** — model routing is written to your mach
 | | `--scope global` (default) | `--scope project` |
 |---|---|---|
 | Per-role overrides | global `config.yml` — profiles A/B/C/D all write all 24 roles | `<repoRoot>/.omp/settings.json` — **all 24 roles for EVERY profile, including A** |
-| workflow-skill ownership | global `config.yml` — `skills.includeSkills = ["pi-oven:*"]` | `<repoRoot>/.omp/settings.json` — same filter, project layer wins because arrays replace |
+| workflow-skill ownership | global `config.yml` — `skills.includeSkills = ["pov:*"]` | `<repoRoot>/.omp/settings.json` — same filter, project layer wins because arrays replace |
 | `modelRoles` + `retry.fallbackChains` | global `config.yml` | `<repoRoot>/.omp/settings.json` |
 | language + setup receipt metadata + `nativeWorkers.maxWorkers` | global `~/.pi-oven/config.json` | `<repoRoot>/.pi-oven/config.json` |
 | machine-global prerequisites | global `config.yml` (`/pi-oven:setup --repair-prereqs` repairs just this layer) | global-only (not written under project scope) |
 
 The shared readiness model follows those live facts directly: global readiness comes from machine-global routing plus the machine-global prerequisites, while project readiness comes from live `.omp/settings.json` routing. `setupCompletedAt` remains receipt metadata only.
 
-omp reads `<repoRoot>/.omp/settings.json` at project level and **deep-merges it over** your global config (record settings merge key-by-key; arrays replace), so a project override wins per-role over global — even over a Profile-A frontmatter default. The same array-replace rule is why workflow-skill ownership is judged on the *effective* visible surface: success means the resolved `skills.includeSkills` value is exactly `["pi-oven:*"]`, not any incidental state under `~/.claude/skills`. Empty `~/.claude/skills` is not the target state, and legacy compatibility aids alone still do not stop `claude-plugins` or namespaced marketplace workflow skills. That means a single project can pin *different* models from your global default while still filtering workflow skills to pi-oven-only. The file is **committable** (share routing with a team) or **gitignorable** (machine-local) — your choice. Launch omp from the **repo root** so the project settings are discovered. The setup notice at session start shows a `↳ project model routing active (N roles)` line whenever this file carries `pi-oven:*` overrides.
+omp reads `<repoRoot>/.omp/settings.json` at project level and **deep-merges it over** your global config (record settings merge key-by-key; arrays replace), so a project override wins per-role over global — even over a Profile-A frontmatter default. The same array-replace rule is why workflow-skill ownership is judged on the *effective* visible surface: success means the resolved `skills.includeSkills` value is exactly `["pov:*"]`, not any incidental state under `~/.claude/skills`. Empty `~/.claude/skills` is not the target state, and legacy compatibility aids alone still do not stop `claude-plugins` or namespaced marketplace workflow skills. That means a single project can pin *different* models from your global default while still filtering workflow skills to the `pov:*` visible surface. The file is **committable** (share routing with a team) or **gitignorable** (machine-local) — your choice. Launch omp from the **repo root** so the project settings are discovered. The setup notice at session start shows a `↳ project model routing active (N roles)` line whenever this file carries `pi-oven:*` overrides.
 
 ```sh
 /pi-oven:setup --apply --profile A --scope project   # write Profile A's 24 roles to this repo's .omp/settings.json
@@ -306,7 +308,7 @@ For gated work, pi-oven opens the control plane only through explicit runtime pr
 
 - `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` are **visibility/guard layers only**. They report and persist routing configuration, but the runtime still owns the current-session provider-family choice. The session-start setup notice is deduped per repo/session start path and summarizes repo state from the same truth sources.
 - The sanctioned deep-interview completion path persists the final spec and seeds root `approvalFlow` state; once that receipt exists, approval may stay pending after `deepInterview.phase = "complete"`.
-- Ownership truth surfaces use three labels: `owned-surface active` when the effective `skills.includeSkills` surface is exactly `["pi-oven:*"]`; `compatibility aids only` when legacy aids are active but the mainline ownership filter is still missing or wrong; `ownership not established` otherwise. Empty `~/.claude/skills` is not the target state in any branch. A repo is `healthy setup` only when project routing is active and ownership is `owned-surface active`; missing project routing remains its own warning state.
+- Ownership truth surfaces use three labels: `owned-surface active` when the effective `skills.includeSkills` surface is exactly `["pov:*"]`; `compatibility aids only` when legacy aids are active but the mainline ownership filter is still missing or wrong; `ownership not established` otherwise. Empty `~/.claude/skills` is not the target state in any branch. The shared migration/install vocabulary across runtime/setup/status/doctor is `healthy single pov surface`, `old config keys`, `mixed migration state`, `dual plugin surface`, and `agent namespace drift`. A repo reaches `healthy setup — healthy single pov surface` only when project routing is active and ownership is `owned-surface active`; missing project routing remains its own warning.
 - Secondary track only: bootstrap-level gajae parity remains visible as an OMP/architecture follow-up, but it is not a blocker for the owned-surface success above.
 
 ## Temporary compatibility boundary
@@ -362,7 +364,7 @@ This is required because the marketplace install copies the repo tree recursivel
 
 `omp plugin install` / `omp plugin uninstall` use the marketplace-qualified id `pi-oven@kzk`. Runtime commands and setup scripts use the bare plugin name `pi-oven`. If a plugin command reports `Plugin "pi-oven@kzk" not found`, reinstall with `omp plugin install pi-oven@kzk --force` and run `/pi-oven:setup --status`.
 
-### `Unknown agent "pi-oven:executor"` in task dispatch
+### `Unknown agent "pov:executor"` in task dispatch
 
 This means your current runtime did not load plugin-root agents. First verify the plugin is installed and current with `omp plugin list`, then restart the session so omp reloads marketplace agents from the upgraded plugin.
 
@@ -370,7 +372,7 @@ If the error persists after restart, run `/pi-oven:doctor` from a fresh session 
 
 ### `bun run lint:agents` fails
 
-The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pi-oven-*.md` and fails if any file is missing a `model:` field. If you customized an agent and removed the model lock, this lint will catch it before the build merges.
+The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pov-*.md` and fails if any file is missing a `model:` field or drifts away from `name: pov:<role>`. If you customized an agent and removed the model lock or reintroduced namespace drift, this lint will catch it before the build merges.
 
 ### Test suite
 
@@ -422,8 +424,8 @@ pi-oven/
 │   └── marketplace.json     # marketplace catalog (plugins[0].version)
 ├── .omp/extensions/
 │   └── pi-oven.ts               # load-time validator + setup notice + conduct injection
-├── agents/                  # 24 pi-oven-prefixed agent files (file-based registry)
-│   └── pi-oven-*.md
+├── agents/                  # 24 canonical pov agent files (file-based registry)
+│   └── pov-*.md
 ├── skills/                  # 23 authored skills (all runtime-loaded)
 │   └── <skill-name>/
 │       ├── SKILL.md
@@ -453,7 +455,7 @@ pi-oven/
 
 ## Architecture in one paragraph
 
-pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin. The 24 agent files in `agents/pi-oven-*.md` are the committed baseline for model/tool policy; setup-selected routing can override per-role models through omp `task.agentModelOverrides` in global or project settings. All 24 agents are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier emit structured findings via `report_finding`. A load-time TypeScript validator (`.omp/extensions/pi-oven.ts`) enforces the provider whitelist by reading the agent files themselves: if any file references an `anthropic/*` model, the validator includes `anthropic/` in `ALLOWED_PREFIXES`; otherwise only `opencode-zen/` and `openai-codex/` are allowed.
+pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin. The 24 agent files in canonical `agents/pov-*.md` with frontmatter `name: pov:<role>` are the committed baseline for model/tool policy; setup-selected routing can override per-role models through omp `task.agentModelOverrides` in global or project settings. All 24 agents are omp-native with killer tools (debug/eval/browser/retain/recall/reflect/lsp/ast_grep); code-reviewer, critic, and verifier emit structured findings via `report_finding`. A load-time TypeScript validator (`.omp/extensions/pi-oven.ts`) enforces the provider whitelist and the healthy single `pov` surface itself, while status/doctor classify stale installs with the shared vocabulary: `old config keys`, `mixed migration state`, `dual plugin surface`, and `agent namespace drift`.
 
 ---
 
@@ -473,9 +475,9 @@ pi-oven is a **file-based agent registry** wrapped in an omp marketplace plugin.
 
 1. Fork + clone.
 2. `bun install` + `bun test` to confirm baseline.
-3. New agent file? Place it under `agents/pi-oven-<role>.md` with frontmatter validated by `bun run lint:agents`.
+3. New agent file? Place it under `agents/pov-<role>.md` with frontmatter `name: pov:<role>` and validate with `bun run lint:agents`.
 4. New skill? Place it under `skills/<name>/SKILL.md` + add to `plugin.json` `"skills"` array.
-5. Cross-vendor critic review on specs/plans is encouraged — `pi-oven:critic` (opus) or via the `spec-and-review` skill.
+5. Cross-vendor critic review on specs/plans is encouraged — `pov:critic` (opus) or via the `pov:spec-and-review` skill.
 6. Use the per-spec semantic commit pattern: one commit per spec implementation, no per-task commits.
 
 ---

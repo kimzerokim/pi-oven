@@ -1,5 +1,5 @@
 ---
-name: memory-discipline
+name: pov:memory-discipline
 version: 0.1.0
 description: "Read this skill at the start and end of planning or analysis flows and around retain / recall / reflect work. Defines when to retain, recall, and reflect — wires omp Hindsight memory into all pi-oven flows."
 ---

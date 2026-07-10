@@ -18,14 +18,53 @@ export interface AgentFileEntry {
   currentModel: string[];
   currentThinkingLevel: string;
 }
+export const CANONICAL_AGENT_FILENAME_PREFIX = "pov-";
+const LEGACY_AGENT_FILENAME_PREFIX = "pi-oven-";
+const AGENT_FILENAME_SUFFIX = ".md";
+
+export function isCanonicalAgentMarkdownFile(name: string): boolean {
+  return (
+    name.startsWith(CANONICAL_AGENT_FILENAME_PREFIX) &&
+    name.endsWith(AGENT_FILENAME_SUFFIX)
+  );
+}
+
+export function isLegacyAgentMarkdownFile(name: string): boolean {
+  return (
+    name.startsWith(LEGACY_AGENT_FILENAME_PREFIX) &&
+    name.endsWith(AGENT_FILENAME_SUFFIX)
+  );
+}
+
+export function isAgentMarkdownFile(name: string): boolean {
+  return isCanonicalAgentMarkdownFile(name) || isLegacyAgentMarkdownFile(name);
+}
+
+export function getAgentRoleFromFileName(file: string): Role | null {
+  if (!isAgentMarkdownFile(file)) return null;
+  const prefix = file.startsWith(CANONICAL_AGENT_FILENAME_PREFIX)
+    ? CANONICAL_AGENT_FILENAME_PREFIX
+    : LEGACY_AGENT_FILENAME_PREFIX;
+  const role = file.slice(prefix.length, -AGENT_FILENAME_SUFFIX.length) as Role;
+  return (ROLES as readonly string[]).includes(role) ? role : null;
+}
+
+export function getCanonicalAgentFileName(role: Role): string {
+  return `${CANONICAL_AGENT_FILENAME_PREFIX}${role}${AGENT_FILENAME_SUFFIX}`;
+}
+
+
 
 // ---------------------------------------------------------------------------
 // readAgentFiles
 // ---------------------------------------------------------------------------
 
 /**
- * Reads all pi-oven-*.md files in agentsDir, parses YAML frontmatter,
- * and returns entries with role/model/thinkingLevel.
+ * Reads all canonical `pov-*.md` agent files in agentsDir, parses YAML
+ * frontmatter, and returns entries with role/model/thinkingLevel.
+ *
+ * Legacy `pi-oven-*.md` filenames are rejected explicitly so stale installs or
+ * partial renames fail visibly instead of being treated as healthy.
  */
 export async function readAgentFiles(agentsDir: string): Promise<AgentFileEntry[]> {
   let files: string[];
@@ -34,11 +73,10 @@ export async function readAgentFiles(agentsDir: string): Promise<AgentFileEntry[
   } catch {
     return [];
   }
+  assertNoLegacyAgentFiles(agentsDir, files);
 
-  const piOvenFiles = files.filter((f) => f.startsWith("pi-oven-") && f.endsWith(".md"));
   const entries: AgentFileEntry[] = [];
-
-  for (const filename of piOvenFiles) {
+  for (const filename of files.filter(isCanonicalAgentMarkdownFile).sort()) {
     const filePath = path.join(agentsDir, filename);
     const content = await fs.readFile(filePath, "utf-8");
     const parsed = parseAgentFile(filePath, content);
@@ -49,6 +87,7 @@ export async function readAgentFiles(agentsDir: string): Promise<AgentFileEntry[
 
   return entries;
 }
+
 
 // ---------------------------------------------------------------------------
 // rewriteAgentFile
@@ -72,19 +111,29 @@ export async function rewriteAgentFile(
 // ---------------------------------------------------------------------------
 
 /**
- * Iterates ROLES, rewrites each matching pi-oven-<role>.md file in agentsDir.
- * Skips roles whose files do not exist.
- * Returns a summary of rewritten and skipped roles.
+ * Iterates ROLES, rewrites each matching canonical `pov-<role>.md` file in
+ * agentsDir. Skips roles whose canonical files do not exist.
+ *
+ * Legacy `pi-oven-*.md` files are rejected explicitly so maintainer rewrites do
+ * not silently preserve a stale registry layout.
  */
 export async function rewriteAllAgents(
   agentsDir: string,
   profileMap: ProfileMap
 ): Promise<{ rewritten: Role[]; skipped: Role[] }> {
+  let files: string[];
+  try {
+    files = await fs.readdir(agentsDir);
+  } catch {
+    files = [];
+  }
+  assertNoLegacyAgentFiles(agentsDir, files);
+
   const rewritten: Role[] = [];
   const skipped: Role[] = [];
 
   for (const role of ROLES) {
-    const filePath = path.join(agentsDir, `pi-oven-${role}.md`);
+    const filePath = path.join(agentsDir, getCanonicalAgentFileName(role));
     try {
       await fs.access(filePath);
     } catch {
@@ -97,6 +146,15 @@ export async function rewriteAllAgents(
 
   return { rewritten, skipped };
 }
+function assertNoLegacyAgentFiles(agentsDir: string, files: string[]): void {
+  const legacyFiles = files.filter(isLegacyAgentMarkdownFile).sort();
+  if (legacyFiles.length === 0) return;
+  throw new Error(
+    `Legacy agent filenames detected in ${agentsDir}: ${legacyFiles.join(", ")}. ` +
+      `Rename them to ${CANONICAL_AGENT_FILENAME_PREFIX}<role>${AGENT_FILENAME_SUFFIX}.`
+  );
+}
+
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -133,7 +191,7 @@ function parseAgentFile(filePath: string, content: string): AgentFileEntry | nul
 
   const { frontmatterLines } = split;
 
-  // Extract role from name: field (e.g. "name: pi-oven:executor" → "executor")
+  // Extract role from name: field (e.g. "name: pov:executor" → "executor")
   const nameLine = frontmatterLines.find((l) => l.match(/^name:\s*/));
   if (!nameLine) return null;
   const rawNameVal = nameLine.replace(/^name:\s*/, "").trim();
@@ -143,8 +201,11 @@ function parseAgentFile(filePath: string, content: string): AgentFileEntry | nul
     (rawNameVal.startsWith("'") && rawNameVal.endsWith("'"))
       ? rawNameVal.slice(1, -1)
       : rawNameVal;
-  // nameVal is like "pi-oven:executor" or "pi-oven:code-reviewer"
-  const rolePart = nameVal.startsWith("pi-oven:") ? nameVal.slice("pi-oven:".length) : nameVal;
+  const rolePart = nameVal.startsWith("pov:")
+    ? nameVal.slice("pov:".length)
+    : nameVal.startsWith("pi-oven:")
+      ? nameVal.slice("pi-oven:".length)
+      : nameVal;
   const role = rolePart as Role;
   if (!(ROLES as readonly string[]).includes(role)) return null;
 

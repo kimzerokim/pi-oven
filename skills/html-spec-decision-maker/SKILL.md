@@ -1,5 +1,5 @@
 ---
-name: html-spec-decision-maker
+name: pov:html-spec-decision-maker
 version: 0.1.0
 description: "Use when implementation direction is not frozen and the user needs a decision worksheet in HTML — especially for option comparison, unresolved trade-offs, clarification cards, or pre-decision review before writing the spec/plan."
 ---

@@ -1,5 +1,5 @@
 ---
-name: deep-init
+name: pov:deep-init
 version: 0.1.0
 description: "Read this skill to initialize project context with hierarchical AGENTS.md generation, especially when AGENTS.md files are absent or stale and a full codebase map is needed. Generates per-directory AGENTS.md documentation via explorer, document-specialist, and librarian agents."
 ---

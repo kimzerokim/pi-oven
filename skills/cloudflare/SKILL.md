@@ -1,5 +1,5 @@
 ---
-name: cloudflare
+name: pov:cloudflare
 version: 0.1.0
 description: "Read this skill for Cloudflare DNS, zone, record, and propagation work. Provides a DNS connector for zone inspection, propagation checks, and DNS-to-origin diagnostics."
 ---

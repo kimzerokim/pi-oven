@@ -197,19 +197,52 @@ describe("evalSkills", () => {
 // ---------------------------------------------------------------------------
 
 describe("evalAgents", () => {
-  it("PASS when 24 agents and lint clean", () => {
-    const r = evalAgents({ agentCount: 24, expectedCount: 24, lintClean: true });
+  it("PASS when 24 canonical pov agents and lint clean", () => {
+    const r = evalAgents({
+      agentCount: 24,
+      expectedCount: 24,
+      lintClean: true,
+      legacyAgentCount: 0,
+      namespaceDrift: [],
+    });
     expect(r.status).toBe("PASS");
+    expect(r.detail).toContain("healthy single pov surface");
   });
 
   it("FAIL when agent count mismatch", () => {
-    const r = evalAgents({ agentCount: 23, expectedCount: 24, lintClean: true });
+    const r = evalAgents({
+      agentCount: 23,
+      expectedCount: 24,
+      lintClean: true,
+      legacyAgentCount: 0,
+      namespaceDrift: [],
+    });
     expect(r.status).toBe("FAIL");
     expect(r.detail).toMatch(/23.*24|24.*23/);
+    expect(r.detail).toContain("agents/pov-*.md");
+  });
+
+  it("FAIL on agent namespace drift even when count would otherwise pass", () => {
+    const r = evalAgents({
+      agentCount: 24,
+      expectedCount: 24,
+      lintClean: true,
+      legacyAgentCount: 1,
+      namespaceDrift: ['pov-executor.md frontmatter name "pi-oven:executor" expected "pov:executor"'],
+    });
+    expect(r.status).toBe("FAIL");
+    expect(r.detail).toContain("agent namespace drift");
+    expect(r.fix).toContain("name: pov:<role>");
   });
 
   it("FAIL when count matches but lint dirty", () => {
-    const r = evalAgents({ agentCount: 24, expectedCount: 24, lintClean: false });
+    const r = evalAgents({
+      agentCount: 24,
+      expectedCount: 24,
+      lintClean: false,
+      legacyAgentCount: 0,
+      namespaceDrift: [],
+    });
     expect(r.status).toBe("FAIL");
     expect(r.detail).toMatch(/lint/i);
     expect(r.fix).toBeDefined();
@@ -308,7 +341,7 @@ describe("evalMemory", () => {
     });
     expect(r.status).toBe("WARN");
     expect(r.detail).toMatch(/memory\.backend/);
-    expect(r.fix).toBeDefined();
+    expect(r.fix).toContain("/pi-oven:setup --repair-prereqs");
   });
 
   it("WARN when async disabled even if mnemopi config complete", () => {
@@ -417,7 +450,7 @@ describe("renderReport", () => {
           level: "INFO",
           name: "workflow-skill ownership",
           detail:
-            'classification: owned-surface active. effective workflow-skill surface is pi-oven-only via skills.includeSkills = ["pi-oven:*"] from ~/.omp/agent/config.yml (machine-global layer). This preserves the populated Claude workflow-skill source for other users instead of deleting it, and it applies only to workflow skills — not commands, agents, hooks, or MCP. Empty ~/.claude/skills is not the target state; populated Claude user workflow skills should remain intact for other users.',
+            'classification: owned-surface active. workflow-skill surface is on the healthy single pov surface via skills.includeSkills = ["pov:*"] from ~/.omp/agent/config.yml (machine-global layer). This preserves the populated Claude workflow-skill source for other users instead of deleting it, and it applies only to workflow skills — not commands, agents, hooks, or MCP. Empty ~/.claude/skills is not the target state; populated Claude user workflow skills should remain intact for other users.',
         },
         {
           level: "INFO",
@@ -447,7 +480,8 @@ describe("renderReport", () => {
     expect(report).toContain("requiredSkills");
     expect(report).toContain("[INFO] workflow-skill ownership:");
     expect(report).toContain("classification: owned-surface active");
-    expect(report).toContain('skills.includeSkills = ["pi-oven:*"]');
+    expect(report).toContain("healthy single pov surface");
+    expect(report).toContain('skills.includeSkills = ["pov:*"]');
     expect(report).toContain("Empty ~/.claude/skills is not the target state");
     expect(report).toContain("[INFO] bootstrap parity track:");
     expect(report).toContain("gajae parity");
@@ -476,7 +510,7 @@ describe("gather", () => {
     writePluginSkillsManifest(pluginRoot, ["./skills/foo/SKILL.md"]);
     writeShippedSkill(pluginRoot, "foo");
     mkdirSync(join(pluginRoot, "agents"), { recursive: true });
-    writeFileSync(join(pluginRoot, "agents", "pi-oven-executor.md"), "---\nname: pi-oven:executor\n", "utf-8");
+    writeFileSync(join(pluginRoot, "agents", "pov-executor.md"), "---\nname: pov:executor\n", "utf-8");
     mkdirSync(join(pluginRoot, "scripts"), { recursive: true });
     writeFileSync(join(pluginRoot, "scripts", "run-eval.ts"), "// runner\n", "utf-8");
     mkdirSync(join(pluginRoot, "evals", "foo", "scenarios"), { recursive: true });
@@ -520,6 +554,8 @@ describe("gather", () => {
     expect(facts.skills.skillMdCount).toBe(4);
     expect(facts.skills.pluginSkillsCount).toBe(1);
     expect(facts.agents.agentCount).toBe(1);
+    expect(facts.agents.legacyAgentCount).toBe(0);
+    expect(facts.agents.namespaceDrift).toEqual([]);
     expect(facts.evalRunner.runnerPresent).toBe(true);
     expect(facts.evalRunner.smokeScenarioCount).toBe(1);
     expect(facts.opsConnector.credentialFile).toBe(".external-credentials");
@@ -559,7 +595,7 @@ describe("DoctorFacts → evaluators integration (pure, injected facts)", () => 
       auth: { opencode_zen: true, openai_codex: false, anthropic: false },
       mcp: { servers: ["playwright"] },
       skills: { skillMdCount: 22, pluginSkillsCount: 22, missingFromManifest: [], extraInManifest: [], keywordIndexLoadedCount: 22, keywordIndexIssueCount: 0, keywordIndexIssues: [] },
-      agents: { agentCount: 24, expectedCount: 24, lintClean: true },
+      agents: { agentCount: 24, expectedCount: 24, lintClean: true, legacyAgentCount: 0, namespaceDrift: [] },
       stateDir: { writable: true, path: ".pi-oven" },
       evalRunner: { runnerPresent: true, smokeScenarioCount: 15 },
       opsConnector: { missingSkills: [], credentialFile: ".external-credentials" },

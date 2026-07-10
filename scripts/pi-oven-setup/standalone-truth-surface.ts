@@ -17,6 +17,9 @@ import {
   type DisplayReadResult,
 } from "./config-yml";
 import {
+  detectDuplicatePluginSurface,
+} from "./cache-resolver";
+import {
   SETUP_GLOBAL_PREREQUISITES,
   classifySetupPrerequisiteState,
   countPiOvenRoutingEntries,
@@ -61,6 +64,13 @@ export interface StandaloneTruthFacts {
     issues: string[];
     error?: string;
   };
+  duplicatePluginSurface?: {
+    activePluginRoot: string;
+    cachePluginRoot: string;
+    cacheIssues: string[];
+    cacheLoadedCount: number;
+    cacheShippedSkillCount: number;
+  };
   nativeWorkerRuntime: NativeWorkerRuntimeStatus;
 }
 
@@ -74,9 +84,43 @@ export const NATIVE_WORKER_RUNTIME_FIX =
 export const KEYWORD_SKILL_INTEGRITY_FIX =
   "Sync .claude-plugin/plugin.json skills[], shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries. Reinstall pi-oven@kzk if installed assets are stale.";
 export const WORKFLOW_SKILL_OWNERSHIP_FIX =
-  'Run /pi-oven:setup on the intended scope so the effective workflow-skill surface writes skills.includeSkills = ["pi-oven:*"] at that omp config layer.';
+  'Run /pi-oven:setup on the intended scope so the effective workflow-skill surface writes skills.includeSkills = ["pov:*"] at that omp config layer.';
+export const PLUGIN_SURFACE_DRIFT_FIX =
+  "Remove or refresh the stale duplicate plugin surface so runtime/setup/doctor all resolve the same active pi-oven root.";
+export const PLUGIN_ROOT_UNAVAILABLE = "(plugin root unavailable)";
 export const WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME = "workflow-skill ownership";
 export const BOOTSTRAP_PARITY_TRACK_SIGNAL_NAME = "bootstrap parity track";
+export const HEALTHY_SINGLE_POV_SURFACE_LABEL = "healthy single pov surface";
+export const OLD_CONFIG_KEYS_LABEL = "old config keys";
+export const DUAL_PLUGIN_SURFACE_LABEL = "dual plugin surface";
+export const MIXED_MIGRATION_STATE_LABEL = "mixed migration state";
+export const AGENT_NAMESPACE_DRIFT_LABEL = "agent namespace drift";
+
+export type WorkflowSkillOwnershipClassification =
+  | "owned-surface active"
+  | "compatibility aids only"
+  | "ownership not established";
+
+export function isWorkflowSkillOwnershipClassification(
+  value: string
+): value is WorkflowSkillOwnershipClassification {
+  return (
+    value === "owned-surface active" ||
+    value === "compatibility aids only" ||
+    value === "ownership not established"
+  );
+}
+
+export function extractWorkflowSkillOwnershipClassification(
+  detail: string
+): WorkflowSkillOwnershipClassification | null {
+  const classification = detail.match(
+    /classification:\s+(owned-surface active|compatibility aids only|ownership not established)\./
+  )?.[1];
+  return classification && isWorkflowSkillOwnershipClassification(classification)
+    ? classification
+    : null;
+}
 
 const CLAUDE_SKILLS_PRESERVATION_NOTE =
   "Empty ~/.claude/skills is not the target state; populated Claude user workflow skills should remain intact for other users.";
@@ -183,7 +227,7 @@ function buildWorkflowSkillOwnershipSignal(
       name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
       detail:
         `classification: ownership not established. effective workflow-skill ownership is unknown because ${projectState.error}. ` +
-        `Success is judged by the visible workflow-skill surface resolving to pi-oven-only via skills.includeSkills = ${canonicalList}, ` +
+        `The ${HEALTHY_SINGLE_POV_SURFACE_LABEL} could not be verified yet. Success is judged by the visible workflow-skill surface resolving to pov-only via skills.includeSkills = ${canonicalList}, ` +
         `not by incidental ~/.claude/skills state on disk. ${CLAUDE_SKILLS_PRESERVATION_NOTE}` +
         activeLegacyAidsSentence,
       fix: PROJECT_SCOPE_FILE_REPAIR_FIX,
@@ -196,7 +240,7 @@ function buildWorkflowSkillOwnershipSignal(
         level: "INFO",
         name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
         detail:
-          `classification: owned-surface active. effective workflow-skill surface is pi-oven-only via skills.includeSkills = ${canonicalList} from ${sourceLabel}. ` +
+          `classification: owned-surface active. workflow-skill surface is on the ${HEALTHY_SINGLE_POV_SURFACE_LABEL} via skills.includeSkills = ${canonicalList} from ${sourceLabel}. ` +
           "This preserves the populated Claude workflow-skill source for other users instead of deleting it, and it applies only to workflow skills — not commands, agents, hooks, or MCP. " +
           CLAUDE_SKILLS_PRESERVATION_NOTE,
       };
@@ -207,10 +251,10 @@ function buildWorkflowSkillOwnershipSignal(
       detail:
         `classification: ${activeLegacyAids.length > 0 ? "compatibility aids only" : "ownership not established"}. ` +
         `project skills.includeSkills in ${facts.projectSettingsFile} is ${formatStringList(projectState.value)}, not the canonical workflow-skill filter ${canonicalList}. ` +
-        `${CLAUDE_SKILLS_PRESERVATION_NOTE} ` +
+        `This is not the ${HEALTHY_SINGLE_POV_SURFACE_LABEL}. ${CLAUDE_SKILLS_PRESERVATION_NOTE} ` +
         (activeLegacyAids.length > 0
-          ? `Ownership is not established until the effective visible workflow-skill surface resolves to pi-oven-only. ${activeLegacyAidsSentence.slice(1)}`
-          : `${LEGACY_COMPATIBILITY_AIDS_LIMITATION} Ownership succeeds only when the effective visible workflow-skill surface resolves to pi-oven-only.`),
+          ? `Ownership is not established until the effective visible workflow-skill surface resolves to pov-only. ${activeLegacyAidsSentence.slice(1)}`
+          : `${LEGACY_COMPATIBILITY_AIDS_LIMITATION} Ownership succeeds only when the effective visible workflow-skill surface resolves to pov-only.`),
       fix: WORKFLOW_SKILL_OWNERSHIP_FIX,
     };
   }
@@ -221,7 +265,7 @@ function buildWorkflowSkillOwnershipSignal(
       name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
       detail:
         `classification: ownership not established. effective workflow-skill ownership could not be verified from ${GLOBAL_CONFIG_PATH}. ` +
-        `Success is judged by the visible workflow-skill surface resolving to pi-oven-only via skills.includeSkills = ${canonicalList}, ` +
+        `The ${HEALTHY_SINGLE_POV_SURFACE_LABEL} could not be verified yet. Success is judged by the visible workflow-skill surface resolving to pov-only via skills.includeSkills = ${canonicalList}, ` +
         `not by incidental ~/.claude/skills state on disk. ${CLAUDE_SKILLS_PRESERVATION_NOTE}` +
         activeLegacyAidsSentence,
       fix: WORKFLOW_SKILL_OWNERSHIP_FIX,
@@ -234,7 +278,7 @@ function buildWorkflowSkillOwnershipSignal(
         level: "INFO",
         name: WORKFLOW_SKILL_OWNERSHIP_SIGNAL_NAME,
         detail:
-          `classification: owned-surface active. effective workflow-skill surface is pi-oven-only via skills.includeSkills = ${canonicalList} from ${sourceLabel}. ` +
+          `classification: owned-surface active. workflow-skill surface is on the ${HEALTHY_SINGLE_POV_SURFACE_LABEL} via skills.includeSkills = ${canonicalList} from ${sourceLabel}. ` +
           "This preserves the populated Claude workflow-skill source for other users instead of deleting it, and it applies only to workflow skills — not commands, agents, hooks, or MCP. " +
           CLAUDE_SKILLS_PRESERVATION_NOTE,
       };
@@ -245,10 +289,10 @@ function buildWorkflowSkillOwnershipSignal(
       detail:
         `classification: ${activeLegacyAids.length > 0 ? "compatibility aids only" : "ownership not established"}. ` +
         `${GLOBAL_CONFIG_PATH} currently exposes skills.includeSkills = ${formatStringList(globalState.value)}, not the canonical workflow-skill filter ${canonicalList}. ` +
-        `${CLAUDE_SKILLS_PRESERVATION_NOTE} ` +
+        `This is not the ${HEALTHY_SINGLE_POV_SURFACE_LABEL}. ${CLAUDE_SKILLS_PRESERVATION_NOTE} ` +
         (activeLegacyAids.length > 0
-          ? `Ownership is not established until the effective visible workflow-skill surface resolves to pi-oven-only. ${activeLegacyAidsSentence.slice(1)}`
-          : `${LEGACY_COMPATIBILITY_AIDS_LIMITATION} Ownership succeeds only when the effective visible workflow-skill surface resolves to pi-oven-only.`),
+          ? `Ownership is not established until the effective visible workflow-skill surface resolves to pov-only. ${activeLegacyAidsSentence.slice(1)}`
+          : `${LEGACY_COMPATIBILITY_AIDS_LIMITATION} Ownership succeeds only when the effective visible workflow-skill surface resolves to pov-only.`),
       fix: WORKFLOW_SKILL_OWNERSHIP_FIX,
     };
   }
@@ -259,11 +303,59 @@ function buildWorkflowSkillOwnershipSignal(
     detail:
       `classification: ${activeLegacyAids.length > 0 ? "compatibility aids only" : "ownership not established"}. ` +
       `no effective skills.includeSkills workflow-skill policy was found in ${facts.projectSettingsFile} or ${GLOBAL_CONFIG_PATH}. ` +
-      `${CLAUDE_SKILLS_PRESERVATION_NOTE} ` +
+      `This is not the ${HEALTHY_SINGLE_POV_SURFACE_LABEL}. ${CLAUDE_SKILLS_PRESERVATION_NOTE} ` +
       (activeLegacyAids.length > 0
-        ? `Ownership is not established until the effective visible workflow-skill surface resolves to pi-oven-only via skills.includeSkills = ${canonicalList}. ${activeLegacyAidsSentence.slice(1)}`
-        : `${LEGACY_COMPATIBILITY_AIDS_LIMITATION} Ownership succeeds only when the effective visible workflow-skill surface resolves to pi-oven-only via skills.includeSkills = ${canonicalList}.`),
+        ? `Ownership is not established until the effective visible workflow-skill surface resolves to pov-only via skills.includeSkills = ${canonicalList}. ${activeLegacyAidsSentence.slice(1)}`
+        : `${LEGACY_COMPATIBILITY_AIDS_LIMITATION} Ownership succeeds only when the effective visible workflow-skill surface resolves to pov-only via skills.includeSkills = ${canonicalList}.`),
     fix: WORKFLOW_SKILL_OWNERSHIP_FIX,
+  };
+}
+
+export function buildKeywordSkillIntegritySignal(opts: {
+  pluginAssetPath: string;
+  keywordIndexTruth:
+    | {
+        state: KeywordIndexTruthState;
+        loadedCount: number;
+        shippedSkillCount: number;
+        issues: string[];
+        error?: string;
+      }
+    | undefined;
+}): StandaloneTruthSignal | null {
+  const keywordIndexTruth = opts.keywordIndexTruth;
+  if (!keywordIndexTruth || keywordIndexTruth.state === "ok") {
+    return null;
+  }
+  if (keywordIndexTruth.state === "partial") {
+    return {
+      level: "WARN",
+      name: "keyword-skill integrity",
+      detail:
+        `runtime keyword index loaded ${keywordIndexTruth.loadedCount}/${keywordIndexTruth.shippedSkillCount} shipped skills from ${opts.pluginAssetPath}, ` +
+        `but skipped ${keywordIndexTruth.issues.length}: ${keywordIndexTruth.issues.join("; ")}. ` +
+        "Runtime keyword-matched skills are partially available.",
+      fix: KEYWORD_SKILL_INTEGRITY_FIX,
+    };
+  }
+  if (keywordIndexTruth.state === "unavailable") {
+    return {
+      level: "WARN",
+      name: "keyword-skill integrity",
+      detail:
+        `runtime keyword index could not load any shipped skills from ${opts.pluginAssetPath}; ` +
+        `skipped ${keywordIndexTruth.issues.length}: ${keywordIndexTruth.issues.join("; ")}. ` +
+        "Runtime keyword-matched skills are unavailable.",
+      fix: KEYWORD_SKILL_INTEGRITY_FIX,
+    };
+  }
+  return {
+    level: "WARN",
+    name: "keyword-skill integrity",
+    detail:
+      `runtime keyword index could not be probed from ${opts.pluginAssetPath}` +
+      (keywordIndexTruth.error ? ` (${keywordIndexTruth.error})` : "."),
+    fix: KEYWORD_SKILL_INTEGRITY_FIX,
   };
 }
 
@@ -309,37 +401,32 @@ export function buildStandaloneTruthSignals(
           : "pi-oven cannot enforce this ceiling until the vendored native runtime path is restored."),
     },
   ];
+  const duplicatePluginSurface = facts.duplicatePluginSurface;
+  if (duplicatePluginSurface) {
+    const cacheDriftDetail =
+      duplicatePluginSurface.cacheIssues.length > 0
+        ? ` Stale cache diagnostics from ${duplicatePluginSurface.cachePluginRoot}: ${duplicatePluginSurface.cacheIssues.join("; ")}.`
+        : duplicatePluginSurface.cacheShippedSkillCount === 0
+          ? ` ${duplicatePluginSurface.cachePluginRoot} did not expose any shipped skills.`
+          : ` ${duplicatePluginSurface.cachePluginRoot} also exposes ${duplicatePluginSurface.cacheLoadedCount}/${duplicatePluginSurface.cacheShippedSkillCount} shipped skills, so duplicate install surfaces remain visible.`;
+    signals.push({
+      level: "WARN",
+      name: DUAL_PLUGIN_SURFACE_LABEL,
+      detail:
+        `dual plugin surface detected: active plugin root is ${duplicatePluginSurface.activePluginRoot}; latest marketplace cache is ${duplicatePluginSurface.cachePluginRoot}. ` +
+        `Public \`pov:*\` skill names and exact \`SKILL.md\` proof targets are resolved from ${duplicatePluginSurface.activePluginRoot} only.` +
+        cacheDriftDetail +
+        " Bare or duplicate skill discovery outside that active root is stale install state, not runtime truth.",
+      fix: PLUGIN_SURFACE_DRIFT_FIX,
+    });
+  }
 
-  const keywordIndexTruth = facts.keywordIndexTruth;
-  if (keywordIndexTruth?.state === "partial") {
-    signals.push({
-      level: "WARN",
-      name: "keyword-skill integrity",
-      detail:
-        `runtime keyword index loaded ${keywordIndexTruth.loadedCount}/${keywordIndexTruth.shippedSkillCount} shipped skills from ${facts.pluginAssetPath}, ` +
-        `but skipped ${keywordIndexTruth.issues.length}: ${keywordIndexTruth.issues.join("; ")}. ` +
-        "Runtime keyword-matched skills are partially available.",
-      fix: KEYWORD_SKILL_INTEGRITY_FIX,
-    });
-  } else if (keywordIndexTruth?.state === "unavailable") {
-    signals.push({
-      level: "WARN",
-      name: "keyword-skill integrity",
-      detail:
-        `runtime keyword index could not load any shipped skills from ${facts.pluginAssetPath}; ` +
-        `skipped ${keywordIndexTruth.issues.length}: ${keywordIndexTruth.issues.join("; ")}. ` +
-        "Runtime keyword-matched skills are unavailable.",
-      fix: KEYWORD_SKILL_INTEGRITY_FIX,
-    });
-  } else if (keywordIndexTruth?.state === "unknown") {
-    signals.push({
-      level: "WARN",
-      name: "keyword-skill integrity",
-      detail:
-        `runtime keyword index could not be probed from ${facts.pluginAssetPath}` +
-        (keywordIndexTruth.error ? ` (${keywordIndexTruth.error})` : "."),
-      fix: KEYWORD_SKILL_INTEGRITY_FIX,
-    });
+  const keywordIntegritySignal = buildKeywordSkillIntegritySignal({
+    pluginAssetPath: facts.pluginAssetPath,
+    keywordIndexTruth: facts.keywordIndexTruth,
+  });
+  if (keywordIntegritySignal) {
+    signals.push(keywordIntegritySignal);
   }
 
   if (facts.projectRoutingState === "unknown") {
@@ -422,55 +509,107 @@ export async function collectStandaloneTruthSignals(
   const globalIgnoredSkillsState = await readIgnoredSkillsDisplayState(opts);
   const globalDisabledProvidersState = await readDisabledProvidersDisplayState(opts);
   const projectIncludedSkillsState = readProjectIncludedSkillsState(projectSettings);
+  const pluginAssetPath =
+    opts.pluginAssetPath === PLUGIN_ROOT_UNAVAILABLE
+      ? PLUGIN_ROOT_UNAVAILABLE
+      : path.resolve(opts.pluginAssetPath);
 
   const nativeWorkerRuntime = await resolveNativeWorkerRuntimeStatus({
-    pluginRoot: opts.pluginAssetPath,
+    pluginRoot: pluginAssetPath === PLUGIN_ROOT_UNAVAILABLE ? opts.projectRoot : pluginAssetPath,
     projectRoot: opts.projectRoot,
     homeDir: opts.homeDir,
   });
 
   let keywordIndexTruth: StandaloneTruthFacts["keywordIndexTruth"];
-  const pluginManifestPath = path.join(opts.pluginAssetPath, ".claude-plugin", "plugin.json");
-  if (existsSync(pluginManifestPath)) {
-    try {
-      const report = loadSkillKeywordIndexReport(opts.pluginAssetPath);
-      if (report.issues.length > 0) {
+  if (pluginAssetPath === PLUGIN_ROOT_UNAVAILABLE) {
+    keywordIndexTruth = {
+      state: "unknown",
+      loadedCount: 0,
+      shippedSkillCount: 0,
+      issues: [],
+      error: "plugin root unavailable",
+    };
+  } else {
+    const pluginManifestPath = path.join(pluginAssetPath, ".claude-plugin", "plugin.json");
+    if (existsSync(pluginManifestPath)) {
+      try {
+        const report = loadSkillKeywordIndexReport(pluginAssetPath);
+        if (report.issues.length > 0) {
+          keywordIndexTruth = {
+            state: report.index.length === 0 ? "unavailable" : "partial",
+            loadedCount: report.index.length,
+            shippedSkillCount: report.shippedSkillCount,
+            issues: formatSkillKeywordIndexIssues(report.issues, report.issues.length)
+              .split("; ")
+              .filter((entry) => entry.length > 0),
+          };
+        } else if (report.index.length === 0 || report.shippedSkillCount === 0) {
+          keywordIndexTruth = {
+            state: "unavailable",
+            loadedCount: report.index.length,
+            shippedSkillCount: report.shippedSkillCount,
+            issues: ["plugin.json skills[] did not yield any shipped skills"],
+          };
+        } else {
+          keywordIndexTruth = {
+            state: "ok",
+            loadedCount: report.index.length,
+            shippedSkillCount: report.shippedSkillCount,
+            issues: [],
+          };
+        }
+      } catch (err) {
         keywordIndexTruth = {
-          state: report.index.length === 0 ? "unavailable" : "partial",
-          loadedCount: report.index.length,
-          shippedSkillCount: report.shippedSkillCount,
-          issues: formatSkillKeywordIndexIssues(report.issues, report.issues.length)
-            .split("; ")
-            .filter((entry) => entry.length > 0),
-        };
-      } else if (report.index.length === 0 || report.shippedSkillCount === 0) {
-        keywordIndexTruth = {
-          state: "unavailable",
-          loadedCount: report.index.length,
-          shippedSkillCount: report.shippedSkillCount,
-          issues: ["plugin.json skills[] did not yield any shipped skills"],
-        };
-      } else {
-        keywordIndexTruth = {
-          state: "ok",
-          loadedCount: report.index.length,
-          shippedSkillCount: report.shippedSkillCount,
+          state: "unknown",
+          loadedCount: 0,
+          shippedSkillCount: 0,
           issues: [],
+          error: err instanceof Error ? err.message : String(err),
         };
       }
-    } catch (err) {
+    } else {
       keywordIndexTruth = {
         state: "unknown",
         loadedCount: 0,
         shippedSkillCount: 0,
         issues: [],
-        error: err instanceof Error ? err.message : String(err),
+        error: `missing ${pluginManifestPath}`,
       };
     }
   }
 
+  const duplicatePluginSurface =
+    pluginAssetPath === PLUGIN_ROOT_UNAVAILABLE
+      ? null
+      : await detectDuplicatePluginSurface(
+          pluginAssetPath,
+          opts.homeDir ? path.join(opts.homeDir, ".omp", "plugins", "cache", "plugins") : undefined
+        );
+  let duplicatePluginSurfaceFacts: StandaloneTruthFacts["duplicatePluginSurface"];
+  if (duplicatePluginSurface) {
+    try {
+      const cacheReport = loadSkillKeywordIndexReport(duplicatePluginSurface.cachePluginRoot);
+      duplicatePluginSurfaceFacts = {
+        activePluginRoot: duplicatePluginSurface.activePluginRoot,
+        cachePluginRoot: duplicatePluginSurface.cachePluginRoot,
+        cacheIssues: formatSkillKeywordIndexIssues(cacheReport.issues, cacheReport.issues.length)
+          .split("; ")
+          .filter((entry) => entry.length > 0),
+        cacheLoadedCount: cacheReport.index.length,
+        cacheShippedSkillCount: cacheReport.shippedSkillCount,
+      };
+    } catch (err) {
+      duplicatePluginSurfaceFacts = {
+        activePluginRoot: duplicatePluginSurface.activePluginRoot,
+        cachePluginRoot: duplicatePluginSurface.cachePluginRoot,
+        cacheIssues: [err instanceof Error ? err.message : String(err)],
+        cacheLoadedCount: 0,
+        cacheShippedSkillCount: 0,
+      };
+    }
+  }
   return buildStandaloneTruthSignals({
-    pluginAssetPath: opts.pluginAssetPath,
+    pluginAssetPath,
     projectRoot: opts.projectRoot,
     projectSettingsFile: projectSettings.file,
     projectRoutingRoleCount:
@@ -489,6 +628,7 @@ export async function collectStandaloneTruthSignals(
     globalDisabledProvidersState,
     projectIncludedSkillsState,
     keywordIndexTruth,
+    duplicatePluginSurface: duplicatePluginSurfaceFacts,
     nativeWorkerRuntime,
   });
 }

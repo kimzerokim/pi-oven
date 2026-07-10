@@ -24,11 +24,18 @@ import * as path from "node:path";
 import { loadSkillKeywordIndexReport } from "../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
 import { detectAuth, type AuthStatus } from "./pi-oven-setup/auth-detect";
 import { compareSemver } from "./pi-oven-setup/cache-resolver";
+import {
+  getAgentRoleFromFileName,
+  isCanonicalAgentMarkdownFile,
+  isLegacyAgentMarkdownFile,
+} from "./pi-oven-setup/agent-rewriter";
 import { EXPECTED_AGENT_COUNT } from "./pi-oven-setup/profiles";
 import { SHIPPED_SKILL_PATHS } from "./pi-oven-setup/shipped-skill-registry";
 import {
+  AGENT_NAMESPACE_DRIFT_LABEL,
   collectStandaloneTruthSignals,
   formatStandaloneTruthSignals,
+  HEALTHY_SINGLE_POV_SURFACE_LABEL,
   type StandaloneTruthSignal,
 } from "./pi-oven-setup/standalone-truth-surface";
 // ---------------------------------------------------------------------------
@@ -73,6 +80,8 @@ export interface AgentsFact {
   agentCount: number;
   expectedCount: number;
   lintClean: boolean;
+  legacyAgentCount: number;
+  namespaceDrift: string[];
 }
 
 export interface StateDirFact {
@@ -261,29 +270,50 @@ export function evalSkills(fact: SkillsFact): CheckResult {
   };
 }
 
-/** (7) agents: count must equal expected AND lint:agents must be clean. */
+/** (7) agents: canonical `agents/pov-*.md` + `name: pov:<role>` healthy surface, plus lint clean. */
 export function evalAgents(fact: AgentsFact): CheckResult {
   const name = "agents";
+  if (fact.legacyAgentCount > 0 || fact.namespaceDrift.length > 0) {
+    return {
+      name,
+      status: "FAIL",
+      detail:
+        `${AGENT_NAMESPACE_DRIFT_LABEL}: ` +
+        [
+          fact.legacyAgentCount > 0
+            ? `${fact.legacyAgentCount} legacy filename(s) still use agents/pi-oven-*.md`
+            : null,
+          ...fact.namespaceDrift,
+        ]
+          .filter((entry): entry is string => entry !== null)
+          .join("; ") +
+        `. Doctor expects the ${HEALTHY_SINGLE_POV_SURFACE_LABEL}: agents/pov-*.md with frontmatter \`name: pov:<role>\`.`,
+      fix:
+        "Rename stale agent files to agents/pov-*.md, restore frontmatter name: pov:<role>, or reinstall pi-oven@kzk if this install is stale.",
+    };
+  }
   if (fact.agentCount !== fact.expectedCount) {
     return {
       name,
       status: "FAIL",
-      detail: `agents/pi-oven-*.md count (${fact.agentCount}) != expected (${fact.expectedCount}).`,
-      fix: "Restore the missing agent files or align profiles.ts ROLES with agents/.",
+      detail:
+        `${HEALTHY_SINGLE_POV_SURFACE_LABEL} expects ${fact.expectedCount} canonical agents at agents/pov-*.md with frontmatter name: pov:<role>, found ${fact.agentCount}.`,
+      fix: "Restore the missing canonical agent files or align profiles.ts ROLES with agents/.",
     };
   }
   if (!fact.lintClean) {
     return {
       name,
       status: "FAIL",
-      detail: `${fact.agentCount} agents present but lint:agents reported drift (model/thinkingLevel/colon-name).`,
+      detail:
+        `${fact.agentCount} canonical pov agents are present on the ${HEALTHY_SINGLE_POV_SURFACE_LABEL}, but lint:agents reported drift (model/thinkingLevel/name).`,
       fix: "Run `bun run lint:agents` to see violations; regenerate frontmatter via maintainer --apply.",
     };
   }
   return {
     name,
     status: "PASS",
-    detail: `${fact.agentCount} agents present, lint:agents clean.`,
+    detail: `${fact.agentCount} canonical pov agents present on the ${HEALTHY_SINGLE_POV_SURFACE_LABEL}, lint:agents clean.`,
   };
 }
 
@@ -388,7 +418,7 @@ export function evalMemory(fact: MemoryFact): CheckResult {
     name,
     status: "WARN",
     detail: `Native memory/async/LSP not fully configured: ${issues.join("; ")}.`,
-    fix: "Run /pi-oven:setup to enable the mnemopi backend + async + task.enableLsp (retain/recall/reflect + irc + subagent LSP).",
+    fix: "Run /pi-oven:setup --repair-prereqs to restore the mnemopi backend + async + task.enableLsp without rewriting model routing.",
   };
 }
 
@@ -505,10 +535,43 @@ async function readPluginSkills(root: string): Promise<string[]> {
 }
 
 
-async function countAgents(root: string): Promise<number> {
+async function probeAgents(root: string): Promise<AgentsFact> {
   const agentsDir = path.join(root, "agents");
   const files = await fs.readdir(agentsDir).catch(() => [] as string[]);
-  return files.filter((f) => f.startsWith("pi-oven-") && f.endsWith(".md")).length;
+  const namespaceDrift: string[] = [];
+  let agentCount = 0;
+  let legacyAgentCount = 0;
+
+  for (const file of files) {
+    if (isCanonicalAgentMarkdownFile(file)) {
+      agentCount += 1;
+      const role = getAgentRoleFromFileName(file);
+      if (role === null) {
+        namespaceDrift.push(`${file} does not map to a known runtime role`);
+        continue;
+      }
+      const raw = await fs.readFile(path.join(agentsDir, file), "utf8").catch(() => "");
+      const name = raw.match(/^name:\s*(.+)$/m)?.[1]?.trim();
+      const expectedName = `pov:${role}`;
+      if (name !== expectedName) {
+        namespaceDrift.push(
+          `${file} frontmatter name ${JSON.stringify(name ?? "(missing)")} expected ${JSON.stringify(expectedName)}`
+        );
+      }
+      continue;
+    }
+    if (isLegacyAgentMarkdownFile(file)) {
+      legacyAgentCount += 1;
+    }
+  }
+
+  return {
+    agentCount,
+    expectedCount: EXPECTED_AGENT_COUNT,
+    lintClean: probeLintAgents(root),
+    legacyAgentCount,
+    namespaceDrift,
+  };
 }
 
 function probeLintAgents(root: string): boolean {
@@ -666,12 +729,12 @@ export async function gather(
   pluginRoot: string,
   projectRoot: string = pluginRoot
 ): Promise<DoctorFacts> {
-  const [mcp, skillMdCount, pluginSkills, agentCount, stateDir, evalRunner, opsConnector, auth] =
+  const [mcp, skillMdCount, pluginSkills, agents, stateDir, evalRunner, opsConnector, auth] =
     await Promise.all([
       probeMcp(projectRoot),
       countSkillMd(pluginRoot),
       readPluginSkills(pluginRoot),
-      countAgents(pluginRoot),
+      probeAgents(pluginRoot),
       probeStateDir(projectRoot),
       probeEvalRunner(pluginRoot),
       probeOpsConnector(pluginRoot, projectRoot),
@@ -713,11 +776,7 @@ export async function gather(
       keywordIndexIssueCount: keywordIndexIssues.length,
       keywordIndexIssues,
     },
-    agents: {
-      agentCount,
-      expectedCount: EXPECTED_AGENT_COUNT,
-      lintClean: probeLintAgents(pluginRoot),
-    },
+    agents,
     stateDir,
     evalRunner,
     opsConnector,

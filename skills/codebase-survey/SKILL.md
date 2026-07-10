@@ -1,5 +1,5 @@
 ---
-name: codebase-survey
+name: pov:codebase-survey
 version: 0.1.0
 description: "Read this skill before planning or fixing when the task needs a broad repo survey, caller inventory, module inventory, or 5+ file reads. Runs a mandatory 8-step deep codebase survey via an explore subagent before any planning or fix flow."
 ---
@@ -76,7 +76,7 @@ Example: `docs/harness/surveys/2026-05-27-auth-session-survey.md`
 
 ---
 
-Per-step detail: skill://pi-oven:codebase-survey/references/8-step-checklist.md
+Per-step detail: skill://pov:codebase-survey/references/8-step-checklist.md
 
 ## Agent Dispatch (omp)
 

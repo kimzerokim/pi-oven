@@ -1,5 +1,5 @@
 ---
-name: improve-codebase-architecture
+name: pov:improve-codebase-architecture
 version: 0.1.0
 description: "Read this skill for architecture improvement, deepening modules, consolidating seams, and surfacing refactoring opportunities around shallow modules or deletion tests. It identifies deepening opportunities that turn shallow modules into deep ones for testability and AI-navigability."
 ---

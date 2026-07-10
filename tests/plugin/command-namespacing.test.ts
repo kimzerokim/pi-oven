@@ -50,18 +50,28 @@ describe("command file namespacing", () => {
     expect(doctorText).not.toContain("The `provider auth` check WARNs");
     expect(doctorText).toContain("/pi-oven:setup --repair-prereqs");
     expect(doctorText).toContain("runtime still owns the current-session provider-family choice");
+    expect(doctorText).toContain("visible runtime agent+skill namespace is `pov:*`");
 
     expect(setupText).toContain("--repair-prereqs");
     expect(setupText).toContain("This path is **global-only**");
     expect(setupText).toContain("affordances: { other: false, askAboutChoices: true }");
+    expect(setupText).toContain("runtime agents and skills are `pov:*`");
+    expect(setupText).toContain("`pi-oven@kzk`");
     expect(setupText).not.toContain("It takes no other arguments");
+    expect(setupText).not.toContain("pi-oven:<role>");
 
     expect(readmeText).toContain("/pi-oven:doctor");
     expect(readmeText).toContain("/pi-oven:release --bump patch --dry-run --update-changelog --sync-label");
     expect(readmeText).toContain("approvalFlow");
     expect(readmeText).toContain("Ask about these choices");
+    expect(readmeText).toContain("Use pov:explorer");
+    expect(readmeText).toContain("pov:verifier");
+    expect(readmeText).toContain('Unknown agent "pov:executor"');
+    expect(readmeText).not.toContain('Unknown agent "pi-oven:executor"');
 
     expect(claudeText).toContain("approvalFlow");
     expect(claudeText).toContain("askAboutChoices");
+    expect(claudeText).toContain("Runtime dispatch names MUST be `pov:<role>`");
+    expect(claudeText).not.toContain("Agent name frontmatter MUST be `pi-oven:<role>`");
   });
 });

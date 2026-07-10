@@ -11,7 +11,7 @@
   - `local://ultragoal-autonomy-survey.md`
 
 ## Goals
-1. OMP-native `skills.includeSkills = ["pi-oven:*"]`를 default-on ownership mainline으로 승격해, **loaded workflow skill surface 자체**를 즉시 pi-oven-only surface로 cutover한다.
+1. OMP-native `skills.includeSkills = ["pov:*"]`를 default-on ownership mainline으로 승격해, **loaded workflow skill surface 자체**를 즉시 `pov:*` visible surface로 cutover한다.
 2. `--isolate`, `--suppress-sibling-skills`, empty `~/.claude/skills` 같은 legacy visibility controls를 ownership mainline과 분리하고, truthfully-classified compatibility aids로 재정의한다.
 3. setup truth를 routing state 단일 진실원으로 재정의해, 실제 routing/prereq가 살아 있을 때 보이던 false `✗`를 제거한다.
 4. setup warning hardening을 같은 control-plane 설계에 포함해, 동일 repo/session start 기준으로 ownership/setup notice가 한 번만 보이게 한다.
@@ -29,7 +29,7 @@
 ## Constraints
 - Phase ordering은 고정이다: **owned skill-surface cutover -> ownership truth & compatibility rewrite -> setup truth -> autonomy -> hardening/UI**.
 - rollout은 `/pi-oven:setup` 경로에서 **default-on**이다. opt-in compatibility mode를 새로운 정상 경로로 만들지 않는다.
-- strict ownership의 canonical control은 effective `skills.includeSkills = ["pi-oven:*"]`다. 성공 기준도 “설정이 써졌다”가 아니라 **보이는 workflow skill surface가 pi-oven-only인지**다.
+- strict ownership의 canonical control은 effective `skills.includeSkills = ["pov:*"]`다. 성공 기준도 “설정이 써졌다”가 아니라 **보이는 workflow skill surface가 `pov:*` only인지**다.
 - empty `~/.claude/skills` directory 또는 `claude` provider만 비활성화한 상태는 workflow-skill ownership proof가 아니다. 실제 요구사항은 `~/.claude/skills`가 채워져 있어도 ownership mainline이 그 populated Claude workflow-skill source를 non-owning input으로 무시/필터링하는 것이다.
 - `--isolate`와 `--suppress-sibling-skills`는 남을 수 있지만 secondary compatibility aids일 뿐 canonical ownership enforcement가 아니다.
 - bootstrap-level gajae parity는 분명한 secondary track이지만, immediate owned-skill surface cutover의 blocker가 되어서는 안 된다.
@@ -41,8 +41,8 @@
 
 ### 1. OMP는 이미 immediate owned skill-surface cutover에 필요한 stronger mainline을 제공한다
 - replan memo는 current OMP skill loader가 `skills.includeSkills` name filtering을 지원하고, `claude-plugins` skill names가 `<plugin>:<skill>` 형태로 namespaced 된다고 정리한다 (`local://gajae-style-replan.md:19-22`).
-- 같은 memo의 local runtime probe는 `includeSkills: ["pi-oven:*"]` 적용 시 visible skill set이 47개에서 23개로 줄고, 남은 모든 skill이 `pi-oven:*`였다고 확인한다. 또한 `claude`를 꺼도 surface가 바뀌지 않아 ownership win이 `~/.claude` hiding이 아니라 skill filter 자체에서 왔다고 밝힌다 (`local://gajae-style-replan.md:20-22`).
-- replan 결론은 “현재 OMP skill-surface controls로 **loaded skill surface를 pi-oven-only로 만들 수 있으므로**, mainline은 그것을 먼저 ship해야 한다”고 재정의한다 (`local://gajae-style-replan.md:39-44`, `:58-72`, `:100-107`).
+- 같은 memo의 local runtime probe는 `includeSkills: ["pov:*"]` 적용 시 visible skill set이 47개에서 23개로 줄고, 남은 모든 skill이 `pov:*`였다고 확인한다. 또한 `claude`를 꺼도 surface가 바뀌지 않아 ownership win이 `~/.claude` hiding이 아니라 skill filter 자체에서 왔다고 밝힌다 (`local://gajae-style-replan.md:20-22`).
+- replan 결론은 “현재 OMP skill-surface controls로 **loaded skill surface를 `pov:*` only로 만들 수 있으므로**, mainline은 그것을 먼저 ship해야 한다”고 재정의한다 (`local://gajae-style-replan.md:39-44`, `:58-72`, `:100-107`).
 
 ### 2. empty `~/.claude/skills` 는 충분하지 않다
 - ownership survey는 current `--isolate`가 `claude` provider만 끄고 `claude-plugins`는 의도적으로 남긴다고 확인한다. 즉 Claude home layer를 비워도 marketplace-plugin lane은 그대로 남는다 (`docs/harness/surveys/2026-07-07-skill-ownership-survey.md:131-136`).
@@ -75,7 +75,7 @@
 
 ## Approved topology
 - 이번 작업은 분리된 mini-fix 여러 개가 아니라 **integrated control-plane redesign 하나**로 다룬다.
-- primary track의 첫 질문은 “current OMP surface에서 **loaded workflow skill surface**를 pi-oven-only로 만들 수 있는가?”다. 현재 evidence의 답은 **yes, via `skills.includeSkills = ["pi-oven:*"]`**다.
+- primary track의 첫 질문은 “current OMP surface에서 **loaded workflow skill surface**를 `pov:*` only로 만들 수 있는가?”다. 현재 evidence의 답은 **yes, via `skills.includeSkills = ["pov:*"]`**다.
 - ownership exclusivity의 mainline은 provider-hook-first speculation이 아니라 **owned skill-surface cutover now**다. `--isolate`, `--suppress-sibling-skills`, empty `~/.claude/skills`는 그 mainline을 보조하는 compatibility aids일 뿐이다.
 - ownership truth rewrite는 반드시 empty `~/.claude/skills` insufficiency와 `claude-plugins` / namespaced marketplace skill caveat를 노출해야 한다.
 - setup UX의 첫 acceptance는 “실제 routing이 살아 있는데 false `✗`가 보이지 않는다”이다.
@@ -91,7 +91,7 @@
 | --- | --- | --- |
 | `.claude-plugin/plugin.json` | shipped workflow skill set | plugin이 소유한 workflow skill 목록의 canonical manifest |
 | `scripts/pi-oven-setup/shipped-skill-registry.ts` | owned-skill mirror | setup/doctor/runtime이 같은 shipped skill allowlist를 재사용하는 registry mirror |
-| effective OMP skill settings (`skills.includeSkills`) | immediate ownership truth | loaded workflow skill surface를 pi-oven-only로 자르는 canonical mainline control |
+| effective OMP skill settings (`skills.includeSkills`) | immediate ownership truth | loaded workflow skill surface를 `pov:*` only로 자르는 canonical mainline control |
 | `skills.ignoredSkills` / legacy provider disablement | compatibility aids only | 노이즈 감소 및 일부 legacy visibility 차단. ownership proof가 아니다 |
 | `.omp/extensions/pi-oven-runtime/skill-keyword-loader.ts` | exact owned read-target proof | manifest -> owned read target -> matched skill contract를 runtime proof surface로 변환 |
 | global omp routing config | global setup truth | machine-global routing/prereq readiness를 표현하는 단일 진실원 |
@@ -113,8 +113,8 @@
 
 ### 1. Owned skill-surface layer
 1. shipped workflow skill allowlist는 기존 manifest + shipped registry + exact owned read target proof를 계속 canonical source로 사용한다.
-2. immediate canonical control은 effective `skills.includeSkills = ["pi-oven:*"]`다. runtime, setup status, doctor는 이 policy가 실제 workflow skill surface를 pi-oven-only로 만드는지를 ownership truth의 1순위로 사용한다.
-3. 성공 기준은 “Claude home tree가 조용하다”가 아니라 **보이는 workflow skill surface가 `pi-oven:*`만 남는가**다.
+2. immediate canonical control은 effective `skills.includeSkills = ["pov:*"]`다. runtime, setup status, doctor는 이 policy가 실제 workflow skill surface를 `pov:*` only로 만드는지를 ownership truth의 1순위로 사용한다.
+3. 성공 기준은 “Claude home tree가 조용하다”가 아니라 **보이는 workflow skill surface가 `pov:*`만 남는가**다.
 4. filter가 unavailable 하거나 foreign workflow skills가 여전히 보이면 runtime은 strict ownership claim을 하지 않고 fail-close / degraded ownership-not-established path를 택한다.
 5. `--isolate`, `--suppress-sibling-skills`, empty `~/.claude/skills`는 compatibility aids로 남을 수는 있지만 canonical enforcement path가 되어서는 안 된다.
 
@@ -147,8 +147,8 @@
 ## Phase ordering
 
 ### Phase 1 — Owned skill-surface cutover
-- `skills.includeSkills = ["pi-oven:*"]`를 canonical ownership control로 승격한다.
-- workflow skills only 범위에서 visible skill surface가 pi-oven-only인지 검증한다.
+- `skills.includeSkills = ["pov:*"]`를 canonical ownership control로 승격한다.
+- workflow skills only 범위에서 visible skill surface가 `pov:*` only인지 검증한다.
 - immediate mainline이 skill filter라는 사실을 setup/runtime/docs에 맞춘다.
 
 ### Phase 2 — Ownership truth and compatibility rewrite
@@ -179,12 +179,12 @@
 
 ## External OMP / architecture dependency
 이 spec의 mainline은 더 이상 “provider hook first, 없으면 degraded fallback”이 아니다. evidence가 보여준 stronger truth는 다음과 같다.
-- current OMP surface만으로도 `skills.includeSkills = ["pi-oven:*"]`를 통해 **owned workflow skill surface cutover now**가 가능하다 (`local://gajae-style-replan.md:39-44`, `:60-72`).
+- current OMP surface만으로도 `skills.includeSkills = ["pov:*"]`를 통해 **owned workflow skill surface cutover now**가 가능하다 (`local://gajae-style-replan.md:39-44`, `:60-72`).
 - literal bootstrap parity는 여전히 OMP/provider architecture dependency다 (`local://gajae-style-feasibility.md:68-89`).
 - 따라서 immediate delivery는 owned skill-surface cutover를 먼저 ship하고, bootstrap-level parity는 explicit secondary track으로 추적한다.
 
 ## Acceptance criteria
-1. workflow-skill ownership의 default-on mainline은 effective `skills.includeSkills = ["pi-oven:*"]`이며, ownership success는 visible workflow skill surface가 pi-oven-only인지로 판정된다.
+1. workflow-skill ownership의 default-on mainline은 effective `skills.includeSkills = ["pov:*"]`이며, ownership success는 visible workflow skill surface가 `pov:*` only인지로 판정된다.
 2. empty `~/.claude/skills` insufficiency와 `claude-plugins` / namespaced marketplace skill caveat가 문서/상태표시/테스트 계약에 명시된다.
 3. `--isolate`와 `--suppress-sibling-skills`는 compatibility aids로만 문서화되며, strict ownership의 canonical path로 주장되지 않는다.
 4. bootstrap-level gajae parity가 immediate mainline과 분리된 secondary OMP/architecture track으로 명시된다.
@@ -197,7 +197,7 @@
 
 ## Open questions
 1. **OPEN-1 — loaded skill-surface observation contract**  
-   `skills.includeSkills = ["pi-oven:*"]` 적용 이후 실제 loaded/visible workflow skill surface를 runtime과 doctor가 어떤 API 또는 probe로 authoritative 하게 관찰할지 implementation에서 확정해야 한다.
+   `skills.includeSkills = ["pov:*"]` 적용 이후 실제 loaded/visible workflow skill surface를 runtime과 doctor가 어떤 API 또는 probe로 authoritative 하게 관찰할지 implementation에서 확정해야 한다.
 2. **OPEN-2 — bootstrap parity shape**  
    secondary OMP/architecture track의 정답이 provider bootstrap allowlist인지, native-mirror architecture인지, bundled/native skill registration API인지 아직 확정되지 않았다.
 3. **OPEN-3 — duplicate emission attribution signal**  

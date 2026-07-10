@@ -5,7 +5,7 @@ import {
   readAgentModelOverrides,
   setAgentModelOverride,
   setAgentModelOverrides,
-  deletePiOvenAgentModelOverrides,
+  deleteGlobalAgentModelOverrides,
   mergeDisabledProviders,
   readDisabledProvidersStrict,
   setPiOvenDisabledProviders,
@@ -126,24 +126,24 @@ describe("PI_OVEN provider constants", () => {
 // ---------------------------------------------------------------------------
 
 describe("mergeOverrideRecord", () => {
-  it("set adds key, preserves siblings", () => {
+  it("set adds canonical global key, preserves siblings", () => {
     const result = mergeOverrideRecord(
-      { "claude-code:foo": "m", "pi-oven:executor": "e" },
-      { op: "set", colonKey: "pi-oven:critic", model: "X" }
+      { "claude-code:foo": "m", "pov:executor": "e" },
+      { op: "set", colonKey: "pov:critic", model: "X" }
     );
     expect(result).toEqual({
       "claude-code:foo": "m",
-      "pi-oven:executor": "e",
-      "pi-oven:critic": "X",
+      "pov:executor": "e",
+      "pov:critic": "X",
     });
   });
 
-  it("set overwrites existing same key", () => {
+  it("set overwrites existing canonical global key", () => {
     const result = mergeOverrideRecord(
-      { "pi-oven:critic": "old" },
-      { op: "set", colonKey: "pi-oven:critic", model: "new" }
+      { "pov:critic": "old" },
+      { op: "set", colonKey: "pov:critic", model: "new" }
     );
-    expect(result["pi-oven:critic"]).toBe("new");
+    expect(result["pov:critic"]).toBe("new");
   });
 
   it("delete-pi-oven removes only pi-oven:* keys, preserves non-pi-oven siblings", () => {
@@ -159,12 +159,12 @@ describe("mergeOverrideRecord", () => {
     expect(result).toEqual({});
   });
 
-  it("set on empty record returns single-key object", () => {
+  it("set on empty record returns single canonical global key", () => {
     const result = mergeOverrideRecord(
       {},
-      { op: "set", colonKey: "pi-oven:critic", model: "anthropic/claude-opus-4-8" }
+      { op: "set", colonKey: "pov:critic", model: "anthropic/claude-opus-4-8" }
     );
-    expect(result).toEqual({ "pi-oven:critic": "anthropic/claude-opus-4-8" });
+    expect(result).toEqual({ "pov:critic": "anthropic/claude-opus-4-8" });
   });
 });
 
@@ -174,11 +174,11 @@ describe("mergeOverrideRecord", () => {
 
 describe("readOverridesStrict", () => {
   it("ok:true on expected shape with record", async () => {
-    const { fn } = makeSpawnFn([okGetResult({ "pi-oven:critic": "X" })]);
+    const { fn } = makeSpawnFn([okGetResult({ "pov:critic": "X" })]);
     const result = await readOverridesStrict({ spawnFn: fn });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.record).toEqual({ "pi-oven:critic": "X" });
+      expect(result.record).toEqual({ "pov:critic": "X" });
     }
   });
 
@@ -273,12 +273,12 @@ describe("readOverridesStrict", () => {
 // ---------------------------------------------------------------------------
 
 describe("setAgentModelOverride", () => {
-  it("calls get then set with merged whole-json", async () => {
+  it("calls get then set with merged whole-json using canonical global keys", async () => {
     const { fn, calls } = makeSpawnFn([
       okGetResult({ "claude-code:foo": "m" }),
       okSetResult(),
     ]);
-    await setAgentModelOverride("pi-oven:critic", "anthropic/claude-opus-4-8", { spawnFn: fn });
+    await setAgentModelOverride("pov:critic", "anthropic/claude-opus-4-8", { spawnFn: fn });
 
     // get call
     expect(calls[0]).toEqual([
@@ -297,8 +297,37 @@ describe("setAgentModelOverride", () => {
     const setJson = JSON.parse(calls[1][4]);
     expect(setJson).toEqual({
       "claude-code:foo": "m",
-      "pi-oven:critic": "anthropic/claude-opus-4-8",
+      "pov:critic": "anthropic/claude-opus-4-8",
     });
+  });
+  it("migrates an old-only global key to canonical pov:* on successful write", async () => {
+    const { fn, calls } = makeSpawnFn([
+      okGetResult({ "claude-code:foo": "m", "pi-oven:critic": "old-model" }),
+      okSetResult(),
+    ]);
+    await setAgentModelOverride("pov:critic", "anthropic/claude-opus-4-8", { spawnFn: fn });
+
+    const setJson = JSON.parse(calls[1][4]);
+    expect(setJson).toEqual({
+      "claude-code:foo": "m",
+      "pov:critic": "anthropic/claude-opus-4-8",
+    });
+    expect(setJson["pi-oven:critic"]).toBeUndefined();
+  });
+
+  it("rejects same-scope dual-key conflicts instead of guessing which global key to keep", async () => {
+    const { fn, calls } = makeSpawnFn([
+      okGetResult({ "pov:critic": "new-model", "pi-oven:critic": "old-model" }),
+    ]);
+
+    await expect(
+      setAgentModelOverride("pov:critic", "anthropic/claude-opus-4-8", { spawnFn: fn })
+    ).rejects.toThrow(/dual-key conflict/i);
+
+    const setCallsMade = calls.filter(
+      (c) => c[0] === "omp" && c[1] === "config" && c[2] === "set"
+    );
+    expect(setCallsMade.length).toBe(0);
   });
 
   it("ABORTS on corrupt get — set NOT called, no data-loss (Pc2-1)", async () => {
@@ -306,7 +335,7 @@ describe("setAgentModelOverride", () => {
       { exitCode: 0, stdout: Buffer.from("not json{{{"), stderr: Buffer.from("") },
     ]);
     await expect(
-      setAgentModelOverride("pi-oven:critic", "X", { spawnFn: fn })
+      setAgentModelOverride("pov:critic", "X", { spawnFn: fn })
     ).rejects.toThrow();
     const setCallsMade = calls.filter(
       (c) => c[0] === "omp" && c[1] === "config" && c[2] === "set"
@@ -319,7 +348,7 @@ describe("setAgentModelOverride", () => {
       { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("err") },
     ]);
     await expect(
-      setAgentModelOverride("pi-oven:critic", "X", { spawnFn: fn })
+      setAgentModelOverride("pov:critic", "X", { spawnFn: fn })
     ).rejects.toThrow();
     const setCallsMade = calls.filter(
       (c) => c[0] === "omp" && c[1] === "config" && c[2] === "set"
@@ -333,23 +362,23 @@ describe("setAgentModelOverride", () => {
       { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("set failed") },
     ]);
     await expect(
-      setAgentModelOverride("pi-oven:critic", "X", { spawnFn: fn })
+      setAgentModelOverride("pov:critic", "X", { spawnFn: fn })
     ).rejects.toThrow();
   });
 
-  it("throws on non-pi-oven colonKey — set spawn never called", async () => {
+  it("throws on non-canonical colonKey — set spawn never called", async () => {
     const { fn, calls } = makeSpawnFn([]);
     await expect(
-      setAgentModelOverride("claude-code:x", "m", { spawnFn: fn })
-    ).rejects.toThrow();
+      setAgentModelOverride("pi-oven:critic", "m", { spawnFn: fn })
+    ).rejects.toThrow(/canonical "pov:<role>"/);
     expect(calls.length).toBe(0);
   });
 
   it("starts from empty record on fresh config (genuinely-absent = safe)", async () => {
     const { fn, calls } = makeSpawnFn([okGetResult({}), okSetResult()]);
-    await setAgentModelOverride("pi-oven:executor", "anthropic/claude-opus-4-8", { spawnFn: fn });
+    await setAgentModelOverride("pov:executor", "anthropic/claude-opus-4-8", { spawnFn: fn });
     const setJson = JSON.parse(calls[1][4]);
-    expect(setJson).toEqual({ "pi-oven:executor": "anthropic/claude-opus-4-8" });
+    expect(setJson).toEqual({ "pov:executor": "anthropic/claude-opus-4-8" });
   });
 });
 
@@ -360,11 +389,11 @@ describe("setAgentModelOverride", () => {
 describe("setAgentModelOverrides", () => {
   it("merges record preserving sibling keys with a single set call", async () => {
     const { fn, calls } = makeSpawnFn([
-      okGetResult({ "claude-code:foo": "m", "pi-oven:executor": "old" }),
+      okGetResult({ "claude-code:foo": "m", "pov:executor": "old" }),
       okSetResult(),
     ]);
     await setAgentModelOverrides(
-      { "pi-oven:executor": "anthropic/claude-opus-4-8", "pi-oven:critic": "anthropic/claude-opus-4-8" },
+      { "pov:executor": "anthropic/claude-opus-4-8", "pov:critic": "anthropic/claude-opus-4-8" },
       { spawnFn: fn }
     );
     // Exactly ONE get and ONE set
@@ -372,39 +401,63 @@ describe("setAgentModelOverrides", () => {
     expect(calls.filter((c) => c[2] === "set").length).toBe(1);
     const setJson = JSON.parse(calls[1][4]);
     // overwrites matching key, preserves sibling
-    expect(setJson["pi-oven:executor"]).toBe("anthropic/claude-opus-4-8");
-    expect(setJson["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(setJson["pov:executor"]).toBe("anthropic/claude-opus-4-8");
+    expect(setJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
     expect(setJson["claude-code:foo"]).toBe("m");
   });
 
-  it("preserves pi-oven:* keys not in record", async () => {
+  it("preserves canonical global keys not in record", async () => {
     const { fn, calls } = makeSpawnFn([
-      okGetResult({ "pi-oven:verifier": "other-model" }),
+      okGetResult({ "pov:verifier": "other-model" }),
       okSetResult(),
     ]);
-    await setAgentModelOverrides({ "pi-oven:critic": "anthropic/claude-opus-4-8" }, { spawnFn: fn });
+    await setAgentModelOverrides({ "pov:critic": "anthropic/claude-opus-4-8" }, { spawnFn: fn });
     const setJson = JSON.parse(calls[1][4]);
-    expect(setJson["pi-oven:verifier"]).toBe("other-model");
-    expect(setJson["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(setJson["pov:verifier"]).toBe("other-model");
+    expect(setJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
   });
 
-  it("issues exactly ONE set call for any number of entries", async () => {
-    const record: Record<string, string> = {};
-    for (let i = 0; i < 24; i++) {
-      record[`pi-oven:role-${i}`] = "anthropic/claude-opus-4-8";
-    }
+  it("migrates legacy-only global entries to canonical keys during a bulk write", async () => {
+    const { fn, calls } = makeSpawnFn([
+      okGetResult({ "pi-oven:verifier": "legacy-model", "claude-code:foo": "keep" }),
+      okSetResult(),
+    ]);
+    await setAgentModelOverrides({ "pov:critic": "anthropic/claude-opus-4-8" }, { spawnFn: fn });
+    const setJson = JSON.parse(calls[1][4]);
+    expect(setJson["pov:verifier"]).toBe("legacy-model");
+    expect(setJson["pi-oven:verifier"]).toBeUndefined();
+    expect(setJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(setJson["claude-code:foo"]).toBe("keep");
+  });
+
+  it("rejects same-scope dual-key conflicts during a bulk write", async () => {
+    const { fn, calls } = makeSpawnFn([
+      okGetResult({ "pov:critic": "canonical-model", "pi-oven:critic": "legacy-model" }),
+    ]);
+    await expect(
+      setAgentModelOverrides({ "pov:executor": "anthropic/claude-opus-4-8" }, { spawnFn: fn })
+    ).rejects.toThrow(/dual-key conflict/i);
+    expect(calls.filter((c) => c[2] === "set").length).toBe(0);
+  });
+
+  it("issues exactly ONE set call for multiple canonical entries", async () => {
+    const record: Record<string, string> = {
+      "pov:critic": "anthropic/claude-opus-4-8",
+      "pov:executor": "anthropic/claude-opus-4-8",
+      "pov:planner": "anthropic/claude-opus-4-8",
+    };
     const { fn, calls } = makeSpawnFn([okGetResult({}), okSetResult()]);
     await setAgentModelOverrides(record, { spawnFn: fn });
     expect(calls.filter((c) => c[2] === "set").length).toBe(1);
     const setJson = JSON.parse(calls[1][4]);
-    expect(Object.keys(setJson).length).toBe(24);
+    expect(Object.keys(setJson).length).toBe(3);
   });
 
-  it("throws on non-pi-oven key — no spawn called", async () => {
+  it("throws on non-canonical key — no spawn called", async () => {
     const { fn, calls } = makeSpawnFn([]);
     await expect(
       setAgentModelOverrides({ "claude-code:foo": "m" }, { spawnFn: fn })
-    ).rejects.toThrow(/must start with "pi-oven:"/);
+    ).rejects.toThrow(/canonical "pov:<role>"/);
     expect(calls.length).toBe(0);
   });
 
@@ -413,7 +466,7 @@ describe("setAgentModelOverrides", () => {
       { exitCode: 0, stdout: Buffer.from("not json{{{"), stderr: Buffer.from("") },
     ]);
     await expect(
-      setAgentModelOverrides({ "pi-oven:critic": "x" }, { spawnFn: fn })
+      setAgentModelOverrides({ "pov:critic": "x" }, { spawnFn: fn })
     ).rejects.toThrow();
     expect(calls.filter((c) => c[2] === "set").length).toBe(0);
   });
@@ -424,27 +477,27 @@ describe("setAgentModelOverrides", () => {
       { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("set-fail") },
     ]);
     await expect(
-      setAgentModelOverrides({ "pi-oven:critic": "x" }, { spawnFn: fn })
+      setAgentModelOverrides({ "pov:critic": "x" }, { spawnFn: fn })
     ).rejects.toThrow();
   });
 });
 
 // ---------------------------------------------------------------------------
-// deletePiOvenAgentModelOverrides
+// deleteGlobalAgentModelOverrides
 // ---------------------------------------------------------------------------
 
-describe("deletePiOvenAgentModelOverrides", () => {
-  it("sets merged record without pi-oven:* and returns removed keys (sorted)", async () => {
+describe("deleteGlobalAgentModelOverrides", () => {
+  it("sets merged record without managed global keys and returns removed keys (sorted)", async () => {
     const { fn, calls } = makeSpawnFn([
       okGetResult({
-        "pi-oven:critic": "a",
+        "pov:critic": "a",
         "pi-oven:executor": "b",
         "claude-code:foo": "m",
       }),
       okSetResult(),
     ]);
-    const removed = await deletePiOvenAgentModelOverrides({ spawnFn: fn });
-    expect(removed.sort()).toEqual(["pi-oven:critic", "pi-oven:executor"]);
+    const removed = await deleteGlobalAgentModelOverrides({ spawnFn: fn });
+    expect(removed.sort()).toEqual(["pi-oven:executor", "pov:critic"]);
 
     const setJson = JSON.parse(calls[1][4]);
     expect(setJson).toEqual({ "claude-code:foo": "m" });
@@ -454,18 +507,18 @@ describe("deletePiOvenAgentModelOverrides", () => {
     const { fn, calls } = makeSpawnFn([
       { exitCode: 0, stdout: Buffer.from("not json{{{"), stderr: Buffer.from("") },
     ]);
-    await expect(deletePiOvenAgentModelOverrides({ spawnFn: fn })).rejects.toThrow();
+    await expect(deleteGlobalAgentModelOverrides({ spawnFn: fn })).rejects.toThrow();
     const setCallsMade = calls.filter(
       (c) => c[0] === "omp" && c[1] === "config" && c[2] === "set"
     );
     expect(setCallsMade.length).toBe(0);
   });
 
-  it("returns empty array and does NOT call set when no pi-oven:* keys (no-op)", async () => {
+  it("returns empty array and does NOT call set when no managed global keys (no-op)", async () => {
     const { fn, calls } = makeSpawnFn([
       okGetResult({ "claude-code:foo": "m" }),
     ]);
-    const removed = await deletePiOvenAgentModelOverrides({ spawnFn: fn });
+    const removed = await deleteGlobalAgentModelOverrides({ spawnFn: fn });
     expect(removed).toEqual([]);
     // No set call — nothing to remove, skip write entirely
     const setCallsMade = calls.filter(
@@ -476,7 +529,7 @@ describe("deletePiOvenAgentModelOverrides", () => {
 
   it("returns empty array when record is empty (fresh)", async () => {
     const { fn } = makeSpawnFn([okGetResult({}), okSetResult()]);
-    const removed = await deletePiOvenAgentModelOverrides({ spawnFn: fn });
+    const removed = await deleteGlobalAgentModelOverrides({ spawnFn: fn });
     expect(removed).toEqual([]);
   });
 });
@@ -486,10 +539,10 @@ describe("deletePiOvenAgentModelOverrides", () => {
 // ---------------------------------------------------------------------------
 
 describe("readAgentModelOverrides", () => {
-  it("parses .value from --json on success", async () => {
-    const { fn } = makeSpawnFn([okGetResult({ "pi-oven:critic": "X" })]);
+  it("returns the compatibility view, backfilling the legacy alias from a canonical global key", async () => {
+    const { fn } = makeSpawnFn([okGetResult({ "pov:critic": "X" })]);
     const result = await readAgentModelOverrides({ spawnFn: fn });
-    expect(result).toEqual({ "pi-oven:critic": "X" });
+    expect(result).toEqual({ "pov:critic": "X", "pi-oven:critic": "X" });
   });
 
   it("returns {} on get non-zero exit (graceful)", async () => {
@@ -881,7 +934,7 @@ describe("setRetryFallbackChains", () => {
 // ---------------------------------------------------------------------------
 
 describe("setPiOvenIncludedSkills", () => {
-  it('writes the canonical workflow-skill include filter via `omp config set skills.includeSkills ["pi-oven:*"]`', async () => {
+  it('writes the canonical workflow-skill include filter via `omp config set skills.includeSkills ["pov:*"]`', async () => {
     const { fn, calls } = makeSpawnFn([okSetResult()]);
     const written = await setPiOvenIncludedSkills({ spawnFn: fn });
     expect(written).toEqual([...PI_OVEN_WORKFLOW_SKILL_INCLUDE]);

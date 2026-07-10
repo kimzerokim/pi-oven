@@ -40,7 +40,7 @@ export const PROJECT_INSTRUCTIONS_DEDUP_KEY = "pi-oven:project-instructions";
  * so a content revision forces a re-dedup. The block is placed FIRST in the parent
  * system prompt (unshifted by the extension) so it reads before everything else.
  */
-export const ORCHESTRATOR_CONDUCT_DEDUP_KEY = "pi-oven:orchestrator-conduct@v2";
+export const ORCHESTRATOR_CONDUCT_DEDUP_KEY = "pi-oven:orchestrator-conduct@v3";
 
 /**
  * Project response language (mirrors scripts/pi-oven-setup/project-config.ts).
@@ -210,7 +210,7 @@ export class RulesInjector {
     const sharedRules = [
       "CONTROL-PLANE FRONT DOOR: gated lanes open only through explicit runtime capability proofs — `requiredSkills`, exact `ownedSkillReadTargets` reads, the branch contract, and `externalExecConsent` where relevant. Bootstrap message injection and tool remap are NOT control-plane paths in pi-oven.",
       "SKILL PRECEDENCE: pi-oven skills are authoritative. When the runtime keyword block lists exact plugin-owned SKILL.md targets, read those exact file targets; do not invent namespaced skill aliases. `/pi-oven:*` entries are commands, not skills; `/pi-oven:setup` follows `commands/setup.md`. NEVER load a same-purpose skill from another sibling marketplace namespace or legacy external alias. On any name/purpose overlap, the pi-oven skill wins.",
-      "AGENT NAMING: Dispatch pi-oven-owned automatic subagents ONLY by their exact registered name `pi-oven:<role>` (e.g. `pi-oven:explorer`). Foreign namespaces such as `kzk:<role>` are allowed only when the user explicitly asked for that exact foreign agent.",
+      "AGENT NAMING: Dispatch pi-oven-owned automatic subagents ONLY by their canonical runtime name `pov:<role>` (e.g. `pov:explorer`). Bare owned roles canonicalize to `pov:<role>`. Treat legacy `pi-oven:<role>` as stale-state migration feedback, never as a silent success path. Foreign namespaces such as `kzk:<role>` are allowed only when the user explicitly asked for that exact foreign agent.",
     ];
     if (opts.autonomousActive) {
       return [

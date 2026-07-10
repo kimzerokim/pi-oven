@@ -4,6 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
   createGateHandler,
+  hasPersistedDeepInterviewState,
   isCodeWriteTool,
   getTargetPath,
   getSkillReadName,
@@ -25,6 +26,7 @@ import {
   AUTONOMOUS_STATE_FILE,
   projectStatePath,
 } from "../../../.omp/extensions/pi-oven-runtime/project-state";
+import { normalizeDeepInterviewState } from "../../../.omp/extensions/pi-oven-runtime/deep-interview-state";
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-gh-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
@@ -755,7 +757,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       gateCache: { commit: "PASS", regression: "PASS" },
       version: 1,
       schemaVersion: 1,
-      requiredSkills: ["autonomous-loop"],
+      requiredSkills: ["pov:autonomous-loop"],
       skillReads: [],
       requiredSkillsMessageId: "u1",
       ownedSkillReadTargets: [ownedTarget],
@@ -779,7 +781,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
     expect(stillBlockedAfterBare?.block).toBe(true);
     expect(stillBlockedAfterBare?.reason).toContain(ownedTarget);
 
-    const namespacedRead = await h(readEvent("skill://pi-oven:autonomous-loop"));
+    const namespacedRead = await h(readEvent("skill://pov:autonomous-loop"));
     expect(namespacedRead?.block ?? false).toBe(false);
 
     const stillBlockedAfterAlias = await h(writeEvent("src/example.ts", "tc-write-ns"));
@@ -817,7 +819,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       gateCache: { commit: "PASS", regression: "PASS" },
       version: 1,
       schemaVersion: 1,
-      requiredSkills: ["autonomous-loop"],
+      requiredSkills: ["pov:autonomous-loop"],
       skillReads: [],
       requiredSkillsMessageId: "u1",
       ownedSkillReadTargets: [ownedTarget],
@@ -851,7 +853,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       gateCache: { commit: "PASS", regression: "PASS" },
       version: 1,
       schemaVersion: 1,
-      requiredSkills: ["autonomous-loop"],
+      requiredSkills: ["pov:autonomous-loop"],
       skillReads: [ownedTarget],
       requiredSkillsMessageId: "u1",
       ownedSkillReadTargets: [ownedTarget],
@@ -871,7 +873,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       gateCache: {},
       version: 2,
       schemaVersion: 1,
-      requiredSkills: ["autonomous-loop"],
+      requiredSkills: ["pov:autonomous-loop"],
       skillReads: [ownedTarget],
       requiredSkillsMessageId: "u1",
       ownedSkillReadTargets: [ownedTarget],
@@ -910,7 +912,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       gateCache: { commit: "PASS", regression: "PASS" },
       version: 1,
       schemaVersion: 1,
-      requiredSkills: ["autonomous-loop"],
+      requiredSkills: ["pov:autonomous-loop"],
       skillReads: [],
       requiredSkillsMessageId: "u1",
       ownedSkillReadTargets: [],
@@ -1030,7 +1032,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       gateCache: { commit: "PASS", regression: "PASS" },
       version: 1,
       schemaVersion: 1,
-      requiredSkills: ["autonomous-loop"],
+      requiredSkills: ["pov:autonomous-loop"],
       skillReads: [ownedTarget],
       requiredSkillsMessageId: "u1",
       ownedSkillReadTargets: [ownedTarget],
@@ -1128,7 +1130,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       {
         origin: "pi-oven-auto",
         kind: "skill",
-        requested: "autonomous-loop",
+        requested: "pov:autonomous-loop",
         canonical: ownedTarget,
         resolved: ownedTarget,
         status: "resolved",
@@ -1141,7 +1143,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       gateCache: { commit: "PASS", regression: "PASS" },
       version: 1,
       schemaVersion: 1,
-      requiredSkills: ["autonomous-loop"],
+      requiredSkills: ["pov:autonomous-loop"],
       skillReads: [],
       requiredSkillsMessageId: "u1",
       ownershipTrace,
@@ -1177,7 +1179,7 @@ describe("gateHandler — WS5 branch-contract and skill-read enforcement", () =>
       gateCache: { commit: "PASS", regression: "PASS" },
       version: 1,
       schemaVersion: 1,
-      requiredSkills: ["autonomous-loop"],
+      requiredSkills: ["pov:autonomous-loop"],
       ownedSkillReadTargets: [ownedTarget],
       skillReads: [],
       requiredSkillsMessageId: "u1",
@@ -1292,7 +1294,7 @@ describe("gateHandler — subagent read-only (AC8b)", () => {
     // before: no state file
     expect(existsSync(join(dir, "state", "autonomous.json"))).toBe(false);
     await subHandler(bashEvent("git status"));
-    await subHandler(taskEvent("pi-oven:executor"));
+    await subHandler(taskEvent("pov:executor"));
     // after: still no state file written by the subagent path
     expect(existsSync(join(dir, "state", "autonomous.json"))).toBe(false);
   });
@@ -1307,8 +1309,9 @@ describe("gateHandler — subagent read-only (AC8b)", () => {
 });
 
 // Task dispatch ownership guard:
-// - canonicalize bare pi-oven-owned automatic roles to `pi-oven:<role>`
+// - canonicalize bare pi-oven-owned automatic roles to `pov:<role>`
 // - preserve exact allowlisted foreign namespaces as explicit user intent
+// - block legacy `pi-oven:<role>` with migration feedback
 // - block non-allowlisted foreign namespaces
 // ---------------------------------------------------------------------------
 
@@ -1317,12 +1320,12 @@ describe("gateHandler — task dispatch ownership guard", () => {
   beforeEach(() => { dir = makeTempDir(); });
   afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
-  it("canonicalizes bare built-in agent names to the pi-oven namespace and records the rewrite", async () => {
+  it("canonicalizes bare built-in agent names to the pov namespace and records the rewrite", async () => {
     const h = createGateHandler(await deps(dir));
     const event = taskEvent("executor");
     const r = await h(event);
     expect(r?.block ?? false).toBe(false);
-    expect(event.input.agent).toBe("pi-oven:executor");
+    expect(event.input.agent).toBe("pov:executor");
 
     const after = await new GateStateStore(dir).readState();
     expect(after.kind).toBe("OK");
@@ -1331,19 +1334,41 @@ describe("gateHandler — task dispatch ownership guard", () => {
       origin: "pi-oven-auto",
       kind: "agent",
       requested: "executor",
-      canonical: "pi-oven:executor",
-      resolved: "pi-oven:executor",
+      canonical: "pov:executor",
+      resolved: "pov:executor",
       status: "rewritten",
-      reason: "canonicalized bare agent dispatch to pi-oven namespace",
+      reason: "canonicalized bare agent dispatch to pov namespace",
     });
   });
 
-  it("allows task dispatch when agent already uses the pi-oven namespace", async () => {
+  it("allows task dispatch when agent already uses the canonical pov namespace", async () => {
+    const h = createGateHandler(await deps(dir));
+    const event = taskEvent("pov:executor");
+    const r = await h(event);
+    expect(r?.block ?? false).toBe(false);
+    expect(event.input.agent).toBe("pov:executor");
+  });
+
+  it("blocks legacy pi-oven task dispatches with explicit migration feedback", async () => {
     const h = createGateHandler(await deps(dir));
     const event = taskEvent("pi-oven:executor");
     const r = await h(event);
-    expect(r?.block ?? false).toBe(false);
+    expect(r?.block).toBe(true);
+    expect(r?.reason).toMatch(/legacy automatic namespace|stale runtime state|pov:executor/i);
     expect(event.input.agent).toBe("pi-oven:executor");
+
+    const after = await new GateStateStore(dir).readState();
+    expect(after.kind).toBe("OK");
+    if (after.kind !== "OK") return;
+    expect(after.state.ownershipTrace?.at(-1)).toEqual({
+      origin: "pi-oven-auto",
+      kind: "agent",
+      requested: "pi-oven:executor",
+      canonical: "pi-oven:executor",
+      resolved: "pi-oven:executor",
+      status: "blocked",
+      reason: "legacy pi-oven namespace requires explicit migration to pov",
+    });
   });
 
   it("preserves explicit foreign task dispatches from the allowlist and records explicit intent", async () => {
@@ -1396,7 +1421,7 @@ describe("gateHandler — task dispatch ownership guard", () => {
     const event = taskEvent("oh-my-claudecode:executor");
     const r = await h(event);
     expect(r?.block).toBe(true);
-    expect(r?.reason).toMatch(/user-explicit|pi-oven:<role>|foreign namespace/i);
+    expect(r?.reason).toMatch(/user-explicit|pov:<role>|foreign namespace/i);
 
     const after = await new GateStateStore(dir).readState();
     expect(after.kind).toBe("OK");
@@ -1481,23 +1506,35 @@ describe("gateHandler — pure helpers", () => {
     expect(getTargetPath(undefined as any)).toBe(null);
   });
 
-  it("getSkillReadName: identifies only namespaced pi-oven skill:// URIs on read", () => {
+  it("hasPersistedDeepInterviewState stays aligned for empty vs non-empty persisted envelopes", () => {
+    expect(hasPersistedDeepInterviewState(normalizeDeepInterviewState({ interviewId: "di-empty" }))).toBe(false);
+    expect(
+      hasPersistedDeepInterviewState(
+        normalizeDeepInterviewState({
+          interviewId: "di-ambiguity",
+          state: { currentAmbiguity: 0.42 },
+        })
+      )
+    ).toBe(true);
+  });
+
+  it("getSkillReadName: identifies supported namespaced skill:// URIs while bare skill surfaces remain unsupported", () => {
     expect(
       getSkillReadName({
         toolName: "read",
-        input: { path: "skill://pi-oven:autonomous-loop" },
+        input: { path: "skill://pov:autonomous-loop" },
       } as any)
     ).toBe("autonomous-loop");
     expect(
       getSkillReadName({
         toolName: "read",
-        input: { path: "skill://pi-oven:autonomous-loop/references/x.md" },
+        input: { path: "skill://pov:autonomous-loop/references/x.md" },
       } as any)
     ).toBe("autonomous-loop");
     expect(
       getSkillReadName({
         toolName: "read",
-        input: { path: "skill://pi-oven:autonomous-loop:1-5" },
+        input: { path: "skill://pov:autonomous-loop:1-5" },
       } as any)
     ).toBe("autonomous-loop");
     expect(
@@ -1512,8 +1549,14 @@ describe("gateHandler — pure helpers", () => {
     expect(getSkillReadName({ toolName: "read", input: { path: "/etc/passwd" } } as any)).toBe(null);
     expect(
       getSkillReadName({
-        toolName: "write",
+        toolName: "read",
         input: { path: "skill://pi-oven:autonomous-loop" },
+      } as any)
+    ).toBe("autonomous-loop");
+    expect(
+      getSkillReadName({
+        toolName: "write",
+        input: { path: "skill://pov:autonomous-loop" },
       } as any)
     ).toBe(null);
     expect(getSkillReadName({ toolName: "read", input: { path: "skill://" } } as any)).toBe(null);

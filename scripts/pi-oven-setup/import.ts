@@ -1,14 +1,14 @@
 /**
  * --import subcommand for pi-oven setup wizard.
  * Spec E §3.3 / Plan Task 2.5 — JSON import writes whitelisted per-role
- * model primaries to task.agentModelOverrides as colon keys (pi-oven:<role>).
- * Does NOT rewrite agent files. Does NOT touch plugin-config namespace.
+ * model primaries to task.agentModelOverrides as canonical global `pov:<role>`
+ * keys. Does NOT rewrite agent files. Does NOT touch plugin-config namespace.
  * No 'custom' profile concept.
  */
 
 import { promises as fs } from "node:fs";
 import { ROLES, type Role, type ModelEntry } from "./profiles";
-import { setAgentModelOverride, setPiOvenIncludedSkills } from "./config-yml";
+import { setAgentModelOverrides, setPiOvenIncludedSkills } from "./config-yml";
 import { isResolvableModelId } from "./model-id-validator";
 
 const ALLOWED_THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh"] as const;
@@ -17,9 +17,8 @@ const ANTHROPIC_PREFIX = "anthropic/";
 
 export interface ImportInput {
   "pi-oven"?: {
-    profile?: "A" | "B";
-    models?: Partial<Record<Role, Partial<ModelEntry>>>;
-    provider?: { anthropic?: { enabled?: boolean } };
+    profile?: string;
+    models?: Partial<Record<Role, Pick<ModelEntry, "primary" | "registry_alternate" | "thinkingLevel">>>;
   };
 }
 
@@ -45,72 +44,68 @@ export function validateImport(
 ): { ok: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  if (typeof input !== "object" || input === null) {
-    errors.push("Import input must be a JSON object.");
-    return { ok: false, errors };
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return { ok: false, errors: ["top-level JSON must be an object"] };
   }
 
   const root = input as Record<string, unknown>;
-  const piOven = root["pi-oven"] as Record<string, unknown> | undefined;
-  if (!piOven || typeof piOven !== "object") {
-    errors.push("Import must contain a top-level 'pi-oven' object.");
+  const block = root["pi-oven"];
+  if (block === undefined) {
+    return { ok: true, errors: [] };
+  }
+  if (typeof block !== "object" || block === null || Array.isArray(block)) {
+    return { ok: false, errors: ["pi-oven block must be an object"] };
+  }
+
+  const piOven = block as Record<string, unknown>;
+  if (piOven.profile !== undefined) {
+    errors.push("profile is not importable; use /pi-oven:setup --profile for baseline routing");
+  }
+
+  const models = piOven.models;
+  if (models === undefined) {
+    return { ok: errors.length === 0, errors };
+  }
+  if (typeof models !== "object" || models === null || Array.isArray(models)) {
+    errors.push("pi-oven.models must be an object keyed by role");
     return { ok: false, errors };
   }
 
-  // Validate profile — 'custom' is no longer a valid profile
-  const profile = piOven["profile"];
-  if (profile !== undefined && !["A", "B"].includes(profile as string)) {
-    errors.push(`Invalid profile value "${profile}". Allowed: "A", "B".`);
-  }
+  for (const [role, value] of Object.entries(models as Record<string, unknown>)) {
+    if (!(ROLES as readonly string[]).includes(role)) {
+      errors.push(`pi-oven.models.${role}: unknown role`);
+      continue;
+    }
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      errors.push(`pi-oven.models.${role}: entry must be an object`);
+      continue;
+    }
 
-  // Build allowed prefixes
-  const allowedPrefixes = [...ALWAYS_ALLOWED_PREFIXES];
-  if (opts?.allowAnthropic) {
-    allowedPrefixes.push(ANTHROPIC_PREFIX);
-  }
+    const entry = value as Record<string, unknown>;
+    const primary = entry.primary;
+    if (typeof primary !== "string" || primary.length === 0) {
+      errors.push(`pi-oven.models.${role}.primary: required non-empty string`);
+    } else {
+      const allowedByPrefix =
+        ALWAYS_ALLOWED_PREFIXES.some((prefix) => primary.startsWith(prefix)) ||
+        (opts?.allowAnthropic === true && primary.startsWith(ANTHROPIC_PREFIX));
+      if (!allowedByPrefix) {
+        errors.push(`pi-oven.models.${role}.primary: model '${primary}' is outside the allowed import whitelist`);
+      }
+    }
 
-  // Validate models
-  const models = piOven["models"];
-  if (models !== undefined && typeof models === "object" && models !== null) {
-    const rolesSet = new Set<string>(ROLES as readonly string[]);
-    const rolesEnumeration = ROLES.join(", ");
+    if (entry.registry_alternate !== undefined && typeof entry.registry_alternate !== "string") {
+      errors.push(`pi-oven.models.${role}.registry_alternate: if present, must be a string`);
+    }
 
-    for (const [roleName, entry] of Object.entries(models as Record<string, unknown>)) {
-      if (!rolesSet.has(roleName)) {
+    if (entry.thinkingLevel !== undefined) {
+      if (
+        typeof entry.thinkingLevel !== "string" ||
+        !(ALLOWED_THINKING_LEVELS as readonly string[]).includes(entry.thinkingLevel)
+      ) {
         errors.push(
-          `Unknown role "${roleName}" in models.\nAllowed roles: ${rolesEnumeration}`
+          `pi-oven.models.${role}.thinkingLevel: if present, must be one of ${ALLOWED_THINKING_LEVELS.join(", ")}`
         );
-        continue;
-      }
-
-      if (typeof entry !== "object" || entry === null) continue;
-      const modelEntry = entry as Record<string, unknown>;
-
-      for (const field of ["primary", "registry_alternate"] as const) {
-        const val = modelEntry[field];
-        if (val !== undefined) {
-          if (typeof val !== "string") {
-            errors.push(`"${roleName}.${field}" must be a string.`);
-            continue;
-          }
-          const allowed = allowedPrefixes.some((p) => val.startsWith(p));
-          if (!allowed) {
-            errors.push(
-              `"${roleName}.${field}" = "${val}" rejected.\n` +
-                `Provider "${val}" is not in the allowed list: ${allowedPrefixes.join(", ")}`
-            );
-          }
-        }
-      }
-
-      const thinkingLevel = modelEntry["thinkingLevel"];
-      if (thinkingLevel !== undefined) {
-        if (!ALLOWED_THINKING_LEVELS.includes(thinkingLevel as any)) {
-          errors.push(
-            `"${roleName}.thinkingLevel" = "${thinkingLevel}" is invalid. ` +
-              `Allowed: ${ALLOWED_THINKING_LEVELS.join(", ")}.`
-          );
-        }
       }
     }
   }
@@ -121,7 +116,7 @@ export function validateImport(
 /**
  * Run the --import flow: read file, parse JSON, validate whitelist,
  * validate EXACT-ID-ONLY model ids, then write all-or-nothing to
- * task.agentModelOverrides as pi-oven:<role> colon keys.
+ * task.agentModelOverrides as canonical global `pov:<role>` keys.
  *
  * registry_alternate and thinkingLevel are parsed but NOT written
  * (override layer supports single model string only — intended limitation).
@@ -137,7 +132,7 @@ export async function runImport(
         "--import is global-only today: it writes machine-global task.agentModelOverrides and does not support --scope project.\n",
     };
   }
-  // 1. Read file
+
   let raw: string;
   try {
     raw = await fs.readFile(filePath, "utf-8");
@@ -149,7 +144,6 @@ export async function runImport(
     };
   }
 
-  // 2. Parse JSON
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -158,7 +152,6 @@ export async function runImport(
     return { exitCode: 1, output: `JSON parse error: ${msg}\n` };
   }
 
-  // 3. Whitelist validation (pure, no IO)
   const validation = validateImport(parsed, { allowAnthropic: opts?.allowAnthropic });
   if (!validation.ok) {
     return {
@@ -170,27 +163,24 @@ export async function runImport(
   const importInput = (parsed as ImportInput)["pi-oven"]!;
   const models = importInput.models;
 
-  // No models block → write 0 entries, succeed
   if (!models || Object.keys(models).length === 0) {
     await setPiOvenIncludedSkills(opts?.spawnFn ? { spawnFn: opts.spawnFn } : undefined);
     return {
       exitCode: 0,
       output:
         `Import complete. No models specified; 0 overrides written.\n` +
-        `Workflow-skill ownership filter applied via skills.includeSkills = ["pi-oven:*"].\n` +
+        `Workflow-skill ownership filter applied via skills.includeSkills = ["pov:*"].\n` +
         `Note: registry_alternate/thinkingLevel ignored (override = single model).\n`,
     };
   }
 
-  // 4. Collect role→primary pairs (registry_alternate/thinkingLevel ignored)
   const toWrite: Array<{ colonKey: string; primary: string }> = [];
   for (const [roleName, entry] of Object.entries(models)) {
     if (!entry || typeof entry.primary !== "string") continue;
-    const colonKey = `pi-oven:${roleName}`;
+    const colonKey = `pov:${roleName}`;
     toWrite.push({ colonKey, primary: entry.primary });
   }
 
-  // 5. EXACT-ID-ONLY validation — all roles must resolve before any write
   const modelIdOpts = {
     spawnFn: opts?.spawnFn,
     ...(opts?.listModelsOutput !== undefined
@@ -216,18 +206,18 @@ export async function runImport(
     };
   }
 
-  // 6. All-or-nothing write: setAgentModelOverride for each role
   const configYmlOpts = opts?.spawnFn ? { spawnFn: opts.spawnFn } : undefined;
-  for (const { colonKey, primary } of toWrite) {
-    await setAgentModelOverride(colonKey, primary, configYmlOpts);
-  }
+  const record = Object.fromEntries(
+    toWrite.map(({ colonKey, primary }) => [colonKey, primary] as const)
+  ) as Record<string, string>;
+  await setAgentModelOverrides(record, configYmlOpts);
   await setPiOvenIncludedSkills(configYmlOpts);
 
   return {
     exitCode: 0,
     output:
       `Import complete. ${toWrite.length} override(s) written to task.agentModelOverrides.\n` +
-      `Workflow-skill ownership filter applied via skills.includeSkills = ["pi-oven:*"].\n` +
+      `Workflow-skill ownership filter applied via skills.includeSkills = ["pov:*"].\n` +
       `Note: registry_alternate/thinkingLevel ignored (override = single model).\n`,
   };
 }

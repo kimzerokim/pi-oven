@@ -1,5 +1,5 @@
 ---
-name: receiving-code-review
+name: pov:receiving-code-review
 version: 0.1.0
 description: "Read this skill when code review feedback arrives and you are about to act on it, including PR comments and structured critic review output. Evaluate before implementing: verify each item against this codebase, push back with technical reasoning when wrong, and YAGNI-check 'do it properly' suggestions."
 ---

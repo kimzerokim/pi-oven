@@ -7,7 +7,7 @@
 import { ROLES, type Role } from "./profiles";
 import { isResolvableModelId, type ModelIdValidatorOpts } from "./model-id-validator";
 import {
-  setAgentModelOverride,
+  setAgentModelOverrides,
   setPiOvenIncludedSkills,
   type ConfigYmlOpts,
 } from "./config-yml";
@@ -23,21 +23,23 @@ export interface OverrideOptions {
   /**
    * WHERE the overrides are written:
    *   - "global" (default) → homedir-global `~/.omp/agent/config.yml` via the
-   *     per-entry `setAgentModelOverride` loop (unchanged behavior).
+   *     per-entry `setAgentModelOverride` loop.
    *   - "project" → `<cwd>/.omp/settings.json` via ONE batched
-   *     `setProjectAgentModelOverrides` call.
+   *     deep-merge write (no `omp config` calls).
    */
   scope?: "global" | "project";
   /** Project root the project-scope writer targets (default process.cwd()). */
   cwd?: string;
 }
 
-const ROLES_SET: ReadonlySet<string> = new Set(ROLES);
+const ROLES_MAP: Record<string, true> = Object.fromEntries(
+  ROLES.map((role) => [role, true] as const)
+);
 
 /**
  * For each "role=model": parse (must contain "="; non-empty role+model), validate role ∈ ROLES,
  * validate model resolvable (EXACT-ID-ONLY). Validate ALL entries FIRST; only if all pass,
- * write each via setAgentModelOverride("pi-oven:"+role, model). Any invalid → exit 1, ZERO writes.
+ * write canonical `pov:<role>` keys in the selected scope. Any invalid → exit 1, ZERO writes.
  * Returns per-entry result for status echo.
  */
 export async function runOverride(
@@ -51,18 +53,12 @@ export async function runOverride(
     spawnFn: opts.spawnFn,
   };
 
-  // ---------------------------------------------------------------------------
-  // Phase 1: validate ALL entries before any write
-  // ---------------------------------------------------------------------------
-
-  type ParsedEntry = { colonKey: string; model: string };
+  type ParsedEntry = { role: Role; model: string };
   const parsed: ParsedEntry[] = [];
   const errors: string[] = [];
 
   for (const entry of opts.entries) {
     const eqIdx = entry.indexOf("=");
-
-    // Must contain "="
     if (eqIdx === -1) {
       errors.push(`invalid --override '${entry}': expected <role>=<model>`);
       continue;
@@ -71,25 +67,21 @@ export async function runOverride(
     const role = entry.slice(0, eqIdx);
     const model = entry.slice(eqIdx + 1);
 
-    // Non-empty role
     if (!role) {
       errors.push(`invalid --override '${entry}': role must not be empty (expected <role>=<model>)`);
       continue;
     }
 
-    // Non-empty model
     if (!model) {
       errors.push(`invalid --override '${entry}': model must not be empty (expected <role>=<model>)`);
       continue;
     }
 
-    // role ∈ ROLES
-    if (!ROLES_SET.has(role)) {
+    if (!ROLES_MAP[role]) {
       errors.push(`invalid --override '${entry}': role '${role}' is not a known pi-oven role`);
       continue;
     }
 
-    // Model resolvable (EXACT-ID-ONLY)
     const resolvable = await isResolvableModelId(model, validatorOpts);
     if (!resolvable) {
       errors.push(
@@ -98,7 +90,7 @@ export async function runOverride(
       continue;
     }
 
-    parsed.push({ colonKey: `pi-oven:${role as Role}`, model });
+    parsed.push({ role: role as Role, model });
   }
 
   if (errors.length > 0) {
@@ -109,27 +101,26 @@ export async function runOverride(
     };
   }
 
-  // ---------------------------------------------------------------------------
-  // Phase 2: write all — only reached if ALL entries passed validation
-  // ---------------------------------------------------------------------------
-
   const applied: Array<{ colonKey: string; model: string }> = [];
   const scope = opts.scope ?? "global";
 
   if (scope === "project") {
-    // Batch all parsed entries into ONE atomic write to <cwd>/.omp/settings.json.
     const record: Record<string, string> = {};
-    for (const { colonKey, model } of parsed) {
+    for (const { role, model } of parsed) {
+      const colonKey = `pov:${role}`;
       record[colonKey] = model;
       applied.push({ colonKey, model });
     }
     await setProjectAgentModelOverrides(record, { cwd: opts.cwd });
     await setProjectIncludedSkills({ cwd: opts.cwd });
   } else {
-    for (const { colonKey, model } of parsed) {
-      await setAgentModelOverride(colonKey, model, configOpts);
+    const record: Record<string, string> = {};
+    for (const { role, model } of parsed) {
+      const colonKey = `pov:${role}`;
+      record[colonKey] = model;
       applied.push({ colonKey, model });
     }
+    await setAgentModelOverrides(record, configOpts);
     await setPiOvenIncludedSkills(configOpts);
   }
 

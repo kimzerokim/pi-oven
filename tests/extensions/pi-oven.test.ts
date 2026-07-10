@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, readdirSync
 import { join, resolve } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
+import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import type {
   AgentFileEntry,
   SessionModelCapture,
@@ -11,6 +12,8 @@ import {
   RulesInjector,
   ORCHESTRATOR_CONDUCT_DEDUP_KEY,
 } from "../../.omp/extensions/pi-oven-runtime/rules-injector";
+import { GateStateStore, type FsmState } from "../../.omp/extensions/pi-oven-runtime/gate-state";
+import { DEEP_INTERVIEW_CONTRACT_DEDUP_KEY } from "../../.omp/extensions/pi-oven-runtime/deep-interview-render";
 import { SHIPPED_SKILL_PATHS } from "../../scripts/pi-oven-setup/shipped-skill-registry";
 
 
@@ -20,6 +23,7 @@ const {
   getAllowedPrefixes,
   captureSessionModel,
   resolveSessionProviderFamily,
+  buildRuntimeKeywordIntegrityNotice,
   buildSetupChecklistNotice,
   readSetupComplete,
   countProjectRoutingRoles,
@@ -28,6 +32,8 @@ const {
   extractExternalExecConsent,
   shouldNotifySessionStartTruthSignal,
   emitSessionStartSetupNotice,
+  AUTONOMOUS_LOOP_PUBLIC_SKILL_NAME,
+  shouldEnableAutonomousReminder,
 } = ext;
 const SHIPPED_AGENTS_DIR = resolve(__dirname, "../../agents");
 const PLUGIN_MANIFEST_PATH = resolve(__dirname, "../../.claude-plugin/plugin.json");
@@ -37,19 +43,24 @@ function makeTempDir(): string {
   return dir;
 }
 
-function writeAgent(dir: string, filename: string, model: string | string[]): void {
+function writeAgent(
+  dir: string,
+  filename: string,
+  model: string | string[],
+  name: string = `pov:${filename.replace(/^(?:pov|pi-oven)-/, "").replace(/\.md$/, "")}`
+): void {
   const modelLines = Array.isArray(model)
     ? ["model:", ...model.map((m) => `  - ${m}`)]
     : [`model: ${model}`];
   writeFileSync(
     join(dir, filename),
-    ["---", ...modelLines, "---", "# Agent"].join("\n")
+    ["---", `name: ${name}`, ...modelLines, "---", "# Agent"].join("\n")
   );
 }
 
 function readShippedAgentEntries(): AgentFileEntry[] {
   return readdirSync(SHIPPED_AGENTS_DIR)
-    .filter((file) => file.startsWith("pi-oven-") && file.endsWith(".md"))
+    .filter((file) => file.startsWith("pov-") && file.endsWith(".md"))
     .map((file) => {
       const content = readFileSync(join(SHIPPED_AGENTS_DIR, file), "utf-8");
       const match = content.match(/^model:\s*\n((?:\s+- .+\n?)+)/m);
@@ -98,6 +109,22 @@ describe("extension install detection", () => {
   });
 });
 
+it("runtime keyword-integrity notice reuses the shared standalone remediation wording", () => {
+  const notice = buildRuntimeKeywordIntegrityNotice(
+    "/plugin",
+    "/project",
+    [{ skillPath: "skills/foo/SKILL.md", skillName: "foo", reason: "missing keywords" }],
+    1,
+    2
+  );
+  expect(notice.level).toBe("warning");
+  expect(notice.message).toContain("Standalone truth surface:");
+  expect(notice.message).toContain("runtime keyword index loaded 1/2 shipped skills from /plugin");
+  expect(notice.message).toContain("Runtime keyword-matched skills are partially available.");
+  expect(notice.message).toContain("Project state read from /project");
+  expect(notice.message).toContain("Sync .claude-plugin/plugin.json skills[], shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries. Reinstall pi-oven@kzk if installed assets are stale.");
+});
+
 describe("workflow-skill ownership sources", () => {
   it("keeps plugin.json skills[] in exact parity with shipped-skill-registry SoT", () => {
     const plugin = JSON.parse(readFileSync(PLUGIN_MANIFEST_PATH, "utf-8")) as {
@@ -113,6 +140,7 @@ describe("session-start truth-signal routing", () => {
   it("notifies only workflow ownership and bootstrap parity signals", () => {
     expect(shouldNotifySessionStartTruthSignal("workflow-skill ownership")).toBe(true);
     expect(shouldNotifySessionStartTruthSignal("bootstrap parity track")).toBe(true);
+    expect(shouldNotifySessionStartTruthSignal("dual plugin surface")).toBe(false);
     expect(shouldNotifySessionStartTruthSignal("native worker runtime")).toBe(false);
   });
 
@@ -183,7 +211,7 @@ describe("validateAgentRegistry", () => {
   });
 
   it("no error logged when agent registry uses the release-default codex + opencode prefixes", () => {
-    writeAgent(tempDir, "pi-oven-coder.md", [
+    writeAgent(tempDir, "pov-coder.md", [
       "openai-codex/gpt-5.4",
       "opencode-zen/gpt-5.4",
     ]);
@@ -193,9 +221,10 @@ describe("validateAgentRegistry", () => {
 
   it("error logged when agent has no model field, message starts with 'Profile A guarantee broken'", () => {
     writeFileSync(
-      join(tempDir, "pi-oven-nomodel.md"),
+      join(tempDir, "pov-nomodel.md"),
       [
         "---",
+        "name: pov:nomodel",
         "description: missing model",
         "---",
         "# Agent",
@@ -208,12 +237,12 @@ describe("validateAgentRegistry", () => {
 
   it("error logged when agent has non-whitelisted provider", () => {
     writeFileSync(
-      join(tempDir, "pi-oven-cerebras.md"),
+      join(tempDir, "pov-cerebras.md"),
       [
         "---",
+        "name: pov:cerebras",
         "model: cerebras/foo",
         "---",
-        "# Agent",
       ].join("\n")
     );
     validateAgentRegistry(tempDir, logger);
@@ -224,12 +253,12 @@ describe("validateAgentRegistry", () => {
 
   it("anthropic/ shipped frontmatter is flagged as release-default drift", () => {
     writeFileSync(
-      join(tempDir, "pi-oven-opus.md"),
+      join(tempDir, "pov-opus.md"),
       [
         "---",
+        "name: pov:opus",
         "model: anthropic/claude-opus-4-8",
         "---",
-        "# Opus",
       ].join("\n")
     );
     validateAgentRegistry(tempDir, logger);
@@ -242,7 +271,7 @@ describe("validateAgentRegistry", () => {
     expect(errors).toHaveLength(0);
   });
 
-  it("non-pi-oven-*.md files are ignored", () => {
+  it("non-agent markdown files are ignored", () => {
     writeFileSync(
       join(tempDir, "other-agent.md"),
       [
@@ -256,14 +285,45 @@ describe("validateAgentRegistry", () => {
     expect(errors).toHaveLength(0);
   });
 
+  it("rejects a legacy pi-oven frontmatter name on a canonical pov filename", () => {
+    writeAgent(
+      tempDir,
+      "pov-executor.md",
+      ["openai-codex/gpt-5.4", "opencode-zen/gpt-5.4"],
+      "pi-oven:executor"
+    );
+    validateAgentRegistry(tempDir, logger);
+    expect(
+      errors.some((msg) => msg.includes("agent namespace drift") && msg.includes('"pi-oven:executor"'))
+    ).toBe(true);
+  });
+
+  it("rejects a legacy pi-oven filename even when the frontmatter name is canonical", () => {
+    writeAgent(
+      tempDir,
+      "pi-oven-executor.md",
+      ["openai-codex/gpt-5.4", "opencode-zen/gpt-5.4"],
+      "pov:executor"
+    );
+    validateAgentRegistry(tempDir, logger);
+    expect(
+      errors.some((msg) => msg.includes("agent namespace drift") && msg.includes("pi-oven-executor.md"))
+    ).toBe(true);
+  });
+
+  it("accepts the current shipped pov agents dir", () => {
+    validateAgentRegistry(SHIPPED_AGENTS_DIR, logger);
+    expect(errors).toHaveLength(0);
+  });
+
   // Phase 4: codex-only shipped-registry baseline tests
 
   it("mixed anthropic + opencode entries are rejected because the shipped allowlist stays codex-only", () => {
-    writeAgent(tempDir, "pi-oven-executor.md", [
+    writeAgent(tempDir, "pov-executor.md", [
       "anthropic/claude-sonnet-4-6",
       "opencode-zen/claude-sonnet-4-6",
     ]);
-    writeAgent(tempDir, "pi-oven-explorer.md", [
+    writeAgent(tempDir, "pov-explorer.md", [
       "opencode-zen/glm-5",
       "opencode-zen/claude-haiku-4-5",
     ]);
@@ -278,11 +338,11 @@ describe("validateAgentRegistry", () => {
   });
 
   it("all-opencode-zen registries fail because release-default routing requires an openai-codex primary", () => {
-    writeAgent(tempDir, "pi-oven-explorer.md", [
+    writeAgent(tempDir, "pov-explorer.md", [
       "opencode-zen/glm-5",
       "opencode-zen/claude-haiku-4-5",
     ]);
-    writeAgent(tempDir, "pi-oven-writer.md", [
+    writeAgent(tempDir, "pov-writer.md", [
       "opencode-zen/claude-haiku-4-5",
       "opencode-zen/claude-sonnet-4-6",
     ]);
@@ -291,11 +351,11 @@ describe("validateAgentRegistry", () => {
   });
 
   it("agent file with google/ prefix triggers WHITELIST VIOLATION regardless of other agents", () => {
-    writeAgent(tempDir, "pi-oven-executor.md", [
+    writeAgent(tempDir, "pov-executor.md", [
       "openai-codex/gpt-5.4",
       "opencode-zen/gpt-5.4",
     ]);
-    writeAgent(tempDir, "pi-oven-bad.md", ["google/gemini-flash"]);
+    writeAgent(tempDir, "pov-bad.md", ["google/gemini-flash"]);
     validateAgentRegistry(tempDir, logger);
     expect(errors.length).toBeGreaterThan(0);
     expect(errors[0]).toContain("google/gemini-flash");
@@ -390,7 +450,7 @@ describe("applyOrchestratorConduct", () => {
     expect(out[0]).toContain("externalExecConsent");
   });
 
-  it("parent conduct help stays provider-family symbolic and omits named-model workflow lore", () => {
+  it("parent conduct help stays provider-family symbolic and keeps automatic agent examples on pov only", () => {
     const inj = new RulesInjector();
     const out = applyOrchestratorConduct([], inj, {
       isParentSession: true,
@@ -398,6 +458,8 @@ describe("applyOrchestratorConduct", () => {
     });
     expect(out[0]).toContain("pi-oven_ask");
     expect(out[0]).toContain("deepInterview");
+    expect(out[0]).toContain("pov:explorer");
+    expect(out[0]).not.toContain("pi-oven:explorer");
     expect(out[0]).not.toMatch(/\bcodex\b/i);
     expect(out[0]).not.toMatch(/\bzen\b/i);
     expect(out[0]).not.toMatch(/\bopus\b/i);
@@ -406,12 +468,116 @@ describe("applyOrchestratorConduct", () => {
 });
 
 describe("extractExplicitForeignAgents", () => {
-  it("returns unique canonical foreign agent ids and excludes pi-oven namespace entries", () => {
+  it("returns unique canonical foreign agent ids and excludes owned pov/pi-oven namespace entries", () => {
     expect(
       ext.extractExplicitForeignAgents(
-        "Use KZK:Explorer, kzk:explorer, pi-oven:executor, and OH-MY-CLAUDECODE:Planner."
+        "Use KZK:Explorer, kzk:explorer, pov:executor, pi-oven:executor, and OH-MY-CLAUDECODE:Planner."
       )
     ).toEqual(["kzk:explorer", "oh-my-claudecode:planner"]);
+  });
+
+  it("ignores foreign agent mentions that appear only in negated or illustrative context", () => {
+    expect(
+      ext.extractExplicitForeignAgents(
+        "Do not use kzk:explorer. For example: oh-my-claudecode:planner. Use pov:executor instead."
+      )
+    ).toEqual([]);
+  });
+});
+
+describe("shouldEnableAutonomousReminder", () => {
+  it("turns on when the FSM is inactive but the matched skill uses the public pov autonomous-loop name", () => {
+    expect(shouldEnableAutonomousReminder(false, [{ name: AUTONOMOUS_LOOP_PUBLIC_SKILL_NAME }])).toBe(true);
+  });
+
+  it("does not turn on from the legacy pi-oven autonomous-loop alias alone", () => {
+    expect(shouldEnableAutonomousReminder(false, [{ name: "pi-oven:autonomous-loop" }])).toBe(false);
+  });
+});
+
+describe("before_agent_start autonomous reminder integration", () => {
+  it("injects the autonomous conduct and persisted deep-interview contract through the real store readState path", async () => {
+    const tempRepo = makeTempDir();
+    const previousCwd = process.cwd();
+    const handlers = new Map<string, unknown>();
+    const fakePi = {
+      logger: {
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+      },
+      on(event: string, handler: unknown) {
+        handlers.set(event, handler);
+      },
+      registerTool() {},
+      setLabel() {},
+    } as unknown as ExtensionAPI; // Minimal registration surface for this handler integration test.
+    const store = new GateStateStore(join(tempRepo, ".pi-oven"));
+    const persistedState: FsmState = {
+      active: false,
+      gateCache: {},
+      version: 1,
+      schemaVersion: 1,
+      deepInterview: {
+        version: 2,
+        interviewId: "iv-autonomy",
+        active: false,
+        phase: "idle",
+        threshold: 0.4,
+        thresholdSource: "user",
+        state: {
+          rounds: [],
+          establishedFacts: [],
+          ontologySnapshots: [],
+        },
+      },
+      approvalFlow: {
+        version: 1,
+        active: true,
+        kind: "routing-bucket",
+        source: "manual",
+        decisionKey: "namespace-cutover",
+        summary: "Approve the namespace cutover route",
+        status: "pending",
+        requestedAt: "2026-07-09T00:00:00.000Z",
+        resumedFrom: {
+          interviewId: "iv-autonomy",
+          specPath: "local://namespace-cutover.html",
+        },
+      },
+    };
+    await store.writeState(persistedState);
+
+    try {
+      process.chdir(tempRepo);
+      ext.default(fakePi, { pluginRoot: resolve(__dirname, "../..") });
+      const beforeAgentStart = handlers.get("before_agent_start");
+      expect(typeof beforeAgentStart).toBe("function");
+      if (typeof beforeAgentStart !== "function") {
+        throw new Error("before_agent_start handler missing");
+      }
+
+      const result = await beforeAgentStart({
+        prompt: "/pi-oven:autonomous",
+        systemPrompt: [],
+      });
+      const systemPrompt = (result?.systemPrompt ?? []) as string[];
+      expect(systemPrompt[0]).toContain(ORCHESTRATOR_CONDUCT_DEDUP_KEY);
+      expect(systemPrompt[0]).toMatch(/control-plane front door/i);
+
+      const deepInterviewPrompt = systemPrompt.find((entry: string) =>
+        entry.includes(DEEP_INTERVIEW_CONTRACT_DEDUP_KEY)
+      );
+      expect(deepInterviewPrompt).toBeDefined();
+      expect(deepInterviewPrompt).toContain("interviewId: iv-autonomy");
+      expect(deepInterviewPrompt).toContain("threshold: 0.4");
+      expect(deepInterviewPrompt).toContain("approval decision: namespace-cutover");
+      expect(deepInterviewPrompt).toContain("approval status: pending");
+    } finally {
+      process.chdir(previousCwd);
+      rmSync(tempRepo, { recursive: true, force: true });
+    }
   });
 });
 
@@ -701,7 +867,7 @@ describe("buildSetupChecklistNotice", () => {
       { workflowSkillOwnershipStatus: "owned-surface active" }
     );
     expect(message).toContain("↳ workflow-skill ownership: owned-surface active");
-    expect(message).toContain("↳ repo setup state: healthy setup");
+    expect(message).toContain("↳ repo setup state: healthy setup — healthy single pov surface");
   });
 
   it("surfaces missing project routing separately from compatibility-only ownership", () => {
@@ -802,15 +968,16 @@ describe("countProjectRoutingRoles", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("counts only pi-oven:* keys in task.agentModelOverrides", () => {
+  it("counts only canonical pov:* keys in task.agentModelOverrides", () => {
     const p = join(dir, "settings.json");
     writeFileSync(
       p,
       JSON.stringify({
         task: {
           agentModelOverrides: {
-            "pi-oven:executor": "openai-codex/gpt-5.4",
-            "pi-oven:critic": "anthropic/claude-opus-4-8",
+            "pov:executor": "openai-codex/gpt-5.4",
+            "pov:critic": "anthropic/claude-opus-4-8",
+            "pi-oven:critic": "legacy-ignored",
             "other:agent": "opencode-zen/glm-5.1",
           },
         },
@@ -819,9 +986,9 @@ describe("countProjectRoutingRoles", () => {
     expect(countProjectRoutingRoles(p)).toBe(2);
   });
 
-  it("returns 0 when there are no pi-oven:* keys", () => {
+  it("returns 0 when there are no canonical pov:* keys", () => {
     const p = join(dir, "settings.json");
-    writeFileSync(p, JSON.stringify({ task: { agentModelOverrides: { "x:y": "z" } } }));
+    writeFileSync(p, JSON.stringify({ task: { agentModelOverrides: { "x:y": "z", "pi-oven:critic": "legacy" } } }));
     expect(countProjectRoutingRoles(p)).toBe(0);
   });
 

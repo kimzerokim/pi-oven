@@ -524,6 +524,9 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain(ownedSkillTarget("autonomous-loop"));
     expect(joined).toContain(ownedSkillTarget("large-task-delegation"));
     expect(joined).toContain(ownedSkillTarget("spec-and-review"));
+    expect(joined).toContain("pov:autonomous-loop");
+    expect(joined).toContain("pov:large-task-delegation");
+    expect(joined).toContain("pov:spec-and-review");
     expect(joined).toContain("single front door");
     expect(joined).toContain("requiredSkills");
     expect(joined).toContain("ownedSkillReadTargets");
@@ -564,7 +567,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     );
     expect(integrity).toBeDefined();
     expect(integrity?.message).toContain("missing-skill");
-    expect(integrity?.message).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(integrity?.message).toContain(`Project state read from ${expectedProjectRoot}`);
     expect(integrity?.message).toContain("Runtime keyword-matched skills are unavailable");
   }, 15000);
 
@@ -598,7 +601,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       notice.message.includes("[WARN] keyword-skill integrity:")
     );
     expect(integrity).toBeDefined();
-    expect(integrity?.message).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(integrity?.message).toContain(`Project state read from ${expectedProjectRoot}`);
     expect(integrity?.message).toContain("did not yield any shipped skills");
     expect(integrity?.message).toContain("Runtime keyword-matched skills are unavailable");
   }, 15000);
@@ -624,7 +627,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
 
     expect(joined).toContain("Standalone truth surface:");
     expect(joined).toContain("[WARN] keyword-skill integrity:");
-    expect(joined).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(joined).toContain(`Project state read from ${expectedProjectRoot}`);
     expect(joined).toContain("did not yield any shipped skills");
     expect(joined).toContain("Runtime keyword-matched skills are unavailable");
   }, 15000);
@@ -664,7 +667,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     );
     expect(integrity).toBeDefined();
     expect(integrity?.message).toContain("keyword-gap");
-    expect(integrity?.message).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(integrity?.message).toContain(`Project state read from ${expectedProjectRoot}`);
     expect(integrity?.message).toContain("loaded 1/2 shipped skills");
     expect(integrity?.message).toContain("partially available");
     expect(pi.logs.some((entry) => entry.level === "warn" && entry.msg.includes("keyword-skill integrity"))).toBe(true);
@@ -691,14 +694,14 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
 
     expect(joined).toContain("Standalone truth surface:");
     expect(joined).toContain("[WARN] keyword-skill integrity:");
-    expect(joined).toContain(`project state read from ${expectedProjectRoot}`);
+    expect(joined).toContain(`Project state read from ${expectedProjectRoot}`);
     expect(joined).toContain("machine-global config remains ~/.omp/agent/config.yml");
     expect(joined).toContain("Runtime keyword-matched skills are unavailable");
     expect(joined).toContain("autonomous-loop");
   }, 15000);
 
 
-  it("before_agent_start can inject first-turn autonomous reminders before turn_start persists state", async () => {
+  it("before_agent_start can inject the public pov: keyword-skill block before turn_start persists state", async () => {
     tempDir = makeTempDir();
     process.chdir(tempDir);
 
@@ -712,8 +715,8 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       systemPrompt: ["base"],
     })) as { systemPrompt: string[] };
     const joined = res.systemPrompt.join("\n");
-    expect(joined).toContain("Current autonomous reminder:");
-    expect(joined).toContain(".pi-oven/state/branch-contract.json");
+    expect(joined).toContain("Runtime keyword-matched skills");
+    expect(joined).toContain("pov:autonomous-loop");
     expect(joined).toContain(ownedSkillTarget("autonomous-loop"));
   });
 
@@ -760,9 +763,9 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(persisted.requiredSkills).toHaveLength(3);
     expect(persisted.requiredSkills).toEqual(
       expect.arrayContaining([
-        "autonomous-loop",
-        "large-task-delegation",
-        "spec-and-review",
+        "pov:autonomous-loop",
+        "pov:large-task-delegation",
+        "pov:spec-and-review",
       ])
     );
     expect(persisted.skillReads).toEqual([]);
@@ -779,7 +782,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
         expect.objectContaining({
           origin: "pi-oven-auto",
           kind: "skill",
-          requested: "autonomous-loop",
+          requested: "pov:autonomous-loop",
           canonical: ownedSkillTarget("autonomous-loop"),
           resolved: ownedSkillTarget("autonomous-loop"),
           status: "resolved",
@@ -812,7 +815,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
         gateCache: {},
         version: 1,
         schemaVersion: 1,
-        requiredSkills: ["spec-and-review"],
+        requiredSkills: ["pov:spec-and-review"],
         skillReads: [],
         requiredSkillsMessageId: "u1",
       },
@@ -1037,9 +1040,9 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(persisted.externalExecConsent).toBeUndefined();
     expect(persisted.requiredSkills).toEqual(
       expect.arrayContaining([
-        "autonomous-loop",
-        "large-task-delegation",
-        "spec-and-review",
+        "pov:autonomous-loop",
+        "pov:large-task-delegation",
+        "pov:spec-and-review",
       ])
     );
     expect(persisted.skillReads).toEqual([]);
@@ -1049,7 +1052,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
         expect.objectContaining({
           origin: "pi-oven-auto",
           kind: "skill",
-          requested: "autonomous-loop",
+          requested: "pov:autonomous-loop",
           status: "resolved",
         }),
       ])
@@ -1239,7 +1242,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     };
     const bareResult = (await onToolCall(bareTaskEvent)) as { block?: boolean } | void;
     expect(bareResult?.block ?? false).toBe(false);
-    expect(bareTaskEvent.input.agent).toBe("pi-oven:explorer");
+    expect(bareTaskEvent.input.agent).toBe("pov:explorer");
 
     const foreignTaskEvent = {
       type: "tool_call",
@@ -1266,7 +1269,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
         expect.objectContaining({
           origin: "pi-oven-auto",
           kind: "skill",
-          requested: "autonomous-loop",
+          requested: "pov:autonomous-loop",
           canonical: ownedSkillTarget("autonomous-loop"),
           resolved: ownedSkillTarget("autonomous-loop"),
           status: "resolved",
@@ -1276,10 +1279,10 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
           origin: "pi-oven-auto",
           kind: "agent",
           requested: "explorer",
-          canonical: "pi-oven:explorer",
-          resolved: "pi-oven:explorer",
+          canonical: "pov:explorer",
+          resolved: "pov:explorer",
           status: "rewritten",
-          reason: "canonicalized bare agent dispatch to pi-oven namespace",
+          reason: "canonicalized bare agent dispatch to pov namespace",
         },
         {
           origin: "user-explicit",

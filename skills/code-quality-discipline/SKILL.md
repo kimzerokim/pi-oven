@@ -1,5 +1,5 @@
 ---
-name: code-quality-discipline
+name: pov:code-quality-discipline
 version: 0.1.0
 description: "Read this skill before writing or modifying code, and on any bug fix, refactor, or TDD cycle. Enforces DRY / YAGNI / KISS / Deletion test / Immutability before every code write."
 ---
@@ -65,7 +65,7 @@ Run before commit or handoff:
 
 ---
 
-Deep rationale + examples: skill://pi-oven:code-quality-discipline/references/principles.md
+Deep rationale + examples: skill://pov:code-quality-discipline/references/principles.md
 
 ## Agent Dispatch (omp)
 

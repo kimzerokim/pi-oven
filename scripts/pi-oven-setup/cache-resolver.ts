@@ -7,12 +7,21 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import {
+  isCanonicalAgentMarkdownFile,
+  isLegacyAgentMarkdownFile,
+} from "./agent-rewriter";
 import { EXPECTED_AGENT_COUNT } from "./profiles";
 
 const DEFAULT_CACHE_ROOT = path.resolve(
   os.homedir(),
   ".omp/plugins/cache/plugins"
 );
+
+export interface DuplicatePluginSurface {
+  activePluginRoot: string;
+  cachePluginRoot: string;
+}
 
 /**
  * Compare two semver strings (e.g. "0.1.0", "0.10.0").
@@ -53,6 +62,36 @@ export async function resolveCacheAgentsDir(
   return path.join(root, piOvenDirs[0], "agents");
 }
 
+export async function resolveCachePluginRoot(
+  cacheRoot?: string
+): Promise<string | null> {
+  const agentsDir = await resolveCacheAgentsDir(cacheRoot);
+  return agentsDir === null ? null : path.resolve(agentsDir, "..");
+}
+
+export async function detectDuplicatePluginSurface(
+  activePluginRoot: string,
+  cacheRoot?: string
+): Promise<DuplicatePluginSurface | null> {
+  const cachePluginRoot = await resolveCachePluginRoot(cacheRoot);
+  if (cachePluginRoot === null) return null;
+
+  const activeResolved = path.resolve(activePluginRoot);
+  const cacheResolved = path.resolve(cachePluginRoot);
+  const [activeCanonical, cacheCanonical] = await Promise.all([
+    fs.realpath(activeResolved).catch(() => activeResolved),
+    fs.realpath(cacheResolved).catch(() => cacheResolved),
+  ]);
+  if (activeCanonical === cacheCanonical) {
+    return null;
+  }
+
+  return {
+    activePluginRoot: activeResolved,
+    cachePluginRoot: cacheResolved,
+  };
+}
+
 /**
  * Resolve the agents/ directory to READ for display purposes (e.g. --status),
  * independent of the caller's cwd. The setup script ships at
@@ -62,9 +101,9 @@ export async function resolveCacheAgentsDir(
  * pass the script's own `import.meta.dir` and we self-locate the install tree.
  *
  * Resolution order:
- *   1. `<scriptDir>/../agents` if it holds pi-oven-*.md files (covers BOTH dev
- *      checkout and marketplace install cache — the script always sits one level
- *      under the plugin root).
+ *   1. `<scriptDir>/../agents` if it holds canonical `pov-*.md` files
+ *      (covers BOTH dev checkout and marketplace install cache — the script
+ *      always sits one level under the plugin root).
  *   2. the latest install-cache agents dir (covers a stray/relocated script).
  *   3. the script-relative path as a last resort (status then degrades to
  *      "(no agent file)" rather than throwing).
@@ -79,7 +118,7 @@ export async function resolveDefaultAgentsDir(
 ): Promise<string> {
   const scriptRelativeAgentsDir = path.resolve(_scriptDir, "..", "agents");
   const scriptRelativeEntries = await fs.readdir(scriptRelativeAgentsDir).catch(() => [] as string[]);
-  if (scriptRelativeEntries.some((entry) => entry.startsWith("pi-oven-") && entry.endsWith(".md"))) {
+  if (scriptRelativeEntries.some(isCanonicalAgentMarkdownFile)) {
     return scriptRelativeAgentsDir;
   }
 
@@ -120,13 +159,11 @@ export async function checkAgentsCachePopulated(opts?: {
   }
 
   const files = await fs.readdir(agentsDir).catch(() => [] as string[]);
-  const piOvenAgents = files.filter(
-    (f) => f.startsWith("pi-oven-") && f.endsWith(".md")
-  );
-  const foundCount = piOvenAgents.length;
+  const foundCount = files.filter(isCanonicalAgentMarkdownFile).length;
+  const hasLegacyFiles = files.some(isLegacyAgentMarkdownFile);
 
   return {
-    ok: foundCount >= expectedCount,
+    ok: !hasLegacyFiles && foundCount >= expectedCount,
     cachePath: agentsDir,
     foundCount,
     expectedCount,

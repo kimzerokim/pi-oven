@@ -8,10 +8,12 @@ import {
   readProjectSettingsStrict,
   readProjectSettingsSoft,
   setProjectAgentModelOverrides,
+  setProjectIncludedSkills,
   setProjectModelRoles,
   setProjectRetryFallbackChains,
   readProjectAgentModelOverrides,
   clearProjectAgentModelOverrides,
+  clearProjectIncludedSkills,
   clearProjectOrchestrator,
 } from "../../../scripts/pi-oven-setup/project-settings";
 
@@ -133,63 +135,136 @@ describe("project-settings — setProjectAgentModelOverrides", () => {
   afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
 
   it("creates the file + nested path when absent", async () => {
-    await setProjectAgentModelOverrides({ "pi-oven:critic": "anthropic/claude-opus-4-8" }, { cwd });
+    await setProjectAgentModelOverrides({ "pov:critic": "anthropic/claude-opus-4-8" }, { cwd });
     const parsed = readFile(cwd);
-    expect(parsed.task.agentModelOverrides["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(parsed.task.agentModelOverrides["pov:critic"]).toBe("anthropic/claude-opus-4-8");
   });
 
-  it("partial-merges over existing pi-oven:* keys (key-by-key)", async () => {
+  it("partial-merges over existing pov:* keys (key-by-key)", async () => {
+    seed(cwd, {
+      task: { agentModelOverrides: { "pov:critic": "old", "pov:executor": "keep" } },
+    });
+    await setProjectAgentModelOverrides({ "pov:critic": "new" }, { cwd });
+    const parsed = readFile(cwd);
+    expect(parsed.task.agentModelOverrides["pov:critic"]).toBe("new");
+    expect(parsed.task.agentModelOverrides["pov:executor"]).toBe("keep");
+  });
+
+  it("migrates existing legacy pi-oven:* keys to canonical pov:* and removes the old key", async () => {
     seed(cwd, {
       task: { agentModelOverrides: { "pi-oven:critic": "old", "pi-oven:executor": "keep" } },
     });
-    await setProjectAgentModelOverrides({ "pi-oven:critic": "new" }, { cwd });
+    await setProjectAgentModelOverrides({ "pov:critic": "new" }, { cwd });
     const parsed = readFile(cwd);
-    expect(parsed.task.agentModelOverrides["pi-oven:critic"]).toBe("new");
-    expect(parsed.task.agentModelOverrides["pi-oven:executor"]).toBe("keep");
+    expect(parsed.task.agentModelOverrides["pov:critic"]).toBe("new");
+    expect(parsed.task.agentModelOverrides["pov:executor"]).toBe("keep");
+    expect(parsed.task.agentModelOverrides["pi-oven:critic"]).toBeUndefined();
+    expect(parsed.task.agentModelOverrides["pi-oven:executor"]).toBeUndefined();
   });
 
-  it("preserves non-pi-oven:* override keys, sibling task.*, and top-level keys", async () => {
+  it("accepts legacy caller input but persists canonical pov:* keys", async () => {
+    await setProjectAgentModelOverrides({ "pi-oven:critic": "anthropic/claude-opus-4-8" }, { cwd });
+    const parsed = readFile(cwd);
+    expect(parsed.task.agentModelOverrides["pov:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(parsed.task.agentModelOverrides["pi-oven:critic"]).toBeUndefined();
+  });
+
+  it("preserves non-managed override keys, sibling task.*, and top-level keys", async () => {
     seed(cwd, {
       extensions: ["my-ext"],
       task: {
-        agentModelOverrides: { "user:foo": "modelX" },
+        agentModelOverrides: { "user:foo": "modelX", "pi-oven:executor": "keep" },
         somethingElse: { deep: true },
       },
       modelRoles: { default: "keepme" },
     });
-    await setProjectAgentModelOverrides({ "pi-oven:critic": "anthropic/claude-opus-4-8" }, { cwd });
+    await setProjectAgentModelOverrides({ "pov:critic": "anthropic/claude-opus-4-8" }, { cwd });
     const parsed = readFile(cwd);
     expect(parsed.extensions).toEqual(["my-ext"]);
     expect(parsed.task.agentModelOverrides["user:foo"]).toBe("modelX");
-    expect(parsed.task.agentModelOverrides["pi-oven:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(parsed.task.agentModelOverrides["pov:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(parsed.task.agentModelOverrides["pov:executor"]).toBe("keep");
+    expect(parsed.task.agentModelOverrides["pi-oven:executor"]).toBeUndefined();
     expect(parsed.task.somethingElse).toEqual({ deep: true });
     expect(parsed.modelRoles).toEqual({ default: "keepme" });
   });
 
-  it("throws when a key does NOT start with pi-oven:", async () => {
+  it("throws when a key is not a managed pov:/pi-oven: role key", async () => {
     await expect(
-      setProjectAgentModelOverrides({ "user:foo": "m" } as any, { cwd })
-    ).rejects.toThrow(/pi-oven:/);
+      setProjectAgentModelOverrides({ "user:foo": "m" } as Record<string, string>, { cwd })
+    ).rejects.toThrow(/managed.*role key/i);
   });
 
   it("throws (does NOT clobber) when the existing file is present-but-malformed", async () => {
     seed(cwd, {});
     writeFileSync(projectSettingsPath(cwd), "{ not json", "utf-8");
     await expect(
-      setProjectAgentModelOverrides({ "pi-oven:critic": "m" }, { cwd })
+      setProjectAgentModelOverrides({ "pov:critic": "m" }, { cwd })
     ).rejects.toThrow();
     // The malformed file must be left untouched (not overwritten).
     expect(readFileSync(projectSettingsPath(cwd), "utf-8")).toBe("{ not json");
   });
 
   it("writes a final newline (repo JSON convention)", async () => {
-    await setProjectAgentModelOverrides({ "pi-oven:critic": "m" }, { cwd });
+    await setProjectAgentModelOverrides({ "pov:critic": "m" }, { cwd });
     expect(readFileSync(projectSettingsPath(cwd), "utf-8").endsWith("\n")).toBe(true);
   });
 
   it("leaves no .tmp file behind after an atomic write", async () => {
-    await setProjectAgentModelOverrides({ "pi-oven:critic": "m" }, { cwd });
+    await setProjectAgentModelOverrides({ "pov:critic": "m" }, { cwd });
     expect(existsSync(projectSettingsPath(cwd) + ".tmp")).toBe(false);
+  });
+});
+
+describe("project-settings — setProjectIncludedSkills", () => {
+  let cwd: string;
+  beforeEach(() => { cwd = makeTempDir(); });
+  afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
+
+  it('writes skills.includeSkills = ["pov:*"] and preserves sibling keys', async () => {
+    seed(cwd, {
+      task: { agentModelOverrides: { "pov:critic": "m" } },
+      skills: { ignoredSkills: ["keep:*"] },
+      extensions: ["x"],
+    });
+    await setProjectIncludedSkills({ cwd });
+    const parsed = readFile(cwd);
+    expect(parsed.skills.includeSkills).toEqual(["pov:*"]);
+    expect(parsed.skills.ignoredSkills).toEqual(["keep:*"]);
+    expect(parsed.extensions).toEqual(["x"]);
+  });
+
+  it("throws and leaves a malformed existing file untouched", async () => {
+    seed(cwd, {});
+    writeFileSync(projectSettingsPath(cwd), "{ bad", "utf-8");
+    await expect(setProjectIncludedSkills({ cwd })).rejects.toThrow();
+    expect(readFileSync(projectSettingsPath(cwd), "utf-8")).toBe("{ bad");
+  });
+});
+
+describe("project-settings — clearProjectIncludedSkills", () => {
+  let cwd: string;
+  beforeEach(() => { cwd = makeTempDir(); });
+  afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
+
+  it("removes includeSkills but preserves sibling skills keys and other top-level data", async () => {
+    seed(cwd, {
+      skills: { includeSkills: ["pov:*"], ignoredSkills: ["keep:*"] },
+      extensions: ["x"],
+    });
+    const removed = await clearProjectIncludedSkills({ cwd });
+    expect(removed).toBe(true);
+    const parsed = readFile(cwd);
+    expect(parsed.skills.includeSkills).toBeUndefined();
+    expect(parsed.skills.ignoredSkills).toEqual(["keep:*"]);
+    expect(parsed.extensions).toEqual(["x"]);
+  });
+
+  it("removes the file when includeSkills was the only remaining managed data", async () => {
+    seed(cwd, { skills: { includeSkills: ["pov:*"] } });
+    const removed = await clearProjectIncludedSkills({ cwd });
+    expect(removed).toBe(true);
+    expect(existsSync(projectSettingsPath(cwd))).toBe(false);
   });
 });
 
@@ -250,14 +325,22 @@ describe("project-settings — readProjectAgentModelOverrides", () => {
     expect(await readProjectAgentModelOverrides({ cwd })).toEqual({});
   });
 
-  it("returns only string-valued entries", async () => {
+  it("returns only string-valued entries in their persisted form", async () => {
     seed(cwd, {
-      task: { agentModelOverrides: { "pi-oven:critic": "m", "pi-oven:bad": 42, "user:foo": "x" } },
+      task: {
+        agentModelOverrides: {
+          "pov:critic": "m",
+          "pi-oven:executor": "legacy",
+          "pov:bad": 42,
+          "user:foo": "x",
+        },
+      },
     });
     const out = await readProjectAgentModelOverrides({ cwd });
-    expect(out["pi-oven:critic"]).toBe("m");
+    expect(out["pov:critic"]).toBe("m");
+    expect(out["pi-oven:executor"]).toBe("legacy");
     expect(out["user:foo"]).toBe("x");
-    expect(out["pi-oven:bad"]).toBeUndefined();
+    expect(out["pov:bad"]).toBeUndefined();
   });
 });
 
@@ -270,27 +353,28 @@ describe("project-settings — clearProjectAgentModelOverrides", () => {
   beforeEach(() => { cwd = makeTempDir(); });
   afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
 
-  it("removes only pi-oven:* keys, returns them SORTED", async () => {
+  it("removes managed pov:/pi-oven: keys only, returns them SORTED", async () => {
     seed(cwd, {
       task: {
         agentModelOverrides: {
-          "pi-oven:executor": "e",
+          "pov:executor": "e",
           "pi-oven:critic": "c",
           "user:foo": "keep",
         },
       },
     });
     const removed = await clearProjectAgentModelOverrides({ cwd });
-    expect(removed).toEqual(["pi-oven:critic", "pi-oven:executor"]);
+    expect(removed).toEqual(["pi-oven:critic", "pov:executor"]);
     const parsed = readFile(cwd);
     expect(parsed.task.agentModelOverrides["user:foo"]).toBe("keep");
     expect(parsed.task.agentModelOverrides["pi-oven:critic"]).toBeUndefined();
+    expect(parsed.task.agentModelOverrides["pov:executor"]).toBeUndefined();
   });
 
-  it("prunes empty agentModelOverrides + empty task when only pi-oven:* keys existed", async () => {
+  it("prunes empty agentModelOverrides + empty task when only managed keys existed", async () => {
     seed(cwd, {
       extensions: ["x"],
-      task: { agentModelOverrides: { "pi-oven:critic": "c" } },
+      task: { agentModelOverrides: { "pov:critic": "c" } },
     });
     await clearProjectAgentModelOverrides({ cwd });
     const parsed = readFile(cwd);
@@ -310,7 +394,7 @@ describe("project-settings — clearProjectAgentModelOverrides", () => {
     expect(existsSync(projectSettingsPath(cwd))).toBe(false);
   });
 
-  it("no-op (returns []) when there are no pi-oven:* keys", async () => {
+  it("no-op (returns []) when there are no managed keys", async () => {
     seed(cwd, { task: { agentModelOverrides: { "user:foo": "x" } } });
     const removed = await clearProjectAgentModelOverrides({ cwd });
     expect(removed).toEqual([]);

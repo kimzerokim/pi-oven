@@ -1,4 +1,5 @@
 import path from "node:path";
+
 const SHIPPED_SKILL_PATHS_LIST = [
   "./skills/memory-discipline/SKILL.md",
   "./skills/code-quality-discipline/SKILL.md",
@@ -26,8 +27,19 @@ const SHIPPED_SKILL_PATHS_LIST = [
 ] as const;
 
 const SHIPPED_SKILL_PATH_PATTERN = /^\.\/skills\/([^/]+)\/SKILL\.md$/;
+export const PUBLIC_SKILL_NS = "pov";
+export const PUBLIC_SKILL_PREFIX = `${PUBLIC_SKILL_NS}:`;
 
 export const SHIPPED_SKILL_PATHS = [...SHIPPED_SKILL_PATHS_LIST];
+
+export interface ShippedSkillSurfaceEntry {
+  skillName: string;
+  skillPath: string;
+  pluginRoot: string;
+  publicSkillName: string;
+  absolutePath: string;
+  ownedReadTarget: string;
+}
 
 export function shippedSkillNameFromPath(skillPath: string): string {
   const match = SHIPPED_SKILL_PATH_PATTERN.exec(skillPath);
@@ -37,13 +49,37 @@ export function shippedSkillNameFromPath(skillPath: string): string {
   return match[1];
 }
 
+export function toPublicSkillName(skillName: string): string {
+  return `${PUBLIC_SKILL_PREFIX}${skillName}`;
+}
+
 export function shippedSkillNamesFromPaths(skillPaths: readonly string[]): string[] {
   return skillPaths.map(shippedSkillNameFromPath);
 }
 
+export function resolveShippedSkillSurfaceEntry(
+  pluginRoot: string,
+  skillPath: string
+): ShippedSkillSurfaceEntry {
+  const skillName = shippedSkillNameFromPath(skillPath);
+  const resolvedPluginRoot = path.resolve(pluginRoot);
+  const absolutePath = path.resolve(resolvedPluginRoot, skillPath);
+  return {
+    skillName,
+    skillPath,
+    pluginRoot: resolvedPluginRoot,
+    publicSkillName: toPublicSkillName(skillName),
+    absolutePath,
+    ownedReadTarget: absolutePath,
+  };
+}
+
 export function resolveShippedSkillReadTarget(pluginRoot: string, skillPath: string): string {
-  shippedSkillNameFromPath(skillPath);
-  return path.resolve(pluginRoot, skillPath);
+  return resolveShippedSkillSurfaceEntry(pluginRoot, skillPath).ownedReadTarget;
+}
+
+export function resolveShippedSkillPublicName(pluginRoot: string, skillPath: string): string {
+  return resolveShippedSkillSurfaceEntry(pluginRoot, skillPath).publicSkillName;
 }
 
 export const SHIPPED_SKILL_NAMES = shippedSkillNamesFromPaths(SHIPPED_SKILL_PATHS);

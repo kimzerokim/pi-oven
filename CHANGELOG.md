@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.3 - 2026-07-10
+
+- docs: prepare v0.2.3 release refs
+- feat: simplify codex-only runtime routing
+- Cut over runtime agents and skills to direct pov namespaces
 ## v0.2.2 - 2026-07-09
 
 - docs(doctor): restore maintenance-boundary wording

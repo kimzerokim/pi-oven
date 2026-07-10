@@ -55,6 +55,12 @@ describe("command file namespacing", () => {
     expect(setupText).toContain("--repair-prereqs");
     expect(setupText).toContain("This path is **global-only**");
     expect(setupText).toContain("There is no profile selection question");
+    expect(setupText).toContain("Every interactive setup question MUST use the `pi-oven_ask` tool");
+    expect(setupText).toContain('Use this exact question: "Proceed with codex-only DEFAULT_PROFILE?"');
+    expect(setupText).toContain('Use this exact question: "Ready to persist pi-oven routing. Proceed?"');
+    expect(setupText).toContain('Question: "One or more roles are UNVERIFIED. How should setup proceed?"');
+    expect(setupText).not.toContain("[Y/n]");
+    expect(setupText).not.toContain("[y/N]");
     expect(setupText).not.toContain("affordances: { other: false, askAboutChoices: true }");
     expect(setupText).toContain("runtime agents and skills are `pov:*`");
     expect(setupText).toContain("`pi-oven@kzk`");

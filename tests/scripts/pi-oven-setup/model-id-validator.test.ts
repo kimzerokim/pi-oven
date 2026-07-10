@@ -33,11 +33,20 @@ provider      model                       context
 anthropic     claude-opus-4-8             1M
 `;
 
-const FIXTURE_NO_CANONICAL_HEADER = `random text
+const FIXTURE_NO_MODEL_ROWS = `random text
 some other line
-Provider models
-provider      model
-anthropic     claude-opus-4-8
+`;
+
+const FIXTURE_PROVIDER_ONLY = `Provider models
+provider       model                   aliases
+openai-codex   openai-codex/gpt-5.5   -
+openai-codex   openai-codex/gpt-5.4   -
+`;
+
+const FIXTURE_PROVIDER_GROUPED = `openai-codex (2)
+model               context  max-out  thinking
+gpt-5.4             1M       128K     low,medium,high,xhigh
+gpt-5.5             272K     128K     low,medium,high,xhigh
 `;
 
 const FIXTURE_MISSING_COLUMN_HEADER = `Canonical models
@@ -71,8 +80,22 @@ describe("parseCanonicalModelIds", () => {
     expect(ids).not.toContain("anthropic");
   });
 
-  it("throws when 'Canonical models' header is absent", () => {
-    expect(() => parseCanonicalModelIds(FIXTURE_NO_CANONICAL_HEADER)).toThrow(
+  it("extracts provider/model ids from provider-only omp models output", () => {
+    expect(parseCanonicalModelIds(FIXTURE_PROVIDER_ONLY)).toEqual([
+      "openai-codex/gpt-5.5",
+      "openai-codex/gpt-5.4",
+    ]);
+  });
+
+  it("extracts provider/model ids from provider-grouped output", () => {
+    expect(parseCanonicalModelIds(FIXTURE_PROVIDER_GROUPED)).toEqual([
+      "openai-codex/gpt-5.4",
+      "openai-codex/gpt-5.5",
+    ]);
+  });
+
+  it("throws when no recognized model rows are present", () => {
+    expect(() => parseCanonicalModelIds(FIXTURE_NO_MODEL_ROWS)).toThrow(
       /unexpected omp models format/i
     );
   });

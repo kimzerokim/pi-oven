@@ -55,10 +55,12 @@ Every dispatch below uses `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" <args
 
 ## What to do
 
+Every interactive setup question MUST use the `pi-oven_ask` tool. Do not ask bracket-default prompts, free-text prose questions, or continue setup from a plain chat answer for setup decisions. If a decision is needed, call `pi-oven_ask` with explicit `options`, `recommended`, and `affordances`. If `pi-oven_ask` is unavailable, stop and tell the user setup requires the pi-oven runtime ask tool.
+
 Parse the user's intent from their initial request:
 
 - If they say "status" or "show config" → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --status` and relay the output.
-- If they say "reset" or "clear" → confirm with the user first, then run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset`. If they ask for a complete reset before uninstall (a clean "new user" state), add `--full` to also reset `modelRoles`, `retry.fallbackChains`, and `setupVersion` to omp defaults.
+- If they say "reset" or "clear" → confirm with the user first by calling `pi-oven_ask` with question "Reset pi-oven routing for the selected scope?", options `Reset routing` and `Cancel`, `recommended: 1`, and `affordances: { other: false, askAboutChoices: false }`. If `Reset routing` is selected, run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset`. If they ask for a complete reset before uninstall (a clean "new user" state), add `--full` to also reset `modelRoles`, `retry.fallbackChains`, and `setupVersion` to omp defaults.
 - If they say "repair prerequisites", "fix memory", or they only need the global mnemopi/LSP/tool prerequisites restored without touching routing → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --repair-prereqs`. This path is **global-only**; if they explicitly ask for project scope, explain that repair writes `~/.omp/agent/config.yml` only and cannot run under `--scope project`.
 - If they say "import" with a file path → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --import <file>`.
 - Otherwise (first-time setup or routing refresh) → walk through the apply flow below.
@@ -163,7 +165,7 @@ If the file is absent or stale, proceed without comment.
 
 ### Step 3 — Confirm the codex-only default profile
 
-There is no profile selection question. Display this notice and ask for confirmation before proceeding:
+There is no profile selection question. Display this notice as context, then ask for confirmation by calling `pi-oven_ask`:
 
 ```
 NOTICE: Auth-fallback limitation (Spec A §6.3)
@@ -174,31 +176,56 @@ pi-oven subagents may incur unexpected billing if their primary model fails auth
 This is an omp internal behavior that pi-oven cannot override. pi-oven now
 persists only the codex-only DEFAULT_PROFILE, so setup is safe only when
 openai-codex auth is active and stable.
-Proceed with codex-only DEFAULT_PROFILE? [y/N]:
 ```
+
+Use this exact question: "Proceed with codex-only DEFAULT_PROFILE?"
+
+Exact option set:
+
+- Option 1 — label: `Proceed`, description: `Continue toward persisting the codex-only DEFAULT_PROFILE`
+- Option 2 — label: `Cancel`, description: `Stop setup without changing routing`
+
+Call `pi-oven_ask` with `recommended: 1` and `affordances: { other: false, askAboutChoices: false }`. Read the outcome from `details.action` + `details.selected`. Proceed only when the selected label is `Proceed`; if the action is cancelled/deferred, no selection is present, or `Cancel` is selected, stop without changing routing.
 
 In both scopes, setup writes all 24 `task.agentModelOverrides` entries for runtime-visible `pov:*` roles, refreshes `modelRoles.default` / `modelRoles.title`, and overwrites `retry.fallbackChains` with an empty record. Run `--reset` on the same scope to clear pi-oven routing overrides.
 
 ### Step 4 — Optional per-role override
 
-Ask the user:
+Ask whether to use defaults or customize roles by calling `pi-oven_ask`:
 
-```
-Apply codex-only defaults to all 24 roles? [Y/n]:
-```
+Use this exact question: "Apply codex-only defaults to all 24 roles?"
 
-`Y` or Enter: use DEFAULT_PROFILE for all roles — proceed to Step 5.
+Exact option set:
 
-`n`: collect per-role overrides through conversation. For each role the user wants to override, ask which model to use. Validate that the model string is an OpenAI Codex selector:
+- Option 1 — label: `Use defaults`, description: `Apply DEFAULT_PROFILE to all 24 roles`
+- Option 2 — label: `Customize roles`, description: `Collect explicit per-role OpenAI Codex overrides`
+
+Call `pi-oven_ask` with `recommended: 0` and `affordances: { other: false, askAboutChoices: false }`. Read the outcome from `details.action` + `details.selected`. If the action is cancelled/deferred or no selection is present, treat it as a cancel and stop.
+
+`Use defaults`: use DEFAULT_PROFILE for all roles — proceed to Step 5.
+
+`Customize roles`: collect per-role overrides through `pi-oven_ask` only. Do not ask prose questions during this loop.
+
+For each override:
+
+1. Call `pi-oven_ask` to choose the role. Question: "Which role should be overridden?" Options: one `Done` option plus one option for each runtime-visible role in the 24-role DEFAULT_PROFILE set (`executor`, `verifier`, `critic`, `planner`, `code-reviewer`, `debugger`, `test-engineer`, `security-reviewer`, `code-simplifier`, `tracer`, `analyst`, `architect`, `oracle`, `metis`, `deep-researcher`, `explorer`, `writer`, `designer`, `qa-tester`, `git-master`, `document-specialist`, `librarian`, `multimodal-looker`, `data-runner`). Use `recommended: 0` and `affordances: { other: false, askAboutChoices: false }`. If `Done` is selected, finish override collection and proceed to Step 5.
+2. For the selected role, call `pi-oven_ask` to choose the model selector. Question: "Which OpenAI Codex selector should `<role>` use?" Options:
+   - `openai-codex/gpt-5.5`
+   - `openai-codex/gpt-5.5:high`
+   - `openai-codex/gpt-5.4:medium`
+   Use `recommended: 0` and `affordances: { other: true, askAboutChoices: false }` so the user can type another selector.
+3. Validate that the selected or custom model string is an OpenAI Codex selector:
 
 - Allowed: `openai-codex/<model>[:effort]`
 - Examples: `openai-codex/gpt-5.5`, `openai-codex/gpt-5.5:high`, `openai-codex/gpt-5.4:medium`
 
-Reject strings that do not match with a clear error and re-ask. When the user specifies at least one override, apply those explicit per-role overrides after profile selection.
+Reject strings that do not match with a clear error, then call `pi-oven_ask` again with question "Invalid selector for `<role>`. What should setup do?", options `Try again` and `Skip this role`, `recommended: 0`, and `affordances: { other: false, askAboutChoices: false }`. `Try again` repeats the model selector ask-tool call; `Skip this role` returns to the role-selection ask-tool call.
+
+After a valid override is collected, call `pi-oven_ask` with question "Add another role override?", options `Add another` and `Done`, `recommended: 1`, and `affordances: { other: false, askAboutChoices: false }`. `Add another` returns to role selection; `Done` proceeds to Step 5. When the user specifies at least one override, apply those explicit per-role overrides after profile selection.
 
 ### Step 5 — Confirm and persist
 
-Show a summary in chat:
+Show a summary in chat, then ask for final persistence by calling `pi-oven_ask`:
 
 ```
 Summary:
@@ -206,9 +233,16 @@ Summary:
   Scope: <global|project>
   Roles with custom override: <N>
   Routing target: <global config.yml all-role overrides for runtime `pov:*` roles + skills.includeSkills + modelRoles/retry.fallbackChains | project .omp/settings.json all-role overrides for runtime `pov:*` roles + skills.includeSkills + modelRoles/retry.fallbackChains>
-
-Ready to persist pi-oven routing. Proceed? [Y/n]:
 ```
+
+Use this exact question: "Ready to persist pi-oven routing. Proceed?"
+
+Exact option set:
+
+- Option 1 — label: `Persist routing`, description: `Write pi-oven routing to the selected scope and run smoke validation`
+- Option 2 — label: `Cancel`, description: `Stop without changing routing`
+
+Call `pi-oven_ask` with `recommended: 0` and `affordances: { other: false, askAboutChoices: false }`. Read the outcome from `details.action` + `details.selected`. Dispatch only when the selected label is `Persist routing`; if the action is cancelled/deferred, no selection is present, or `Cancel` is selected, stop without changing routing.
 
 On confirmation, dispatch via Bash (using the resolved `$PI_OVEN_DIR`), threading the `<scope>` chosen in Step 0.5:
 
@@ -238,14 +272,17 @@ Relay the full script output to the user. Surface:
 - Any validation warnings.
 - Any validation failures (UNVERIFIED roles).
 
-If the script exits with code 1 (one or more UNVERIFIED roles), do NOT auto-retry. Present the UNVERIFIED role list and ask the user how to proceed:
+If the script exits with code 1 (one or more UNVERIFIED roles), do NOT auto-retry. Present the UNVERIFIED role list and call `pi-oven_ask`:
 
-```
-One or more roles are UNVERIFIED. Options:
-  1. Reconfigure  — run /pi-oven:setup again with different Codex overrides
-  2. Diagnose     — run: bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --validate=full
-  3. Reset        — run: bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset
-```
+Question: "One or more roles are UNVERIFIED. How should setup proceed?"
+
+Exact option set:
+
+- Option 1 — label: `Reconfigure`, description: `Run /pi-oven:setup again with different Codex overrides`
+- Option 2 — label: `Diagnose`, description: `Run full validation: bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --validate=full`
+- Option 3 — label: `Reset`, description: `Run reset: bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset`
+
+Call `pi-oven_ask` with `recommended: 1` and `affordances: { other: false, askAboutChoices: false }`, then follow the selected action.
 
 Auto-retry risks repeated billing charges for failing smoke pings.
 

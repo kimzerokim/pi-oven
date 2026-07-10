@@ -229,7 +229,7 @@ The wizard accepts subcommands:
 
 ### Interactive prompt semantics
 
-The interactive wizard uses `pi-oven_ask` rather than ad-hoc prose parsing. Question and context body rhythm stay unchanged, but each option now follows on the next line without an extra blank spacer between options. `Other (type your own)` is intentionally valid only when free text is a real next action (for example the language step); closed-set questions such as scope suppress it.
+The interactive wizard uses `pi-oven_ask` for every user-owned setup decision rather than ad-hoc prose parsing. Question and context body rhythm stay unchanged, but each option now follows on the next line without an extra blank spacer between options. `Other (type your own)` is intentionally valid only when free text is a real next action (for example the language step); closed-set questions such as scope, confirmation, override flow control, and persistence suppress it.
 ### Codex-only default profile
 
 Requires **OpenAI Codex / ChatGPT subscription** for the shipped primaries. Committed agent frontmatter carries a single `openai-codex` model per role, and setup writes the same codex-only routing map into the selected settings layer.

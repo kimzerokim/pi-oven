@@ -109,6 +109,20 @@ describe("pi-oven-setup CLI dispatcher", () => {
     expect(stdout).toContain("machine-global");
     expect(stdout).toContain("no agent file");
   });
+
+  it("--validate full runs standalone DEFAULT_PROFILE validation", async () => {
+    const { exitCode, stdout, stderr } = await runCLI(["--validate", "full"], {
+      PI_OVEN_MOCK_SPAWN: "1",
+      PI_OVEN_AGENTS_DIR: agentsDir,
+      HOME: tempDir,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderr + stdout).not.toContain("No action specified");
+    expect(stdout).toContain("Validation: full");
+    expect(stdout).toContain("verified 24/24 roles");
+  });
+
   it("--status prefers the running install tree over a stale HOME cache entry", async () => {
     const homeDir = makeTempDir();
     const staleAgentsDir = join(

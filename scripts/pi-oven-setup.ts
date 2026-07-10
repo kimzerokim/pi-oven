@@ -20,6 +20,8 @@ import { runImport } from "./pi-oven-setup/import";
 import { runApply, runRepairPrereqs } from "./pi-oven-setup/apply";
 import { runOverride } from "./pi-oven-setup/override";
 import { resolveDefaultAgentsDir } from "./pi-oven-setup/cache-resolver";
+import { runValidate } from "./pi-oven-setup/validate";
+import { DEFAULT_PROFILE } from "./pi-oven-setup/profiles";
 import {
   normalizeLanguage,
   setProjectLanguage,
@@ -120,6 +122,9 @@ const rawValidateMode = process.env.PI_OVEN_VALIDATE_MODE ?? (values["no-validat
 const validateMode = (["smoke", "full", "none"].includes(rawValidateMode)
   ? rawValidateMode
   : "smoke") as "smoke" | "full" | "none";
+const explicitValidate = process.argv
+  .slice(2)
+  .some((arg) => arg === "--validate" || arg.startsWith("--validate="));
 
 // ---------------------------------------------------------------------------
 // Standalone --language dispatch (Plan 2026-06-02 §2)
@@ -257,6 +262,24 @@ if (repairPrereqs) {
     process.exit(result.exitCode);
   }
   markRouting = true;
+} else if (explicitValidate) {
+  const validateResult = await runValidate(DEFAULT_PROFILE, {
+    mode: validateMode,
+    spawnFn,
+  });
+  const roleCount = Object.keys(DEFAULT_PROFILE).length;
+  const checkedCount = validateMode === "none" ? roleCount : validateResult.verified.length + validateResult.unverified.length;
+  const lines = [
+    `Validation: ${validateMode}`,
+    `verified ${validateResult.verified.length}/${checkedCount} roles`,
+  ];
+  if (validateResult.unverified.length > 0) {
+    lines.push(`Unverified roles: ${validateResult.unverified.join(", ")}`);
+  }
+  result = {
+    exitCode: validateResult.ok ? 0 : 1,
+    output: `${lines.join("\n")}\n`,
+  };
 } else {
   process.stderr.write(
     "No action specified. Use --apply, --repair-prereqs, --status, --reset, --import <file>, or --override <role>=<model>. Add --scope <global|project> to target the global config or this project's .omp/settings.json. --profile is accepted for compatibility but ignored.\n"

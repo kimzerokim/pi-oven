@@ -2,9 +2,9 @@
  * Model ID validator for pi-oven-setup.
  * Spec E §3.5: EXACT-ID-ONLY resolver-parity validation of override model ids.
  *
- * Validates that a model id is resolvable by omp by parsing the "Canonical models"
- * section of `omp models` output — same resolution semantics as omp's
- * model-resolver (resolver parity). No glob/prefix/wildcard — EXACT-ID-ONLY.
+ * Validates that a model id is resolvable by omp by parsing `omp models`
+ * output. Supports the historical "Canonical models" section and the current
+ * provider-grouped table format. No glob/prefix/wildcard — EXACT-ID-ONLY.
  */
 
 export interface ModelIdValidatorOpts {
@@ -30,18 +30,28 @@ export function isOpenAiCodexSelector(model: string): boolean {
 
 /**
  * PURE parser. Input: raw `omp models` text. Output: canonical "provider/model-id" ids.
- * Defensive: THROWS if the "Canonical models" header line or its column header
- * (`canonical  selected ...`) is absent (fail loud on format drift — do not silently return []).
+ * Defensive: THROWS if no recognized model ids can be extracted.
  */
 export function parseCanonicalModelIds(listModelsOutput: string): string[] {
   const lines = listModelsOutput.split("\n");
 
-  // Find the "Canonical models" section header line
+  const canonicalIds = parseCanonicalSection(lines);
+  if (canonicalIds.length > 0) {
+    return canonicalIds;
+  }
+
+  const providerIds = parseProviderSections(lines);
+  if (providerIds.length > 0) {
+    return providerIds;
+  }
+
+  throw new Error("unexpected omp models format: no provider/model ids found");
+}
+
+function parseCanonicalSection(lines: string[]): string[] {
   const headerIdx = lines.findIndex((l) => l.trim() === "Canonical models");
   if (headerIdx === -1) {
-    throw new Error(
-      "unexpected omp models format: 'Canonical models' header not found"
-    );
+    return [];
   }
 
   // The next non-empty line must be the column-header row containing "selected"
@@ -80,6 +90,66 @@ export function parseCanonicalModelIds(listModelsOutput: string): string[] {
   }
 
   return ids;
+}
+
+function parseProviderSections(lines: string[]): string[] {
+  const ids = new Set<string>();
+  let currentProviderGroup: string | undefined;
+  let inProviderModelsTable = false;
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      currentProviderGroup = undefined;
+      inProviderModelsTable = false;
+      continue;
+    }
+
+    const providerGroupHeader = trimmed.match(/^([A-Za-z0-9_.-]+)\s+\(\d+\)$/);
+    if (providerGroupHeader) {
+      currentProviderGroup = providerGroupHeader[1];
+      inProviderModelsTable = false;
+      continue;
+    }
+
+    if (trimmed === "Provider models") {
+      currentProviderGroup = undefined;
+      inProviderModelsTable = true;
+      continue;
+    }
+
+    if (currentProviderGroup) {
+      const model = firstModelToken(trimmed);
+      if (!model) continue;
+      ids.add(model.includes("/") ? model : `${currentProviderGroup}/${model}`);
+      continue;
+    }
+
+    if (inProviderModelsTable) {
+      const tokens = trimmed.split(/\s+/);
+      const provider = tokens[0];
+      const model = tokens[1];
+      if (!provider || !model || provider === "provider") continue;
+      ids.add(model.includes("/") ? model : `${provider}/${model}`);
+    }
+  }
+
+  return [...ids];
+}
+
+function firstModelToken(trimmedLine: string): string | undefined {
+  const tableCellDelimiter = String.fromCharCode(0x2502);
+  const firstCell = trimmedLine.includes(tableCellDelimiter)
+    ? trimmedLine
+        .split(tableCellDelimiter)
+        .map((cell) => cell.trim())
+        .find(Boolean)
+    : undefined;
+  const token = firstCell ?? trimmedLine.split(/\s+/)[0];
+  if (!token || token === "model") return undefined;
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\/[A-Za-z0-9][A-Za-z0-9_.-]*)?$/.test(token)
+    ? token
+    : undefined;
 }
 
 /**

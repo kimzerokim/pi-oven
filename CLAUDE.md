@@ -83,7 +83,7 @@ bun run release:pi-oven -- --bump patch --dry-run  # release automation (safe de
 
 ## Status
 
-**Current: v0.2.2** — ships workflow-skill ownership via `skills.includeSkills`, routing-truth setup notices, durable autonomy blocked-state replay, and final ask spacing + notice dedupe hardening.
+**Current: v0.2.3** — ships codex-only DEFAULT_PROFILE routing, runtime skill pruning with deferred obligations, and the manual runtime injection benchmark.
 
 **Release ritual (do before every `release:pi-oven`):** bump the human-facing version refs that the manifest auto-sync does NOT touch — this Status line (`Current: vX`, tag) + `README.md` (the version/tests badges line ~5 and the `# Expected: pi-oven@kzk (X)` line). Then run `release:pi-oven`. CI's version-parity step only checks the three manifests, not this prose, so a stale Status/README will not fail CI — keep them current by hand.
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.4 - 2026-07-10
+
+- fix: route setup prompts through ask and validate current models output
 ## v0.2.3 - 2026-07-10
 
 - docs: prepare v0.2.3 release refs

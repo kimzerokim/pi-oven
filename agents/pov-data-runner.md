@@ -3,7 +3,6 @@ name: pov:data-runner
 description: Empirical REPL executor — Python/JS eval for data exploration, transformation, benchmarks, and metric validation; retains insights
 model:
   - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
 thinkingLevel: high
 mode: subagent
 tools: ["bash","eval","read","write","retain"]

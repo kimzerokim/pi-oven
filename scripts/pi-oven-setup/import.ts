@@ -9,25 +9,20 @@
 import { promises as fs } from "node:fs";
 import { ROLES, type Role, type ModelEntry } from "./profiles";
 import { setAgentModelOverrides, setPiOvenIncludedSkills } from "./config-yml";
-import { isResolvableModelId } from "./model-id-validator";
+import { isOpenAiCodexSelector, isResolvableModelId } from "./model-id-validator";
 
 const ALLOWED_THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh"] as const;
-const ALWAYS_ALLOWED_PREFIXES = ["opencode-zen/", "openai-codex/"];
-const ANTHROPIC_PREFIX = "anthropic/";
 
 export interface ImportInput {
   "pi-oven"?: {
     profile?: string;
-    models?: Partial<Record<Role, Pick<ModelEntry, "primary" | "registry_alternate" | "thinkingLevel">>>;
+    models?: Partial<Record<Role, Pick<ModelEntry, "primary" | "thinkingLevel">>>;
   };
 }
 
-export interface ValidateImportOpts {
-  allowAnthropic?: boolean;
-}
+export interface ValidateImportOpts {}
 
 export interface RunImportOpts {
-  allowAnthropic?: boolean;
   scope?: "global" | "project";
   spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
   /** Injectable `omp models` output for EXACT-ID-ONLY validation (tests). */
@@ -86,16 +81,14 @@ export function validateImport(
     if (typeof primary !== "string" || primary.length === 0) {
       errors.push(`pi-oven.models.${role}.primary: required non-empty string`);
     } else {
-      const allowedByPrefix =
-        ALWAYS_ALLOWED_PREFIXES.some((prefix) => primary.startsWith(prefix)) ||
-        (opts?.allowAnthropic === true && primary.startsWith(ANTHROPIC_PREFIX));
-      if (!allowedByPrefix) {
-        errors.push(`pi-oven.models.${role}.primary: model '${primary}' is outside the allowed import whitelist`);
+      if (!isOpenAiCodexSelector(primary)) {
+        errors.push(`pi-oven.models.${role}.primary: model '${primary}' must be an openai-codex/<model> selector`);
       }
     }
 
-    if (entry.registry_alternate !== undefined && typeof entry.registry_alternate !== "string") {
-      errors.push(`pi-oven.models.${role}.registry_alternate: if present, must be a string`);
+    const alternateKey = "registry" + "_alternate";
+    if (entry[alternateKey] !== undefined) {
+      errors.push(`pi-oven.models.${role}: alternate registry keys are unsupported`);
     }
 
     if (entry.thinkingLevel !== undefined) {
@@ -118,8 +111,8 @@ export function validateImport(
  * validate EXACT-ID-ONLY model ids, then write all-or-nothing to
  * task.agentModelOverrides as canonical global `pov:<role>` keys.
  *
- * registry_alternate and thinkingLevel are parsed but NOT written
- * (override layer supports single model string only — intended limitation).
+ * thinkingLevel is parsed but NOT written (override layer supports a single
+ * selector string only — intended limitation).
  */
 export async function runImport(
   filePath: string,
@@ -152,7 +145,7 @@ export async function runImport(
     return { exitCode: 1, output: `JSON parse error: ${msg}\n` };
   }
 
-  const validation = validateImport(parsed, { allowAnthropic: opts?.allowAnthropic });
+  const validation = validateImport(parsed);
   if (!validation.ok) {
     return {
       exitCode: 1,
@@ -170,7 +163,7 @@ export async function runImport(
       output:
         `Import complete. No models specified; 0 overrides written.\n` +
         `Workflow-skill ownership filter applied via skills.includeSkills = ["pov:*"].\n` +
-        `Note: registry_alternate/thinkingLevel ignored (override = single model).\n`,
+        `Note: thinkingLevel ignored (override = single model selector).\n`,
     };
   }
 
@@ -218,6 +211,6 @@ export async function runImport(
     output:
       `Import complete. ${toWrite.length} override(s) written to task.agentModelOverrides.\n` +
       `Workflow-skill ownership filter applied via skills.includeSkills = ["pov:*"].\n` +
-      `Note: registry_alternate/thinkingLevel ignored (override = single model).\n`,
+      `Note: thinkingLevel ignored (override = single model selector).\n`,
   };
 }

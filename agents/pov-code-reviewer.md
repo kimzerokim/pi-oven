@@ -3,8 +3,7 @@ name: pov:code-reviewer
 description: Spec-first code review — severity-rated findings, logic correctness, SOLID checks, security, and regression surface
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
-thinkingLevel: xhigh
+thinkingLevel: high
 mode: subagent
 tools: ["read","search","find","bash","lsp","ast_grep","recall","report_finding"]
 blocked_tools: ["write","edit","apply_patch","task"]

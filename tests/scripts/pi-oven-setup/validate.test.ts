@@ -1,314 +1,63 @@
-import { describe, it, expect } from "bun:test";
-import { runValidate } from "../../../scripts/pi-oven-setup/validate";
-import { PROFILE_A, PROFILE_B, ROLES } from "../../../scripts/pi-oven-setup/profiles";
+import { describe, expect, it } from "bun:test";
+import { DEFAULT_PROFILE, ROLES } from "../../../scripts/pi-oven-setup/profiles";
+import { modelBaseId, parseCanonicalModelIds } from "../../../scripts/pi-oven-setup/model-id-validator";
+import { runValidate, SMOKE_ROLES } from "../../../scripts/pi-oven-setup/validate";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const MODELS_FIXTURE = [
+  "Provider models",
+  "provider      model                    aliases",
+  "openai-codex  openai-codex/gpt-5.5    -",
+  "openai-codex  openai-codex/gpt-5.4    -",
+  "",
+  "Canonical models",
+  "  canonical  selected                 provider",
+  "  1          openai-codex/gpt-5.5     openai-codex",
+  "  2          openai-codex/gpt-5.4     openai-codex",
+  "",
+].join("\n");
 
-/** Build a mock spawnFn that returns exit 0 for models in successSet, else exit 1. */
-function makeSpawnFn(successModels: Set<string>) {
-  return (_cmd: string, args: string[]) => {
-    // omp -p "..." --model <model> --no-tools
-    const modelIdx = args.indexOf("--model");
-    const model = modelIdx !== -1 ? args[modelIdx + 1] : null;
-    const ok = model !== null && successModels.has(model);
-    return {
-      exitCode: ok ? 0 : 1,
-      stdout: Buffer.from(ok ? "ok" : ""),
-      stderr: Buffer.from(ok ? "" : "error"),
-    } as any;
-  };
-}
-
-const SMOKE_ROLES = [
-  "executor",
-  "explorer",
-  "verifier",
-  "critic",
-  "planner",
-  "code-reviewer",
-  "debugger",
-] as const;
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe("runValidate", () => {
-  it("mode=none returns ok=true with no ping calls", async () => {
-    const calls: string[][] = [];
-    const spawnFn = (cmd: string, args: string[]) => {
-      calls.push([cmd, ...args]);
-      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
-    };
-
-    const result = await runValidate(PROFILE_A, { mode: "none", spawnFn });
-    expect(result.ok).toBe(true);
-    expect(calls.length).toBe(0);
-  });
-
-  it("mode=none returns all roles as verified (no pings)", async () => {
-    const result = await runValidate(PROFILE_A, {
-      mode: "none",
-      spawnFn: () => ({ exitCode: 0 } as any),
-    });
-    expect(result.verified.length).toBe(ROLES.length);
-    expect(result.unverified.length).toBe(0);
-    expect(result.alternates.length).toBe(0);
-  });
-
-  it("mode=smoke pings exactly 7 MUST-tier roles", async () => {
-    const pingedModels: string[] = [];
-    const spawnFn = (_cmd: string, args: string[]) => {
-      const modelIdx = args.indexOf("--model");
-      if (modelIdx !== -1) pingedModels.push(args[modelIdx + 1]);
-      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
-    };
-
-    await runValidate(PROFILE_A, { mode: "smoke", spawnFn });
-    // 7 smoke roles, each pinged once (primary succeeded → no alternate ping)
-    expect(pingedModels.length).toBe(7);
-  });
-
-  it("mode=smoke only covers MUST-tier roles — exactly 7 pings when all primaries succeed", async () => {
-    // When all primaries succeed, smoke mode issues exactly 7 pings (one per MUST-tier role).
-    // Full mode would issue 24. This verifies smoke scope without model-string reverse lookup
-    // (model strings are shared across roles so reverse lookup is unreliable).
-    const pingedModels: string[] = [];
-    const spawnFn = (_cmd: string, args: string[]) => {
-      const modelIdx = args.indexOf("--model");
-      if (modelIdx !== -1) pingedModels.push(args[modelIdx + 1]);
-      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
-    };
-
-    await runValidate(PROFILE_A, { mode: "smoke", spawnFn });
-
-    // Exactly 7 pings — proves only smoke roles were covered
-    expect(pingedModels.length).toBe(7);
-
-    // Result contains exactly the 7 smoke roles as verified
-    const result = await runValidate(PROFILE_A, { mode: "smoke", spawnFn: makeSpawnFn(new Set(ROLES.map(r => PROFILE_A[r].primary))) });
-    expect(result.verified.length).toBe(7);
-    for (const role of SMOKE_ROLES) {
-      expect(result.verified).toContain(role);
-    }
-    // No non-smoke roles in result
-    const nonSmoke = ROLES.filter((r) => !SMOKE_ROLES.includes(r as any));
-    for (const role of nonSmoke) {
-      expect(result.verified).not.toContain(role);
-      expect(result.alternates).not.toContain(role);
-      expect(result.unverified).not.toContain(role);
-    }
-  });
-
-  it("mode=full pings all 24 roles", async () => {
-    const pingedModels: string[] = [];
-    const spawnFn = (_cmd: string, args: string[]) => {
-      const modelIdx = args.indexOf("--model");
-      if (modelIdx !== -1) pingedModels.push(args[modelIdx + 1]);
-      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
-    };
-
-    await runValidate(PROFILE_A, { mode: "full", spawnFn });
-    // 24 roles, each primary succeeds → 24 pings
-    expect(pingedModels.length).toBe(ROLES.length);
-  });
-
-  it("primary succeeds → role in verified list", async () => {
-    // All primaries succeed
-    const allPrimaries = new Set(ROLES.map((r) => PROFILE_A[r].primary));
-    const result = await runValidate(PROFILE_A, {
-      mode: "smoke",
-      spawnFn: makeSpawnFn(allPrimaries),
-    });
-    for (const role of SMOKE_ROLES) {
-      expect(result.verified).toContain(role);
-    }
-    expect(result.alternates.length).toBe(0);
-    expect(result.unverified.length).toBe(0);
-  });
-
-  it("primary fails, alternate succeeds → role in alternates list", async () => {
-    // Use Profile B smoke roles: all primaries are openai-codex/*.
-    // Only alternates (opencode-zen/*) succeed.
-    const allAlternates = new Set(SMOKE_ROLES.map((r) => PROFILE_B[r].registry_alternate));
-    const result = await runValidate(PROFILE_B, {
-      mode: "smoke",
-      spawnFn: makeSpawnFn(allAlternates),
-    });
-    for (const role of SMOKE_ROLES) {
-      expect(result.alternates).toContain(role);
-    }
-    expect(result.verified.length).toBe(0);
-    expect(result.unverified.length).toBe(0);
-  });
-
-  it("primary fails, alternate fails → role in unverified list, ok=false", async () => {
-    // Nothing succeeds
-    const result = await runValidate(PROFILE_A, {
-      mode: "smoke",
-      spawnFn: makeSpawnFn(new Set()),
-    });
-    for (const role of SMOKE_ROLES) {
-      expect(result.unverified).toContain(role);
-    }
-    expect(result.ok).toBe(false);
-    expect(result.verified.length).toBe(0);
-    expect(result.alternates.length).toBe(0);
-  });
-
-  it("partial failure: verified, alternate, and unverified roles are all reported", async () => {
-    const ok = () => ({
-      exitCode: 0,
-      stdout: Buffer.from("ok"),
-      stderr: Buffer.from(""),
-    });
-    const fail = () => ({
-      exitCode: 1,
-      stdout: Buffer.from(""),
-      stderr: Buffer.from("error"),
-    });
-    const responses = [
-      ok(),
-      fail(), ok(),
-      fail(), fail(),
-      fail(), fail(),
-      fail(), fail(),
-      fail(), fail(),
-      fail(), fail(),
-    ];
-    const spawnFn: NonNullable<Parameters<typeof runValidate>[1]["spawnFn"]> = () => {
-      const result = responses.shift();
-      if (!result) {
-        throw new Error("spawnFn called more times than expected");
-      }
-      return result;
-    };
-
-    const result = await runValidate(PROFILE_A, {
-      mode: "smoke",
-      spawnFn,
-    });
-    expect(result.verified).toEqual(["executor"]);
-    expect(result.alternates).toEqual(["explorer"]);
-    expect(result.unverified).toEqual([
-      "verifier",
-      "critic",
-      "planner",
-      "code-reviewer",
-      "debugger",
+describe("model id validation", () => {
+  it("parses canonical model ids from omp models output", () => {
+    expect(parseCanonicalModelIds(MODELS_FIXTURE)).toEqual([
+      "openai-codex/gpt-5.5",
+      "openai-codex/gpt-5.4",
     ]);
-    expect(result.ok).toBe(false);
   });
 
-  it("all verified or alternates → ok=true", async () => {
-    // All primaries succeed
-    const allPrimaries = new Set(SMOKE_ROLES.map((r) => PROFILE_A[r].primary));
-    const result = await runValidate(PROFILE_A, {
-      mode: "smoke",
-      spawnFn: makeSpawnFn(allPrimaries),
-    });
-    expect(result.ok).toBe(true);
+  it("strips reasoning-effort suffixes before validation", () => {
+    expect(modelBaseId("openai-codex/gpt-5.5:xhigh")).toBe("openai-codex/gpt-5.5");
+    expect(modelBaseId("openai-codex/gpt-5.4")).toBe("openai-codex/gpt-5.4");
   });
 });
 
-// ---------------------------------------------------------------------------
-// Timeout classification: slow-enabled models resolve as VERIFIED
-// ---------------------------------------------------------------------------
-
-describe("runValidate — timeout classification (Change 5)", () => {
-  /**
-   * A timeout-killed spawn returns exitCode=null (Bun.spawnSync sets exitCode null
-   * when killed by timeout signal). This should be treated as VERIFIED (enabled-but-slow).
-   */
-  it("spawnFn returning exitCode=null (timeout kill) → role VERIFIED", async () => {
-    const timeoutSpawn = (_cmd: string, _args: string[]) => ({
-      exitCode: null,
-      stdout: Buffer.from(""),
-      stderr: Buffer.from(""),
-    });
-
-    const result = await runValidate(PROFILE_A, {
-      mode: "smoke",
-      spawnFn: timeoutSpawn as any,
-    });
-
-    expect(result.verified.length).toBe(SMOKE_ROLES.length);
-    expect(result.alternates.length).toBe(0);
-    expect(result.unverified.length).toBe(0);
+describe("runValidate", () => {
+  it("mode=none returns every role as verified", async () => {
+    const result = await runValidate(DEFAULT_PROFILE, { mode: "none" });
     expect(result.ok).toBe(true);
+    expect(result.verified.length).toBe(ROLES.length);
+    expect(result.unverified).toEqual([]);
   });
 
-  /**
-   * A fast non-zero exit (real error: disabled/401/not-supported) returns exitCode > 0.
-   * This should be treated as UNVERIFIED.
-   */
-  it("spawnFn returning fast non-zero exitCode → role UNVERIFIED", async () => {
-    const errorSpawn = (_cmd: string, _args: string[]) => ({
-      exitCode: 1,
-      stdout: Buffer.from(""),
-      stderr: Buffer.from("401 Unauthorized"),
-    });
-
-    const result = await runValidate(PROFILE_A, {
+  it("mode=smoke validates only smoke roles against canonical ids", async () => {
+    const result = await runValidate(DEFAULT_PROFILE, {
       mode: "smoke",
-      spawnFn: errorSpawn as any,
+      listModelsOutput: MODELS_FIXTURE,
     });
 
-    expect(result.unverified.length).toBe(SMOKE_ROLES.length);
-    expect(result.verified.length).toBe(0);
-    expect(result.alternates.length).toBe(0);
+    expect(result.ok).toBe(true);
+    expect(result.verified).toEqual(SMOKE_ROLES);
+  });
+
+  it("reports roles whose base model id is absent from omp models", async () => {
+    const result = await runValidate(
+      {
+        ...DEFAULT_PROFILE,
+        executor: { ...DEFAULT_PROFILE.executor, primary: "openai-codex/missing-model" },
+      },
+      { mode: "smoke", listModelsOutput: MODELS_FIXTURE }
+    );
+
     expect(result.ok).toBe(false);
-  });
-
-  /**
-   * When primary times out (exitCode=null), it is VERIFIED — alternate must NOT be pinged.
-   */
-  it("primary timeout (exitCode=null) → verified without pinging alternate", async () => {
-    const pingedModels: string[] = [];
-    const timeoutSpawn = (_cmd: string, args: string[]) => {
-      const modelIdx = args.indexOf("--model");
-      if (modelIdx !== -1) pingedModels.push(args[modelIdx + 1]);
-      return { exitCode: null, stdout: Buffer.from(""), stderr: Buffer.from("") };
-    };
-
-    const result = await runValidate(PROFILE_A, {
-      mode: "smoke",
-      spawnFn: timeoutSpawn as any,
-    });
-
-    // Only primary pings (7), no alternate pings
-    expect(pingedModels.length).toBe(SMOKE_ROLES.length);
-    expect(result.verified.length).toBe(SMOKE_ROLES.length);
-    expect(result.alternates.length).toBe(0);
-  });
-
-  /**
-   * Primary exits 0 → verified. Alternate must NOT be pinged.
-   */
-  it("primary exit 0 → verified without pinging alternate", async () => {
-    const pingedModels: string[] = [];
-    const okSpawn = (_cmd: string, args: string[]) => {
-      const modelIdx = args.indexOf("--model");
-      if (modelIdx !== -1) pingedModels.push(args[modelIdx + 1]);
-      return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") };
-    };
-
-    await runValidate(PROFILE_A, { mode: "smoke", spawnFn: okSpawn as any });
-    // Only 7 primary pings, no alternates
-    expect(pingedModels.length).toBe(SMOKE_ROLES.length);
-  });
-
-  it("PING_TIMEOUT_MS is 15000 (15s for fast slow-model resolution)", async () => {
-    const { PING_TIMEOUT_MS } = await import("../../../scripts/pi-oven-setup/validate");
-    expect(PING_TIMEOUT_MS).toBe(15_000);
-  });
-
-  it("PING_TIMEOUT_MS constant is exported and is a positive number (≤ 120_000)", async () => {
-    const { PING_TIMEOUT_MS } = await import("../../../scripts/pi-oven-setup/validate");
-    expect(typeof PING_TIMEOUT_MS).toBe("number");
-    expect(PING_TIMEOUT_MS).toBeGreaterThan(0);
-    expect(PING_TIMEOUT_MS).toBeLessThanOrEqual(120_000);
+    expect(result.unverified).toEqual(["executor"]);
   });
 });

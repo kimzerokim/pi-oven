@@ -3,7 +3,6 @@ name: pov:oracle
 description: Strategic technical advisor — architecture decisions, codebase knowledge Q&A, hard debugging consultation after 2+ failed attempts, multi-system tradeoff analysis. READONLY, extended thinking.
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
 thinkingLevel: xhigh
 mode: subagent
 tools: ["read","search","find","bash","recall","retain","lsp","ast_grep","web_search"]

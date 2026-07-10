@@ -3,7 +3,6 @@ name: pov:deep-researcher
 description: Multi-source adversarial web researcher — fan-out search, PDF/arxiv ingestion, contradiction check, synthesis with memory
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
 thinkingLevel: xhigh
 mode: subagent
 tools: ["read","search","find","web_search","retain","recall","reflect"]

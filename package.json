@@ -14,6 +14,7 @@
     "check": "tsc --noEmit",
     "build": "bun build .omp/extensions/pi-oven.ts --outdir dist --target bun --format esm --external '@oh-my-pi/*'",
     "eval": "bun scripts/run-eval.ts",
+    "bench:runtime": "bun scripts/bench-runtime-injection.ts",
     "lint:agents": "bun scripts/lint-agents.ts",
     "lint:skills": "bun scripts/lint-skills.ts && bun --silent scripts/lint-doc-evidence.ts docs/harness/surveys/2026-07-05-pi-oven-remediation-detailed-survey.md docs/research/2026-07-05-pi-oven-codex-only-routing-research.md",
     "lint:doc-evidence": "bun --silent scripts/lint-doc-evidence.ts",

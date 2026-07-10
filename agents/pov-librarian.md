@@ -3,7 +3,6 @@ name: pov:librarian
 description: Library and SDK source-reading specialist — answers "what does this library/API do?" by reading source directly, with structured citation output. READONLY, no recursive task dispatch.
 model:
   - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
 thinkingLevel: medium
 mode: subagent
 tools: ["read","search","find","bash","lsp","web_search","ast_grep","recall"]

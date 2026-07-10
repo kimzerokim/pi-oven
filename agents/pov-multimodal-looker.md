@@ -3,7 +3,6 @@ name: pov:multimodal-looker
 description: Vision and image analysis specialist — screenshots, UI mockups, diagrams, PDFs, and visual artifacts. Extracts structured information from visual content. READONLY.
 model:
   - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
 thinkingLevel: medium
 mode: subagent
 tools: ["read","search","find","bash","inspect_image"]

@@ -36,6 +36,7 @@ function runDirect(paths: string[]): CommandResult {
 function runPackageCommand(paths: string[]): CommandResult {
   const proc = Bun.spawnSync([process.execPath, "--silent", "run", "lint:doc-evidence", ...paths], {
     cwd: ROOT,
+    env: { ...process.env, LC_ALL: "C", LANG: "C" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

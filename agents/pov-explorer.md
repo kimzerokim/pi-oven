@@ -3,7 +3,6 @@ name: pov:explorer
 description: Read-only codebase search specialist — files, patterns, relationships
 model:
   - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
 thinkingLevel: medium
 mode: subagent
 tools: ["read","search","find","bash","web_search","lsp","ast_grep"]

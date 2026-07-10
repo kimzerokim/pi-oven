@@ -7,7 +7,7 @@ import {
   writeShippedSkill,
 } from "../../helpers/installed-topology";
 import { runStatus } from "../../../scripts/pi-oven-setup/status";
-import { ROLES, PROFILE_A } from "../../../scripts/pi-oven-setup/profiles";
+import { ROLES, DEFAULT_PROFILE } from "../../../scripts/pi-oven-setup/profiles";
 import { SETUP_GLOBAL_PREREQUISITES } from "../../../scripts/pi-oven-setup/project-config";
 
 const REPO_AGENTS_DIR = resolve(__dirname, "../../../agents");
@@ -31,11 +31,11 @@ name: pov:${role}
 description: Test agent for ${role}
 model:
   - ${primary}
-  - opencode-zen/${primary.split("/").pop()}
-thinkingLevel: ${PROFILE_A[role as keyof typeof PROFILE_A].thinkingLevel}
+  - alternate-provider/${primary.split("/").pop()}
+thinkingLevel: ${DEFAULT_PROFILE[role as keyof typeof DEFAULT_PROFILE].thinkingLevel}
 mode: subagent
-tools: ${JSON.stringify(PROFILE_A[role as keyof typeof PROFILE_A].tools)}
-blocked_tools: ${JSON.stringify(PROFILE_A[role as keyof typeof PROFILE_A].blocked_tools)}
+tools: ${JSON.stringify(DEFAULT_PROFILE[role as keyof typeof DEFAULT_PROFILE].tools)}
+blocked_tools: ${JSON.stringify(DEFAULT_PROFILE[role as keyof typeof DEFAULT_PROFILE].blocked_tools)}
 ---
 
 ## Role
@@ -150,9 +150,9 @@ describe("runStatus", () => {
   // -------------------------------------------------------------------------
 
   it("status shows default(frontmatter) source when no override", async () => {
-    // Seed agents dir with PROFILE_A frontmatter
+    // Seed agents dir with DEFAULT_PROFILE frontmatter
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary);
     }
     const spawnFn = makeSpawnFn({ overrides: {} });
 
@@ -160,7 +160,7 @@ describe("runStatus", () => {
     expect(result.exitCode).toBe(0);
     // critic role should show default frontmatter model
     expect(result.output).toContain("critic");
-    expect(result.output).toContain(PROFILE_A.critic.primary);
+    expect(result.output).toContain(DEFAULT_PROFILE.critic.primary);
     expect(result.output).toContain("default");
     // must NOT contain override source for critic
     expect(result.output).not.toMatch(/critic.*override\(config\.yml\)/);
@@ -168,9 +168,9 @@ describe("runStatus", () => {
 
   it("status shows override source when override present", async () => {
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary);
     }
-    const overrideModel = "opencode-zen/claude-opus-4-8";
+    const overrideModel = "alternate-provider/claude-opus-4-8";
     const spawnFn = makeSpawnFn({ overrides: { "pov:critic": overrideModel } });
 
     const result = await runStatus({ spawnFn, agentsDir });
@@ -182,7 +182,7 @@ describe("runStatus", () => {
 
   it("status warns on unresolved override without claiming runtime fallback", async () => {
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary);
     }
     // Use a retired model id that won't appear in list-models
     const retiredModel = "anthropic/claude-opus-4-7";
@@ -191,13 +191,13 @@ describe("runStatus", () => {
       // list-models fixture that does NOT include the retired model
       listModelsOutput: JSON.stringify([
         { id: "anthropic/claude-opus-4-8" },
-        { id: "opencode-zen/claude-opus-4-8" },
+        { id: "alternate-provider/claude-opus-4-8" },
       ]),
     });
 
     const result = await runStatus({ spawnFn, agentsDir, listModelsOutput: JSON.stringify([
       { id: "anthropic/claude-opus-4-8" },
-      { id: "opencode-zen/claude-opus-4-8" },
+      { id: "alternate-provider/claude-opus-4-8" },
     ]) });
     expect(result.exitCode).toBe(0);
     expect(result.output).toMatch(/미해소|unresolved/i);
@@ -207,7 +207,7 @@ describe("runStatus", () => {
 
   it("status resolves model selectors with reasoning effort suffixes by base model id", async () => {
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary);
     }
     const spawnFn = makeSpawnFn({
       overrides: { "pov:critic": "openai-codex/gpt-5.5:xhigh" },
@@ -233,7 +233,7 @@ describe("runStatus", () => {
 
   it("status has no dual-plugin-surface warning under an isolated empty HOME cache, and no Profile line", async () => {
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary);
     }
     const spawnFn = makeSpawnFn({ overrides: {} });
     const homeDir = makeTempDir();
@@ -247,7 +247,7 @@ describe("runStatus", () => {
 
   it("status shows all ROLES in output", async () => {
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary);
     }
     const spawnFn = makeSpawnFn({ overrides: {} });
 
@@ -288,7 +288,7 @@ describe("runStatus", () => {
 
   it("status warns on unknown role override (stray key)", async () => {
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary);
     }
     const spawnFn = makeSpawnFn({ overrides: { "pov:unknown-role-xyz": "some/model" } });
 
@@ -299,7 +299,7 @@ describe("runStatus", () => {
 
   it("status falls back gracefully when omp config get fails (returns empty overrides)", async () => {
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary);
     }
     const spawnFn = makeSpawnFn({ getExitCode: 1 });
 
@@ -342,7 +342,7 @@ describe("runStatus — project layer", () => {
     cwd = join(tempDir, "proj");
     mkdirSync(cwd, { recursive: true });
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary);
     }
   });
 
@@ -474,17 +474,17 @@ describe("runStatus — project layer", () => {
 
 
   it("status labels a project canonical role as the healthy single pov surface", async () => {
-    seedProject({ task: { agentModelOverrides: { "pov:critic": "opencode-zen/kimi-k2.6" } } });
+    seedProject({ task: { agentModelOverrides: { "pov:critic": "alternate-provider/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({ overrides: {} });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
-    expect(criticLine).toContain("opencode-zen/kimi-k2.6");
+    expect(criticLine).toContain("alternate-provider/kimi-k2.6");
     expect(criticLine).toContain("project(.omp/settings.json healthy single pov surface)");
   });
 
   it("flags partial project apply when routing exists without the setup-owned companion keys", async () => {
-    seedProject({ task: { agentModelOverrides: { "pov:critic": "opencode-zen/kimi-k2.6" } } });
+    seedProject({ task: { agentModelOverrides: { "pov:critic": "alternate-provider/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({ overrides: {} });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
@@ -493,29 +493,29 @@ describe("runStatus — project layer", () => {
     );
   });
   it("status distinguishes project old-only state when no machine-global override exists", async () => {
-    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "alternate-provider/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({ overrides: {} });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
-    expect(criticLine).toContain("opencode-zen/kimi-k2.6");
+    expect(criticLine).toContain("alternate-provider/kimi-k2.6");
     expect(criticLine).toContain("project(.omp/settings.json old config keys)");
     expect(result.output).toContain(
-      "old config keys: project override pi-oven:critic=opencode-zen/kimi-k2.6 still uses pi-oven:* in .omp/settings.json"
+      "old config keys: project override pi-oven:critic=alternate-provider/kimi-k2.6 still uses pi-oven:* in .omp/settings.json"
     );
   });
 
   it("status distinguishes global new + project old for the same role", async () => {
-    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "alternate-provider/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({ overrides: { "pov:critic": "anthropic/claude-opus-4-8" } });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
-    expect(criticLine).toContain("opencode-zen/kimi-k2.6");
+    expect(criticLine).toContain("alternate-provider/kimi-k2.6");
     expect(criticLine).toContain("project(.omp/settings.json old config keys)");
     expect(criticLine).not.toContain("override(config.yml healthy single pov surface)");
     expect(result.output).toContain(
-      "mixed migration state: project pi-oven:critic=opencode-zen/kimi-k2.6 still uses old config keys while machine-global pov:critic=anthropic/claude-opus-4-8 is already on the healthy single pov surface; project still wins for critic"
+      "mixed migration state: project pi-oven:critic=alternate-provider/kimi-k2.6 still uses old config keys while machine-global pov:critic=anthropic/claude-opus-4-8 is already on the healthy single pov surface; project still wins for critic"
     );
   });
 
@@ -531,15 +531,15 @@ describe("runStatus — project layer", () => {
     );
   });
   it("status distinguishes global old + project new for the same role", async () => {
-    seedProject({ task: { agentModelOverrides: { "pov:critic": "opencode-zen/kimi-k2.6" } } });
+    seedProject({ task: { agentModelOverrides: { "pov:critic": "alternate-provider/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({ overrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
-    expect(criticLine).toContain("opencode-zen/kimi-k2.6");
+    expect(criticLine).toContain("alternate-provider/kimi-k2.6");
     expect(criticLine).toContain("project(.omp/settings.json healthy single pov surface)");
     expect(result.output).toContain(
-      "mixed migration state: machine-global pi-oven:critic=anthropic/claude-opus-4-8 still uses old config keys while project pov:critic=opencode-zen/kimi-k2.6 is already on the healthy single pov surface; project still wins for critic"
+      "mixed migration state: machine-global pi-oven:critic=anthropic/claude-opus-4-8 still uses old config keys while project pov:critic=alternate-provider/kimi-k2.6 is already on the healthy single pov surface; project still wins for critic"
     );
   });
 
@@ -547,7 +547,7 @@ describe("runStatus — project layer", () => {
     seedProject({
       task: {
         agentModelOverrides: {
-          "pov:critic": "opencode-zen/kimi-k2.6",
+          "pov:critic": "alternate-provider/kimi-k2.6",
           "pi-oven:critic": "anthropic/claude-opus-4-8",
         },
       },
@@ -556,10 +556,10 @@ describe("runStatus — project layer", () => {
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     const criticLine = result.output.split("\n").find((l) => /^\s*critic\s/.test(l))!;
-    expect(criticLine).toContain("opencode-zen/kimi-k2.6");
+    expect(criticLine).toContain("alternate-provider/kimi-k2.6");
     expect(criticLine).toContain("project(.omp/settings.json mixed migration state; preferring pov:*)");
     expect(result.output).toContain(
-      "mixed migration state: project scope has both pov:critic=opencode-zen/kimi-k2.6 and pi-oven:critic=anthropic/claude-opus-4-8; status prefers pov:*"
+      "mixed migration state: project scope has both pov:critic=alternate-provider/kimi-k2.6 and pi-oven:critic=anthropic/claude-opus-4-8; status prefers pov:*"
     );
   });
 
@@ -581,7 +581,7 @@ describe("runStatus — project layer", () => {
   });
   it("reports the healthy all-pov state when no live pi-oven:* keys remain in either scope", async () => {
     seedProject({
-      task: { agentModelOverrides: { "pov:critic": "opencode-zen/kimi-k2.6" } },
+      task: { agentModelOverrides: { "pov:critic": "alternate-provider/kimi-k2.6" } },
       skills: { includeSkills: ["pov:*"] },
       modelRoles: { default: "openai-codex/gpt-5.5", title: "openai/gpt-5" },
       retry: { fallbackChains: { default: ["openai/gpt-5"] } },
@@ -597,7 +597,7 @@ describe("runStatus — project layer", () => {
     expect(result.output).not.toContain("PARTIAL:");
   });
   it("a role in neither layer shows default(frontmatter)", async () => {
-    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "alternate-provider/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({ overrides: {} });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
@@ -630,7 +630,7 @@ describe("runStatus — project layer", () => {
   });
 
   it("surfaces missing machine-global prerequisites when project routing is active", async () => {
-    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "alternate-provider/kimi-k2.6" } } });
     const spawnFn = makeSpawnFn({
       overrides: {},
       scalarValues: {
@@ -657,7 +657,7 @@ describe("runStatus — project layer", () => {
   });
 
   it("surfaces unreadable prerequisite state as unknown instead of claiming the prerequisite is missing", async () => {
-    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "opencode-zen/kimi-k2.6" } } });
+    seedProject({ task: { agentModelOverrides: { "pi-oven:critic": "alternate-provider/kimi-k2.6" } } });
     const baseSpawn = makeSpawnFn({
       overrides: {},
       ignoredSkills: [],

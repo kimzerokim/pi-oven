@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { PROFILE_B, ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
+import { DEFAULT_PROFILE, ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
 import {
   createDeepInterviewRuntime,
   type DeepInterviewRuntime,
@@ -86,7 +86,7 @@ const APPROVAL_ONLY_META: DeepInterviewAskMetadata = {
 function buildRecommendedByRole(): Record<Role, string> {
   return Object.fromEntries(
     ROLES.map((role) => {
-      const entry = PROFILE_B[role];
+      const entry = DEFAULT_PROFILE[role];
       return [role, `${entry.primary}:${entry.thinkingLevel}`];
     })
   ) as Record<Role, string>;

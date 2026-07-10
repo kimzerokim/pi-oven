@@ -39,6 +39,22 @@ export interface OwnershipTraceEntry {
   reason: string;
 }
 
+export type RuntimeSkillPhase = "explore" | "plan" | "mutate" | "verify";
+
+export interface DeferredSkillObligation {
+  skill: string;
+  ownedReadTarget: string;
+  phases: RuntimeSkillPhase[];
+  reason: string;
+}
+
+export interface PhaseReceipt {
+  phase: RuntimeSkillPhase;
+  skill: string;
+  satisfiedAt: string;
+  ownedReadTarget?: string;
+}
+
 export interface TemporaryAwsCredentials {
   provider: "aws";
   accessKeyId: string;
@@ -136,6 +152,8 @@ export interface FsmState {
   ownershipTrace?: OwnershipTraceEntry[];
   explicitForeignAgents?: string[];
   ownedSkillReadTargets?: string[];
+  deferredSkillObligations?: DeferredSkillObligation[];
+  phaseReceipts?: PhaseReceipt[];
   ownershipStatus?: AutonomyOwnershipStatus;
   blockedReason?: AutonomyBlockedReason;
   nextAction?: AutonomyNextAction;
@@ -213,6 +231,38 @@ function isValidOwnershipTraceEntry(value: unknown): value is OwnershipTraceEntr
     typeof entry.resolved === "string" &&
     (entry.status === "resolved" || entry.status === "rewritten" || entry.status === "blocked") &&
     typeof entry.reason === "string"
+  );
+}
+
+function isValidRuntimeSkillPhase(value: unknown): value is RuntimeSkillPhase {
+  return value === "explore" || value === "plan" || value === "mutate" || value === "verify";
+}
+
+function isValidDeferredSkillObligation(value: unknown): value is DeferredSkillObligation {
+  if (typeof value !== "object" || value === null) return false;
+  const obligation = value as Record<string, unknown>;
+  return (
+    typeof obligation.skill === "string" &&
+    obligation.skill.length > 0 &&
+    typeof obligation.ownedReadTarget === "string" &&
+    obligation.ownedReadTarget.length > 0 &&
+    Array.isArray(obligation.phases) &&
+    obligation.phases.every(isValidRuntimeSkillPhase) &&
+    typeof obligation.reason === "string" &&
+    obligation.reason.length > 0
+  );
+}
+
+function isValidPhaseReceipt(value: unknown): value is PhaseReceipt {
+  if (typeof value !== "object" || value === null) return false;
+  const receipt = value as Record<string, unknown>;
+  return (
+    isValidRuntimeSkillPhase(receipt.phase) &&
+    typeof receipt.skill === "string" &&
+    receipt.skill.length > 0 &&
+    typeof receipt.satisfiedAt === "string" &&
+    receipt.satisfiedAt.length > 0 &&
+    (receipt.ownedReadTarget === undefined || typeof receipt.ownedReadTarget === "string")
   );
 }
 
@@ -376,6 +426,20 @@ function isValidState(v: unknown): v is FsmState {
   if (
     o.ownedSkillReadTargets !== undefined &&
     !isStringArray(o.ownedSkillReadTargets)
+  ) {
+    return false;
+  }
+  if (
+    o.deferredSkillObligations !== undefined &&
+    (!Array.isArray(o.deferredSkillObligations) ||
+      o.deferredSkillObligations.some((entry) => !isValidDeferredSkillObligation(entry)))
+  ) {
+    return false;
+  }
+  if (
+    o.phaseReceipts !== undefined &&
+    (!Array.isArray(o.phaseReceipts) ||
+      o.phaseReceipts.some((entry) => !isValidPhaseReceipt(entry)))
   ) {
     return false;
   }
@@ -578,6 +642,8 @@ export class GateStateStore {
               ownershipTrace: [],
               explicitForeignAgents: [],
               ownedSkillReadTargets: [],
+              deferredSkillObligations: [],
+              phaseReceipts: [],
               ownershipStatus: undefined,
               blockedReason: undefined,
               nextAction: undefined,

@@ -1,6 +1,6 @@
 /**
  * Agent file in-place rewriter for the pi-oven setup wizard.
- * Spec B §9.6: source-of-truth rewrite of model: array + thinkingLevel in agent files.
+ * Source-of-truth rewrite of model + thinkingLevel in agent files.
  *
  * Design constraints:
  * - Preserve frontmatter key order verbatim.
@@ -268,7 +268,6 @@ function applyModelEntry(content: string, entry: ModelEntry): string {
       inBlockedToolsBlock = false;
       newLines.push("model:");
       newLines.push(`  - ${entry.primary}`);
-      newLines.push(`  - ${entry.registry_alternate}`);
       continue;
     }
     // tools block

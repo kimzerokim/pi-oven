@@ -3,14 +3,9 @@
  *
  * Two modes, keyed on whether `agentsDir` is supplied:
  * - WITH agentsDir = maintainer generate: rewrites repo agents/ frontmatter
- *   (model: array + thinkingLevel) from PROFILE_A/B via agent-rewriter. Writes
- *   NO config keys.
- * - WITHOUT agentsDir = user setup: writes the MAIN ORCHESTRATOR model pair
- *   (the `default` + `title` keys of the `modelRoles` record) from
- *   PROFILE_*_ORCHESTRATOR in ONE atomic whole-record merge-write.
- *   Profiles B/C/D also write 24 task.agentModelOverrides. Profile B writes
- *   model selectors with `:<thinkingLevel>` suffixes so the installation path
- *   carries both model and effort routing; C/D keep plain model ids.
+ *   (model + thinkingLevel) from DEFAULT_PROFILE. Writes NO config keys.
+ * - WITHOUT agentsDir = user setup: writes DEFAULT_ORCHESTRATOR, empty
+ *   retry.fallbackChains, and all 24 task.agentModelOverrides.
  *
  * Personal per-role override is the --override path (Task 2.1).
  */
@@ -43,25 +38,16 @@ import {
   resolveNativeWorkerRuntimeStatus,
 } from "../pi-oven-team";
 import {
-  PROFILE_A,
-  PROFILE_B,
-  PROFILE_C,
-  PROFILE_D,
-  PROFILE_A_ORCHESTRATOR,
-  PROFILE_B_ORCHESTRATOR,
-  PROFILE_C_ORCHESTRATOR,
-  PROFILE_D_ORCHESTRATOR,
-  PROFILE_A_FALLBACK_CHAINS,
-  PROFILE_B_FALLBACK_CHAINS,
-  PROFILE_C_FALLBACK_CHAINS,
-  PROFILE_D_FALLBACK_CHAINS,
+  DEFAULT_FALLBACK_CHAINS,
+  DEFAULT_ORCHESTRATOR,
+  DEFAULT_PROFILE,
   ROLES,
   type ModelEntry,
-  type ProfileMap,
 } from "./profiles";
 
 export interface ApplyOptions {
-  profile: "A" | "B" | "C" | "D";
+  /** Backward-compatible no-op. All values resolve to DEFAULT_PROFILE. */
+  profile?: string;
   validateMode?: "smoke" | "full" | "none";
   spawnFn?: (cmd: string, args: string[]) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
   agentsDir?: string; // maintainer generate target (repo agents/)
@@ -70,8 +56,8 @@ export interface ApplyOptions {
    *   - "global" (default) → homedir-global `~/.omp/agent/config.yml` via the
    *     config-yml writers. Behavior is byte-for-byte unchanged from before.
    *   - "project" → `<cwd>/.omp/settings.json` via the project-settings writers.
-   *     ALL profiles (incl. A) write all 24 per-role overrides + modelRoles +
-   *     retry.fallbackChains there; NO global config-yml writer runs and the
+   *     Writes all 24 per-role overrides + modelRoles + retry.fallbackChains there;
+   *     NO global config-yml writer runs and the
    *     memory/async infra is NOT written (configure that once via global scope).
    * Ignored on the maintainer path (with agentsDir).
    */
@@ -80,39 +66,27 @@ export interface ApplyOptions {
   cwd?: string;
 }
 
-function modelOverrideValue(profile: ApplyOptions["profile"], entry: ModelEntry): string {
-  return profile === "A" || profile === "B"
-    ? `${entry.primary}:${entry.thinkingLevel}`
-    : entry.primary;
+function modelOverrideValue(entry: ModelEntry): string {
+  return `${entry.primary}:${entry.thinkingLevel}`;
 }
 
 const PLUGIN_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 /**
- * Apply a profile:
- * 1. Resolve profileMap = PROFILE_A/B/C/D.
+ * Apply the default profile:
+ * 1. Resolve DEFAULT_PROFILE.
  * 2. WITH agentsDir → maintainer generate path: rewrite agent files
  *    (model array + thinkingLevel); write NO config.
  * 3. WITHOUT agentsDir + global scope → write modelRoles + retry.fallbackChains
  *    and all 24 `task.agentModelOverrides`.
  * 4. WITHOUT agentsDir + project scope → write all 24 per-role overrides,
  *    modelRoles, and retry.fallbackChains to `<cwd>/.omp/settings.json`.
- *    Profiles A/B per-role values include `:<thinkingLevel>` selector suffixes.
  * 5. runValidate per validateMode (default smoke).
  * 6. Return exit 0 if all ok; exit 1 if validation fails.
  */
 export async function runApply(
   opts: ApplyOptions
 ): Promise<{ exitCode: number; output: string }> {
-  const profileMap: ProfileMap =
-    opts.profile === "D"
-      ? PROFILE_D
-      : opts.profile === "C"
-      ? PROFILE_C
-      : opts.profile === "B"
-      ? PROFILE_B
-      : PROFILE_A;
-
   let memoryConfigLine = "";
   let toolsEnabledLine = "";
   let workflowSkillLine = "";
@@ -124,31 +98,12 @@ export async function runApply(
 
   if (opts.agentsDir) {
     // Maintainer generate: rewrite agent files only, write no config keys.
-    await rewriteAllAgents(opts.agentsDir, profileMap);
+    await rewriteAllAgents(opts.agentsDir, DEFAULT_PROFILE);
   } else {
-    // Resolve the orchestrator pair + fallback chains for the profile (shared by
-    // both scopes).
-    const orchestrator =
-      opts.profile === "D"
-        ? PROFILE_D_ORCHESTRATOR
-        : opts.profile === "C"
-        ? PROFILE_C_ORCHESTRATOR
-        : opts.profile === "B"
-        ? PROFILE_B_ORCHESTRATOR
-        : PROFILE_A_ORCHESTRATOR;
-    const fallbackChains =
-      opts.profile === "D"
-        ? PROFILE_D_FALLBACK_CHAINS
-        : opts.profile === "C"
-        ? PROFILE_C_FALLBACK_CHAINS
-        : opts.profile === "B"
-        ? PROFILE_B_FALLBACK_CHAINS
-        : PROFILE_A_FALLBACK_CHAINS;
-
     if (scope === "project") {
       // PROJECT setup: write the model routing into <cwd>/.omp/settings.json
-      // (the omp project layer), which deep-merges OVER global. EVERY profile
-      // writes ALL 24 per-role overrides here — agent-file frontmatter is the
+      // (the omp project layer), which deep-merges OVER global. Setup writes
+      // all 24 per-role overrides here — agent-file frontmatter is the
       // shipped plugin default, so a project that wants different models must
       // carry explicit overrides for all 24 roles to actually diverge. NO global
       // config-yml writer runs and the memory/async infra is NOT written
@@ -156,24 +111,21 @@ export async function runApply(
       const cwd = opts.cwd ?? process.cwd();
       const overrideRecord: Record<string, string> = {};
       for (const role of ROLES) {
-        overrideRecord[`pov:${role}`] = modelOverrideValue(
-          opts.profile,
-          profileMap[role]
-        );
+        overrideRecord[`pov:${role}`] = modelOverrideValue(DEFAULT_PROFILE[role]);
       }
       await setProjectAgentModelOverrides(overrideRecord, { cwd });
       await setProjectIncludedSkills({ cwd });
       await setProjectModelRoles(
-        { default: orchestrator.default, title: orchestrator.title },
+        { default: DEFAULT_ORCHESTRATOR.default, title: DEFAULT_ORCHESTRATOR.title },
         { cwd }
       );
-      await setProjectRetryFallbackChains(fallbackChains, { cwd });
+      await setProjectRetryFallbackChains(DEFAULT_FALLBACK_CHAINS, { cwd });
       const standaloneSignals = await collectStandaloneTruthSignals({
         pluginAssetPath: PLUGIN_ROOT,
         projectRoot: cwd,
         spawnFn: opts.spawnFn,
       });
-      scopeLine = `✓ project visibility matrix written to ${projectSettingsPath(cwd)} (all 24 roles pinned + skills.includeSkills + modelRoles + retry.fallbackChains; Profiles A/B include reasoning-effort suffixes)\n`;
+      scopeLine = `✓ project visibility matrix written to ${projectSettingsPath(cwd)} (all 24 roles pinned + skills.includeSkills + modelRoles + empty retry.fallbackChains)\n`;
       workflowSkillLine =
         '✓ workflow-skill ownership: skills.includeSkills = ["pov:*"] written to project .omp/settings.json (workflow skills only; populated ~/.claude/skills remains explicitly non-owning)\n';
       projectRemediationLine =
@@ -188,20 +140,17 @@ export async function runApply(
       // are rejected — setModelRoles read-merge-writes the whole record,
       // preserving sibling roles.
       await setModelRoles(
-        { default: orchestrator.default, title: orchestrator.title },
+        { default: DEFAULT_ORCHESTRATOR.default, title: DEFAULT_ORCHESTRATOR.title },
         { spawnFn: opts.spawnFn }
       );
-      await setRetryFallbackChains(fallbackChains, { spawnFn: opts.spawnFn });
+      await setRetryFallbackChains(DEFAULT_FALLBACK_CHAINS, { spawnFn: opts.spawnFn });
 
       // Bulk-write all 24 per-role task.agentModelOverrides. Global persisted
       // routing is canonical `pov:*`; successful writes also migrate any old-only
       // `pi-oven:*` state in the same scope.
       const overrideRecord: Record<string, string> = {};
       for (const role of ROLES) {
-        overrideRecord[`pov:${role}`] = modelOverrideValue(
-          opts.profile,
-          profileMap[role]
-        );
+        overrideRecord[`pov:${role}`] = modelOverrideValue(DEFAULT_PROFILE[role]);
       }
       await setAgentModelOverrides(overrideRecord, { spawnFn: opts.spawnFn });
       await setPiOvenIncludedSkills({ spawnFn: opts.spawnFn });
@@ -233,7 +182,7 @@ export async function runApply(
 
   // Validate
   const validateMode = opts.validateMode ?? "smoke";
-  const validateResult = await runValidate(profileMap, {
+  const validateResult = await runValidate(DEFAULT_PROFILE, {
     mode: validateMode,
     spawnFn: opts.spawnFn,
   });
@@ -243,23 +192,19 @@ export async function runApply(
     return {
       exitCode: 1,
       output:
-        `Profile ${opts.profile} setup applied but validation failed.\n` +
+        `Default setup applied but validation failed.\n` +
         `Unverified roles: ${unverifiedList}\n` +
         `Run /pi-oven:setup to reconfigure, or /pi-oven:setup --reset to return to defaults.\n`,
     };
   }
 
-  const verifiedCount = validateResult.verified.length + validateResult.alternates.length;
-  const alternateCount = validateResult.alternates.length;
+  const verifiedCount = validateResult.verified.length;
   const summaryParts: string[] = [`${verifiedCount} roles verified`];
-  if (alternateCount > 0) {
-    summaryParts.push(`${alternateCount} alternate only`);
-  }
 
   return {
     exitCode: 0,
     output:
-      `Profile ${opts.profile} setup applied. ${summaryParts.join(", ")}.\n` +
+      `Default codex-only setup applied. ${summaryParts.join(", ")}.\n` +
       scopeLine +
       projectRemediationLine +
       workflowSkillLine +
@@ -267,7 +212,7 @@ export async function runApply(
       toolsEnabledLine +
       nativeWorkerRuntimeLine +
       workerCeilingLine +
-      "Configuration boundary: setup/status are visibility/guard layers only; runtime still owns current-session provider-family choice.\n" +
+      "Configuration boundary: setup/status are visibility/guard layers only; runtime records current-session provider-family drift as diagnostics, not routing policy.\n" +
       "Fan-out contract: dispatch dependency-ready work in the widest safe wave (default target 8-12 siblings). The vendored pi-oven launcher enforces nativeWorkers.maxWorkers when its control path is present, and setup/status/doctor surface any degraded runtime state explicitly.\n" +
       `Setup complete.\n`,
   };

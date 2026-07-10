@@ -18,6 +18,7 @@ import {
   formatSkillKeywordIndexIssues,
   loadSkillKeywordIndexReport,
   matchSkillsForText,
+  pruneMatchedSkillsForRuntime,
   updateSkillKeywordLoaderOnTurnStart,
   type SkillKeywordIndexIssue,
 } from "./pi-oven-runtime/skill-keyword-loader";
@@ -128,8 +129,6 @@ const RUNTIME_INSTALLED_TOPOLOGY_FIX =
 
 const SUPPORTED_SESSION_PROVIDER_FAMILY_FLAGS: Record<SessionProviderFamily, true> = {
   "openai-codex": true,
-  anthropic: true,
-  "opencode-zen": true,
 };
 
 const PLUGIN_ROOT_MARKERS = [
@@ -288,14 +287,12 @@ export function countProjectRoutingRoles(settingsPath: string): number {
 
 const RELEASE_DEFAULT_ALLOWED_PREFIXES = [
   "openai-codex",
-  "opencode-zen",
 ] as const;
 
 /**
  * Compute ALLOWED_PREFIXES for the shipped release-default registry.
  * Load-time validation is intentionally locked to the codex-only baseline:
- * openai-codex primaries plus opencode-zen mirrors. Stale anthropic entries are
- * treated as drift instead of widening the allowlist.
+ * committed frontmatter must stay on openai-codex primaries only.
  */
 export function getAllowedPrefixes(_agentFiles: AgentFileEntry[]): string[] {
   return [...RELEASE_DEFAULT_ALLOWED_PREFIXES].sort();
@@ -413,7 +410,7 @@ export function validateAgentRegistry(
     }
     if (agent.modelArray.length === 0) {
       logger.error(
-        `Profile A guarantee broken — agent file missing "model" field.`
+        `DEFAULT_PROFILE guarantee broken — agent file missing "model" field.`
       );
       continue;
     }
@@ -435,7 +432,7 @@ export function validateAgentRegistry(
   }
   if (agentFiles.length > 0 && !hasOpenAICodex) {
     logger.error(
-      `Profile A guarantee broken — agent registry missing required "openai-codex/" model.`
+      `DEFAULT_PROFILE guarantee broken — agent registry missing required "openai-codex/" model.`
     );
   }
 }
@@ -1257,8 +1254,13 @@ export default function piOvenPi(
       const promptMatchedSkills = isParentSession
         ? matchSkillsForText(event.prompt ?? "", skillKeywordIndex)
         : [];
-      const effectiveMatchedSkills =
-        promptMatchedSkills.length > 0 ? promptMatchedSkills : skillKeywordState.matchedSkills;
+      const promptPruned =
+        promptMatchedSkills.length > 0
+          ? pruneMatchedSkillsForRuntime(promptMatchedSkills, event.prompt ?? "")
+          : null;
+      const effectiveMatchedSkills = promptPruned?.rootSkills ?? skillKeywordState.matchedSkills;
+      const effectiveDeferredSkillObligations =
+        promptPruned?.deferredSkillObligations ?? skillKeywordState.deferredSkillObligations;
 
       // Hoisted to the outer handler scope so the SAME boolean drives BOTH the
       // autonomous reminder block and the orchestrator-conduct injection below
@@ -1325,7 +1327,10 @@ export default function piOvenPi(
           isParentSession,
           autonomousActive: needsAutonomousReminder,
         });
-        const keywordPrompt = buildKeywordMatchedSkillsPrompt(effectiveMatchedSkills);
+        const keywordPrompt = buildKeywordMatchedSkillsPrompt(
+          effectiveMatchedSkills,
+          effectiveDeferredSkillObligations
+        );
         if (
           keywordPrompt !== null &&
           !systemPrompt.some((entry) => entry.includes(KEYWORD_SKILL_DEDUP_KEY))
@@ -1507,6 +1512,14 @@ export default function piOvenPi(
       const ownedSkillReadTargets = skillKeywordState.matchedSkills.map(
         (skill) => skill.ownedReadTarget
       );
+      const deferredSkillObligations = skillKeywordState.deferredSkillObligations.map(
+        (skill) => ({
+          skill: skill.name,
+          ownedReadTarget: skill.ownedReadTarget,
+          phases: skill.phases ?? ["mutate", "verify"],
+          reason: "keyword-matched child/deferred skill",
+        })
+      );
       const ownershipStatus = deriveAutonomyOwnershipStatus(requiredSkills, ownedSkillReadTargets);
       const sameUserMessage = current.requiredSkillsMessageId === skillKeywordState.lastUserMessageId;
       const persistedReads = sameUserMessage ? current.skillReads ?? [] : [];
@@ -1548,6 +1561,8 @@ export default function piOvenPi(
           ? extractExplicitForeignAgents(latestTextUserMessage.text)
           : current.explicitForeignAgents ?? [],
         ownedSkillReadTargets,
+        deferredSkillObligations,
+        phaseReceipts: sameUserMessage ? current.phaseReceipts ?? [] : [],
         ownershipStatus,
         blockedReason: sameUserMessage ? current.blockedReason : undefined,
         nextAction: sameUserMessage ? current.nextAction : undefined,

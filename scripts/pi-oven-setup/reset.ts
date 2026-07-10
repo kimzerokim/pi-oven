@@ -2,15 +2,15 @@
  * --reset subcommand for pi-oven setup wizard.
  * Spec E §3.3 — global reset clears managed task.agentModelOverrides role keys
  * for both canonical `pov:*` and legacy `pi-oven:*` forms. Agent files are NOT
- * touched — they are the committed PROFILE_A baseline.
+ * touched — they are the committed DEFAULT_PROFILE baseline.
  *
- * --reset --full additionally resets the other pi-oven-managed keys (modelRoles,
- * disabledProviders, setupVersion) to their omp type-defaults so config.yml
+ * --reset --full additionally resets setup-owned routing keys (modelRoles,
+ * retry.fallbackChains, setupVersion) to their omp type-defaults so config.yml
  * returns to the "new user" state for a clean uninstall. omp-internal keys (e.g.
  * lastChangelogVersion) are NEVER touched.
  */
 
-import { deleteGlobalAgentModelOverrides, resetConfigKey, clearPiOvenIgnoredSkills } from "./config-yml";
+import { deleteGlobalAgentModelOverrides, resetConfigKey } from "./config-yml";
 import type { ConfigYmlOpts } from "./config-yml";
 import { clearSetupComplete, clearSetupCompleteGlobal } from "./project-config";
 import {
@@ -49,8 +49,8 @@ export interface ResetOptions {
   homeDir?: string;
 }
 
-/** pi-oven-managed config.yml keys reset by `--reset --full` (Spec E). */
-const FULL_RESET_KEYS = ["modelRoles", "disabledProviders", "setupVersion"] as const;
+/** pi-oven-managed config.yml keys reset by `--reset --full`. */
+const FULL_RESET_KEYS = ["modelRoles", "retry.fallbackChains", "setupVersion"] as const;
 
 /**
  * Global reset clears managed role overrides for known roles in either prefix
@@ -102,12 +102,6 @@ export async function runReset(
   }
 
   const removedKeys = await deleteGlobalAgentModelOverrides(opts);
-
-  try {
-    await clearPiOvenIgnoredSkills(opts);
-  } catch {
-    // Already empty or key not present — nothing to clear.
-  }
 
   await resetConfigKey("skills.includeSkills", opts);
 

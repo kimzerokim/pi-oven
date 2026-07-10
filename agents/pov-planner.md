@@ -3,8 +3,7 @@ name: pov:planner
 description: Bite-sized task decomposition and actionable plan authoring — interview-driven, spec-compliant, commit-aware
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
-thinkingLevel: xhigh
+thinkingLevel: high
 mode: subagent
 tools: ["read","search","find","bash","recall","task","lsp","ast_grep","web_search"]
 blocked_tools: ["write","edit","apply_patch"]

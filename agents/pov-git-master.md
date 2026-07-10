@@ -3,7 +3,6 @@ name: pov:git-master
 description: Git expert for atomic commits, style-matched messages, rebase operations, and safe branch management
 model:
   - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
 thinkingLevel: medium
 mode: subagent
 tools: ["read","search","find","bash"]

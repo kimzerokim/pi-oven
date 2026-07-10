@@ -195,26 +195,21 @@ export function evalGit(fact: GitFact): CheckResult {
   return { name, status: "PASS", detail: `git ${fact.version ?? ""} present, inside repo`.trim() };
 }
 
-/** (4) provider auth: PASS if >=1 whitelisted provider authed, else FAIL. */
+/** (4) provider auth: PASS only when openai-codex is authed, else FAIL. */
 export function evalAuth(fact: AuthStatus): CheckResult {
   const name = "provider auth";
-  const authed: string[] = [];
-  if (fact.opencode_zen) authed.push("opencode-zen");
-  if (fact.openai_codex) authed.push("openai-codex");
-  if (fact.anthropic) authed.push("anthropic");
-  if (authed.length > 0) {
+  if (fact.openai_codex) {
     return {
       name,
       status: "PASS",
-      detail: `Authed providers: ${authed.join(", ")}`,
+      detail: "openai-codex authed",
     };
   }
   return {
     name,
     status: "FAIL",
-    detail:
-      "No whitelisted provider authed (opencode-zen / openai-codex / anthropic). Live eval and subagent dispatch will fail.",
-    fix: "Authenticate at least one provider in omp (e.g. opencode-zen), then re-run /pi-oven:doctor.",
+    detail: "openai-codex not authed. Live eval and subagent dispatch will fail.",
+    fix: "Authenticate openai-codex in omp, then re-run /pi-oven:doctor.",
   };
 }
 

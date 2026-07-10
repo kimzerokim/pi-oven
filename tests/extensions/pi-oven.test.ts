@@ -210,16 +210,15 @@ describe("validateAgentRegistry", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("no error logged when agent registry uses the release-default codex + opencode prefixes", () => {
+  it("no error logged when agent registry uses the codex-only default prefix", () => {
     writeAgent(tempDir, "pov-coder.md", [
       "openai-codex/gpt-5.4",
-      "opencode-zen/gpt-5.4",
     ]);
     validateAgentRegistry(tempDir, logger);
     expect(errors).toHaveLength(0);
   });
 
-  it("error logged when agent has no model field, message starts with 'Profile A guarantee broken'", () => {
+  it("error logged when agent has no model field, message starts with 'DEFAULT_PROFILE guarantee broken'", () => {
     writeFileSync(
       join(tempDir, "pov-nomodel.md"),
       [
@@ -232,7 +231,7 @@ describe("validateAgentRegistry", () => {
     );
     validateAgentRegistry(tempDir, logger);
     expect(errors.length).toBeGreaterThan(0);
-    expect(errors[0]).toMatch(/^Profile A guarantee broken/);
+    expect(errors[0]).toMatch(/^DEFAULT_PROFILE guarantee broken/);
   });
 
   it("error logged when agent has non-whitelisted provider", () => {
@@ -289,7 +288,7 @@ describe("validateAgentRegistry", () => {
     writeAgent(
       tempDir,
       "pov-executor.md",
-      ["openai-codex/gpt-5.4", "opencode-zen/gpt-5.4"],
+      ["openai-codex/gpt-5.4", "alternate-provider/gpt-5.4"],
       "pi-oven:executor"
     );
     validateAgentRegistry(tempDir, logger);
@@ -302,7 +301,7 @@ describe("validateAgentRegistry", () => {
     writeAgent(
       tempDir,
       "pi-oven-executor.md",
-      ["openai-codex/gpt-5.4", "opencode-zen/gpt-5.4"],
+      ["openai-codex/gpt-5.4", "alternate-provider/gpt-5.4"],
       "pov:executor"
     );
     validateAgentRegistry(tempDir, logger);
@@ -321,11 +320,11 @@ describe("validateAgentRegistry", () => {
   it("mixed anthropic + opencode entries are rejected because the shipped allowlist stays codex-only", () => {
     writeAgent(tempDir, "pov-executor.md", [
       "anthropic/claude-sonnet-4-6",
-      "opencode-zen/claude-sonnet-4-6",
+      "alternate-provider/claude-sonnet-4-6",
     ]);
     writeAgent(tempDir, "pov-explorer.md", [
-      "opencode-zen/glm-5",
-      "opencode-zen/claude-haiku-4-5",
+      "alternate-provider/glm-5",
+      "alternate-provider/claude-haiku-4-5",
     ]);
     validateAgentRegistry(tempDir, logger);
     expect(errors.length).toBeGreaterThan(0);
@@ -337,14 +336,14 @@ describe("validateAgentRegistry", () => {
     ).toBe(true);
   });
 
-  it("all-opencode-zen registries fail because release-default routing requires an openai-codex primary", () => {
+  it("all-alternate-provider registries fail because release-default routing requires an openai-codex primary", () => {
     writeAgent(tempDir, "pov-explorer.md", [
-      "opencode-zen/glm-5",
-      "opencode-zen/claude-haiku-4-5",
+      "alternate-provider/glm-5",
+      "alternate-provider/claude-haiku-4-5",
     ]);
     writeAgent(tempDir, "pov-writer.md", [
-      "opencode-zen/claude-haiku-4-5",
-      "opencode-zen/claude-sonnet-4-6",
+      "alternate-provider/claude-haiku-4-5",
+      "alternate-provider/claude-sonnet-4-6",
     ]);
     validateAgentRegistry(tempDir, logger);
     expect(errors.some((msg) => msg.includes('missing required "openai-codex/" model'))).toBe(true);
@@ -353,7 +352,7 @@ describe("validateAgentRegistry", () => {
   it("agent file with google/ prefix triggers WHITELIST VIOLATION regardless of other agents", () => {
     writeAgent(tempDir, "pov-executor.md", [
       "openai-codex/gpt-5.4",
-      "opencode-zen/gpt-5.4",
+      "alternate-provider/gpt-5.4",
     ]);
     writeAgent(tempDir, "pov-bad.md", ["google/gemini-flash"]);
     validateAgentRegistry(tempDir, logger);
@@ -364,20 +363,16 @@ describe("validateAgentRegistry", () => {
 
   it("getAllowedPrefixes stays pinned to the release-default codex baseline", () => {
     const entries: AgentFileEntry[] = [
-      { modelArray: ["opencode-zen/glm-5", "opencode-zen/claude-haiku-4-5"] },
+      { modelArray: ["alternate-provider/glm-5", "alternate-provider/claude-haiku-4-5"] },
       { modelArray: ["anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-4-5"] },
     ];
     const prefixes = getAllowedPrefixes(entries);
-    expect(prefixes).toContain("opencode-zen");
-    expect(prefixes).toContain("openai-codex");
-    expect(prefixes).not.toContain("anthropic");
+    expect(prefixes).toEqual(["openai-codex"]);
   });
 
   it("shipped release-default registry no longer needs anthropic in allowed prefixes", () => {
     const prefixes = getAllowedPrefixes(readShippedAgentEntries());
-    expect(prefixes).toContain("openai-codex");
-    expect(prefixes).toContain("opencode-zen");
-    expect(prefixes).not.toContain("anthropic");
+    expect(prefixes).toEqual(["openai-codex"]);
   });
 });
 
@@ -603,8 +598,8 @@ describe("captureSessionModel", () => {
     const content = JSON.parse(readFileSync(targetPath, "utf-8")) as SessionModelCapture;
     expect(content.model).toBe("anthropic/claude-sonnet-4-6");
     expect(content.sessionProviderFamily).toBe("anthropic");
-    expect(content.supportedForRouting).toBe(true);
-    expect(content.diagnostic).toBeUndefined();
+    expect(content.supportedForRouting).toBe(false);
+    expect(content.diagnostic).toContain("Supported families: openai-codex");
     expect(typeof content.capturedAt).toBe("number");
     expect(content.capturedAt).toBeGreaterThan(0);
   });
@@ -612,10 +607,10 @@ describe("captureSessionModel", () => {
   it("is idempotent — second write overwrites first", async () => {
     const targetPath = join(tempDir, "pi-oven-session-model.json");
     await captureSessionModel("anthropic/claude-sonnet-4-6", targetPath);
-    await captureSessionModel("opencode-zen/gpt-5.3-codex", targetPath);
+    await captureSessionModel("alternate-provider/gpt-5.3-codex", targetPath);
 
     const content = JSON.parse(readFileSync(targetPath, "utf-8")) as SessionModelCapture;
-    expect(content.model).toBe("opencode-zen/gpt-5.3-codex");
+    expect(content.model).toBe("alternate-provider/gpt-5.3-codex");
   });
 
   it("records unsupported runtime provider families with an explicit diagnostic instead of failing open", async () => {
@@ -637,10 +632,10 @@ describe("captureSessionModel", () => {
 
 describe("resolveSessionProviderFamily", () => {
   it("derives the current-session provider family from the captured parent model id", () => {
-    expect(resolveSessionProviderFamily("opencode-zen/kimi-k2.6")).toEqual(
+    expect(resolveSessionProviderFamily("alternate-provider/kimi-k2.6")).toEqual(
       expect.objectContaining({
-        sessionProviderFamily: "opencode-zen",
-        supportedForRouting: true,
+        sessionProviderFamily: "alternate-provider",
+        supportedForRouting: false,
       })
     );
   });
@@ -978,7 +973,7 @@ describe("countProjectRoutingRoles", () => {
             "pov:executor": "openai-codex/gpt-5.4",
             "pov:critic": "anthropic/claude-opus-4-8",
             "pi-oven:critic": "legacy-ignored",
-            "other:agent": "opencode-zen/glm-5.1",
+            "other:agent": "alternate-provider/glm-5.1",
           },
         },
       })

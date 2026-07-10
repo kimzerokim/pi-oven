@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { ROLES, PROFILE_A } from "../../scripts/pi-oven-setup/profiles";
+import { ROLES, DEFAULT_PROFILE } from "../../scripts/pi-oven-setup/profiles";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,7 +21,6 @@ function makeAgentFile(
   agentsDir: string,
   role: string,
   primary: string,
-  alternate: string,
   thinkingLevel: string
 ): void {
   const content = `---
@@ -29,7 +28,6 @@ name: pov:${role}
 description: Test agent for ${role}
 model:
   - ${primary}
-  - ${alternate}
 thinkingLevel: ${thinkingLevel}
 mode: subagent
 tools: ["*"]
@@ -86,7 +84,7 @@ describe("pi-oven-setup CLI dispatcher", () => {
 
   it("--status: exits 0 and outputs effective model summary", async () => {
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary, DEFAULT_PROFILE[role].thinkingLevel);
     }
 
     const { exitCode, stdout } = await runCLI(["--status"], {
@@ -161,8 +159,7 @@ describe("pi-oven-setup CLI dispatcher", () => {
         "pi-oven": {
           models: {
             executor: {
-              primary: "opencode-zen/gpt-5.3-codex",
-              registry_alternate: "openai-codex/gpt-5.3-codex",
+              primary: "openai-codex/gpt-5.5",
               thinkingLevel: "high",
             },
           },
@@ -174,6 +171,7 @@ describe("pi-oven-setup CLI dispatcher", () => {
     const { exitCode } = await runCLI(["--import", importFile], {
       PI_OVEN_MOCK_SPAWN: "1",
       PI_OVEN_VALIDATE_MODE: "none",
+      HOME: tempDir,
     });
     expect(exitCode).toBe(0);
   });
@@ -184,7 +182,6 @@ describe("pi-oven-setup CLI dispatcher", () => {
       importFile,
       JSON.stringify({
         "pi-oven": {
-          profile: "A",
           models: {
             executor: { primary: "openai-codex/gpt-5.5" },
           },
@@ -206,40 +203,35 @@ describe("pi-oven-setup CLI dispatcher", () => {
     expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
   });
 
-  it("--profile B: exits 0 with validateMode=none", async () => {
+  it("--profile compatibility flag is accepted and resolved to the codex-only default", async () => {
     writeFileSync(lockPath, JSON.stringify({ settings: { "pi-oven": {} } }), "utf-8");
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary, DEFAULT_PROFILE[role].thinkingLevel);
     }
 
     const { exitCode } = await runCLI(["--profile", "B", "--validate", "none"], {
       PI_OVEN_LOCK_FILE: lockPath,
       PI_OVEN_AGENTS_DIR: agentsDir,
       PI_OVEN_MOCK_SPAWN: "1",
+      HOME: tempDir,
     });
     expect(exitCode).toBe(0);
   });
 
-  it("--profile C: exits 0 with validateMode=none", async () => {
-    const { exitCode } = await runCLI(["--profile", "C", "--validate", "none"], {
-      PI_OVEN_MOCK_SPAWN: "1",
-    });
-    expect(exitCode).toBe(0);
-  });
-
-  it("--profile D: exits 0 with validateMode=none", async () => {
+  it("--profile legacy values are ignored for backward compatibility", async () => {
     const { exitCode } = await runCLI(["--profile", "D", "--validate", "none"], {
       PI_OVEN_MOCK_SPAWN: "1",
+      HOME: tempDir,
     });
     expect(exitCode).toBe(0);
   });
 
-  it("--profile E: exits 1 with Allowed: A, B, C, D. error message", async () => {
-    const { exitCode, stderr } = await runCLI(["--profile", "E", "--validate", "none"], {
+  it("--profile unknown values are ignored for backward compatibility", async () => {
+    const { exitCode } = await runCLI(["--profile", "E", "--validate", "none"], {
       PI_OVEN_MOCK_SPAWN: "1",
+      HOME: tempDir,
     });
-    expect(exitCode).toBe(1);
-    expect(stderr).toMatch(/Allowed: A, B, C, D\./);
+    expect(exitCode).toBe(0);
   });
 
   it("dispatch precedence: --status takes priority over --reset", async () => {
@@ -278,8 +270,8 @@ describe("pi-oven-setup CLI dispatcher", () => {
 
   it("standalone --override sets config via omp and exits 0", async () => {
     const { exitCode, stdout: out } = await runCLI(
-      ["--override", "critic=anthropic/claude-opus-4-8"],
-      { PI_OVEN_MOCK_SPAWN: "1" }
+      ["--override", "critic=openai-codex/gpt-5.5"],
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: tempDir }
     );
     expect(exitCode).toBe(0);
     expect(out).not.toMatch(/No action/i);
@@ -296,8 +288,8 @@ describe("pi-oven-setup CLI dispatcher", () => {
     const statusBefore = gitBefore.stdout?.toString() ?? "";
 
     const { exitCode } = await runCLI(
-      ["--override", "critic=anthropic/claude-opus-4-8"],
-      { PI_OVEN_MOCK_SPAWN: "1" }
+      ["--override", "critic=openai-codex/gpt-5.5"],
+      { PI_OVEN_MOCK_SPAWN: "1", HOME: tempDir }
     );
     expect(exitCode).toBe(0);
 
@@ -314,7 +306,7 @@ describe("pi-oven-setup CLI dispatcher", () => {
 
   it("--override + --reset is mutually exclusive (exit 1)", async () => {
     const { exitCode, stderr } = await runCLI(
-      ["--override", "critic=anthropic/claude-opus-4-8", "--reset"],
+      ["--override", "critic=openai-codex/gpt-5.5", "--reset"],
       { PI_OVEN_MOCK_SPAWN: "1" }
     );
     expect(exitCode).toBe(1);
@@ -323,7 +315,7 @@ describe("pi-oven-setup CLI dispatcher", () => {
 
   it("--override + --apply is mutually exclusive (exit 1)", async () => {
     const { exitCode, stderr } = await runCLI(
-      ["--override", "critic=anthropic/claude-opus-4-8", "--apply"],
+      ["--override", "critic=openai-codex/gpt-5.5", "--apply"],
       { PI_OVEN_MOCK_SPAWN: "1" }
     );
     expect(exitCode).toBe(1);
@@ -332,10 +324,10 @@ describe("pi-oven-setup CLI dispatcher", () => {
 
   it("--override + --status applies override then shows status", async () => {
     for (const role of ROLES) {
-      makeAgentFile(agentsDir, role, PROFILE_A[role].primary, PROFILE_A[role].registry_alternate, PROFILE_A[role].thinkingLevel);
+      makeAgentFile(agentsDir, role, DEFAULT_PROFILE[role].primary, DEFAULT_PROFILE[role].thinkingLevel);
     }
     const { exitCode, stdout: out } = await runCLI(
-      ["--override", "critic=anthropic/claude-opus-4-8", "--status"],
+      ["--override", "critic=openai-codex/gpt-5.5", "--status"],
       { PI_OVEN_MOCK_SPAWN: "1", PI_OVEN_AGENTS_DIR: agentsDir }
     );
     expect(exitCode).toBe(0);
@@ -346,7 +338,7 @@ describe("pi-oven-setup CLI dispatcher", () => {
 
   it("--override with invalid model id exits 1", async () => {
     const { exitCode, stderr } = await runCLI(
-      ["--override", "critic=anthropic/claude-opus-4-7"],
+      ["--override", "critic=anthropic/claude-opus-4-8"],
       { PI_OVEN_MOCK_SPAWN: "1" }
     );
     expect(exitCode).toBe(1);
@@ -533,7 +525,7 @@ describe("pi-oven-setup CLI setup-completion marker", () => {
 
   it("--override success (global) writes the GLOBAL marker", async () => {
     const { exitCode } = await runCLIInCwd(
-      ["--override", "critic=anthropic/claude-opus-4-8"],
+      ["--override", "critic=openai-codex/gpt-5.5"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
@@ -543,7 +535,7 @@ describe("pi-oven-setup CLI setup-completion marker", () => {
 
   it("--scope project --override success writes the PROJECT marker", async () => {
     const { exitCode } = await runCLIInCwd(
-      ["--override", "critic=anthropic/claude-opus-4-8", "--scope", "project"],
+      ["--override", "critic=openai-codex/gpt-5.5", "--scope", "project"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
@@ -741,10 +733,10 @@ describe("pi-oven-setup CLI --scope", () => {
 });
 
 // ---------------------------------------------------------------------------
-// --suppress-sibling-skills / --no-suppress-sibling-skills flag (§3.4)
+// Removed legacy sibling-suppression/isolate flags.
 // ---------------------------------------------------------------------------
 
-describe("pi-oven-setup CLI --suppress-sibling-skills", () => {
+describe("pi-oven-setup CLI removed legacy compatibility flags", () => {
   let tempDir: string;
   let homeDir: string;
 
@@ -766,86 +758,84 @@ describe("pi-oven-setup CLI --suppress-sibling-skills", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("--suppress-sibling-skills exits 0 and mentions the suppressed globs", async () => {
-    const { exitCode, stdout: out } = await runCLIInCwd(
+  it("--suppress-sibling-skills alone is ignored and therefore has no action", async () => {
+    const { exitCode, stderr, stdout: out } = await runCLIInCwd(
       ["--suppress-sibling-skills"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
-    expect(exitCode).toBe(0);
-    expect(out).toContain("superpowers:*");
-    expect(out).toContain("oh-my-claudecode:*");
+    expect(exitCode).toBe(1);
+    expect(stderr + out).toContain("No action specified");
+    expect(existsSync(join(homeDir, ".omp", "agent", "config.yml"))).toBe(false);
   });
 
-  it("--no-suppress-sibling-skills exits 0 and reports cleared/nothing message", async () => {
-    const { exitCode, stdout: out } = await runCLIInCwd(
+  it("--no-suppress-sibling-skills alone is ignored and therefore has no action", async () => {
+    const { exitCode, stderr, stdout: out } = await runCLIInCwd(
       ["--no-suppress-sibling-skills"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
-    expect(exitCode).toBe(0);
-    // Either "cleared/removed" or "nothing to undo" is acceptable output
-    expect(out).toMatch(/cleared|removed|nothing|already|no.*suppress/i);
+    expect(exitCode).toBe(1);
+    expect(stderr + out).toContain("No action specified");
+    expect(existsSync(join(homeDir, ".omp", "agent", "config.yml"))).toBe(false);
   });
 
-  it("--suppress-sibling-skills + --scope project is rejected (no-op + error message)", async () => {
-    const { exitCode, stderr } = await runCLIInCwd(
+  it("--suppress-sibling-skills + --scope project is ignored without a project write", async () => {
+    const { exitCode, stderr, stdout: out } = await runCLIInCwd(
       ["--suppress-sibling-skills", "--scope", "project"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
     expect(exitCode).toBe(1);
-    expect(stderr).toMatch(/global.only|scope.*project|project.*scope/i);
-    // Must NOT write .omp/settings.json
+    expect(stderr + out).toContain("No action specified");
     expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
   });
-  it("--no-suppress-sibling-skills + --scope project is rejected (no global write leak)", async () => {
-    const { exitCode, stderr } = await runCLIInCwd(
+
+  it("--no-suppress-sibling-skills + --scope project is ignored without a project write", async () => {
+    const { exitCode, stderr, stdout: out } = await runCLIInCwd(
       ["--no-suppress-sibling-skills", "--scope", "project"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
     expect(exitCode).toBe(1);
-    expect(stderr).toMatch(/global.only|scope.*project|project.*scope/i);
+    expect(stderr + out).toContain("No action specified");
     expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
   });
 
-  it("--isolate reports the legacy home-layer compatibility mode and boundary contract", async () => {
-    const { exitCode, stdout: out } = await runCLIInCwd(
+  it("--isolate alone is ignored and therefore has no action", async () => {
+    const { exitCode, stderr, stdout: out } = await runCLIInCwd(
       ["--isolate"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
-    expect(exitCode).toBe(0);
-    expect(out).toContain("legacy home-layer compatibility aid");
-    expect(out).toContain("disabledProviders = [claude]");
-    expect(out).toContain("~/.claude home layer");
-    expect(out).toContain("Legacy front doors");
+    expect(exitCode).toBe(1);
+    expect(stderr + out).toContain("No action specified");
+    expect(existsSync(join(homeDir, ".omp", "agent", "config.yml"))).toBe(false);
   });
 
-  it("--isolate + --scope project is rejected (no global write leak)", async () => {
-    const { exitCode, stderr } = await runCLIInCwd(
+  it("--isolate + --scope project is ignored without a project write", async () => {
+    const { exitCode, stderr, stdout: out } = await runCLIInCwd(
       ["--isolate", "--scope", "project"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
     expect(exitCode).toBe(1);
-    expect(stderr).toMatch(/global.only|scope.*project|project.*scope/i);
+    expect(stderr + out).toContain("No action specified");
     expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
   });
 
-  it("--no-isolate + --scope project is rejected (no global write leak)", async () => {
-    const { exitCode, stderr } = await runCLIInCwd(
+  it("--no-isolate + --scope project is ignored without a project write", async () => {
+    const { exitCode, stderr, stdout: out } = await runCLIInCwd(
       ["--no-isolate", "--scope", "project"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
     expect(exitCode).toBe(1);
-    expect(stderr).toMatch(/global.only|scope.*project|project.*scope/i);
+    expect(stderr + out).toContain("No action specified");
     expect(existsSync(join(tempDir, ".omp", "settings.json"))).toBe(false);
   });
 
-  it("--reset also clears pi-oven-managed ignoredSkills globs", async () => {
+  it("--reset still clears managed routing and workflow-skill include ownership", async () => {
     const { exitCode, stdout: out } = await runCLIInCwd(
       ["--reset"],
       tempDir,
@@ -856,14 +846,14 @@ describe("pi-oven-setup CLI --suppress-sibling-skills", () => {
     expect(out).toMatch(/cleared|No overrides/i);
   });
 
-  it("--suppress-sibling-skills and --no-suppress-sibling-skills are mutually exclusive", async () => {
-    const { exitCode, stderr } = await runCLIInCwd(
+  it("combined removed suppress flags are ignored and therefore have no action", async () => {
+    const { exitCode, stderr, stdout: out } = await runCLIInCwd(
       ["--suppress-sibling-skills", "--no-suppress-sibling-skills"],
       tempDir,
       { PI_OVEN_MOCK_SPAWN: "1", HOME: homeDir }
     );
     expect(exitCode).toBe(1);
-    expect(stderr).toMatch(/mutual(?:ly)?\s+exclusive|cannot.*both|both.*cannot/i);
+    expect(stderr + out).toContain("No action specified");
   });
 });
 

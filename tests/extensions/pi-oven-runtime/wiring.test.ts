@@ -1,19 +1,26 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
+import { tmpdir } from "os";
 import {
   createInstalledTopologyFixture,
   writePluginSkillsManifest,
   writeShippedSkill,
 } from "../../helpers/installed-topology";
 import { SHIPPED_SKILL_NAMES, SHIPPED_SKILL_PATHS } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
-import {
-  GateStateStore,
-  fingerprintExternalExecSecret,
-  type OwnershipTraceEntry,
-} from "../../../.omp/extensions/pi-oven-runtime/gate-state";
+import type { OwnershipTraceEntry } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
 
+const ORIGINAL_HOME = process.env.HOME;
+const MODULE_HOME = join(
+  tmpdir(),
+  `pi-oven-wiring-home-${Date.now()}-${Math.random().toString(36).slice(2)}`
+);
+mkdirSync(MODULE_HOME, { recursive: true });
+process.env.HOME = MODULE_HOME;
 
+const { GateStateStore, fingerprintExternalExecSecret } = await import(
+  "../../../.omp/extensions/pi-oven-runtime/gate-state"
+);
 const { default: piOvenPi } = await import("../../../.omp/extensions/pi-oven");
 
 type ShippedSkillName = (typeof SHIPPED_SKILL_NAMES)[number];
@@ -103,6 +110,8 @@ type PersistedAutonomousState = {
   nextAction?: { kind: string; message: string };
   resumeTarget?: { repoRoot: string; branch: string; capturedAt: string };
   externalExecConsent?: PersistedExternalExecConsent;
+  deferredSkillObligations?: Array<{ skill: string; ownedReadTarget?: string }>;
+  phaseReceipts?: Array<{ phase: string; skill: string; ownedReadTarget?: string }>;
   gateCache?: { commit?: string; regression?: string };
   continuationMarker?: {
     kind: "autonomous-loop-resume" | "verifier-pending" | "lane-resume" | "halted-by-policy";
@@ -197,6 +206,15 @@ function createTurnStartRunner(tempDir: string) {
 
 
 const ORIGINAL_CWD = process.cwd();
+
+afterAll(() => {
+  if (ORIGINAL_HOME === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = ORIGINAL_HOME;
+  }
+  rmSync(MODULE_HOME, { recursive: true, force: true });
+});
 
 describe("piOvenPi entrypoint wiring (AC4)", () => {
   let tempDir: string | null = null;
@@ -527,12 +545,10 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(joined).toContain("pov:autonomous-loop");
     expect(joined).toContain("pov:large-task-delegation");
     expect(joined).toContain("pov:spec-and-review");
-    expect(joined).toContain("single front door");
-    expect(joined).toContain("requiredSkills");
-    expect(joined).toContain("ownedSkillReadTargets");
+    expect(joined).toContain("Root skill proof targets:");
+    expect(joined).toContain("Deferred obligations:");
     expect(joined).toContain("skillReads");
-    expect(joined).toContain("Bootstrap message injection");
-    expect(joined).toContain("tool remap");
+    expect(joined).toContain("Deferred obligations are exact-read requirements");
   });
 
   it("session_start surfaces a keyword-integrity warning when plugin assets reference a missing shipped skill file", async () => {
@@ -758,22 +774,31 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       explicitForeignAgents?: string[];
       ownedSkillReadTargets?: string[];
       ownershipTrace?: OwnershipTraceEntry[];
+      deferredSkillObligations?: Array<{ skill: string; ownedReadTarget?: string }>;
+      phaseReceipts?: Array<{ phase: string; skill: string; ownedReadTarget?: string }>;
     };
     expect(persisted.active).toBe(true);
-    expect(persisted.requiredSkills).toHaveLength(3);
+    expect(persisted.requiredSkills).toHaveLength(2);
     expect(persisted.requiredSkills).toEqual(
       expect.arrayContaining([
         "pov:autonomous-loop",
-        "pov:large-task-delegation",
         "pov:spec-and-review",
       ])
     );
+    expect(persisted.deferredSkillObligations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          skill: "pov:large-task-delegation",
+          ownedReadTarget: ownedSkillTarget("large-task-delegation"),
+        }),
+      ])
+    );
+    expect(persisted.phaseReceipts).toEqual([]);
     expect(persisted.skillReads).toEqual([]);
     expect(persisted.explicitForeignAgents).toEqual(["kzk:explorer"]);
     expect(persisted.ownedSkillReadTargets).toEqual(
       expect.arrayContaining([
         ownedSkillTarget("autonomous-loop"),
-        ownedSkillTarget("large-task-delegation"),
         ownedSkillTarget("spec-and-review"),
       ])
     );
@@ -1041,8 +1066,15 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(persisted.requiredSkills).toEqual(
       expect.arrayContaining([
         "pov:autonomous-loop",
-        "pov:large-task-delegation",
         "pov:spec-and-review",
+      ])
+    );
+    expect(persisted.deferredSkillObligations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          skill: "pov:large-task-delegation",
+          ownedReadTarget: ownedSkillTarget("large-task-delegation"),
+        }),
       ])
     );
     expect(persisted.skillReads).toEqual([]);

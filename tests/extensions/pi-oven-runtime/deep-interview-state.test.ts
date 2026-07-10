@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { PROFILE_B, ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
+import { DEFAULT_PROFILE, ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
 import {
   deriveRoundKey,
   mergeDeepInterviewState,
@@ -43,7 +43,7 @@ const META: DeepInterviewAskMetadata = {
 function buildRecommendedByRole(): Record<Role, string> {
   return Object.fromEntries(
     ROLES.map((role) => {
-      const entry = PROFILE_B[role];
+      const entry = DEFAULT_PROFILE[role];
       return [role, `${entry.primary}:${entry.thinkingLevel}`];
     })
   ) as Record<Role, string>;

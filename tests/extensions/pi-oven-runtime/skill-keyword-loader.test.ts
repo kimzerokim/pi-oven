@@ -174,32 +174,34 @@ describe("skill-keyword-loader", () => {
           pluginRoot: repoRoot,
         }),
         expect.objectContaining({
-          name: publicSkillName("large-task-delegation"),
-          ownedReadTarget: ownedSkillTarget(repoRoot, "large-task-delegation"),
-          pluginRoot: repoRoot,
-        }),
-        expect.objectContaining({
           name: publicSkillName("spec-and-review"),
           ownedReadTarget: ownedSkillTarget(repoRoot, "spec-and-review"),
           pluginRoot: repoRoot,
         }),
       ])
     );
+    expect(started.deferredSkillObligations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: publicSkillName("large-task-delegation"),
+          ownedReadTarget: ownedSkillTarget(repoRoot, "large-task-delegation"),
+          pluginRoot: repoRoot,
+          deferred: true,
+        }),
+      ])
+    );
 
-    const prompt = buildKeywordMatchedSkillsPrompt(started.matchedSkills);
+    const prompt = buildKeywordMatchedSkillsPrompt(
+      started.matchedSkills,
+      started.deferredSkillObligations
+    );
     expect(prompt).toContain(KEYWORD_SKILL_DEDUP_KEY);
     expect(prompt).toContain(`Active plugin root: \`${repoRoot}\``);
     expect(prompt).toContain(ownedSkillTarget(repoRoot, "autonomous-loop"));
     expect(prompt).toContain(ownedSkillTarget(repoRoot, "large-task-delegation"));
     expect(prompt).toContain(ownedSkillTarget(repoRoot, "spec-and-review"));
-    expect(prompt).toContain("plugin-owned");
-    expect(prompt).toContain("single front door");
-    expect(prompt).toContain("requiredSkills");
-    expect(prompt).toContain("ownedSkillReadTargets");
-    expect(prompt).toContain("skillReads");
-    expect(prompt).toContain("Bootstrap message injection");
-    expect(prompt).toContain("tool remap");
-    expect(prompt).toContain("same active plugin root");
+    expect(prompt).toContain("Root skill proof targets");
+    expect(prompt).toContain("Deferred obligations");
   });
 
   it("the matched-skills prompt frames exact plugin-owned reads as the explicit control-plane front door", () => {
@@ -212,15 +214,9 @@ describe("skill-keyword-loader", () => {
       },
     ]);
     expect(prompt).not.toBeNull();
-    expect(prompt!).toMatch(/hard precondition/i);
+    expect(prompt!).toContain("Root skill proof targets");
     expect(prompt!).toContain("/plugin/skills/spec-and-review/SKILL.md");
-    expect(prompt!).toContain("plugin-owned");
-    expect(prompt!).toContain("single front door");
-    expect(prompt!).toContain("requiredSkills");
-    expect(prompt!).toContain("ownedSkillReadTargets");
-    expect(prompt!).toContain("skillReads");
-    expect(prompt!).toContain("Bootstrap message injection");
-    expect(prompt!).toContain("tool remap");
+    expect(prompt!).toContain("phase boundary");
   });
 
   it("adds registry-driven deep-interview routing guidance to the matched-skills prompt", () => {
@@ -254,9 +250,9 @@ describe("skill-keyword-loader", () => {
       },
     ]);
     expect(prompt).not.toBeNull();
-    expect(prompt!).toContain("matched by: codex review, design doc");
-    expect(prompt!).toContain("matched by: codex review 결과 반영");
-    expect(prompt!).toContain("current-session-provider-family policy");
+    expect(prompt!).toContain("/plugin/skills/spec-and-review/SKILL.md");
+    expect(prompt!).toContain("/plugin/skills/receiving-code-review/SKILL.md");
+    expect(prompt!).toContain("Root skill proof targets");
   });
 
   it("retains raw matched phrases for debugging while keeping injected provider policy symbolic", () => {
@@ -279,8 +275,8 @@ describe("skill-keyword-loader", () => {
     ]);
     const prompt = buildKeywordMatchedSkillsPrompt(matched);
     expect(prompt).not.toBeNull();
-    expect(prompt!).toContain("matched by: codex review");
-    expect(prompt!).toContain("current-session-provider-family policy");
+    expect(prompt!).toContain("/plugin/skills/spec-and-review/SKILL.md");
+    expect(prompt!).toContain("Root skill proof targets");
   });
   it("buildKeywordMatchedSkillsPrompt emits exact SKILL.md file targets, not skill:// aliases", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
@@ -296,7 +292,7 @@ describe("skill-keyword-loader", () => {
     expect(prompt!).toContain(publicSkillName("brainstorming"));
     expect(prompt!).not.toContain("skill://pov:brainstorming");
     const lines = prompt!.split("\n");
-    const skillLines = lines.filter((l) => l.startsWith("- `") && l.includes("matched by:"));
+    const skillLines = lines.filter((l) => l.startsWith("- `") && l.includes("phases="));
     expect(skillLines.every((l) => l.includes("/SKILL.md"))).toBe(true);
   });
   it("keeps the exact phrase overlap matching the current skill order and owned targets", () => {

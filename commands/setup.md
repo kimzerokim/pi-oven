@@ -1,7 +1,7 @@
 ---
 name: pi-oven-setup
-description: Configure pi-oven agent model routing — Profile A (release default, openai-codex-only), Profile B (explicit openai-codex override profile), Profile C (all-Anthropic), or Profile D (opencode-zen-only)
-argument-hint: "[--status | --reset [--full] | --repair-prereqs | --import <file> | --apply --profile A|B|C|D] [--validate smoke|full|none] [--override <role>=<model>] [--scope global|project]"
+description: Configure pi-oven agent model routing — the codex-only default profile
+argument-hint: "[--status | --reset [--full] | --repair-prereqs | --import <file> | --apply] [--validate smoke|full|none] [--override <role>=openai-codex/<model>[:effort]] [--scope global|project]"
 ---
 
 # /pi-oven:setup
@@ -58,12 +58,12 @@ Every dispatch below uses `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" <args
 Parse the user's intent from their initial request:
 
 - If they say "status" or "show config" → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --status` and relay the output.
-- If they say "reset" or "clear" → confirm with the user first, then run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset`. If they ask for a complete reset before uninstall (a clean "new user" state), add `--full` to also reset `modelRoles`, `disabledProviders`, and `setupVersion` to omp defaults.
+- If they say "reset" or "clear" → confirm with the user first, then run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset`. If they ask for a complete reset before uninstall (a clean "new user" state), add `--full` to also reset `modelRoles`, `retry.fallbackChains`, and `setupVersion` to omp defaults.
 - If they say "repair prerequisites", "fix memory", or they only need the global mnemopi/LSP/tool prerequisites restored without touching routing → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --repair-prereqs`. This path is **global-only**; if they explicitly ask for project scope, explain that repair writes `~/.omp/agent/config.yml` only and cannot run under `--scope project`.
 - If they say "import" with a file path → run `bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --import <file>`.
-- Otherwise (first-time setup or profile change) → walk through the apply flow below.
+- Otherwise (first-time setup or routing refresh) → walk through the apply flow below.
 
-## Apply flow (first-time or profile change)
+## Apply flow (first-time setup or routing refresh)
 
 ### Step 0 — Primary language
 
@@ -95,8 +95,8 @@ Map the choice to `<scope>`: Option 1 → `global` (today's behavior), Option 2 
 
 **What scope changes:**
 
-- **`global` (default)** — exactly today's behavior. Per-role overrides for **EVERY profile (A, B, C, and D — all 24 runtime-visible `pov:*` roles)** plus the workflow-skill ownership filter `skills.includeSkills = ["pov:*"]` and `modelRoles`/`retry.fallbackChains` go to the user-global `~/.omp/agent/config.yml`; language + setup receipt metadata (`setupCompletedAt`) + `nativeWorkers.maxWorkers` go to `~/.pi-oven/config.json`. Readiness is judged from live routing + machine-global prerequisites, not from the receipt alone. This workflow-skill filter is the mainline ownership control: it ignores a populated `~/.claude/skills` workflow-skill source without deleting it, and it applies only to workflow skills (not commands, agents, hooks, or MCP). Empty `~/.claude/skills` is not the target state, and legacy compatibility aids alone do not stop `claude-plugins` or namespaced marketplace workflow skills. A global-scope run is also the only path that writes the machine-global tool flags plus the memory/async/LSP prerequisites that pi-oven uses for wide subagent fan-out, and it seeds the machine-global fallback ceiling that the vendored native worker launcher reads when no project override exists.
-- **`project`** — per-role overrides for **EVERY profile (A, B, C, and D — all 24 runtime-visible `pov:*` roles)**, plus the same workflow-skill ownership filter `skills.includeSkills = ["pov:*"]`, `modelRoles`, and `retry.fallbackChains`, are written to `<cwd>/.omp/settings.json` (omp reads this at project level and it wins per-role over global). Language + setup receipt metadata (`setupCompletedAt`) + `nativeWorkers.maxWorkers` go to `<cwd>/.pi-oven/config.json`. Readiness is judged from live project routing, not from the receipt alone. Memory/async/LSP infra and tool enablement stay global-only and are NOT written under project scope. This project-local `.pi-oven/config.json` is the first ceiling source the vendored native worker launcher consults.
+- **`global` (default)** — codex-only DEFAULT_PROFILE overrides for all 24 runtime-visible `pov:*` roles plus the workflow-skill ownership filter `skills.includeSkills = ["pov:*"]`, `modelRoles`, and empty `retry.fallbackChains` go to the user-global `~/.omp/agent/config.yml`; language + setup receipt metadata (`setupCompletedAt`) + `nativeWorkers.maxWorkers` go to `~/.pi-oven/config.json`. Readiness is judged from live routing + machine-global prerequisites, not from the receipt alone. This workflow-skill filter ignores a populated `~/.claude/skills` workflow-skill source without deleting it, and it applies only to workflow skills (not commands, agents, hooks, or MCP). A global-scope run is also the only path that writes the machine-global tool flags plus the memory/async/LSP prerequisites that pi-oven uses for wide subagent fan-out.
+- **`project`** — the same 24-role codex-only DEFAULT_PROFILE override record, plus `skills.includeSkills = ["pov:*"]`, `modelRoles`, and empty `retry.fallbackChains`, is written to `<cwd>/.omp/settings.json` (omp reads this at project level and it wins per-role over global). Language + setup receipt metadata (`setupCompletedAt`) + `nativeWorkers.maxWorkers` go to `<cwd>/.pi-oven/config.json`. Readiness is judged from live project routing, not from the receipt alone. Memory/async/LSP infra and tool enablement stay global-only and are NOT written under project scope. This project-local `.pi-oven/config.json` is the first ceiling source the vendored native worker launcher consults.
 
 `.omp/settings.json` is **NOT auto-committed and NOT auto-gitignored**: commit it to share per-project routing with a team, or gitignore it for machine-local use. Tell the user both options. Launch omp from the **repo root** — project settings load from `<cwd>/.omp/` (no git-root ancestor walk).
 
@@ -114,7 +114,7 @@ Under `--scope global` this writes the **global** default language to `~/.pi-ove
 
 Then conduct ALL remaining steps (Steps 1–6 below) IN the chosen language — render every prompt, summary, and report in Korean if `한국어 (Korean)` was picked, in the named language if a custom one was typed, otherwise in English — and thread `--scope <scope>` into every later dispatch.
 
-### Step 1 — Detect authed providers
+### Step 1 — Detect OpenAI Codex auth
 
 Run via Bash:
 
@@ -122,37 +122,24 @@ Run via Bash:
 omp models
 ```
 
-Parse the "Provider models" section. Look for native provider rows:
-
-- A line matching `^opencode-zen\s+` → opencode-zen is authed.
-- A line matching `^openai-codex\s+` → openai-codex is authed. This is the Profile B activation condition.
-- A line matching `^anthropic\s+claude-` → native Anthropic API is authed (direct API key, NOT opencode-zen wrappers). This is the Profile C activation condition.
-
-Important: rows like `opencode-zen/claude-*` in the model ID column do NOT count as native Anthropic auth. Only a dedicated `anthropic` provider row in the Provider models table confirms native auth.
+Parse the "Provider models" section. A line matching `^openai-codex\s+` means the codex-only default profile can be activated. The setup wizard no longer offers non-Codex routing profiles.
 
 Summarize to the user in chat:
 
 ```
 Detecting provider authentication...
-  opencode-zen  authed  (N models available)
   openai-codex  authed  (N models available)
-  anthropic     authed  (N models available)   ← only if detected
 
-Available profiles: A (release default, openai-codex-only), B (explicit openai-codex override profile), C (all-Anthropic), D (opencode-zen-only)
+Default routing: codex-only DEFAULT_PROFILE
 ```
 
 If `openai-codex` is not detected, say:
 
 ```
   openai-codex  not detected
-  anthropic     not detected   ← only when absent
-
-Available profiles: list only the actually available no-Codex options from this set:
-  - C (all-Anthropic)   ← only if native anthropic auth is present
-  - D (opencode-zen-only)   ← only if opencode-zen is authed
 ```
 
-Important boundary: this detection only decides which persisted routing profiles are eligible. `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` are visibility/guard layers only; the runtime still owns the current-session provider-family choice. The visible runtime agent+skill namespace stays `pov:*`; `/pi-oven:*` stays the command surface and `pi-oven@kzk` stays the install identity.
+If `openai-codex` is unavailable, tell the user to authenticate OpenAI Codex in omp first and stop. `/pi-oven:setup`, `/pi-oven:setup --status`, and `/pi-oven:doctor` remain visibility/guard layers. The visible runtime agent+skill namespace stays `pov:*`; `/pi-oven:*` stays the command surface and `pi-oven@kzk` stays the install identity.
 
 ### Step 2 — Parent session check
 
@@ -163,36 +150,20 @@ Read `~/.omp/plugins/pi-oven-session-model.json` (written by the pi-oven extensi
 ```
 
 - If the file is absent, older than 1 hour (`Date.now() - capturedAt > 3600000`), or cannot be parsed as JSON: skip this check silently.
-- If the file is present and fresh, check whether the model prefix is one of `opencode-zen/`, `openai-codex/`, or `anthropic/`. If it is NOT, warn the user:
+- If the file is present and fresh, check whether the model prefix is `openai-codex/`. If it is not, warn the user but do not fail setup:
 
 ```
-WARNING: Your current omp session is running on "<model>", which is not in the
-pi-oven whitelist. If any pi-oven subagent's primary model is unauthed, omp will fall
-back to this parent model — bypassing the whitelist (Spec A §6.3 known
-limitation). Recommendation: relaunch omp with --model openai-codex/gpt-5.4
-before running this setup.
+WARNING: Your current omp session is running on "<model>", outside pi-oven's
+codex-only routing default. If a pi-oven subagent's primary model is unauthed,
+omp may fall back to this parent model. Recommendation: relaunch omp with
+--model openai-codex/gpt-5.4 before running this setup.
 ```
 
 If the file is absent or stale, proceed without comment.
 
-### Step 3 — Ask the user which profile
+### Step 3 — Confirm the codex-only default profile
 
-Present the options based on Step 1 findings:
-
-- Profile A (release default, openai-codex-only committed baseline) — only show this option if `openai-codex` auth was detected in Step 1.
-- Profile B (explicit openai-codex override profile) — only show this option if `openai-codex` auth was detected in Step 1.
-- Profile C (all-Anthropic) — only show this option if native `anthropic` auth was detected in Step 1.
-- Profile D (opencode-zen-only) — only show this option if `opencode-zen` auth was detected in Step 1.
-
-If `openai-codex` is unavailable, show only the remaining provider-backed options and set the default to the first actually available option. Never render Profile A or B in this branch.
-
-Build a `pi-oven_ask` question from only the visible profiles. Use the first available profile as `recommended`, set `affordances: { other: false, askAboutChoices: true }`, and give each visible option a concise one-line description in the chosen language. This is a routing-choice clarification branch, so the dedicated `Ask about these choices` affordance is valid; free-text is not.
-
-If the user picks `Ask about these choices`, explain the currently available profile differences in the chosen language, then re-ask with the same visible option set. Read the final choice from `details.selected`.
-
-If no profiles are available, do not render a selection prompt — tell the user to authenticate a supported provider first and stop.
-
-If the user selects Profile A, B, C, or D, display this notice and ask for confirmation before proceeding:
+There is no profile selection question. Display this notice and ask for confirmation before proceeding:
 
 ```
 NOTICE: Auth-fallback limitation (Spec A §6.3)
@@ -200,31 +171,28 @@ When a pi-oven subagent's primary model is in the omp registry but unauthed,
 omp falls back to the PARENT SESSION's active model — not the next item in
 the model array. If your parent session runs a subscription-provider model,
 pi-oven subagents may incur unexpected billing if their primary model fails auth.
-This is an omp internal behavior that pi-oven cannot override.
-Profile A and Profile B are safe only when openai-codex auth is active and stable.
-Profile C is safe only when anthropic auth is active and stable.
-Profile D is safe only when opencode-zen auth is active and stable.
-Proceed with Profile <A|B|C|D>? [y/N]:
+This is an omp internal behavior that pi-oven cannot override. pi-oven now
+persists only the codex-only DEFAULT_PROFILE, so setup is safe only when
+openai-codex auth is active and stable.
+Proceed with codex-only DEFAULT_PROFILE? [y/N]:
 ```
 
-In global scope, Profiles A, B, C, and D each write all 24 `task.agentModelOverrides` entries (one per role) into `~/.omp/agent/config.yml`; Profile A also refreshes the release-default orchestrator roles (`modelRoles.default` / `modelRoles.title`). In project scope, every profile writes all 24 per-role overrides plus `modelRoles` and `retry.fallbackChains` into `<project>/.omp/settings.json`. Run `--reset` on the same scope to clear pi-oven routing overrides.
-
-If the goal is wide parallel pi-oven waves, prefer Profile A or B when openai-codex auth is healthy; D remains the opencode-only alternative. This biases routing toward the 8-12-wide dependency-safe wave target; the vendored `scripts/pi-oven-team/index.ts` launcher enforces `nativeWorkers.maxWorkers` from the active `.pi-oven/config.json`, and reports a degraded native-runtime state if that vendored path is unavailable.
+In both scopes, setup writes all 24 `task.agentModelOverrides` entries for runtime-visible `pov:*` roles, refreshes `modelRoles.default` / `modelRoles.title`, and overwrites `retry.fallbackChains` with an empty record. Run `--reset` on the same scope to clear pi-oven routing overrides.
 
 ### Step 4 — Optional per-role override
 
 Ask the user:
 
 ```
-Apply profile defaults to all 24 roles? [Y/n]:
+Apply codex-only defaults to all 24 roles? [Y/n]:
 ```
 
-`Y` or Enter: use the selected profile defaults for all roles — proceed to Step 5.
+`Y` or Enter: use DEFAULT_PROFILE for all roles — proceed to Step 5.
 
-`n`: collect per-role overrides through conversation. For each role the user wants to override, ask which model to use. Validate that the model string starts with an allowed prefix:
+`n`: collect per-role overrides through conversation. For each role the user wants to override, ask which model to use. Validate that the model string is an OpenAI Codex selector:
 
-- Always allowed: `opencode-zen/`, `openai-codex/`
-- Allowed when Profile C AND anthropic was detected: `anthropic/`
+- Allowed: `openai-codex/<model>[:effort]`
+- Examples: `openai-codex/gpt-5.5`, `openai-codex/gpt-5.5:high`, `openai-codex/gpt-5.4:medium`
 
 Reject strings that do not match with a clear error and re-ask. When the user specifies at least one override, apply those explicit per-role overrides after profile selection.
 
@@ -234,7 +202,7 @@ Show a summary in chat:
 
 ```
 Summary:
-  Profile: <A|B|C|D>
+  Profile: DEFAULT_PROFILE (codex-only)
   Scope: <global|project>
   Roles with custom override: <N>
   Routing target: <global config.yml all-role overrides for runtime `pov:*` roles + skills.includeSkills + modelRoles/retry.fallbackChains | project .omp/settings.json all-role overrides for runtime `pov:*` roles + skills.includeSkills + modelRoles/retry.fallbackChains>
@@ -245,20 +213,20 @@ Ready to persist pi-oven routing. Proceed? [Y/n]:
 On confirmation, dispatch via Bash (using the resolved `$PI_OVEN_DIR`), threading the `<scope>` chosen in Step 0.5:
 
 ```
-bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile <A|B|C|D> --scope <global|project> --validate=smoke
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --apply --scope <global|project> --validate=smoke
 ```
 
 If there are per-role overrides, add one `--override <role>=<model>` flag per override:
 
 ```
-bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --profile A --scope <global|project> --override executor=openai-codex/gpt-5.5 --validate=smoke
+bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --apply --scope <global|project> --override executor=openai-codex/gpt-5.5 --validate=smoke
 ```
 
 Do not add `--validate=none` unless the user explicitly asked to skip validation.
 
 Under `--scope global` (default) the script writes model overrides to `~/.omp/agent/config.yml` as one per-role entry for the runtime-visible `pov:*` agents — user-global, machine-local, NOT committed. It also writes the workflow-skill ownership mainline `skills.includeSkills = ["pov:*"]`, which explicitly filters a populated `~/.claude/skills` workflow-skill source without deleting it; this is judged only on workflow-skill visibility and does not widen into commands, agents, hooks, or MCP exclusivity. Empty `~/.claude/skills` is not the target state, and legacy compatibility aids alone do not stop `claude-plugins` or namespaced marketplace workflow skills. It also **force-enables the 6 omp tool flags** (`inspect_image.enabled`, `web_search.enabled`, `lsp.enabled`, `astGrep.enabled`, `browser.enabled`, `debug.enabled`) so the agent body mandates have teeth. These flags are re-enabled on every global-scope run with no opt-out — this is intentional so a user toggle cannot silently neuter a mandated tool. `--reset --full` leaves these flags alone (they are omp-global infra, not pi-oven routing). Global scope is also where `/pi-oven:setup` writes the mnemopi + async + `task.enableLsp=true` prerequisites, and `/pi-oven:setup --repair-prereqs` is the narrow path that rewrites only those prerequisites plus the 6 tool flags without touching routing. `~/.pi-oven/config.json` keeps language + `nativeWorkers.maxWorkers` + setup receipt metadata, but the shared readiness summary now trusts live routing + prerequisites first.
 
-Under `--scope project` it writes overrides to `<cwd>/.omp/settings.json` instead — and under project scope **every profile (A/B/C/D) writes all 24 per-role overrides** there for the runtime-visible `pov:*` roles (so a project can fully diverge from the committed Profile-A frontmatter), plus the same workflow-skill ownership filter `skills.includeSkills = ["pov:*"]`, `modelRoles`, and `retry.fallbackChains`. That project file is committable (share routing with a team) or gitignorable (machine-local). Project scope does NOT write the 6 tool flags or the memory/async/LSP prerequisites; the script now reports that separation explicitly (`Project scope kept ~/.omp/agent/config.yml untouched.` + `Run /pi-oven:setup --repair-prereqs on this machine…`). In both scopes the wizard MUST NOT modify the committed agent definition files under `agents/`; those are release-baseline artifacts and are read-only from the wizard's perspective. `<cwd>/.pi-oven/config.json` still stores language + `nativeWorkers.maxWorkers` + setup receipt metadata, but the shared readiness summary treats project routing itself as the source of truth.
+Under `--scope project` it writes overrides to `<cwd>/.omp/settings.json` instead: all 24 codex-only per-role overrides for the runtime-visible `pov:*` roles, the same workflow-skill ownership filter `skills.includeSkills = ["pov:*"]`, `modelRoles`, and empty `retry.fallbackChains`. That project file is committable (share routing with a team) or gitignorable (machine-local). Project scope does NOT write the 6 tool flags or the memory/async/LSP prerequisites; the script now reports that separation explicitly (`Project scope kept ~/.omp/agent/config.yml untouched.` + `Run /pi-oven:setup --repair-prereqs on this machine...`). In both scopes the wizard MUST NOT modify the committed agent definition files under `agents/`; those are release-baseline artifacts and are read-only from the wizard's perspective. `<cwd>/.pi-oven/config.json` still stores language + `nativeWorkers.maxWorkers` + setup receipt metadata, but the shared readiness summary treats project routing itself as the source of truth.
 
 The script handles persist (config.yml write) and smoke validation in a single batch call. Do not invoke it more than once for the same flow.
 
@@ -266,15 +234,15 @@ The script handles persist (config.yml write) and smoke validation in a single b
 
 Relay the full script output to the user. Surface:
 
-- Setup complete + active profile.
-- Any validation warnings (roles that fell back to alternates).
+- Setup complete + active DEFAULT_PROFILE.
+- Any validation warnings.
 - Any validation failures (UNVERIFIED roles).
 
 If the script exits with code 1 (one or more UNVERIFIED roles), do NOT auto-retry. Present the UNVERIFIED role list and ask the user how to proceed:
 
 ```
 One or more roles are UNVERIFIED. Options:
-  1. Reconfigure  — run /pi-oven:setup again with a different profile or overrides
+  1. Reconfigure  — run /pi-oven:setup again with different Codex overrides
   2. Diagnose     — run: bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --validate=full
   3. Reset        — run: bun "${PI_OVEN_DIR%/}/scripts/pi-oven-setup.ts" --reset
 ```
@@ -286,28 +254,24 @@ Auto-retry risks repeated billing charges for failing smoke pings.
 - Scope: vendored native worker runtime under `scripts/pi-oven-team/*` only.
 - Owner: pi-oven maintainers.
 - Removal condition: remove this boundary once native worker startup/scale is owned end-to-end by the omp-native control plane and no runtime path depends on `scripts/pi-oven-team/*`.
-- Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.
-
 ## Flag reference (for dispatching the batch script)
 
 | Flag | Behavior |
 |---|---|
-| `--profile A` | Apply Profile A (release default, openai-codex-only codex baseline). Requires openai-codex auth detected. Writes all 24 per-role `task.agentModelOverrides` and refreshes the release-default `modelRoles`. Reversible via `--reset`. |
-| `--profile B` | Apply Profile B (openai-codex-only wide fan-out performance profile: gpt-5.5 for implementation/review/planning/deep research, gpt-5.4 for fan-out/docs/vision/git/data-runner; writes `:<thinkingLevel>` suffixes; no gpt-5.4-mini/nano). Requires openai-codex auth detected. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
-| `--profile C` | Apply Profile C (all-Anthropic: opus-4-8 for high/xhigh roles, sonnet-4-6 for medium and for git-master + orchestrator title; haiku-4-5 is unavailable). Requires anthropic auth. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
-| `--profile D` | Apply Profile D (opencode-zen-only wide fan-out profile: kimi-k2.6 for heavy/coding roles, minimax-m2.5 for mid/low, gemini-3-flash for vision). Requires opencode-zen auth. Writes all 24 per-role `task.agentModelOverrides`. Reversible via `--reset`. |
-| `--override <role>=<model>` | Override a specific runtime role's model in `task.agentModelOverrides`. Repeatable. |
+| `--apply` | Apply DEFAULT_PROFILE. Requires openai-codex auth detected. Writes all 24 per-role `task.agentModelOverrides`, refreshes release-default `modelRoles`, writes `skills.includeSkills = ["pov:*"]`, and keeps `retry.fallbackChains` empty. Reversible via `--reset`. |
+| `--profile <legacy>` | Accepted for backward compatibility and ignored; every value resolves to DEFAULT_PROFILE. Prefer `--apply` in new documentation and scripts. |
+| `--override <role>=openai-codex/<model>[:effort]` | Override a specific runtime role's Codex model in `task.agentModelOverrides`. Repeatable. Other provider selectors are rejected. |
 | `--validate=smoke` | (Default) Ping 7 MUST-tier roles after persist. |
 | `--validate=full` | Ping all 24 roles. |
 | `--validate=none` | Skip validation. |
 | `--status` | Show the shared setup readiness summary first — global readiness from `~/.omp/agent/config.yml` routing + machine-global prerequisites, project readiness from `.omp/settings.json` routing — then show effective per-role models across project `.omp/settings.json`, global config.yml overrides, and agent frontmatter; project wins per role. Also appends the shared standalone truth surface: installed-topology evidence, the explicit control-plane front door, workflow-skill ownership classifications (`owned-surface active` / `compatibility aids only` / `ownership not established`), the secondary bootstrap-parity track, whether the vendored native-worker launcher (`scripts/pi-oven-team/index.ts` → `runtime-v2.ts`) is active, the effective workflow-skill ownership filter (`skills.includeSkills = ["pov:*"]` mainline), and the configured `nativeWorkers.maxWorkers` ceiling it will enforce. |
 |  | Shared migration/install vocabulary surfaced by `--status`: `healthy single pov surface`, `old config keys`, `mixed migration state`, `dual plugin surface`, and `agent namespace drift`. |
 | `--reset` | Clear pi-oven-managed routing overrides in the selected scope. Global scope removes the 24 per-role override entries from config.yml `task.agentModelOverrides`; project scope removes project `.omp/settings.json` pi-oven routing. Does not touch agent definition files. |
-| `--reset --full` | Full reset for a clean uninstall: global scope also resets other pi-oven-managed keys (`modelRoles`, `disabledProviders`, `setupVersion`) to omp type-defaults; project scope also clears project `modelRoles` and `retry.fallbackChains`. Never touches omp-internal keys. No-op-safe when keys are absent. |
-| `--import <file>` | Import JSON config file (schema: §7.1). Global-only today: the import path writes machine-global `task.agentModelOverrides` and rejects `--scope project`. |
+| `--reset --full` | Full reset for a clean uninstall: global scope also resets other pi-oven-managed keys (`modelRoles`, `retry.fallbackChains`, `setupVersion`) to omp type-defaults; project scope also clears project `modelRoles` and `retry.fallbackChains`. Never touches omp-internal keys. No-op-safe when keys are absent. |
+| `--import <file>` | Import a JSON config with `primary` and optional `thinkingLevel` selectors, restricted to `openai-codex/<model>[:effort]`. Global-only today: the import path writes machine-global `task.agentModelOverrides` and rejects `--scope project`. |
 | `--repair-prereqs` | GLOBAL-only repair path: write only `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true`, `task.enableLsp=true`, and the 6 gated tool flags in `~/.omp/agent/config.yml`. It does **not** write `modelRoles`, `task.agentModelOverrides`, `retry.fallbackChains`, project settings, or setup receipt metadata. Rejected under `--scope project`. |
 | `--language <ko\|en\|name>` | Persist the default response language. With `--scope global` (default) writes to `~/.pi-oven/config.json` (machine-global); with `--scope project` writes the per-project override `<cwd>/.pi-oven/config.json` (which takes precedence when present). Accepts `ko`/`en` or any plain language name (letters, spaces, `()-.`; ≤ 40 chars). Set in Step 0/0.5. |
-| `--scope global\|project` | WHERE this setup writes (default `global`). `global` = writes all 24 per-role overrides + the workflow-skill ownership filter `skills.includeSkills = ["pov:*"]` + `modelRoles` + `retry.fallbackChains` to `~/.omp/agent/config.yml`; language + setup receipt metadata + `nativeWorkers.maxWorkers` → `~/.pi-oven/config.json`; machine-global tool flags + memory/async/`task.enableLsp` prerequisites are written here. Use `--repair-prereqs` when you only need to restore those prerequisites without touching routing. `project` = writes the same 24-role override record + workflow-skill ownership filter + `modelRoles` + `retry.fallbackChains` to `<cwd>/.omp/settings.json`, while language + setup receipt metadata + `nativeWorkers.maxWorkers` go to `<cwd>/.pi-oven/config.json`. Ownership success is still judged by the effective `skills.includeSkills` surface, not by emptying `~/.claude/skills`, and legacy compatibility aids remain secondary helpers only. In both scopes, the shared readiness summary derives truth from live routing + prerequisites first rather than trusting `setupCompletedAt` alone. |
+| `--scope global\|project` | WHERE this setup writes (default `global`). `global` = writes all 24 per-role overrides + the workflow-skill ownership filter `skills.includeSkills = ["pov:*"]` + `modelRoles` + empty `retry.fallbackChains` to `~/.omp/agent/config.yml`; language + setup receipt metadata + `nativeWorkers.maxWorkers` -> `~/.pi-oven/config.json`; machine-global tool flags + memory/async/`task.enableLsp` prerequisites are written here. Use `--repair-prereqs` when you only need to restore those prerequisites without touching routing. `project` = writes the same 24-role override record + workflow-skill ownership filter + `modelRoles` + empty `retry.fallbackChains` to `<cwd>/.omp/settings.json`, while language + setup receipt metadata + `nativeWorkers.maxWorkers` go to `<cwd>/.pi-oven/config.json`. Ownership success is judged by the effective `skills.includeSkills` surface, not by emptying `~/.claude/skills`. In both scopes, the shared readiness summary derives truth from live routing + prerequisites first rather than trusting `setupCompletedAt` alone. |
 
 The 7 MUST-tier roles for smoke validation are: executor, explorer, verifier, critic, planner, code-reviewer, debugger.
 
@@ -324,4 +288,4 @@ Use the marketplace-qualified id `pi-oven@kzk` only for `omp plugin install` / `
 
 ## Known limitations (surface if relevant)
 
-- **Parent session fallback hole**: When a pi-oven subagent's primary model is unauthed, omp falls back to the parent session model (not the next array entry). Profiles A and B are safe only when openai-codex auth is active and stable; Profile C is safe only when anthropic auth is active and stable; Profile D is safe only when opencode-zen auth is active and stable. This is an omp internal behavior that pi-oven cannot override (Spec A §6.3).
+- **Parent session fallback hole**: When a pi-oven subagent's primary model is unauthed, omp falls back to the parent session model (not the next array entry). DEFAULT_PROFILE is safe only when openai-codex auth is active and stable. This is an omp internal behavior that pi-oven cannot override (Spec A §6.3).

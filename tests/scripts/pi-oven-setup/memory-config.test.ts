@@ -235,14 +235,14 @@ describe("runApply user path — memory + async keys written", () => {
     const { mkdirSync, writeFileSync, rmSync } = await import("fs");
     const { join } = await import("path");
     const { tmpdir } = await import("os");
-    const { ROLES, PROFILE_A } = await import("../../../scripts/pi-oven-setup/profiles");
+    const { ROLES, DEFAULT_PROFILE } = await import("../../../scripts/pi-oven-setup/profiles");
 
     const dir = join(tmpdir(), `apply-mem-test-${Date.now()}`);
     mkdirSync(dir, { recursive: true });
     for (const role of ROLES) {
       writeFileSync(
         join(dir, `pov-${role}.md`),
-        `---\nname: pov:${role}\ndescription: test\nmodel:\n  - ${PROFILE_A[role].primary}\n  - ${PROFILE_A[role].registry_alternate}\nthinkingLevel: ${PROFILE_A[role].thinkingLevel}\nmode: subagent\ntools: ["*"]\nblocked_tools: []\n---\n\nBody.\n`,
+        `---\nname: pov:${role}\ndescription: test\nmodel:\n  - ${DEFAULT_PROFILE[role].primary}\nthinkingLevel: ${DEFAULT_PROFILE[role].thinkingLevel}\nmode: subagent\ntools: ["*"]\nblocked_tools: []\n---\n\nBody.\n`,
         "utf-8"
       );
     }

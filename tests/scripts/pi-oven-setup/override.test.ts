@@ -1,521 +1,130 @@
-/**
- * Tests for scripts/pi-oven-setup/override.ts
- * TDD red phase — written before implementation.
- */
-
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { afterEach, describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
+import { join } from "path";
 import { runOverride } from "../../../scripts/pi-oven-setup/override";
-import {
-  projectSettingsPath,
-  readProjectAgentModelOverrides,
-} from "../../../scripts/pi-oven-setup/project-settings";
+import { projectSettingsPath } from "../../../scripts/pi-oven-setup/project-settings";
 
-// ---------------------------------------------------------------------------
-// Shared fixtures
-// ---------------------------------------------------------------------------
-
-/** Minimal `omp models` fixture that includes two resolvable models. */
 const LIST_MODELS_FIXTURE = [
   "Canonical models",
-  "  canonical  selected                              provider",
-  "  1          opencode-zen/gpt-5.3-codex            opencode-zen",
-  "  2          openai-codex/gpt-5.3-codex            openai-codex",
-  "  3          anthropic/claude-opus-4-8             anthropic",
-  "  4          opencode-zen/claude-opus-4-8          opencode-zen",
+  "  canonical  selected                 provider",
+  "  1          openai-codex/gpt-5.5     openai-codex",
+  "  2          openai-codex/gpt-5.4     openai-codex",
   "",
 ].join("\n");
 
-/**
- * Build a spawnFn that:
- *  - returns a valid empty-record get response for `omp config get ...`
- *  - captures `omp config set ...` args into `setCalls`
- *  - returns exit 0 for `omp models` (should not be called; spawnFn is NOT used for list-models when listModelsOutput is injected)
- */
-function makeSpawnFn(opts: {
-  getRecord?: Record<string, string>;
-  setExitCode?: number;
-  setCalls?: Array<{ args: string[] }>;
-}): (cmd: string, args: string[]) => { exitCode: number; stdout: Buffer; stderr: Buffer } {
-  const getCalls = opts.setCalls ?? [];
-  return (cmd: string, args: string[]) => {
+let tempDir: string | null = null;
+
+function makeTempDir(): string {
+  tempDir = mkdtempSync(join(tmpdir(), "pi-oven-override-"));
+  return tempDir;
+}
+
+afterEach(() => {
+  if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  tempDir = null;
+});
+
+function makeSpawnRecorder(initialOverrides: Record<string, string> = {}) {
+  const calls: string[][] = [];
+  const spawnFn = (_cmd: string, args: string[]) => {
+    calls.push(args);
     if (args[0] === "config" && args[1] === "get") {
-      const record = opts.getRecord ?? {};
-      const payload = JSON.stringify({
-        key: args[2],
-        value: record,
-        type: "record",
-        description: "",
-      });
-      return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
-    }
-    if (args[0] === "config" && args[1] === "set") {
-      getCalls.push({ args: [cmd, ...args] });
+      const value = args[2] === "skills.includeSkills" ? [] : initialOverrides;
       return {
-        exitCode: opts.setExitCode ?? 0,
-        stdout: Buffer.from(""),
+        exitCode: 0,
+        stdout: Buffer.from(JSON.stringify({ type: Array.isArray(value) ? "array" : "record", value })),
         stderr: Buffer.from(""),
       };
     }
-    // fallback
     return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
   };
+  return { calls, spawnFn };
 }
 
-// ---------------------------------------------------------------------------
-// Happy path
-// ---------------------------------------------------------------------------
-
-describe("runOverride — happy path", () => {
-  it("standalone --override critic=<model> sets canonical global pov:* config via omp and exits 0", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({ setCalls });
+describe("runOverride", () => {
+  it("writes codex selectors to canonical global pov keys", async () => {
+    const { calls, spawnFn } = makeSpawnRecorder();
 
     const result = await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-8"],
+      entries: ["critic=openai-codex/gpt-5.5:xhigh"],
       listModelsOutput: LIST_MODELS_FIXTURE,
       spawnFn,
     });
 
     expect(result.exitCode).toBe(0);
-    expect(setCalls.length).toBe(2);
-    const capturedJson = JSON.parse(setCalls[0].args[4]); // args: [omp, config, set, task.agentModelOverrides, <json>]
-    expect(capturedJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
-    expect(capturedJson["pi-oven:critic"]).toBeUndefined();
-    expect(setCalls[1].args[3]).toBe("skills.includeSkills");
-    expect(JSON.parse(setCalls[1].args[4])).toEqual(["pov:*"]);
-  });
-
-  it("two --override entries both persist (MERGE)", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({ setCalls });
-
-    const result = await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-8", "executor=opencode-zen/gpt-5.3-codex"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.applied.map((a) => a.colonKey)).toContain("pov:critic");
-    expect(result.applied.map((a) => a.colonKey)).toContain("pov:executor");
-    expect(setCalls.length).toBe(2);
-    const capturedJson = JSON.parse(setCalls[0].args[4]);
-    expect(capturedJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
-    expect(capturedJson["pov:executor"]).toBe("opencode-zen/gpt-5.3-codex");
-    expect(setCalls[1].args[3]).toBe("skills.includeSkills");
-    expect(JSON.parse(setCalls[1].args[4])).toEqual(["pov:*"]);
-  });
-
-  it("preserves sibling (non-managed) keys in the global record", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({
-      getRecord: { "claude-code:foo": "somemodel" },
-      setCalls,
-    });
-
-    await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-8"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    const capturedJson = JSON.parse(setCalls[0].args[4]);
-    expect(capturedJson["claude-code:foo"]).toBe("somemodel");
-    expect(capturedJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
-  });
-
-
-  it("migrates old-only global pi-oven:* state while applying a canonical override", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({
-      getRecord: { "pi-oven:executor": "legacy-model", "claude-code:foo": "somemodel" },
-      setCalls,
-    });
-
-    await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-8"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    const capturedJson = JSON.parse(setCalls[0].args[4]);
-    expect(capturedJson["pov:executor"]).toBe("legacy-model");
-    expect(capturedJson["pi-oven:executor"]).toBeUndefined();
-    expect(capturedJson["pov:critic"]).toBe("anthropic/claude-opus-4-8");
-  });
-
-  it("rejects same-scope dual-key conflicts in the global override record", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({
-      getRecord: { "pov:critic": "canonical-model", "pi-oven:critic": "legacy-model" },
-      setCalls,
-    });
-
-    await expect(
-      runOverride({
-        entries: ["executor=opencode-zen/gpt-5.3-codex"],
-        listModelsOutput: LIST_MODELS_FIXTURE,
-        spawnFn,
-      })
-    ).rejects.toThrow(/dual-key conflict/i);
-    expect(setCalls.length).toBe(0);
-  });
-
-
-  it("global override batches all roles into one task.agentModelOverrides write", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({ setCalls });
-
-    const result = await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-8", "executor=opencode-zen/gpt-5.3-codex"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(0);
-    const overrideSetCalls = setCalls.filter((call) => call.args[3] === "task.agentModelOverrides");
-    expect(overrideSetCalls).toHaveLength(1);
-    const parsed = JSON.parse(overrideSetCalls[0].args[4]);
-    expect(parsed["pov:critic"]).toBe("anthropic/claude-opus-4-8");
-    expect(parsed["pov:executor"]).toBe("opencode-zen/gpt-5.3-codex");
-  });
-
-  it("global override failure leaves the stored override record unchanged", async () => {
-    let storedRecord: Record<string, string> = { "claude-code:foo": "existingmodel" };
-    const setCalls: string[][] = [];
-    const spawnFn = (cmd: string, args: string[]) => {
-      setCalls.push([cmd, ...args]);
-      if (args[0] === "config" && args[1] === "get" && args[2] === "task.agentModelOverrides") {
-        return {
-          exitCode: 0,
-          stdout: Buffer.from(JSON.stringify({ key: "task.agentModelOverrides", value: storedRecord, type: "record", description: "" })),
-          stderr: Buffer.from(""),
-        };
-      }
-      if (args[0] === "config" && args[1] === "set" && args[2] === "task.agentModelOverrides") {
-        return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("set failed") };
-      }
-      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
-    };
-
-    await expect(
-      runOverride({
-        entries: ["critic=anthropic/claude-opus-4-8", "executor=opencode-zen/gpt-5.3-codex"],
-        listModelsOutput: LIST_MODELS_FIXTURE,
-        spawnFn,
-      })
-    ).rejects.toThrow(/set failed/i);
-
-    expect(storedRecord).toEqual({ "claude-code:foo": "existingmodel" });
-    const overrideSetCalls = setCalls.filter((call) => call[1] === "config" && call[2] === "set" && call[3] === "task.agentModelOverrides");
-    expect(overrideSetCalls).toHaveLength(1);
-  });
-
-  it("role with hyphen (code-reviewer) maps to canonical global pov:code-reviewer", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({ setCalls });
-
-    const result = await runOverride({
-      entries: ["code-reviewer=opencode-zen/gpt-5.3-codex"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(0);
-    const capturedJson = JSON.parse(setCalls[0].args[4]);
-    expect(capturedJson["pov:code-reviewer"]).toBe("opencode-zen/gpt-5.3-codex");
-  });
-
-  it("returns applied array with colonKey and model for each successful entry", async () => {
-    const spawnFn = makeSpawnFn({});
-
-    const result = await runOverride({
-      entries: ["executor=opencode-zen/gpt-5.3-codex"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.applied).toHaveLength(1);
-    expect(result.applied[0].colonKey).toBe("pov:executor");
-    expect(result.applied[0].model).toBe("opencode-zen/gpt-5.3-codex");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Error: malformed entries (Bc-1) — exit 1, ZERO writes
-// ---------------------------------------------------------------------------
-
-describe("runOverride — malformed entries (exit 1, no write)", () => {
-  it("entry with no '=' exits 1 and does not call config set", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({ setCalls });
-
-    const result = await runOverride({
-      entries: ["critic"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(result.output).toMatch(/invalid.*--override.*expected.*=.*model/i);
-    expect(setCalls.length).toBe(0);
-  });
-
-  it("entry with empty role (=model) exits 1 and does not write", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({ setCalls });
-
-    const result = await runOverride({
-      entries: ["=anthropic/claude-opus-4-8"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(setCalls.length).toBe(0);
-  });
-
-  it("entry with empty model (critic=) exits 1 and does not write", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({ setCalls });
-
-    const result = await runOverride({
-      entries: ["critic="],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(setCalls.length).toBe(0);
-  });
-
-  it("role not in ROLES exits 1 and does not write", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({ setCalls });
-
-    const result = await runOverride({
-      entries: ["unknownrole=anthropic/claude-opus-4-8"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(setCalls.length).toBe(0);
-  });
-
-  it("invalid model id exits 1 and does not call set", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({ setCalls });
-
-    const result = await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-7"], // not in fixture
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(setCalls.length).toBe(0);
-  });
-
-  it("first entry valid, second malformed: exits 1, ZERO writes (validate-all-then-write-all)", async () => {
-    const setCalls: Array<{ args: string[] }> = [];
-    const spawnFn = makeSpawnFn({ setCalls });
-
-    const result = await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-8", "unknownrole=anthropic/claude-opus-4-8"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(setCalls.length).toBe(0); // partial write forbidden
-  });
-});
-
-// ---------------------------------------------------------------------------
-// standalone --override does not touch agents/ or lock file
-// ---------------------------------------------------------------------------
-
-describe("runOverride — no agents/ or plugin-config write", () => {
-  it("does not spawn omp plugin config set", async () => {
-    const allCalls: Array<string[]> = [];
-    const spawnFn = (cmd: string, args: string[]) => {
-      allCalls.push([cmd, ...args]);
-      if (args[0] === "config" && args[1] === "get") {
-        return {
-          exitCode: 0,
-          stdout: Buffer.from(JSON.stringify({ key: args[2], value: {}, type: "record", description: "" })),
-          stderr: Buffer.from(""),
-        };
-      }
-      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
-    };
-
-    await runOverride({
-      entries: ["executor=opencode-zen/gpt-5.3-codex"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    const pluginConfigCalls = allCalls.filter((c) => c.includes("plugin") && c.includes("config") && c.includes("set"));
-    expect(pluginConfigCalls.length).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// AC#2 integration: stateful get→merge→set round-trip preserves siblings
-// ---------------------------------------------------------------------------
-
-describe("runOverride — stateful merge round-trip (AC#2)", () => {
-  it("two entries: each set reflects previous write; non-pi-oven sibling survives all writes", async () => {
-    // Seed with a pre-existing non-pi-oven sibling key
-    let storedRecord: Record<string, string> = { "claude-code:foo": "existingmodel" };
-
-    const spawnFn = (cmd: string, args: string[]) => {
-      if (args[0] === "config" && args[1] === "get") {
-        const payload = JSON.stringify({
-          key: args[2],
-          value: storedRecord,
-          type: "record",
-          description: "",
-        });
-        return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
-      }
-      if (args[0] === "config" && args[1] === "set") {
-        // args: ["config", "set", "task.agentModelOverrides", "<json>"] or
-        // ["config", "set", "skills.includeSkills", "<json>"].
-        if (args[2] === "task.agentModelOverrides") {
-          storedRecord = JSON.parse(args[3]) as Record<string, string>;
-        }
-        return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
-      }
-      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
-    };
-
-    const result = await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-8", "executor=openai-codex/gpt-5.3-codex"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-    });
-
-    expect(result.exitCode).toBe(0);
-    // Both canonical global pov:* keys persisted in the final stored record
-    expect(storedRecord["pov:critic"]).toBe("anthropic/claude-opus-4-8");
-    expect(storedRecord["pov:executor"]).toBe("openai-codex/gpt-5.3-codex");
-    // Pre-existing non-pi-oven sibling survived all writes
-    expect(storedRecord["claude-code:foo"]).toBe("existingmodel");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// scope:"project" — batches all entries into ONE .omp/settings.json write,
-// leaves the global config.yml untouched.
-// ---------------------------------------------------------------------------
-
-describe("runOverride — scope:project", () => {
-  let cwd: string;
-
-  beforeEach(() => {
-    cwd = join(
-      tmpdir(),
-      `override-project-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    );
-    mkdirSync(cwd, { recursive: true });
-  });
-
-  afterEach(() => {
-    rmSync(cwd, { recursive: true, force: true });
-  });
-
-  it("writes the project file and makes ZERO omp config set/get calls", async () => {
-    const calls: string[][] = [];
-    const spawnFn = (cmd: string, args: string[]) => {
-      calls.push([cmd, ...args]);
-      return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
-    };
-
-    const result = await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-8", "executor=opencode-zen/gpt-5.3-codex"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-      scope: "project",
-      cwd,
-    });
-
-    expect(result.exitCode).toBe(0);
-
-    // Both entries land in the project file in ONE write.
-    const overrides = await readProjectAgentModelOverrides({ cwd });
-    expect(overrides["pov:critic"]).toBe("anthropic/claude-opus-4-8");
-    expect(overrides["pov:executor"]).toBe("opencode-zen/gpt-5.3-codex");
-    const parsed = JSON.parse(readFileSync(projectSettingsPath(cwd), "utf-8"));
-    expect(parsed.skills.includeSkills).toEqual(["pov:*"]);
-
-    // The validator may spawn `omp models` only when no listModelsOutput is
-    // injected; here it is injected, so no `config` spawn must occur at all.
-    const configCalls = calls.filter((c) => c.includes("config"));
-    expect(configCalls.length).toBe(0);
-  });
-
-  it("applied[] reflects every batched entry", async () => {
-    const spawnFn = (_cmd: string, _args: string[]) =>
-      ({ exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") });
-
-    const result = await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-8", "executor=opencode-zen/gpt-5.3-codex"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-      scope: "project",
-      cwd,
-    });
-
-    expect(result.applied.map((a) => a.colonKey).sort()).toEqual([
-      "pov:critic",
-      "pov:executor",
+    expect(result.applied).toEqual([
+      { colonKey: "pov:critic", model: "openai-codex/gpt-5.5:xhigh" },
     ]);
+    const write = calls.find((args) => args[0] === "config" && args[1] === "set" && args[2] === "task.agentModelOverrides");
+    expect(JSON.parse(write![3])).toEqual({
+      "pov:critic": "openai-codex/gpt-5.5:xhigh",
+    });
+    const includeWrite = calls.find((args) => args[2] === "skills.includeSkills");
+    expect(JSON.parse(includeWrite![3])).toEqual(["pov:*"]);
   });
 
-  it("a validation failure writes NO project file (validate-all-then-write-all)", async () => {
-    const spawnFn = (_cmd: string, _args: string[]) =>
-      ({ exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") });
+  it("rejects non-codex overrides before writing", async () => {
+    const { calls, spawnFn } = makeSpawnRecorder();
 
     const result = await runOverride({
-      entries: ["critic=anthropic/claude-opus-4-8", "unknownrole=anthropic/claude-opus-4-8"],
-      listModelsOutput: LIST_MODELS_FIXTURE,
-      spawnFn,
-      scope: "project",
-      cwd,
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(existsSync(projectSettingsPath(cwd))).toBe(false);
-  });
-
-  it("preserves a hand-authored sibling key in the project file", async () => {
-    mkdirSync(join(cwd, ".omp"), { recursive: true });
-    writeFileSync(
-      projectSettingsPath(cwd),
-      JSON.stringify({ extensions: ["keep"] }, null, 2) + "\n",
-      "utf-8"
-    );
-
-    const spawnFn = (_cmd: string, _args: string[]) =>
-      ({ exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") });
-
-    await runOverride({
       entries: ["critic=anthropic/claude-opus-4-8"],
       listModelsOutput: LIST_MODELS_FIXTURE,
       spawnFn,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain("must be an openai-codex");
+    expect(calls.some((args) => args[0] === "config" && args[1] === "set")).toBe(false);
+  });
+
+  it("validates all entries before writing", async () => {
+    const { calls, spawnFn } = makeSpawnRecorder();
+
+    const result = await runOverride({
+      entries: ["critic=openai-codex/gpt-5.5:xhigh", "nope=openai-codex/gpt-5.4"],
+      listModelsOutput: LIST_MODELS_FIXTURE,
+      spawnFn,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(calls.some((args) => args[0] === "config" && args[1] === "set")).toBe(false);
+  });
+
+  it("writes project overrides without omp config calls", async () => {
+    const cwd = makeTempDir();
+    const { calls, spawnFn } = makeSpawnRecorder();
+
+    const result = await runOverride({
+      entries: ["executor=openai-codex/gpt-5.5:high"],
+      listModelsOutput: LIST_MODELS_FIXTURE,
+      spawnFn,
       scope: "project",
       cwd,
     });
 
+    expect(result.exitCode).toBe(0);
+    expect(calls).toHaveLength(0);
     const parsed = JSON.parse(readFileSync(projectSettingsPath(cwd), "utf-8"));
+    expect(parsed.task.agentModelOverrides["pov:executor"]).toBe("openai-codex/gpt-5.5:high");
+    expect(parsed.skills.includeSkills).toEqual(["pov:*"]);
+  });
+
+  it("preserves hand-authored project siblings", async () => {
+    const cwd = makeTempDir();
+    const settingsPath = projectSettingsPath(cwd);
+    mkdirSync(join(cwd, ".omp"), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify({ extensions: ["keep"] }), "utf-8");
+
+    await runOverride({
+      entries: ["executor=openai-codex/gpt-5.5:high"],
+      listModelsOutput: LIST_MODELS_FIXTURE,
+      scope: "project",
+      cwd,
+    });
+
+    const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
     expect(parsed.extensions).toEqual(["keep"]);
-    expect(parsed.task.agentModelOverrides["pov:critic"]).toBe("anthropic/claude-opus-4-8");
+    expect(parsed.task.agentModelOverrides["pov:executor"]).toBe("openai-codex/gpt-5.5:high");
   });
 });

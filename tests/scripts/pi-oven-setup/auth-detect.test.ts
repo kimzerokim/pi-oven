@@ -11,17 +11,17 @@ provider      model                       context  max-out  thinking   images
 anthropic     claude-haiku-4-5            200K     64K      yes        yes
 anthropic     claude-sonnet-4-6           1M       64K      yes        yes
 anthropic     claude-opus-4-7             1M       128K     yes        yes
-opencode-zen  claude-sonnet-4-6           1M       64K      yes        yes
-opencode-zen  gpt-5.3-codex               200K     32K      no         no
+alternate-provider  claude-sonnet-4-6           1M       64K      yes        yes
+alternate-provider  gpt-5.3-codex               200K     32K      no         no
 openai-codex  gpt-5.3-codex               200K     32K      no         no
 `;
 
 const STUB_WITHOUT_ANTHROPIC_NATIVE = `
 Provider models
 provider      model                       context  max-out  thinking   images
-opencode-zen  claude-sonnet-4-6           1M       64K      yes        yes
-opencode-zen  anthropic/claude-opus-4-7   1M       128K     yes        yes
-opencode-zen  gpt-5.3-codex               200K     32K      no         no
+alternate-provider  claude-sonnet-4-6           1M       64K      yes        yes
+alternate-provider  anthropic/claude-opus-4-7   1M       128K     yes        yes
+alternate-provider  gpt-5.3-codex               200K     32K      no         no
 openai-codex  gpt-5.3-codex               200K     32K      no         no
 `;
 
@@ -35,8 +35,8 @@ openai-codex  gpt-5.4                     200K     32K      no         no
 const STUB_WITH_OPENCODE_ZEN_ONLY = `
 Provider models
 provider      model                       context  max-out  thinking   images
-opencode-zen  claude-sonnet-4-6           1M       64K      yes        yes
-opencode-zen  glm-5                       1M       64K      no         no
+alternate-provider  claude-sonnet-4-6           1M       64K      yes        yes
+alternate-provider  glm-5                       1M       64K      no         no
 `;
 
 const STUB_EMPTY = ``;
@@ -47,7 +47,7 @@ describe("detectAuth", () => {
     expect(auth.anthropic).toBe(true);
   });
 
-  it("opencode-zen wrapper rows only (no native anthropic row) → auth.anthropic = false", async () => {
+  it("alternate-provider wrapper rows only (no native anthropic row) → auth.anthropic = false", async () => {
     const auth = await detectAuth({
       listModelsOutput: STUB_WITHOUT_ANTHROPIC_NATIVE,
     });
@@ -63,7 +63,7 @@ describe("detectAuth", () => {
     expect(auth.anthropic).toBe(false);
   });
 
-  it("opencode-zen provider row → auth.opencode_zen = true", async () => {
+  it("alternate-provider provider row → auth.opencode_zen = true", async () => {
     const auth = await detectAuth({
       listModelsOutput: STUB_WITH_OPENCODE_ZEN_ONLY,
     });

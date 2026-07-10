@@ -3,7 +3,6 @@ name: pov:security-reviewer
 description: Security vulnerability detection — OWASP Top 10, STRIDE, secrets, supply chain, CI/CD
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
 thinkingLevel: xhigh
 mode: subagent
 tools: ["read","search","find","bash","recall","web_search","lsp","ast_grep"]

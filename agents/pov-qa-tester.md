@@ -3,10 +3,9 @@ name: pov:qa-tester
 description: E2E and integration test specialist — dev server health checks, Playwright visual verification, regression suite execution, and console error gating
 model:
   - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
 thinkingLevel: high
 mode: subagent
-tools: ["read", "search", "find", "bash", "browser", "inspect_image", "task"]
+tools: ["read","search","find","bash","browser","inspect_image","task"]
 blocked_tools: []
 ---
 

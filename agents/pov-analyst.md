@@ -3,8 +3,7 @@ name: pov:analyst
 description: Data analysis and metrics investigation — quantitative and qualitative analysis, log mining, statistical summaries, anomaly detection, structured findings
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
-thinkingLevel: xhigh
+thinkingLevel: high
 mode: subagent
 tools: ["read","search","find","bash","eval","recall","lsp","ast_grep"]
 blocked_tools: ["write","edit","apply_patch","task"]

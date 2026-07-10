@@ -3,10 +3,9 @@ name: pov:designer
 description: UI/UX design implementation — component spec, layout, accessibility, design system, mockup handoff
 model:
   - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
 thinkingLevel: high
 mode: subagent
-tools: ["read", "search", "find", "write", "edit", "bash", "browser", "inspect_image", "task", "web_search"]
+tools: ["read","search","find","write","edit","bash","browser","inspect_image","task","web_search"]
 blocked_tools: []
 ---
 

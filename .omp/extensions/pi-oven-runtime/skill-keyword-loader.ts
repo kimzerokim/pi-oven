@@ -10,6 +10,53 @@ export const PUBLIC_SKILL_NS = "pov";
 export const KEYWORD_SKILL_DEDUP_KEY = "pi-oven:keyword-skills@v1";
 const MAX_MATCHED_SKILLS = 8;
 
+export type RuntimeSkillPhase = "explore" | "plan" | "mutate" | "verify";
+export type RuntimeSkillClass = "root" | "deferred";
+
+export interface RuntimeSkillClassification {
+  class: RuntimeSkillClass;
+  phases: RuntimeSkillPhase[];
+  priority: number;
+}
+
+const ROOT_CAPABLE_SKILLS = new Set([
+  "autonomous-loop",
+  "deep-dive",
+  "systematic-debugging",
+  "spec-and-review",
+  "writing-plans",
+  "brainstorming",
+  "improve-codebase-architecture",
+  "receiving-code-review",
+  "html-research-orchestrator",
+]);
+
+export const RUNTIME_SKILL_CLASSIFICATION: Record<string, RuntimeSkillClassification> = {
+  "autonomous-loop": { class: "root", phases: ["explore", "plan", "mutate", "verify"], priority: 100 },
+  "deep-dive": { class: "root", phases: ["explore", "plan"], priority: 90 },
+  "systematic-debugging": { class: "root", phases: ["explore", "mutate", "verify"], priority: 95 },
+  "spec-and-review": { class: "root", phases: ["explore", "plan", "verify"], priority: 80 },
+  "writing-plans": { class: "root", phases: ["explore", "plan"], priority: 70 },
+  brainstorming: { class: "root", phases: ["plan"], priority: 60 },
+  "improve-codebase-architecture": { class: "root", phases: ["explore", "plan"], priority: 75 },
+  "receiving-code-review": { class: "root", phases: ["mutate", "verify"], priority: 85 },
+  "html-research-orchestrator": { class: "root", phases: ["explore", "plan"], priority: 65 },
+  "memory-discipline": { class: "deferred", phases: ["verify"], priority: 10 },
+  "code-quality-discipline": { class: "deferred", phases: ["mutate", "verify"], priority: 30 },
+  "tdd-strict": { class: "deferred", phases: ["mutate", "verify"], priority: 35 },
+  "codebase-survey": { class: "deferred", phases: ["explore"], priority: 20 },
+  "fresh-verifier": { class: "deferred", phases: ["verify"], priority: 40 },
+  "pre-commit-gate": { class: "deferred", phases: ["verify"], priority: 45 },
+  "large-task-delegation": { class: "deferred", phases: ["plan", "mutate"], priority: 25 },
+  "subagent-driven-development": { class: "deferred", phases: ["mutate"], priority: 25 },
+  "git-workflow": { class: "deferred", phases: ["mutate", "verify"], priority: 30 },
+  aws: { class: "deferred", phases: ["explore"], priority: 20 },
+  cloudflare: { class: "deferred", phases: ["explore"], priority: 20 },
+  "bitbucket-pipeline": { class: "deferred", phases: ["explore", "verify"], priority: 20 },
+  "html-spec-decision-maker": { class: "deferred", phases: ["plan"], priority: 15 },
+  "deep-init": { class: "deferred", phases: ["explore"], priority: 15 },
+};
+
 export const SKILL_KEYWORD_WHITELIST: Record<string, readonly string[]> = {
   "autonomous-loop": [
     "자율 실행",
@@ -243,11 +290,15 @@ export interface MatchedSkill {
   rawMatchedPhrases: string[];
   ownedReadTarget: string;
   pluginRoot: string;
+  phases?: RuntimeSkillPhase[];
+  deferred?: boolean;
 }
 
 export interface SkillKeywordLoaderState {
   lastUserMessageId: string | null;
   matchedSkills: MatchedSkill[];
+  deferredSkillObligations: MatchedSkill[];
+  phaseReceipts: Array<{ phase: RuntimeSkillPhase; skill: string; satisfiedAt: string; ownedReadTarget?: string }>;
 }
 
 export interface SkillKeywordIndexIssue {
@@ -299,6 +350,55 @@ function normalizeText(text: string): string {
     .replace(/["'“”‘’]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function localSkillName(publicSkillName: string): string {
+  return publicSkillName.startsWith(`${PUBLIC_SKILL_NS}:`)
+    ? publicSkillName.slice(PUBLIC_SKILL_NS.length + 1)
+    : publicSkillName;
+}
+
+function isExplicitSkillInvocation(text: string, skillName: string): boolean {
+  const normalized = normalizeText(text);
+  const local = localSkillName(skillName);
+  return (
+    normalized.includes(`${PUBLIC_SKILL_NS}:${local}`) ||
+    normalized.includes(`$${local}`) ||
+    normalized.includes(`/${local}`)
+  );
+}
+
+export function pruneMatchedSkillsForRuntime(
+  matchedSkills: MatchedSkill[],
+  latestUserText: string
+): { rootSkills: MatchedSkill[]; deferredSkillObligations: MatchedSkill[] } {
+  const enriched = matchedSkills.map((skill) => {
+    const local = localSkillName(skill.name);
+    const explicit = isExplicitSkillInvocation(latestUserText, skill.name);
+    const classification =
+      RUNTIME_SKILL_CLASSIFICATION[local] ??
+      (ROOT_CAPABLE_SKILLS.has(local)
+        ? { class: "root" as const, phases: ["explore", "plan", "mutate", "verify"] as RuntimeSkillPhase[], priority: 50 }
+        : { class: "deferred" as const, phases: ["mutate", "verify"] as RuntimeSkillPhase[], priority: 0 });
+    return {
+      skill: { ...skill, phases: classification.phases },
+      classification,
+      explicit,
+    };
+  });
+
+  const rootCandidates = enriched
+    .filter((entry) => entry.classification.class === "root" || entry.explicit)
+    .sort((a, b) => b.classification.priority - a.classification.priority);
+  const rootNames = new Set(rootCandidates.map((entry) => entry.skill.name));
+  const deferredSkillObligations = enriched
+    .filter((entry) => !rootNames.has(entry.skill.name))
+    .map((entry) => ({ ...entry.skill, deferred: true }));
+
+  return {
+    rootSkills: rootCandidates.map((entry) => entry.skill).slice(0, MAX_MATCHED_SKILLS),
+    deferredSkillObligations,
+  };
 }
 
 function formatPublicSkillNameDrift(
@@ -410,7 +510,12 @@ export function loadSkillKeywordIndex(repoRoot: string): SkillKeywordIndexEntry[
 }
 
 export function createSkillKeywordLoaderState(): SkillKeywordLoaderState {
-  return { lastUserMessageId: null, matchedSkills: [] };
+  return {
+    lastUserMessageId: null,
+    matchedSkills: [],
+    deferredSkillObligations: [],
+    phaseReceipts: [],
+  };
 }
 
 export function updateSkillKeywordLoaderOnTurnStart(
@@ -453,40 +558,49 @@ export function updateSkillKeywordLoaderOnTurnStart(
   if (state.lastUserMessageId === latestUserId) return state;
 
   const matchedSkills = matchSkillsForText(latestUserText, index);
+  const pruned = pruneMatchedSkillsForRuntime(matchedSkills, latestUserText);
 
-  return { lastUserMessageId: latestUserId, matchedSkills };
+  return {
+    lastUserMessageId: latestUserId,
+    matchedSkills: pruned.rootSkills,
+    deferredSkillObligations: pruned.deferredSkillObligations,
+    phaseReceipts: [],
+  };
 }
 
 
-export function buildKeywordMatchedSkillsPrompt(matchedSkills: MatchedSkill[]): string | null {
-  if (matchedSkills.length === 0) return null;
+export function buildKeywordMatchedSkillsPrompt(
+  matchedSkills: MatchedSkill[],
+  deferredSkillObligations: MatchedSkill[] = []
+): string | null {
+  if (matchedSkills.length === 0 && deferredSkillObligations.length === 0) return null;
 
-  const activePluginRoots = Array.from(new Set(matchedSkills.map((skill) => skill.pluginRoot)));
+  const activePluginRoots = Array.from(
+    new Set([...matchedSkills, ...deferredSkillObligations].map((skill) => skill.pluginRoot))
+  );
   const lines = [
     `<!-- ${KEYWORD_SKILL_DEDUP_KEY} -->`,
     "## Runtime keyword-matched skills",
     "",
-    "The latest user message matched these `pov:` workflow skills from the active pi-oven plugin root.",
-    "You MUST load each listed skill by reading the exact plugin-owned SKILL.md target shown below before taking substantive action in this turn.",
-    "This is a hard precondition, NOT a suggestion: do not begin any skill-governed work until the matching skill is loaded and followed.",
-    "These exact reads are the single front door for the skill-gated control plane.",
+    "Load only the root skill targets listed below before substantive work. Deferred obligations are exact-read requirements only when their phase boundary is reached.",
     activePluginRoots.length === 1
       ? `Active plugin root: \`${activePluginRoots[0]}\``
       : `Unexpected multiple plugin roots matched in one turn: ${activePluginRoots.map((root) => `\`${root}\``).join(", ")}`,
-    "Runtime proof surface:",
-    "- The public `pov:*` skill names below and their exact `SKILL.md` proof targets are both resolved from that same active plugin root.",
-    "- `requiredSkills` records the matched `pov:` public skill names.",
-    "- `ownedSkillReadTargets` records the exact plugin-owned SKILL.md targets that must be read.",
-    "- `skillReads` is the proof log that unlocks code-write once the exact targets above are read.",
-    "- Bootstrap message injection and tool remap are NOT control-plane paths in pi-oven.",
-    "Preserve all non-conflicting rules across the matched skills. If two skills conflict, prefer the more specific one.",
-    "Interpret provider/model wording inside the raw matched phrases below as debugging evidence only; the normative rule remains the symbolic current-session-provider-family policy.",
+    "Root skill proof targets:",
     "",
   ];
   for (const skill of matchedSkills) {
     lines.push(
-      `- \`${skill.ownedReadTarget}\` — public skill \`${skill.name}\`, matched by: ${Array.from(new Set(skill.rawMatchedPhrases)).join(", ")}`
+      `- \`${skill.ownedReadTarget}\` — \`${skill.name}\` phases=${(skill.phases ?? []).join(",") || "all"}`
     );
+  }
+  if (deferredSkillObligations.length > 0) {
+    lines.push("", "Deferred obligations:");
+    for (const skill of deferredSkillObligations) {
+      lines.push(
+        `- \`${skill.ownedReadTarget}\` — \`${skill.name}\` before phases=${(skill.phases ?? []).join(",") || "mutate,verify"}`
+      );
+    }
   }
   if (getCapabilitiesByTag("deep-interview").includes("ask")) {
     lines.push(

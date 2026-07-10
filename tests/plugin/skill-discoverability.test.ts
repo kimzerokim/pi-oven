@@ -134,23 +134,22 @@ describe("skill activation metadata contract", () => {
 });
 
 describe("release-default routing public contract", () => {
-  it("advertises Profile A as the openai-codex-only release default across README/setup/CLAUDE", async () => {
+  it("advertises the codex-only default profile across README/setup/CLAUDE", async () => {
     const [readme, setup, claude] = await Promise.all([
       readFile(README_PATH, "utf-8"),
       readFile(SETUP_COMMAND_PATH, "utf-8"),
       readFile(ROOT_CLAUDE_PATH, "utf-8"),
     ]);
 
-    expect(readme).toContain("Profile A (release default, openai-codex-only)");
-    expect(readme).not.toContain("Profile A (release default, heterogeneous");
+    expect(readme).toContain("codex-only default profile");
+    expect(readme).toContain("The legacy `--profile` flag is accepted for backward compatibility but ignored");
 
-    expect(setup).toContain("Profile A (release default, openai-codex-only)");
-    expect(setup).not.toContain(
-      "Profile A (release default, opencode-zen + openai-codex + anthropic advisory roles)"
-    );
+    expect(setup).toContain("codex-only default profile");
+    expect(setup).toContain("Accepted for backward compatibility and ignored");
+    expect(setup).toContain("openai-codex/<model>[:effort]");
 
-    expect(claude).toContain("Profile A writes all 24 per-role `task.agentModelOverrides`");
-    expect(claude).not.toContain("Profile A remains orchestrator-only");
+    expect(claude).toContain("DEFAULT_PROFILE model map");
+    expect(claude).toContain("Setup persists only that codex-only routing surface");
   });
 
   it("ships the selected release-default agents on codex-family primaries", async () => {

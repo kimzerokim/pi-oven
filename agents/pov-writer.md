@@ -3,7 +3,6 @@ name: pov:writer
 description: Technical documentation — README, API docs, changelogs, inline comments, user guides
 model:
   - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
 thinkingLevel: medium
 mode: subagent
 tools: ["read","search","find","write","edit","web_search"]

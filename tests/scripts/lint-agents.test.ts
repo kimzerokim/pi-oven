@@ -108,7 +108,7 @@ describe("lint-agents shipped contract", () => {
   it("fails when a shipped pov role uses tools wildcard", () => {
     writeFileSync(
       join(dir, "pov-executor.md"),
-      `---\nname: pov:executor\nmodel: ["openai-codex/gpt-5.4", "opencode-zen/gpt-5.4"]\nthinkingLevel: high\nmode: subagent\ntools: ["*"]\nblocked_tools: []\n---\n\n## Role\n\nUse \`bash\`.\n`
+      `---\nname: pov:executor\nmodel: ["openai-codex/gpt-5.4", "alternate-provider/gpt-5.4"]\nthinkingLevel: high\nmode: subagent\ntools: ["*"]\nblocked_tools: []\n---\n\n## Role\n\nUse \`bash\`.\n`
     );
     const { code, stderr } = runLint(dir);
     expect(code).toBe(1);

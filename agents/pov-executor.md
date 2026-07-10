@@ -3,10 +3,9 @@ name: pov:executor
 description: Precise code implementer — smallest viable diff, spec-compliant, TDD-aware
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
 thinkingLevel: high
 mode: subagent
-tools: ["read", "search", "find", "write", "edit", "lsp", "ast_grep", "debug", "eval", "bash"]
+tools: ["read","search","find","write","edit","lsp","ast_grep","debug","eval","bash"]
 blocked_tools: []
 ---
 

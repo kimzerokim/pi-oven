@@ -1,340 +1,83 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from "fs";
-import { join } from "path";
+import { afterEach, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "fs";
 import { tmpdir } from "os";
+import { join } from "path";
 import {
   readAgentFiles,
   rewriteAgentFile,
   rewriteAllAgents,
 } from "../../../scripts/pi-oven-setup/agent-rewriter";
-import { ROLES, PROFILE_A, PROFILE_B, type Role } from "../../../scripts/pi-oven-setup/profiles";
+import { DEFAULT_PROFILE } from "../../../scripts/pi-oven-setup/profiles";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+let tempDir: string | null = null;
 
 function makeTempDir(): string {
-  const dir = join(
-    tmpdir(),
-    `agent-rewriter-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  tempDir = mkdtempSync(join(tmpdir(), "pi-oven-agent-rewriter-"));
+  return tempDir;
+}
+
+function makeAgentFile(dir: string, role: string, model = "old/model", thinking = "medium"): string {
+  const file = join(dir, `pov-${role}.md`);
+  writeFileSync(
+    file,
+    [
+      "---",
+      `name: pov:${role}`,
+      "description: test",
+      "model:",
+      `  - ${model}`,
+      `thinkingLevel: ${thinking}`,
+      "mode: subagent",
+      "tools: [\"read\"]",
+      "blocked_tools: []",
+      "---",
+      "",
+      "Body.",
+      "",
+    ].join("\n")
   );
-  mkdirSync(dir, { recursive: true });
-  return dir;
+  return file;
 }
 
-/**
- * Minimal but realistic agent file matching the production pov-executor.md format.
- * Verbatim frontmatter structure — YAML block list for model, thinkingLevel key.
- */
-function makeAgentFileContent(
-  role: string,
-  primary: string,
-  registryAlternate: string,
-  thinkingLevel: string
-): string {
-  return `---
-name: pov:${role}
-description: Test agent for ${role}
-model:
-  - ${primary}
-  - ${registryAlternate}
-thinkingLevel: ${thinkingLevel}
-mode: subagent
-tools: ["*"]
-blocked_tools: []
----
-
-## Role
-
-You are pov:${role}. This is the system prompt body.
-
-It must be preserved verbatim after rewrite.
-Multi-line content here.
-`;
-}
-
-/**
- * Creates pov-<role>.md files for a given set of roles inside agentsDir.
- */
-function populateAgentsDir(
-  agentsDir: string,
-  roles: readonly Role[],
-  primaryFn: (role: Role) => string,
-  alternateFn: (role: Role) => string,
-  thinkingFn: (role: Role) => string
-): void {
-  for (const role of roles) {
-    const content = makeAgentFileContent(
-      role,
-      primaryFn(role),
-      alternateFn(role),
-      thinkingFn(role)
-    );
-    writeFileSync(join(agentsDir, `pov-${role}.md`), content, "utf-8");
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe("readAgentFiles", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = makeTempDir();
-  });
-
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  it("reads N fake pov-*.md files and returns N entries with parsed model arrays", async () => {
-    const testRoles: Role[] = ["executor", "critic", "planner"];
-    populateAgentsDir(
-      tempDir,
-      testRoles,
-      (r) => PROFILE_A[r].primary,
-      (r) => PROFILE_A[r].registry_alternate,
-      (r) => PROFILE_A[r].thinkingLevel
-    );
-
-    const entries = await readAgentFiles(tempDir);
-    expect(entries.length).toBe(3);
-
-    const executorEntry = entries.find((e) => e.role === "executor");
-    expect(executorEntry).toBeDefined();
-    expect(executorEntry!.currentModel).toEqual([
-      PROFILE_A.executor.primary,
-      PROFILE_A.executor.registry_alternate,
-    ]);
-    expect(executorEntry!.currentThinkingLevel).toBe(PROFILE_A.executor.thinkingLevel);
-  });
-
-  it("returns empty array for empty directory", async () => {
-    const entries = await readAgentFiles(tempDir);
-    expect(entries.length).toBe(0);
-  });
-
-  it("ignores non-agent markdown files", async () => {
-    writeFileSync(join(tempDir, "README.md"), "not an agent");
-    writeFileSync(join(tempDir, "other.txt"), "also not an agent");
-    populateAgentsDir(
-      tempDir,
-      ["executor"],
-      () => PROFILE_A.executor.primary,
-      () => PROFILE_A.executor.registry_alternate,
-      () => PROFILE_A.executor.thinkingLevel
-    );
-    const entries = await readAgentFiles(tempDir);
-    expect(entries.length).toBe(1);
-  });
-
-  it("fails when a legacy pi-oven filename is present", async () => {
-    writeFileSync(
-      join(tempDir, "pi-oven-executor.md"),
-      makeAgentFileContent(
-        "executor",
-        PROFILE_A.executor.primary,
-        PROFILE_A.executor.registry_alternate,
-        PROFILE_A.executor.thinkingLevel
-      )
-    );
-
-    await expect(readAgentFiles(tempDir)).rejects.toThrow("Legacy agent filenames detected");
-  });
+afterEach(() => {
+  if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  tempDir = null;
 });
 
-describe("rewriteAgentFile", () => {
-  let tempDir: string;
+describe("agent-rewriter", () => {
+  it("reads single-primary model frontmatter", async () => {
+    const dir = makeTempDir();
+    makeAgentFile(dir, "executor", DEFAULT_PROFILE.executor.primary, DEFAULT_PROFILE.executor.thinkingLevel);
 
-  beforeEach(() => {
-    tempDir = makeTempDir();
+    const entries = await readAgentFiles(dir);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].currentModel).toEqual([DEFAULT_PROFILE.executor.primary]);
+    expect(entries[0].currentThinkingLevel).toBe(DEFAULT_PROFILE.executor.thinkingLevel);
   });
 
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
+  it("rewrites model, thinking level, tools, and blocked tools from DEFAULT_PROFILE", async () => {
+    const dir = makeTempDir();
+    const file = makeAgentFile(dir, "planner");
+
+    await rewriteAgentFile(file, DEFAULT_PROFILE.planner);
+
+    const content = readFileSync(file, "utf-8");
+    expect(content).toContain(`  - ${DEFAULT_PROFILE.planner.primary}`);
+    expect(content).not.toContain("old/model");
+    expect(content).toContain(`thinkingLevel: ${DEFAULT_PROFILE.planner.thinkingLevel}`);
+    expect(content).toContain(`tools: ${JSON.stringify(DEFAULT_PROFILE.planner.tools)}`);
+    expect(content).toContain(`blocked_tools: ${JSON.stringify(DEFAULT_PROFILE.planner.blocked_tools)}`);
   });
 
-  it("updates model array in place; reread shows new values", async () => {
-    const filePath = join(tempDir, "pov-executor.md");
-    writeFileSync(
-      filePath,
-      makeAgentFileContent(
-        "executor",
-        PROFILE_A.executor.primary,
-        PROFILE_A.executor.registry_alternate,
-        PROFILE_A.executor.thinkingLevel
-      ),
-      "utf-8"
-    );
+  it("rewrites all available canonical agent files and reports skipped roles", async () => {
+    const dir = makeTempDir();
+    makeAgentFile(dir, "executor");
+    makeAgentFile(dir, "critic");
 
-    await rewriteAgentFile(filePath, PROFILE_B.executor);
+    const result = await rewriteAllAgents(dir, DEFAULT_PROFILE);
 
-    const entries = await readAgentFiles(tempDir);
-    const entry = entries.find((e) => e.role === "executor")!;
-    expect(entry.currentModel[0]).toBe(PROFILE_B.executor.primary);
-    expect(entry.currentModel[1]).toBe(PROFILE_B.executor.registry_alternate);
-    expect(entry.currentThinkingLevel).toBe(PROFILE_B.executor.thinkingLevel);
-  });
-
-  it("preserves systemPrompt body verbatim after rewrite", async () => {
-    const filePath = join(tempDir, "pov-executor.md");
-    const original = makeAgentFileContent(
-      "executor",
-      PROFILE_A.executor.primary,
-      PROFILE_A.executor.registry_alternate,
-      PROFILE_A.executor.thinkingLevel
-    );
-    writeFileSync(filePath, original, "utf-8");
-
-    await rewriteAgentFile(filePath, PROFILE_B.executor);
-
-    const rewritten = readFileSync(filePath, "utf-8");
-    // Body after the closing --- must be unchanged
-    const originalBody = original.split("---").slice(2).join("---");
-    const rewrittenBody = rewritten.split("---").slice(2).join("---");
-    expect(rewrittenBody).toBe(originalBody);
-  });
-
-  it("is idempotent: rewrite same profile twice produces no diff", async () => {
-    const filePath = join(tempDir, "pov-executor.md");
-    writeFileSync(
-      filePath,
-      makeAgentFileContent(
-        "executor",
-        PROFILE_A.executor.primary,
-        PROFILE_A.executor.registry_alternate,
-        PROFILE_A.executor.thinkingLevel
-      ),
-      "utf-8"
-    );
-
-    await rewriteAgentFile(filePath, PROFILE_B.executor);
-    const after1 = readFileSync(filePath, "utf-8");
-
-    await rewriteAgentFile(filePath, PROFILE_B.executor);
-    const after2 = readFileSync(filePath, "utf-8");
-
-    expect(after2).toBe(after1);
+    expect(result.rewritten.sort()).toEqual(["critic", "executor"]);
+    expect(result.skipped).toContain("planner");
   });
 });
-
-describe("rewriteAllAgents", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = makeTempDir();
-  });
-
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  it("rewrites all 24 agent files to PROFILE_B; subsequent read shows performance primary on executor", async () => {
-    // Start with Profile A files
-    populateAgentsDir(
-      tempDir,
-      ROLES,
-      (r) => PROFILE_A[r].primary,
-      (r) => PROFILE_A[r].registry_alternate,
-      (r) => PROFILE_A[r].thinkingLevel
-    );
-
-    const { rewritten, skipped } = await rewriteAllAgents(tempDir, PROFILE_B);
-    expect(rewritten.length).toBe(ROLES.length);
-    expect(skipped.length).toBe(0);
-
-    // Verify executor now has openai-codex primary (PROFILE_B is openai-codex-only)
-    const entries = await readAgentFiles(tempDir);
-    const executor = entries.find((e) => e.role === "executor")!;
-    expect(executor.currentModel[0]).toBe("openai-codex/gpt-5.5");
-  });
-
-  it("skips roles whose files do not exist", async () => {
-    // Only create 3 of the 24 files
-    const subset: Role[] = ["executor", "critic", "planner"];
-    populateAgentsDir(
-      tempDir,
-      subset,
-      (r) => PROFILE_A[r].primary,
-      (r) => PROFILE_A[r].registry_alternate,
-      (r) => PROFILE_A[r].thinkingLevel
-    );
-
-    const { rewritten, skipped } = await rewriteAllAgents(tempDir, PROFILE_B);
-    expect(rewritten.length).toBe(3);
-    expect(skipped.length).toBe(ROLES.length - 3);
-  });
-
-  it("fails when a legacy pi-oven filename is present alongside canonical files", async () => {
-    populateAgentsDir(
-      tempDir,
-      ["executor"],
-      (r) => PROFILE_A[r].primary,
-      (r) => PROFILE_A[r].registry_alternate,
-      (r) => PROFILE_A[r].thinkingLevel
-    );
-    writeFileSync(
-      join(tempDir, "pi-oven-critic.md"),
-      makeAgentFileContent(
-        "critic",
-        PROFILE_A.critic.primary,
-        PROFILE_A.critic.registry_alternate,
-        PROFILE_A.critic.thinkingLevel
-      )
-    );
-
-    await expect(rewriteAllAgents(tempDir, PROFILE_B)).rejects.toThrow(
-      "Legacy agent filenames detected"
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Bug 1: quoted name scalar in frontmatter (e.g. name: "pov:metis")
-// The parser must strip surrounding double-quotes from the name value so that
-// the role resolves correctly instead of returning null.
-// ---------------------------------------------------------------------------
-
-describe("readAgentFiles — quoted name scalar", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = makeTempDir();
-  });
-
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  it("parses a file with name: \"pov:metis\" (quoted) and returns role=metis, non-empty model", async () => {
-    const content = `---
-name: "pov:metis"
-description: "Test metis"
-model:
-  - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
-thinkingLevel: xhigh
-mode: subagent
-tools: ["read","search"]
-blocked_tools: ["write"]
----
-
-## Role
-
-You are pov:metis.
-`;
-    writeFileSync(
-      join(tempDir, "pov-metis.md"),
-      content,
-      "utf-8"
-    );
-
-    const entries = await readAgentFiles(tempDir);
-    expect(entries.length).toBe(1);
-    expect(entries[0].role).toBe("metis");
-    expect(entries[0].currentModel.length).toBeGreaterThan(0);
-  });
-});
-

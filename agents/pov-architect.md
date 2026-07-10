@@ -3,8 +3,7 @@ name: pov:architect
 description: Cross-cutting architectural analysis — ADR authoring, coupling/cohesion analysis, migration strategy, system design boundaries — READ-ONLY, recommendation only
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
-thinkingLevel: xhigh
+thinkingLevel: high
 mode: subagent
 tools: ["read","search","find","bash","lsp","ast_grep","recall","retain","web_search"]
 blocked_tools: ["write","edit","apply_patch","task"]

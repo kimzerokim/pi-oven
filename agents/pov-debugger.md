@@ -3,10 +3,9 @@ name: pov:debugger
 description: Root-cause investigation with causal tracing, competing hypotheses, evidence ranking, and minimal-diff fix recommendation
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
-thinkingLevel: xhigh
+thinkingLevel: high
 mode: subagent
-tools: ["read", "search", "find", "write", "edit", "lsp", "ast_grep", "debug", "eval", "bash"]
+tools: ["read","search","find","write","edit","lsp","ast_grep","debug","eval","bash"]
 blocked_tools: []
 ---
 

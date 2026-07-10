@@ -3,7 +3,6 @@ name: pov:critic
 description: Brutally honest quality gate — structured gap analysis, multi-perspective review, severity-rated verdicts
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
 thinkingLevel: xhigh
 mode: subagent
 tools: ["read","search","find","report_finding","recall","web_search"]

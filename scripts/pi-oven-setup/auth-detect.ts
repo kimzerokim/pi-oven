@@ -17,7 +17,7 @@ export interface AuthStatus {
  * in the Provider models section. A native `anthropic` provider row matching
  * `^anthropic\s+claude-` confirms direct Anthropic API auth.
  *
- * The opencode-zen/anthropic-claude-* wrappers (e.g. `opencode-zen  anthropic/claude-...`)
+ * The alternate-provider/anthropic-claude-* wrappers (e.g. `alternate-provider  anthropic/claude-...`)
  * do NOT count as native anthropic auth — only a dedicated `anthropic` provider row does.
  *
  * @param opts.listModelsOutput  Injectable for tests to skip spawning omp.
@@ -73,7 +73,7 @@ function parseListModelsOutput(output: string): AuthStatus {
     if (firstToken === "Provider") continue;
 
     switch (firstToken) {
-      case "opencode-zen":
+      case "alternate-provider":
         status.opencode_zen = true;
         break;
       case "openai-codex":

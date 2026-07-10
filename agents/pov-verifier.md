@@ -3,7 +3,6 @@ name: pov:verifier
 description: Fresh-agent cycle-exit verifier — light/deep lanes, 4 sub-checks, evidence-based PASS or BLOCK
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
 thinkingLevel: xhigh
 mode: subagent
 tools: ["read","search","find","bash","recall","task","report_finding","lsp"]

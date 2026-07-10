@@ -19,8 +19,6 @@ import { runReset } from "./pi-oven-setup/reset";
 import { runImport } from "./pi-oven-setup/import";
 import { runApply, runRepairPrereqs } from "./pi-oven-setup/apply";
 import { runOverride } from "./pi-oven-setup/override";
-import { runIsolate } from "./pi-oven-setup/isolate";
-import { runSuppressSibling } from "./pi-oven-setup/suppress-sibling";
 import { resolveDefaultAgentsDir } from "./pi-oven-setup/cache-resolver";
 import {
   normalizeLanguage,
@@ -50,10 +48,6 @@ const { values } = parseArgs({
     validate: { type: "string", default: "smoke" },
     "no-validate": { type: "boolean", default: false },
     language: { type: "string" },
-    isolate: { type: "boolean", default: false },
-    "no-isolate": { type: "boolean", default: false },
-    "suppress-sibling-skills": { type: "boolean", default: false },
-    "no-suppress-sibling-skills": { type: "boolean", default: false },
     scope: { type: "string" },
   },
   strict: false,
@@ -106,16 +100,13 @@ const spawnFn = mockSpawn
         const fixture = [
           "Provider models",
           "provider      model                                 aliases",
-          "opencode-zen  opencode-zen/gpt-5.3-codex            -",
-          "openai-codex  openai-codex/gpt-5.3-codex            -",
-          "anthropic     claude-opus-4-8                       -",
+          "openai-codex  openai-codex/gpt-5.5                 -",
+          "openai-codex  openai-codex/gpt-5.4                 -",
           "",
           "Canonical models",
           "  canonical  selected                              provider",
-          "  1          opencode-zen/gpt-5.3-codex            opencode-zen",
-          "  2          openai-codex/gpt-5.3-codex            openai-codex",
-          "  3          anthropic/claude-opus-4-8             anthropic",
-          "  4          opencode-zen/claude-opus-4-8          opencode-zen",
+          "  1          openai-codex/gpt-5.5                 openai-codex",
+          "  2          openai-codex/gpt-5.4                 openai-codex",
           "",
         ].join("\n");
         return { exitCode: 0, stdout: Buffer.from(fixture), stderr: Buffer.from("") };
@@ -187,45 +178,6 @@ if (hasOverride) {
   }
 }
 
-// --isolate / --no-isolate are legacy home-layer compatibility toggles
-// (disabledProviders). They are mutually exclusive with each other but MAY
-// combine with any primary action (runs after it). Standalone is also valid.
-// GLOBAL-ONLY: rejected under --scope project because they write
-// ~/.omp/agent/config.yml.
-const wantIsolate = Boolean(values.isolate);
-const wantNoIsolate = Boolean(values["no-isolate"]);
-if (wantIsolate && wantNoIsolate) {
-  process.stderr.write(
-    "--isolate and --no-isolate are mutually exclusive legacy compatibility aids.\n"
-  );
-  process.exit(1);
-}
-const hasIsolate = wantIsolate || wantNoIsolate;
-if (hasIsolate && scope === "project") {
-  process.stderr.write(
-    "--isolate and --no-isolate are global-only legacy compatibility aids: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
-  );
-  process.exit(1);
-}
-
-// --suppress-sibling-skills / --no-suppress-sibling-skills are legacy
-// marketplace skill-visibility compatibility toggles (skills.ignoredSkills).
-const wantSuppressSibling = Boolean(values["suppress-sibling-skills"]);
-const wantNoSuppressSibling = Boolean(values["no-suppress-sibling-skills"]);
-if (wantSuppressSibling && wantNoSuppressSibling) {
-  process.stderr.write(
-    "--suppress-sibling-skills and --no-suppress-sibling-skills are mutually exclusive legacy compatibility aids.\n"
-  );
-  process.exit(1);
-}
-const hasSuppressSibling = wantSuppressSibling || wantNoSuppressSibling;
-if (hasSuppressSibling && scope === "project") {
-  process.stderr.write(
-    "--suppress-sibling-skills and --no-suppress-sibling-skills are global-only legacy compatibility aids: they write ~/.omp/agent/config.yml and cannot be used with --scope project.\n"
-  );
-  process.exit(1);
-}
-
 const repairPrereqs = Boolean(values["repair-prereqs"]);
 if (repairPrereqs && scope === "project") {
   process.stderr.write(
@@ -240,12 +192,10 @@ if (
     values.import !== undefined ||
     values.profile ||
     values.apply ||
-    hasOverride ||
-    hasIsolate ||
-    hasSuppressSibling)
+    hasOverride)
 ) {
   process.stderr.write(
-    "--repair-prereqs is a standalone repair-only action. Do not combine it with --status, --reset, --import, --apply/--profile, --override, or any legacy compatibility aid.\n"
+    "--repair-prereqs is a standalone repair-only action. Do not combine it with --status, --reset, --import, --apply/--profile, or --override.\n"
   );
   process.exit(1);
 }
@@ -290,16 +240,8 @@ if (repairPrereqs) {
   result = await runImport(values.import as string, { spawnFn, scope });
   markRouting = true;
 } else if (values.profile || values.apply) {
-  const profile = (values.profile as string | undefined) ?? "A";
-  if (profile !== "A" && profile !== "B" && profile !== "C" && profile !== "D") {
-    process.stderr.write(
-      `Invalid profile "${profile}". Allowed: A, B, C, D.\n`
-    );
-    process.exit(1);
-  }
-
   result = await runApply({
-    profile: profile as "A" | "B" | "C" | "D",
+    profile: values.profile as string | undefined,
     validateMode,
     spawnFn,
     agentsDir,
@@ -315,29 +257,11 @@ if (repairPrereqs) {
     process.exit(result.exitCode);
   }
   markRouting = true;
-} else if (hasIsolate || hasSuppressSibling) {
-  // Standalone legacy compatibility toggles (no primary model-routing action).
-  // The toggles themselves run in the shared post-dispatch step below.
-  result = { exitCode: 0, output: "" };
 } else {
   process.stderr.write(
-    "No action specified. Use --profile <A|B|C|D>, --repair-prereqs, --status, --reset, --import <file>, or --override <role>=<model>. Add --scope <global|project> to target the global config or this project's .omp/settings.json.\n"
+    "No action specified. Use --apply, --repair-prereqs, --status, --reset, --import <file>, or --override <role>=<model>. Add --scope <global|project> to target the global config or this project's .omp/settings.json. --profile is accepted for compatibility but ignored.\n"
   );
   process.exit(1);
-}
-
-// Legacy compatibility toggles run AFTER the primary action (if any) and only
-// on its success, so e.g. `--profile A --isolate` applies the profile first.
-if (hasIsolate && result.exitCode === 0) {
-  const iso = await runIsolate({ enable: wantIsolate, spawnFn });
-  result = { exitCode: iso.exitCode, output: result.output + iso.output };
-}
-
-// Marketplace skill-visibility compatibility toggle runs after isolate (if
-// any), also only on success.
-if (hasSuppressSibling && result.exitCode === 0) {
-  const suppress = await runSuppressSibling({ enable: wantSuppressSibling, spawnFn });
-  result = { exitCode: suppress.exitCode, output: result.output + suppress.output };
 }
 
 // ---------------------------------------------------------------------------

@@ -3,7 +3,6 @@ name: pov:metis
 description: "Requirements clarification and lightweight pre-planning consultant — Socratic interview to crystallize ambiguous requests, dispatches explorer/librarian/document-specialist for context before advising. Spawn whitelist: [pov:explorer, pov:librarian, pov:document-specialist]."
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
 thinkingLevel: high
 mode: subagent
 tools: ["read","search","find","bash","recall","task"]

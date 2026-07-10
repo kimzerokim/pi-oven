@@ -95,22 +95,23 @@ describe("evalGit", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (4) provider auth — PASS if >=1 whitelisted provider authed
+// (4) provider auth — PASS only when openai-codex is authed
 // ---------------------------------------------------------------------------
 
 describe("evalAuth", () => {
-  it("PASS when opencode-zen authed", () => {
-    const r = evalAuth({ opencode_zen: true, openai_codex: false, anthropic: false });
+  it("PASS when openai-codex authed", () => {
+    const r = evalAuth({ opencode_zen: false, openai_codex: true, anthropic: false });
     expect(r.status).toBe("PASS");
-    expect(r.detail).toContain("opencode-zen");
+    expect(r.detail).toContain("openai-codex");
   });
 
-  it("PASS when only anthropic authed", () => {
+  it("FAIL when only non-codex providers are authed", () => {
     const r = evalAuth({ opencode_zen: false, openai_codex: false, anthropic: true });
-    expect(r.status).toBe("PASS");
+    expect(r.status).toBe("FAIL");
+    expect(r.fix).toContain("openai-codex");
   });
 
-  it("FAIL when no whitelisted provider authed", () => {
+  it("FAIL when openai-codex is not authed", () => {
     const r = evalAuth({ opencode_zen: false, openai_codex: false, anthropic: false });
     expect(r.status).toBe("FAIL");
     expect(r.fix).toBeDefined();
@@ -118,10 +119,10 @@ describe("evalAuth", () => {
 });
 
 describe("doctor command public contract", () => {
-  it("documents openai-codex as the release-default provider hint", async () => {
+  it("documents openai-codex as the required provider hint", async () => {
     const doctorCommand = await Bun.file(DOCTOR_COMMAND_PATH).text();
-    expect(doctorCommand).toContain("openai-codex is the release default");
-    expect(doctorCommand).not.toContain("opencode-zen is the release default");
+    expect(doctorCommand).toContain("authenticate openai-codex in omp");
+    expect(doctorCommand).not.toContain("alternate-provider is the release default");
   });
 });
 
@@ -592,7 +593,7 @@ describe("DoctorFacts → evaluators integration (pure, injected facts)", () => 
       omp: { present: true, version: "15.5.10" },
       bun: { present: true, version: "1.2.0" },
       git: { present: true, version: "2.44.0", insideRepo: true },
-      auth: { opencode_zen: true, openai_codex: false, anthropic: false },
+      auth: { opencode_zen: false, openai_codex: true, anthropic: false },
       mcp: { servers: ["playwright"] },
       skills: { skillMdCount: 22, pluginSkillsCount: 22, missingFromManifest: [], extraInManifest: [], keywordIndexLoadedCount: 22, keywordIndexIssueCount: 0, keywordIndexIssues: [] },
       agents: { agentCount: 24, expectedCount: 24, lintClean: true, legacyAgentCount: 0, namespaceDrift: [] },

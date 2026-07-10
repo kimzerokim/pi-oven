@@ -3,7 +3,6 @@ name: pov:document-specialist
 description: External docs and SDK reference specialist — local repo docs first, curated backends second, `read`-URL fallback, no recursive task dispatch
 model:
   - openai-codex/gpt-5.4
-  - opencode-zen/gpt-5.4
 thinkingLevel: medium
 mode: subagent
 tools: ["read","search","find","bash","recall","web_search"]

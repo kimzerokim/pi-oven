@@ -5,7 +5,11 @@
  */
 
 import { ROLES, type Role } from "./profiles";
-import { isResolvableModelId, type ModelIdValidatorOpts } from "./model-id-validator";
+import {
+  isOpenAiCodexSelector,
+  isResolvableModelId,
+  type ModelIdValidatorOpts,
+} from "./model-id-validator";
 import {
   setAgentModelOverrides,
   setPiOvenIncludedSkills,
@@ -79,6 +83,13 @@ export async function runOverride(
 
     if (!ROLES_MAP[role]) {
       errors.push(`invalid --override '${entry}': role '${role}' is not a known pi-oven role`);
+      continue;
+    }
+
+    if (!isOpenAiCodexSelector(model)) {
+      errors.push(
+        `invalid --override '${entry}': model '${model}' must be an openai-codex/<model> selector`
+      );
       continue;
     }
 

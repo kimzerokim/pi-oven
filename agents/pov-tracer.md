@@ -3,8 +3,7 @@ name: pov:tracer
 description: Causal investigation — call graphs, execution traces, dependency mapping, competing hypotheses, evidence ranking, next-probe recommendations (no fixing)
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
-thinkingLevel: xhigh
+thinkingLevel: high
 mode: subagent
 tools: ["read","search","find","bash","lsp","ast_grep","eval","debug"]
 blocked_tools: ["write","edit","apply_patch","task"]

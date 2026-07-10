@@ -4,7 +4,7 @@
  * Usage: bun scripts/lint-agents.ts [agentsDir]
  * Walks agentsDir for shipped agent markdown files (`pov-*.md` in the current
  * contract). Validates each has a non-empty model: field AND that
- * model/thinkingLevel match profiles.ts PROFILE_A (SoT).
+ * model/thinkingLevel match profiles.ts DEFAULT_PROFILE (SoT).
  * Exits 0 on success, 1 on any violation.
  */
 
@@ -15,7 +15,7 @@ import {
   isAgentMarkdownFile,
   isLegacyAgentMarkdownFile,
 } from "./pi-oven-setup/agent-rewriter";
-import { PROFILE_A, type Role } from "./pi-oven-setup/profiles";
+import { DEFAULT_PROFILE, type Role } from "./pi-oven-setup/profiles";
 
 const defaultAgentsDir = join(import.meta.dir, "..", "agents");
 const agentsDir = process.argv[2] ?? defaultAgentsDir;
@@ -175,7 +175,7 @@ for (const file of files) {
     violations++;
   }
 
-  // SoT alignment: agent file model + thinkingLevel must match PROFILE_A.
+  // SoT alignment: agent file model + thinkingLevel must match DEFAULT_PROFILE.
   // profiles.ts is the source of truth; agent files are derived artifacts.
   if (role === null) continue;
 
@@ -188,13 +188,13 @@ for (const file of files) {
     violations++;
   }
 
-  const expected = PROFILE_A[role as Role];
+  const expected = DEFAULT_PROFILE[role as Role];
   const toolViolations = (key: "tools" | "blocked_tools") => {
     const actual = extractStringList(frontmatter, key);
     const exp = expected[key];
     if (JSON.stringify(actual) !== JSON.stringify(exp)) {
       console.error(
-        `lint-agents: ERROR: ${file} ${key} drift from profiles.ts PROFILE_A. ` +
+        `lint-agents: ERROR: ${file} ${key} drift from profiles.ts DEFAULT_PROFILE. ` +
           `file=${JSON.stringify(actual)} expected=${JSON.stringify(exp)}`
       );
       violations++;
@@ -203,10 +203,10 @@ for (const file of files) {
   toolViolations("tools");
   toolViolations("blocked_tools");
 
-  const expectedModels = [expected.primary, expected.registry_alternate];
-  if (models[0] !== expectedModels[0] || models[1] !== expectedModels[1]) {
+  const expectedModels = [expected.primary];
+  if (models.length !== 1 || models[0] !== expectedModels[0]) {
     console.error(
-      `lint-agents: ERROR: ${file} model drift from profiles.ts PROFILE_A. ` +
+      `lint-agents: ERROR: ${file} model drift from profiles.ts DEFAULT_PROFILE. ` +
         `file=[${models.join(", ")}] expected=[${expectedModels.join(", ")}]`
     );
     violations++;
@@ -216,7 +216,7 @@ for (const file of files) {
   if (thinking !== expected.thinkingLevel) {
     console.error(
       `lint-agents: ERROR: ${file} thinkingLevel="${thinking ?? "(missing)"}" ` +
-        `does not match profiles.ts PROFILE_A.${role}.thinkingLevel="${expected.thinkingLevel}".`
+        `does not match profiles.ts DEFAULT_PROFILE.${role}.thinkingLevel="${expected.thinkingLevel}".`
     );
     violations++;
   }

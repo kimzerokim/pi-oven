@@ -1,16 +1,9 @@
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
+import { DEFAULT_PROFILE, type ProfileMap, type Role } from "../../../scripts/pi-oven-setup/profiles";
 import {
-  PROFILE_A,
-  PROFILE_C,
-  PROFILE_D,
-  ROLES,
-  type ProfileMap,
-  type Role,
-} from "../../../scripts/pi-oven-setup/profiles";
-import {
-  ModelRoutingApprovalError,
   applyBucketApprovalDecision,
   materializeRoutingApprovalPayload,
+  type ModelRoutingApprovalPayload,
 } from "../../../.omp/extensions/pi-oven-runtime/model-routing-approval";
 
 function expectedSelector(profile: ProfileMap, role: Role): string {
@@ -19,183 +12,61 @@ function expectedSelector(profile: ProfileMap, role: Role): string {
 }
 
 describe("model-routing-approval", () => {
-  it("materializes the current-session openai-codex routing matrix into selector buckets", () => {
-    const payload = materializeRoutingApprovalPayload({
-      sessionProviderFamily: "openai-codex",
-    });
-
-    expect(payload.sessionProviderFamily).toBe("openai-codex");
-    expect(Object.keys(payload.recommendedByRole).sort()).toEqual([...ROLES].sort());
-    expect(payload.recommendedByRole.executor).toBe(expectedSelector(PROFILE_A, "executor"));
-    expect(payload.recommendedByRole.verifier).toBe(expectedSelector(PROFILE_A, "verifier"));
-    expect(payload.recommendedByRole.writer).toBe(expectedSelector(PROFILE_A, "writer"));
-    expect(payload.buckets).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          bucketKey: "openai-codex/gpt-5.5:high",
-          recommendedSelector: "openai-codex/gpt-5.5:high",
-          roles: expect.arrayContaining(["executor", "test-engineer", "metis"]),
-        }),
-        expect.objectContaining({
-          bucketKey: "openai-codex/gpt-5.5:xhigh",
-          recommendedSelector: "openai-codex/gpt-5.5:xhigh",
-          roles: expect.arrayContaining(["planner", "verifier", "critic"]),
-        }),
-        expect.objectContaining({
-          bucketKey: "openai-codex/gpt-5.4:high",
-          recommendedSelector: "openai-codex/gpt-5.4:high",
-          roles: expect.arrayContaining(["designer", "qa-tester", "data-runner"]),
-        }),
-        expect.objectContaining({
-          bucketKey: "openai-codex/gpt-5.4:medium",
-          recommendedSelector: "openai-codex/gpt-5.4:medium",
-          roles: expect.arrayContaining(["explorer", "writer", "multimodal-looker"]),
-        }),
-      ])
-    );
-  });
-
-  it("materializes the current-session anthropic routing matrix from provider family input", () => {
+  it("materializes codex-only buckets regardless of parent provider family", () => {
     const payload = materializeRoutingApprovalPayload({
       sessionProviderFamily: "anthropic",
     });
 
-    expect(payload.sessionProviderFamily).toBe("anthropic");
-    expect(payload.recommendedByRole.executor).toBe(expectedSelector(PROFILE_C, "executor"));
-    expect(payload.recommendedByRole.verifier).toBe(expectedSelector(PROFILE_C, "verifier"));
-    expect(payload.recommendedByRole.writer).toBe(expectedSelector(PROFILE_C, "writer"));
+    expect(payload.sessionProviderFamily).toBe("openai-codex");
+    expect(payload.diagnostics?.[0]?.code).toBe("non_codex_session_provider");
+    expect(payload.recommendedByRole.executor).toBe(expectedSelector(DEFAULT_PROFILE, "executor"));
+    expect(payload.recommendedByRole.verifier).toBe(expectedSelector(DEFAULT_PROFILE, "verifier"));
+    expect(payload.buckets.every((bucket) => bucket.recommendedSelector.startsWith("openai-codex/"))).toBe(true);
   });
 
-  it("materializes the current-session opencode-zen routing matrix from provider family input", () => {
+  it("keeps existing codex approvals and filters stale non-codex records", () => {
     const payload = materializeRoutingApprovalPayload({
-      sessionProviderFamily: "opencode-zen",
-    });
-
-    expect(payload.sessionProviderFamily).toBe("opencode-zen");
-    expect(payload.recommendedByRole.executor).toBe(expectedSelector(PROFILE_D, "executor"));
-    expect(payload.recommendedByRole.verifier).toBe(expectedSelector(PROFILE_D, "verifier"));
-    expect(payload.recommendedByRole.writer).toBe(expectedSelector(PROFILE_D, "writer"));
-  });
-
-  it("expands an approved bucket into per-role approval records for persistence", () => {
-    const approved = applyBucketApprovalDecision(
-      materializeRoutingApprovalPayload({
-        sessionProviderFamily: "openai-codex",
-      }),
-      {
-        bucketKey: "openai-codex/gpt-5.5:high",
-        approved: true,
-      }
-    );
-
-    expect(approved.approvals).toEqual(
-      expect.objectContaining({
-        executor: expect.objectContaining({
-          role: "executor",
-          bucketKey: "openai-codex/gpt-5.5:high",
-          status: "approved",
-          recommendedSelector: "openai-codex/gpt-5.5:high",
-          selectedSelector: "openai-codex/gpt-5.5:high",
-        }),
-        "test-engineer": expect.objectContaining({
-          role: "test-engineer",
-          bucketKey: "openai-codex/gpt-5.5:high",
-          status: "approved",
-          selectedSelector: "openai-codex/gpt-5.5:high",
-        }),
-        metis: expect.objectContaining({
-          role: "metis",
-          bucketKey: "openai-codex/gpt-5.5:high",
-          status: "approved",
-          selectedSelector: "openai-codex/gpt-5.5:high",
-        }),
-      })
-    );
-    expect(approved.approvals.planner).toBeUndefined();
-  });
-
-  it("replays persisted per-role overrides when a rejected bucket resumes later", () => {
-    const resumed = materializeRoutingApprovalPayload({
       sessionProviderFamily: "openai-codex",
       existingApprovals: {
         executor: {
           role: "executor",
-          bucketKey: "openai-codex/gpt-5.5:high",
-          status: "overridden",
-          recommendedSelector: "openai-codex/gpt-5.5:high",
-          selectedSelector: "openai-codex/gpt-5.4:high",
+          bucketKey: expectedSelector(DEFAULT_PROFILE, "executor"),
+          status: "approved",
+          recommendedSelector: expectedSelector(DEFAULT_PROFILE, "executor"),
+          selectedSelector: expectedSelector(DEFAULT_PROFILE, "executor"),
+        },
+        critic: {
+          role: "critic",
+          bucketKey: "anthropic/claude-opus-4-8:xhigh",
+          status: "approved",
+          recommendedSelector: "anthropic/claude-opus-4-8:xhigh",
+          selectedSelector: "anthropic/claude-opus-4-8:xhigh",
         },
       },
     });
 
-    expect(resumed.approvals.executor).toEqual(
-      expect.objectContaining({
-        role: "executor",
-        status: "overridden",
-        selectedSelector: "openai-codex/gpt-5.4:high",
-      })
-    );
-    expect(resumed.buckets).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          bucketKey: "openai-codex/gpt-5.5:high",
-          roles: expect.arrayContaining(["executor", "test-engineer", "metis"]),
-        }),
-      ])
-    );
+    expect(payload.approvals.executor?.selectedSelector).toBe(expectedSelector(DEFAULT_PROFILE, "executor"));
+    expect(payload.approvals.critic).toBeUndefined();
   });
 
-  it("refuses unsupported current-session provider families with an explicit diagnostic", () => {
-    expect(() =>
-      materializeRoutingApprovalPayload({
-        sessionProviderFamily: "google",
-      })
-    ).toThrow(
-      expect.objectContaining({
-        name: "ModelRoutingApprovalError",
-        diagnostic: expect.objectContaining({
-          code: "unsupported_provider_family",
-          sessionProviderFamily: "google",
-        }),
-      })
-    );
-  });
+  it("applies bucket approval decisions and rejects non-codex overrides", () => {
+    const payload = materializeRoutingApprovalPayload({
+      sessionProviderFamily: "openai-codex",
+    });
+    const bucket = payload.buckets.find((candidate) =>
+      candidate.roles.includes("executor")
+    )!;
 
-  it("refuses supported-but-unmapped current-session provider families with an explicit diagnostic", () => {
-    expect(() =>
-      materializeRoutingApprovalPayload({
-        sessionProviderFamily: "anthropic",
-        profilesByProviderFamily: {
-          "openai-codex": PROFILE_A,
-          "opencode-zen": PROFILE_D,
-        },
-      })
-    ).toThrow(
-      expect.objectContaining({
-        name: "ModelRoutingApprovalError",
-        diagnostic: expect.objectContaining({
-          code: "unmapped_provider_family",
-          sessionProviderFamily: "anthropic",
-        }),
-      })
-    );
-  });
+    const next = applyBucketApprovalDecision(payload, {
+      bucketKey: bucket.bucketKey,
+      approved: false,
+      overrides: {
+        executor: "anthropic/claude-opus-4-8:high",
+      },
+    }) as ModelRoutingApprovalPayload;
 
-  it("surfaces provider-family refusal messages that explain the runtime routing problem", () => {
-    try {
-      materializeRoutingApprovalPayload({
-        sessionProviderFamily: "anthropic",
-        profilesByProviderFamily: {
-          "openai-codex": PROFILE_A,
-          "opencode-zen": PROFILE_D,
-        },
-      });
-      throw new Error("expected routing approval materialization to refuse");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ModelRoutingApprovalError);
-      expect((error as ModelRoutingApprovalError).message).toContain(
-        'Current session provider family "anthropic" does not map to a supported release path.'
-      );
-    }
+    expect(next.approvals.executor?.selectedSelector).toBe(
+      expectedSelector(DEFAULT_PROFILE, "executor")
+    );
   });
 });

@@ -89,7 +89,6 @@ Bootstrap-level gajae parity is a **secondary OMP/architecture track** only. Sur
 - Scope: vendored native worker runtime under `scripts/pi-oven-team/*` only.
 - Owner: pi-oven maintainers.
 - Removal condition: remove this boundary once native worker startup/scale is owned end-to-end by the omp-native control plane and no runtime path depends on `scripts/pi-oven-team/*`.
-- Legacy front doors (`--isolate`, `--no-isolate`, `--suppress-sibling-skills`, `--no-suppress-sibling-skills`) are global-only maintenance paths, owned by pi-oven maintainers, and must be removed once the omp-native control plane owns those surfaces end-to-end.
 
 - **FAIL** — a hard blocker. Surface the `fix:` hint from that line and tell the user this must be resolved before pi-oven works correctly. If multiple checks FAIL, list them in priority order (binaries/git first, then skills/agents, then eval).
 - **WARN** — non-blocking, but worth noting. Explain what is degraded (e.g. eval cannot run live, project-scope routing still needs a separate global setup step, the workflow-skill surface is not actually filtered to the `pov:*` visible skill surface, or machine-global memory/async/LSP prerequisites are missing) and the optional remediation. For the memory / killer-tools WARN specifically, keep the remediation narrow: point the user to `/pi-oven:setup --repair-prereqs`.
@@ -100,13 +99,13 @@ If `overall PASS` or `overall WARN`, tell the user the install is healthy (or he
 
 ### Step 3 — Surface eval-key onboarding when provider auth FAILs
 
-The `provider auth` check FAILs when no whitelisted provider (`opencode-zen` / `openai-codex` / `anthropic`) is authenticated. When you see that FAIL, explicitly tell the user:
+The `provider auth` check FAILs when `openai-codex` is not authenticated. When you see that FAIL, explicitly tell the user:
 
 ```
 Live eval (bun "${PI_OVEN_DIR%/}/scripts/run-eval.ts") needs a provider API key.
-No whitelisted provider is currently authed, so provider-backed dispatch and live
-eval execution will fail until the user authenticates one. To enable live eval:
-authenticate a provider in omp (openai-codex is the release default), then re-run
+OpenAI Codex is not currently authed, so provider-backed dispatch and live
+eval execution will fail until the user authenticates it. To enable live eval:
+authenticate openai-codex in omp, then re-run
 /pi-oven:doctor.
 ```
 
@@ -129,7 +128,7 @@ Check #11 probes `omp config get` for memory, `task.enableLsp`, and killer-tool 
 | 1 | omp version | omp present and `>= 15.0.0` | omp CLI absent locally (skills/eval can't be exercised) | omp present but older than min |
 | 2 | bun | bun on PATH | — | bun not found |
 | 3 | git | git present AND inside a repo | — | git absent, or present but not inside a git work tree |
-| 4 | provider auth | ≥1 of opencode-zen / openai-codex / anthropic authed | — | none authed (live eval + provider-backed dispatch will fail) |
+| 4 | provider auth | openai-codex authed | — | openai-codex not authed (live eval + provider-backed dispatch will fail) |
 | 5 | mcp servers | ≥1 server in `.pi/mcp.json` or `omp mcp list` | none configured (informational; pi-oven requires none) | — |
 | 6 | skills | `skills/*/SKILL.md` count == `plugin.json` skills[] length | — | count mismatch |
 | 7 | agents | canonical `agents/pov-*.md` count == 24, every file carries `name: pov:<role>`, and `lint:agents` is clean | — | canonical count mismatch, `agent namespace drift`, or lint drift |

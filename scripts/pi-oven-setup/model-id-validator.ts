@@ -17,6 +17,17 @@ export interface ModelIdValidatorOpts {
   ) => { exitCode: number | null; stdout?: Buffer; stderr?: Buffer };
 }
 
+export function modelBaseId(model: string): string {
+  const trimmed = model.trim();
+  const slashIdx = trimmed.indexOf("/");
+  const colonIdx = trimmed.lastIndexOf(":");
+  return colonIdx > slashIdx ? trimmed.slice(0, colonIdx) : trimmed;
+}
+
+export function isOpenAiCodexSelector(model: string): boolean {
+  return modelBaseId(model).startsWith("openai-codex/");
+}
+
 /**
  * PURE parser. Input: raw `omp models` text. Output: canonical "provider/model-id" ids.
  * Defensive: THROWS if the "Canonical models" header line or its column header
@@ -82,7 +93,7 @@ export async function isResolvableModelId(
 ): Promise<boolean> {
   const text = await getListModelsText(opts);
   const ids = parseCanonicalModelIds(text);
-  return new Set(ids).has(model);
+  return new Set(ids).has(modelBaseId(model));
 }
 
 // ---------------------------------------------------------------------------

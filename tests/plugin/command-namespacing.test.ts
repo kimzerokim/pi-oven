@@ -54,7 +54,8 @@ describe("command file namespacing", () => {
 
     expect(setupText).toContain("--repair-prereqs");
     expect(setupText).toContain("This path is **global-only**");
-    expect(setupText).toContain("affordances: { other: false, askAboutChoices: true }");
+    expect(setupText).toContain("There is no profile selection question");
+    expect(setupText).not.toContain("affordances: { other: false, askAboutChoices: true }");
     expect(setupText).toContain("runtime agents and skills are `pov:*`");
     expect(setupText).toContain("`pi-oven@kzk`");
     expect(setupText).not.toContain("It takes no other arguments");
@@ -63,7 +64,7 @@ describe("command file namespacing", () => {
     expect(readmeText).toContain("/pi-oven:doctor");
     expect(readmeText).toContain("/pi-oven:release --bump patch --dry-run --update-changelog --sync-label");
     expect(readmeText).toContain("approvalFlow");
-    expect(readmeText).toContain("Ask about these choices");
+    expect(readmeText).not.toContain("Ask about these choices");
     expect(readmeText).toContain("Use pov:explorer");
     expect(readmeText).toContain("pov:verifier");
     expect(readmeText).toContain('Unknown agent "pov:executor"');

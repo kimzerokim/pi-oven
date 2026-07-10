@@ -3,10 +3,9 @@ name: pov:code-simplifier
 description: Deletion-first code simplifier — removes dead code, AI slop, and unnecessary complexity while preserving exact behavior
 model:
   - openai-codex/gpt-5.5
-  - opencode-zen/gpt-5.5
-thinkingLevel: xhigh
+thinkingLevel: high
 mode: subagent
-tools: ["read", "search", "find", "write", "edit", "lsp", "ast_grep", "eval", "bash"]
+tools: ["read","search","find","write","edit","lsp","ast_grep","eval","bash"]
 blocked_tools: []
 ---
 

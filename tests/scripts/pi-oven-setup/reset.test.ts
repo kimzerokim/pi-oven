@@ -57,8 +57,8 @@ describe("runReset", () => {
     const getResponse = {
       type: "record",
       value: {
-        "pov:critic": "anthropic/claude-opus-4-8",
-        "pi-oven:executor": "opencode-zen/claude-opus-4-8",
+        "pov:critic": "openai-codex/gpt-5.5",
+        "pi-oven:executor": "openai-codex/gpt-5.5",
         "claude-code:foo": "model-x",
       },
     };
@@ -85,7 +85,7 @@ describe("runReset", () => {
     // inspecting that no filesystem writes to agents/ occur.
     const getResponse = {
       type: "record",
-      value: { "pov:critic": "anthropic/claude-opus-4-8" },
+      value: { "pov:critic": "openai-codex/gpt-5.5" },
     };
     const { spawnFn } = makeSpawn(getResponse);
 
@@ -112,8 +112,8 @@ describe("runReset", () => {
     const getResponse = {
       type: "record",
       value: {
-        "pov:critic": "anthropic/claude-opus-4-8",
-        "pi-oven:executor": "opencode-zen/claude-opus-4-8",
+        "pov:critic": "openai-codex/gpt-5.5",
+        "pi-oven:executor": "openai-codex/gpt-5.5",
       },
     };
     const { spawnFn } = makeSpawn(getResponse);
@@ -134,10 +134,10 @@ describe("runReset", () => {
     await expect(runReset({ spawnFn })).rejects.toThrow();
   });
 
-  it("non-full reset preserves modelRoles/disabledProviders/setupVersion but still clears skills.includeSkills", async () => {
+  it("non-full reset preserves modelRoles/retry fallback/setupVersion but still clears skills.includeSkills", async () => {
     const getResponse = {
       type: "record",
-      value: { "pov:critic": "anthropic/claude-opus-4-8" },
+      value: { "pov:critic": "openai-codex/gpt-5.5" },
     };
     const { spawnFn, calls } = makeSpawn(getResponse);
 
@@ -152,12 +152,12 @@ describe("runReset", () => {
 });
 
 describe("runReset — --full mode", () => {
-  it("full reset removes canonical+legacy managed global overrides AND resets modelRoles/disabledProviders/setupVersion", async () => {
+  it("full reset removes canonical+legacy managed global overrides AND resets modelRoles/retry fallback/setupVersion", async () => {
     const getResponse = {
       type: "record",
       value: {
-        "pov:critic": "anthropic/claude-opus-4-8",
-        "pi-oven:executor": "opencode-zen/claude-opus-4-8",
+        "pov:critic": "openai-codex/gpt-5.5",
+        "pi-oven:executor": "openai-codex/gpt-5.5",
         "claude-code:foo": "model-x",
       },
     };
@@ -180,7 +180,7 @@ describe("runReset — --full mode", () => {
       .map((c) => c.args[2]);
     expect(resetKeys).toContain("skills.includeSkills");
     expect(resetKeys).toContain("modelRoles");
-    expect(resetKeys).toContain("disabledProviders");
+    expect(resetKeys).toContain("retry.fallbackChains");
     expect(resetKeys).toContain("setupVersion");
   });
 
@@ -197,7 +197,7 @@ describe("runReset — --full mode", () => {
     expect(resetKeys).not.toContain("lastChangelogVersion");
     // Only the four pi-oven-managed keys are ever reset
     expect(new Set(resetKeys)).toEqual(
-      new Set(["skills.includeSkills", "modelRoles", "disabledProviders", "setupVersion"])
+      new Set(["skills.includeSkills", "modelRoles", "retry.fallbackChains", "setupVersion"])
     );
   });
 
@@ -215,8 +215,8 @@ describe("runReset — --full mode", () => {
       .filter((c) => c.args[0] === "config" && c.args[1] === "reset")
       .map((c) => c.args[2]);
     expect(resetKeys.sort()).toEqual([
-      "disabledProviders",
       "modelRoles",
+      "retry.fallbackChains",
       "setupVersion",
       "skills.includeSkills",
     ]);
@@ -241,7 +241,7 @@ describe("runReset — global scope clears the GLOBAL marker, not the project ma
   it("global reset does NOT clear the PROJECT marker (it targets the global marker now)", async () => {
     const getResponse = {
       type: "record",
-      value: { "pov:critic": "anthropic/claude-opus-4-8" },
+      value: { "pov:critic": "openai-codex/gpt-5.5" },
     };
     const { spawnFn } = makeSpawn(getResponse);
 
@@ -275,7 +275,7 @@ describe("runReset — global scope clears the GLOBAL marker (isolated homeDir)"
   it("after a successful global reset the GLOBAL marker is cleared", async () => {
     const getResponse = {
       type: "record",
-      value: { "pov:critic": "anthropic/claude-opus-4-8" },
+      value: { "pov:critic": "openai-codex/gpt-5.5" },
     };
     const { spawnFn } = makeSpawn(getResponse);
 
@@ -312,7 +312,7 @@ describe("runReset — project scope", () => {
     seedProjectSettings(cwd, {
       task: {
         agentModelOverrides: {
-          "pi-oven:critic": "anthropic/claude-opus-4-8",
+          "pi-oven:critic": "openai-codex/gpt-5.5",
           "user:foo": "model-x",
         },
       },
@@ -335,7 +335,7 @@ describe("runReset — project scope", () => {
 
   it("project reset also clears the project workflow-skill include filter", async () => {
     seedProjectSettings(cwd, {
-      task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } },
+      task: { agentModelOverrides: { "pi-oven:critic": "openai-codex/gpt-5.5" } },
       skills: { includeSkills: ["pov:*"] },
     });
     const { spawnFn } = makeSpawn({ type: "record", value: {} });
@@ -349,7 +349,7 @@ describe("runReset — project scope", () => {
 
   it("project reset clears the PROJECT marker, not the global marker", async () => {
     seedProjectSettings(cwd, {
-      task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } },
+      task: { agentModelOverrides: { "pi-oven:critic": "openai-codex/gpt-5.5" } },
     });
     const { spawnFn } = makeSpawn({ type: "record", value: {} });
 
@@ -363,9 +363,9 @@ describe("runReset — project scope", () => {
 
   it("project --full reset clears modelRoles + retry.fallbackChains too", async () => {
     seedProjectSettings(cwd, {
-      task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } },
+      task: { agentModelOverrides: { "pi-oven:critic": "openai-codex/gpt-5.5" } },
       modelRoles: { default: "openai-codex/gpt-5.4:high", title: "gpt-5.4-mini:low" },
-      retry: { fallbackChains: { default: ["opencode-zen/kimi-k2.6"] } },
+      retry: { fallbackChains: {} },
     });
     const { spawnFn } = makeSpawn({ type: "record", value: {} });
 
@@ -379,7 +379,7 @@ describe("runReset — project scope", () => {
   it("project --full reset preserves unrelated retry siblings + top-level keys", async () => {
     seedProjectSettings(cwd, {
       extensions: ["my-ext"],
-      task: { agentModelOverrides: { "pi-oven:critic": "anthropic/claude-opus-4-8" } },
+      task: { agentModelOverrides: { "pi-oven:critic": "openai-codex/gpt-5.5" } },
       modelRoles: { default: "openai-codex/gpt-5.4:high" },
       retry: { fallbackChains: { default: ["x"] }, maxDelayMs: 5000 },
     });

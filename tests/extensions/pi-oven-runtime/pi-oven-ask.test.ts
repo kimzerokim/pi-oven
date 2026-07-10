@@ -14,7 +14,7 @@ import {
 } from "../../../.omp/extensions/pi-oven-runtime/pi-oven-ask";
 import { createDeepInterviewRuntime } from "../../../.omp/extensions/pi-oven-runtime/deep-interview-runtime";
 import type { ApprovalFlowAskMetadata, DeepInterviewAskMetadata } from "../../../.omp/extensions/pi-oven-runtime/deep-interview-state";
-import { PROFILE_B, ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
+import { DEFAULT_PROFILE, ROLES, type Role } from "../../../scripts/pi-oven-setup/profiles";
 
 const DEEP_INTERVIEW_META = {
   interviewId: "di-1",
@@ -48,7 +48,7 @@ const APPROVAL_FLOW_META: ApprovalFlowAskMetadata = {
 function buildRecommendedByRole(): Record<Role, string> {
   return Object.fromEntries(
     ROLES.map((role) => {
-      const entry = PROFILE_B[role];
+      const entry = DEFAULT_PROFILE[role];
       return [role, `${entry.primary}:${entry.thinkingLevel}`];
     })
   ) as Record<Role, string>;

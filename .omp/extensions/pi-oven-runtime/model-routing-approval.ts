@@ -1,23 +1,17 @@
 import {
-  PROFILE_A,
-  PROFILE_C,
-  PROFILE_D,
+  DEFAULT_PROFILE,
   ROLES,
   type ProfileMap,
   type Role,
 } from "../../../scripts/pi-oven-setup/profiles";
+import { isOpenAiCodexSelector } from "../../../scripts/pi-oven-setup/model-id-validator";
 
-export const SUPPORTED_SESSION_PROVIDER_FAMILIES = [
-  "openai-codex",
-  "anthropic",
-  "opencode-zen",
-] as const;
+export const SUPPORTED_SESSION_PROVIDER_FAMILIES = ["openai-codex"] as const;
 
 export type SessionProviderFamily = (typeof SUPPORTED_SESSION_PROVIDER_FAMILIES)[number];
 export type ModelRoutingApprovalStatus = "pending" | "approved" | "overridden";
 export type ModelRoutingApprovalDiagnosticCode =
-  | "unsupported_provider_family"
-  | "unmapped_provider_family";
+  | "non_codex_session_provider";
 
 export interface ModelRoutingApprovalBucket {
   bucketKey: string;
@@ -42,6 +36,7 @@ export interface ModelRoutingApprovalDiagnostic {
 
 export interface ModelRoutingApprovalPayload {
   sessionProviderFamily: SessionProviderFamily;
+  diagnostics?: ModelRoutingApprovalDiagnostic[];
   recommendedByRole: Partial<Record<Role, string>>;
   buckets: ModelRoutingApprovalBucket[];
   approvals: Partial<Record<Role, ModelRoutingApprovalRecord>>;
@@ -50,7 +45,7 @@ export interface ModelRoutingApprovalPayload {
 export interface MaterializeRoutingApprovalOptions {
   sessionProviderFamily: string;
   existingApprovals?: Partial<Record<Role, ModelRoutingApprovalRecord>>;
-  profilesByProviderFamily?: Partial<Record<SessionProviderFamily, ProfileMap>>;
+  profile?: ProfileMap;
 }
 
 export interface ApplyBucketApprovalDecisionInput {
@@ -69,62 +64,42 @@ export class ModelRoutingApprovalError extends Error {
   }
 }
 
-const DEFAULT_PROFILES_BY_PROVIDER_FAMILY: Record<SessionProviderFamily, ProfileMap> = {
-  "openai-codex": PROFILE_A,
-  anthropic: PROFILE_C,
-  "opencode-zen": PROFILE_D,
-};
-
 function normalizeProviderFamily(providerFamily: string): string {
   return providerFamily.trim().toLowerCase();
 }
 
 
-function resolveRoutingProfileForProviderFamily(
-  sessionProviderFamily: string,
-  profilesByProviderFamily: Partial<Record<SessionProviderFamily, ProfileMap>> = DEFAULT_PROFILES_BY_PROVIDER_FAMILY
-): { sessionProviderFamily: SessionProviderFamily; profile: ProfileMap } {
+function resolveRoutingDiagnostics(
+  sessionProviderFamily: string
+): { sessionProviderFamily: SessionProviderFamily; diagnostics: ModelRoutingApprovalDiagnostic[] } {
   const normalized = normalizeProviderFamily(sessionProviderFamily);
   const displayFamily = normalized || "(missing)";
   const supportedFamilies = [...SUPPORTED_SESSION_PROVIDER_FAMILIES];
-  if (!SUPPORTED_SESSION_PROVIDER_FAMILIES.includes(normalized as SessionProviderFamily)) {
-    throw new ModelRoutingApprovalError({
-      code: "unsupported_provider_family",
+  if (displayFamily !== "openai-codex") {
+    return {
+      sessionProviderFamily: "openai-codex",
+      diagnostics: [{
+      code: "non_codex_session_provider",
       sessionProviderFamily: displayFamily,
       supportedProviderFamilies: supportedFamilies,
       message:
-        `Current session provider family "${displayFamily}" is unsupported for runtime routing approval. ` +
-        `Supported families: ${supportedFamilies.join(", ")}.`,
-    });
+        `Current session provider family "${displayFamily}" differs from pi-oven's codex-only routing default; using openai-codex recommendations.`,
+      }],
+    };
   }
 
-  const resolvedFamily = normalized as SessionProviderFamily;
-  const profile = profilesByProviderFamily[resolvedFamily];
-  if (!profile) {
-    throw new ModelRoutingApprovalError({
-      code: "unmapped_provider_family",
-      sessionProviderFamily: resolvedFamily,
-      supportedProviderFamilies: supportedFamilies,
-      message:
-        `Current session provider family "${resolvedFamily}" does not map to a supported release path. ` +
-        `Supported families: ${supportedFamilies.join(", ")}.`,
-    });
-  }
-
-  return { sessionProviderFamily: resolvedFamily, profile };
+  return { sessionProviderFamily: "openai-codex", diagnostics: [] };
 }
 
 export function materializeRoutingApprovalPayload(
   {
     sessionProviderFamily,
     existingApprovals = {},
-    profilesByProviderFamily = DEFAULT_PROFILES_BY_PROVIDER_FAMILY,
+    profile = DEFAULT_PROFILE,
   }: MaterializeRoutingApprovalOptions
 ): ModelRoutingApprovalPayload {
-  const { sessionProviderFamily: resolvedFamily, profile } = resolveRoutingProfileForProviderFamily(
-    sessionProviderFamily,
-    profilesByProviderFamily
-  );
+  const { sessionProviderFamily: resolvedFamily, diagnostics } =
+    resolveRoutingDiagnostics(sessionProviderFamily);
   const recommendedByRole = {} as Record<Role, string>;
   const rolesByBucket = new Map<string, Role[]>();
 
@@ -144,6 +119,12 @@ export function materializeRoutingApprovalPayload(
   for (const role of ROLES) {
     const existing = existingApprovals[role];
     if (!existing) continue;
+    if (
+      !isOpenAiCodexSelector(existing.recommendedSelector) ||
+      !isOpenAiCodexSelector(existing.selectedSelector)
+    ) {
+      continue;
+    }
     approvals[role] = {
       role,
       bucketKey: existing.bucketKey,
@@ -156,6 +137,7 @@ export function materializeRoutingApprovalPayload(
 
   return {
     sessionProviderFamily: resolvedFamily,
+    diagnostics,
     recommendedByRole,
     buckets: Array.from(rolesByBucket.entries()).map(([bucketKey, roles]) => ({
       bucketKey,
@@ -176,9 +158,12 @@ export function applyBucketApprovalDecision(
   const approvals: Partial<Record<Role, ModelRoutingApprovalRecord>> = { ...payload.approvals };
   for (const role of bucket.roles) {
     const recommendedSelector = payload.recommendedByRole[role] ?? bucket.recommendedSelector;
-    const selectedSelector = decision.approved
+    const rawSelectedSelector = decision.approved
       ? recommendedSelector
       : decision.overrides?.[role] ?? approvals[role]?.selectedSelector ?? recommendedSelector;
+    const selectedSelector = isOpenAiCodexSelector(rawSelectedSelector)
+      ? rawSelectedSelector
+      : recommendedSelector;
     approvals[role] = {
       role,
       bucketKey: bucket.bucketKey,

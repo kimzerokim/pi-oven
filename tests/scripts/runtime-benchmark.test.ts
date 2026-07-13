@@ -9,6 +9,7 @@ import {
   measurePromptFragments,
   RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE,
   RUNTIME_BENCHMARK_CURRENT_PROMPT_MODE,
+  RUNTIME_BENCHMARK_MEASUREMENT_SEMANTICS,
   RUNTIME_BENCHMARK_VERSION,
   RUNTIME_CONTRACT_VERSION,
   resolveRuntimeBenchmarkSource,
@@ -337,6 +338,92 @@ describe("runtime benchmark correctness gates", () => {
     );
   });
 
+  it("refuses to capture a baseline without corrected clean-commit provenance", async () => {
+    await expect(
+      captureRuntimeBenchmarkBaseline({
+        index: [skill("autonomous-loop", "full auto", 0)],
+        fixtures: [
+          {
+            name: "worst-multi-skill-autonomous",
+            text: "full auto",
+            requiredSkills: ["pov:autonomous-loop"],
+            forbiddenSkills: [],
+          },
+        ],
+        projectInstructions: null,
+        language: null,
+        environment: {
+          source: {
+            kind: "worktree",
+            headCommitSha: "0123456789abcdef0123456789abcdef01234567",
+            contentHash:
+              "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          },
+          bunVersion: "1.3.14",
+          ompVersion: "15.5.3",
+        },
+        promptMode: RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE,
+        warmupIterations: 0,
+        measurementIterations: 1,
+      })
+    ).rejects.toThrow("corrected clean commit");
+  });
+
+  it("rejects worktree provenance even when a baseline is cast from JSON", async () => {
+    const fixture: RuntimeBenchmarkFixture = {
+      name: "worst-multi-skill-autonomous",
+      text: "full auto",
+      requiredSkills: ["pov:autonomous-loop"],
+      forbiddenSkills: [],
+    };
+    const index = [skill("autonomous-loop", "full auto", 0)];
+    const environment = {
+      source: {
+        kind: "commit" as const,
+        commitSha: "0123456789abcdef0123456789abcdef01234567",
+      },
+      bunVersion: "1.3.14",
+      ompVersion: "15.5.3",
+    };
+    const baseline = await captureRuntimeBenchmarkBaseline({
+      index,
+      fixtures: [fixture],
+      projectInstructions: null,
+      language: null,
+      environment,
+      promptMode: RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE,
+      warmupIterations: 0,
+      measurementIterations: 1,
+    });
+    const unsealed = {
+      ...baseline,
+      source: {
+        kind: "worktree" as const,
+        headCommitSha: environment.source.commitSha,
+        contentHash:
+          "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      },
+    } as unknown as RuntimeBenchmarkBaseline;
+
+    const report = await runRuntimeBenchmark({
+      index,
+      fixtures: [fixture],
+      projectInstructions: null,
+      language: null,
+      environment,
+      promptMode: RUNTIME_BENCHMARK_CURRENT_PROMPT_MODE,
+      baseline: unsealed,
+      warmupIterations: 0,
+      measurementIterations: 1,
+    });
+
+    expect(report.correctness.contractValid).toBe(false);
+    expect(report.correctness.failures).toContain(
+      "contract: baseline must reference a corrected clean commit"
+    );
+    expect(exitCodeForBenchmarkReport(report)).toBe(1);
+  });
+
   it("keeps the checked-in baseline tied to versions, fixtures, and selection receipt", () => {
     const repoRoot = path.resolve(__dirname, "../..");
     const index = loadSkillKeywordIndex(repoRoot);
@@ -350,11 +437,13 @@ describe("runtime benchmark correctness gates", () => {
     expect(baseline.benchmarkVersion).toBe(RUNTIME_BENCHMARK_VERSION);
     expect(baseline.contractVersion).toBe(RUNTIME_CONTRACT_VERSION);
     expect(baseline.source).toEqual({
-      kind: "worktree",
-      headCommitSha: expect.stringMatching(/^[0-9a-f]{40}$/u),
-      contentHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+      kind: "commit",
+      commitSha: expect.stringMatching(/^[0-9a-f]{40}$/u),
     });
-    expect("commitSha" in baseline).toBe(false);
+    expect(baseline.promptMode).toBe(RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE);
+    expect(baseline.measurementSemantics).toBe(
+      RUNTIME_BENCHMARK_MEASUREMENT_SEMANTICS
+    );
     expect(baseline.bunVersion).toMatch(/^\d+\.\d+\.\d+/u);
     expect(baseline.ompVersion).toMatch(/^\d+\.\d+\.\d+/u);
     expect(baseline.fixtureHash).toBe(

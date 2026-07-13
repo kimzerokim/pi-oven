@@ -45,8 +45,8 @@ Final authored-surface counts are all zero:
 
 - Fake-`ok` discrimination: 84/84 positive scenarios rejected; 0 vacuous passes.
 - Runtime benchmark correctness: contract valid, explicit recall 100%, required recall 100%, forbidden precision 100%, deterministic.
-- Worst worker prompt: 15,389 → 2,599 bytes, an 83.1113% reduction against a 50% requirement.
-- Read-only gate p95: 0.008583 ms against a 0.057417 ms maximum.
+- Worst worker prompt: 7,253 → 2,599 bytes, a 64.1666% reduction against a 50% requirement. The denominator is the sealed production `legacy` surface from corrected commit `40dfbd97b80db9127f89ba49e2c8525cc168f09c`.
+- Read-only gate p95: 0.0115 ms against a 0.057958 ms maximum.
 
 ## Tests, coverage, and build
 

@@ -1,11 +1,12 @@
 {
   "benchmarkVersion": 1,
   "contractVersion": "runtime-contract@1",
-  "generatedAt": "2026-07-13T06:25:07.920Z",
+  "generatedAt": "2026-07-13T08:37:02.122Z",
+  "promptMode": "legacy",
+  "measurementSemantics": "runtime-worker-context-and-warmed-gate-paths@1",
   "source": {
-    "kind": "worktree",
-    "headCommitSha": "41b5b7866b9f26ea3a3827c27187941348459d68",
-    "contentHash": "sha256:e381b5453e8ddd999d2ea7bab2a036f9efb4bd556178b2abdcc3344f384b4791"
+    "kind": "commit",
+    "commitSha": "40dfbd97b80db9127f89ba49e2c8525cc168f09c"
   },
   "bunVersion": "1.3.14",
   "ompVersion": "15.5.3",
@@ -62,11 +63,11 @@
   "performance": {
     "workerPrompt": {
       "fixture": "worst-multi-skill-autonomous",
-      "bytes": 15389
+      "bytes": 7253
     },
     "gateReadOnly": {
       "path": "read-only-fast-path",
-      "p95Ms": 0.007417
+      "p95Ms": 0.007958
     }
   }
 }

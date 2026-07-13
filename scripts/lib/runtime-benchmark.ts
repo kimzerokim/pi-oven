@@ -140,6 +140,11 @@ export type RuntimeBenchmarkSource =
   | { kind: "commit"; commitSha: string }
   | { kind: "worktree"; headCommitSha: string; contentHash: string };
 
+export type RuntimeBenchmarkCommitSource = Extract<
+  RuntimeBenchmarkSource,
+  { kind: "commit" }
+>;
+
 export interface RuntimeBenchmarkEnvironment {
   source: RuntimeBenchmarkSource;
   bunVersion: string;
@@ -237,7 +242,9 @@ export function resolveRuntimeBenchmarkSource(
   };
 }
 
-export interface RuntimeBenchmarkBaseline extends RuntimeBenchmarkEnvironment {
+export interface RuntimeBenchmarkBaseline
+  extends Omit<RuntimeBenchmarkEnvironment, "source"> {
+  source: RuntimeBenchmarkCommitSource;
   benchmarkVersion: number;
   contractVersion: string;
   generatedAt: string;
@@ -720,6 +727,12 @@ function findReadOnlyGate(gates: GatePathMeasurement[]): GatePathMeasurement {
 export async function captureRuntimeBenchmarkBaseline(
   options: RuntimeBenchmarkOptions
 ): Promise<RuntimeBenchmarkBaseline> {
+  const source = options.environment.source;
+  if (source.kind !== "commit") {
+    throw new Error(
+      "refusing to capture runtime benchmark baseline without corrected clean commit provenance"
+    );
+  }
   if (options.promptMode !== RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE) {
     throw new Error(
       `runtime benchmark baseline capture requires promptMode=${RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE}`
@@ -742,7 +755,9 @@ export async function captureRuntimeBenchmarkBaseline(
     generatedAt: options.generatedAt ?? new Date().toISOString(),
     promptMode: RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE,
     measurementSemantics: RUNTIME_BENCHMARK_MEASUREMENT_SEMANTICS,
-    ...options.environment,
+    source,
+    bunVersion: options.environment.bunVersion,
+    ompVersion: options.environment.ompVersion,
     fixtureHash: evidence.fixtureHash,
     selectionReceipt: evidence.selectionReceipt,
     performance: {
@@ -764,14 +779,20 @@ function baselineContractFailures(
 ): string[] {
   const failures: string[] = [];
   if (
-    baseline.source?.kind === "commit"
-      ? !/^[0-9a-f]{40}$/u.test(baseline.source.commitSha)
-      : baseline.source?.kind === "worktree"
-        ? !/^[0-9a-f]{40}$/u.test(baseline.source.headCommitSha) ||
-          !/^sha256:[0-9a-f]{64}$/u.test(baseline.source.contentHash)
-        : true
+    baseline.source?.kind !== "commit" ||
+    !/^[0-9a-f]{40}$/u.test(baseline.source.commitSha)
   ) {
-    failures.push("contract: baseline source provenance is missing or invalid");
+    failures.push("contract: baseline must reference a corrected clean commit");
+  }
+  if (baseline.promptMode !== RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE) {
+    failures.push(
+      `contract: baseline prompt mode must be ${RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE}`
+    );
+  }
+  if (
+    baseline.measurementSemantics !== RUNTIME_BENCHMARK_MEASUREMENT_SEMANTICS
+  ) {
+    failures.push("contract: baseline measurement semantics are missing or stale");
   }
   if (baseline.benchmarkVersion !== RUNTIME_BENCHMARK_VERSION) {
     failures.push(

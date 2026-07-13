@@ -50,7 +50,7 @@ bun test tests/scripts/runtime-benchmark.test.ts
 bun run bench:runtime
 ```
 
-The checked-in corrected pre-compositor baseline is the comparison surface. The worker prompt must remain at least 50% smaller and all correctness gates must pass.
+The checked-in corrected pre-compositor baseline is the comparison surface. The sealed baseline is 7,253 worker-prompt bytes from production `legacy` mode; the current compositor surface is 2,599 bytes, a 64.1666% reduction. The worker prompt must remain at least 50% smaller and all correctness gates must pass.
 
 ## Release ritual
 

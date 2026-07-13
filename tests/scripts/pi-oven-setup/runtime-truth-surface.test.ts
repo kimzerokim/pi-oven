@@ -71,7 +71,8 @@ describe("shared doctor/status runtime truth surface", () => {
     expect(byName.get("offline eval discrimination")?.status).toBe("PASS");
     expect(byName.get("live dispatch canary")?.status).toBe("NOT RUN");
     expect(byName.get("OMP package")?.detail).toContain("15.5.3");
-    expect(byName.get("release metadata")?.detail).toContain("immutable ref v0.2.4");
+    const packageVersion = JSON.parse(await Bun.file(join(pluginRoot, "package.json")).text()).version;
+    expect(byName.get("release metadata")?.detail).toContain(`immutable ref v${packageVersion}`);
     expect(byName.get("native team")?.detail).toBe("removed; OMP task owns dispatch");
     expect(new Set(report.checks.map((check) => check.status))).toEqual(
       new Set(["PASS", "WARN", "NOT RUN"]),

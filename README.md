@@ -51,7 +51,7 @@ The first three lines install pi-oven automatically; the last line opens omp and
 If you already have an older version installed, refresh the marketplace cache first:
 
 ```sh
-omp plugin marketplace remove pi-oven
+omp plugin marketplace remove kzk
 omp plugin marketplace add kimzerokim/pi-oven
 omp plugin install pi-oven@kzk --force
 ```

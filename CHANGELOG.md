@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.5 - 2026-07-13
+
+- docs(runtime): add remediation plan and audit
+- docs(runtime): record final remediation evidence
+- fix(bench): seal corrected commit baseline provenance
+- fix(prompt): restore measurable legacy worker rollback
+- feat(runtime): remediate pi-oven contract end to end
+- docs: prepare v0.2.4 release refs
 ## v0.2.4 - 2026-07-10
 
 - fix: route setup prompts through ask and validate current models output

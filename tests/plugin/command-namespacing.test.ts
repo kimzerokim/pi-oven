@@ -73,6 +73,8 @@ describe("command file namespacing", () => {
     expect(readmeText).not.toContain("Ask about these choices");
     expect(readmeText).toContain("Use pov:explorer");
     expect(readmeText).toContain("pov:verifier");
+    expect(readmeText).toContain("omp plugin marketplace remove kzk");
+    expect(readmeText).not.toContain("omp plugin marketplace remove pi-oven");
     expect(readmeText).toContain('Unknown agent "pov:executor"');
     expect(readmeText).not.toContain('Unknown agent "pi-oven:executor"');
 

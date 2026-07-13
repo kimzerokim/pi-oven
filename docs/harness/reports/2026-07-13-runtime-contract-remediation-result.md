@@ -7,7 +7,7 @@
 
 ## Release rehearsal
 
-The final escalated rehearsal completed all ten cases. The candidate artifact was freshly extracted, its 273-file shipped manifest was verified, dependencies were newly materialized with `bun install --frozen-lockfile --offline --backend=copyfile`, and the isolated candidate doctor exited 0 with no `[FAIL]`. Two consecutive rehearsals from the same worktree produced the identical candidate archive SHA-256, `8db22d195fad98d93aa9d9509c5e50d4beb52890cc9bce28f6284e87b5c81a4a`. The live provider canary remained explicitly `NOT RUN (credentials-unavailable)`; it was not counted as a live PASS.
+The final escalated rehearsal completed all ten cases. The candidate artifact was freshly extracted, its 273-file shipped manifest was verified, dependencies were newly materialized with `bun install --frozen-lockfile --offline --backend=copyfile`, and the isolated candidate doctor exited 0 with no `[FAIL]`. Two consecutive rehearsals from the same worktree produced the identical candidate archive SHA-256, `ac9b0f71e85060828787e02a0aa7b53cca5121d14edfad32f371f3c96d02fb49`. The live provider canary remained explicitly `NOT RUN (credentials-unavailable)`; it was not counted as a live PASS.
 
 | Case | Result | Evidence |
 |---|---:|---|
@@ -46,11 +46,11 @@ Final authored-surface counts are all zero:
 - Fake-`ok` discrimination: 84/84 positive scenarios rejected; 0 vacuous passes.
 - Runtime benchmark correctness: contract valid, explicit recall 100%, required recall 100%, forbidden precision 100%, deterministic.
 - Worst worker prompt: 7,253 → 2,599 bytes, a 64.1666% reduction against a 50% requirement. The denominator is the sealed production `legacy` surface from corrected commit `40dfbd97b80db9127f89ba49e2c8525cc168f09c`.
-- Read-only gate p95: 0.008833 ms against a 0.007958 ms baseline and 0.057958 ms maximum.
+- Read-only gate p95: 0.008916 ms against a 0.007958 ms baseline and 0.057958 ms maximum.
 
 ## Tests, coverage, and build
 
-- Full suite: 1,234 passed, 0 failed, 4,571 assertions across 86 files.
+- Full suite: 1,234 passed, 0 failed, 4,577 assertions across 86 files.
 - Bun coverage view: 93.31% functions / 92.97% lines.
 - Coverage-ratchet view: 91.04% functions / 93.44% lines; all global and per-file floors passed.
 - Setup transaction: 95.35% functions / 96.43% lines.
@@ -63,8 +63,8 @@ An intermediate build bundled the exact `zod` package root and grew to 952,064 b
 
 | Artifact | SHA-256 |
 |---|---|
-| `dist/pi-oven.js` | `900383ebe48698eaed0749c6d906ae877a2b95e514c0b52ed749d682f80107e9` |
-| candidate `pi-oven-v0.2.4.tar.gz` | `8db22d195fad98d93aa9d9509c5e50d4beb52890cc9bce28f6284e87b5c81a4a` |
+| `dist/pi-oven.js` | `26217b0371bf8258bd34117ad53ddfd22c838aa4ef98fb0af89aa18034602d05` |
+| candidate `pi-oven-v0.2.5.tar.gz` | `ac9b0f71e85060828787e02a0aa7b53cca5121d14edfad32f371f3c96d02fb49` |
 
 ## Automation order
 

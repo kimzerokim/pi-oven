@@ -62,7 +62,7 @@ jobs:
         run: bun run release:contract -- --tag "v$(jq -r .version package.json)" --check-only
       - name: Upload release rehearsal receipt
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: runtime-contract-rehearsal-${{ github.run_id }}
           path: artifacts/runtime-contract-rehearsal.json
@@ -129,7 +129,7 @@ jobs:
           echo "Trusted provider canary: ${STATUS/NOT_RUN/NOT RUN}" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload trusted canary receipt
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: trusted-provider-canary-${{ github.run_id }}
           path: artifacts/trusted-canary-receipt.json
@@ -188,7 +188,7 @@ jobs:
           echo "Nightly full eval: ${STATUS/NOT_RUN/NOT RUN}" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload nightly eval evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nightly-full-eval-${{ github.run_id }}
           path: artifacts/

@@ -20,8 +20,8 @@ This preserves one runtime schema implementation and avoids shipping a second co
 
 ## Consequences
 
-- The extension is 414,918 bytes across 46 bundled modules.
-- The final increase is 74,918 bytes over the nominal 340,000-byte baseline, below the 153,600-byte ADR trigger.
+- The extension is 415,284 bytes across 46 bundled modules.
+- The final increase is 75,284 bytes over the nominal 340,000-byte baseline, below the 153,600-byte ADR trigger.
 - Zod is now an explicit runtime-install requirement rather than hidden bundle content; the exact dependency pin, frozen lockfile, fresh candidate install, and doctor gate make that dependency visible.
 - A tooling/runtime schema split remains unnecessary unless a later bundle report shows project-owned schema code, rather than dependency duplication, crossing the threshold.
 

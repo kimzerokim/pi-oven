@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.6 - 2026-07-13
+
+- test(ci): enforce dependency source boundary
 ## v0.2.5 - 2026-07-13
 
 - docs(runtime): add remediation plan and audit

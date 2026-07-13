@@ -14,9 +14,9 @@
         "source": "git-subdir",
         "url": "https://github.com/kimzerokim/pi-oven.git",
         "path": ".",
-        "ref": "v0.2.5"
+        "ref": "v0.2.6"
       },
-      "version": "0.2.5",
+      "version": "0.2.6",
       "category": "workflow",
       "tags": [
         "autonomous",

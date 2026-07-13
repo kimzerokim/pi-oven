@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>pi-oven + OMP 하네스 냉정 평가 및 개선 계획 — 2026-07-13</title>
+  <style>
+    :root {
+      --bg: #0b0e13;
+      --panel: #121722;
+      --panel-2: #171e2b;
+      --line: #2a3445;
+      --text: #e8edf5;
+      --muted: #9ca9bc;
+      --good: #55d187;
+      --warn: #f3bd57;
+      --bad: #ff7070;
+      --blue: #77a7ff;
+      --purple: #b89cff;
+      --cyan: #5ed6db;
+      --max: 1180px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 15% 0%, #17213a 0, transparent 34%), var(--bg);
+      color: var(--text);
+      font: 15px/1.72 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--blue); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { color: #d9e5ff; background: #0b111d; padding: .1em .35em; border-radius: 4px; }
+    header, main, footer { width: min(var(--max), calc(100% - 34px)); margin-inline: auto; }
+    header { padding: 72px 0 38px; }
+    h1 { font-size: clamp(2.25rem, 5vw, 4.4rem); line-height: 1.06; letter-spacing: -.045em; margin: 0 0 20px; }
+    h2 { font-size: 1.7rem; line-height: 1.25; margin: 58px 0 18px; letter-spacing: -.025em; }
+    h3 { font-size: 1.15rem; margin: 28px 0 10px; }
+    p { margin: 9px 0 14px; }
+    .eyebrow { color: var(--cyan); text-transform: uppercase; letter-spacing: .14em; font-weight: 800; font-size: .78rem; }
+    .lead { font-size: 1.2rem; color: #c9d4e6; max-width: 900px; }
+    .meta { color: var(--muted); display: flex; gap: 18px; flex-wrap: wrap; margin-top: 20px; }
+    nav { position: sticky; top: 0; z-index: 5; background: rgba(11,14,19,.9); backdrop-filter: blur(12px); border-block: 1px solid var(--line); }
+    nav > div { width: min(var(--max), calc(100% - 34px)); margin: auto; display: flex; gap: 17px; overflow-x: auto; padding: 11px 0; white-space: nowrap; }
+    nav a { color: var(--muted); text-decoration: none; font-size: .86rem; }
+    nav a:hover { color: var(--text); }
+    .verdict { border: 1px solid #4a3a23; background: linear-gradient(135deg, #211a10, #151923); padding: 26px; border-radius: 14px; margin: 25px 0; }
+    .verdict strong { color: var(--warn); }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+    .card { grid-column: span 4; background: linear-gradient(180deg, var(--panel), #0f141e); border: 1px solid var(--line); border-radius: 12px; padding: 19px; }
+    .card.wide { grid-column: span 6; }
+    .card.full { grid-column: 1 / -1; }
+    .score { font-size: 2rem; font-weight: 850; letter-spacing: -.04em; }
+    .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); } .blue { color: var(--blue); }
+    .pill { display: inline-block; border: 1px solid currentColor; border-radius: 999px; padding: 2px 9px; font-size: .74rem; font-weight: 750; margin-right: 4px; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0 26px; font-size: .91rem; }
+    th, td { border: 1px solid var(--line); padding: 11px 12px; text-align: left; vertical-align: top; }
+    th { background: #151d2a; color: #dbe7f8; position: sticky; top: 45px; }
+    tr:nth-child(even) td { background: rgba(255,255,255,.018); }
+    ul, ol { padding-left: 23px; }
+    li { margin: 5px 0; }
+    blockquote { margin: 18px 0; border-left: 3px solid var(--blue); background: #101826; padding: 14px 18px; color: #cbd7e9; }
+    .callout { border-left: 4px solid var(--warn); background: #191713; padding: 15px 18px; margin: 18px 0; }
+    .evidence { color: var(--muted); font-size: .88rem; }
+    .phase { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin: 18px 0; }
+    .phase-head { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; padding: 16px 19px; background: #171f2d; }
+    .phase-body { padding: 8px 19px 18px; }
+    .phase-num { font-weight: 900; color: var(--cyan); }
+    .checklist li { list-style: "□  "; padding-left: 3px; }
+    .small { font-size: .84rem; color: var(--muted); }
+    .mono { white-space: pre-wrap; background: #080c13; border: 1px solid var(--line); padding: 16px; border-radius: 8px; overflow-x: auto; }
+    footer { border-top: 1px solid var(--line); margin-top: 65px; padding: 28px 0 60px; color: var(--muted); }
+    @media (max-width: 820px) { .card, .card.wide { grid-column: 1 / -1; } table { display: block; overflow-x: auto; } th { position: static; } }
+  </style>
+</head>
+<body>
+  <aside style="padding:12px 20px;background:#3b2f16;color:#fff3c4">
+    Historical architecture; implementation removed in vNext; OMP task is current dispatch seam.
+    Superseded by <a href="2026-07-13-pi-oven-runtime-contract-remediation-implementation-plan.md">the runtime contract remediation implementation plan</a>.
+  </aside>
+  <header>
+    <div class="eyebrow">Cold review · architecture · harness · product strategy</div>
+    <h1>pi-oven + OMP<br />하네스 냉정 평가 및 개선 계획</h1>
+    <p class="lead">현재 저장소 구현, 1,095개 테스트, 런타임 벤치, 기존 설계 문서와 2026년 Codex·Claude Code·OMP·외부 orchestration 자료를 함께 검토한 결과다. 목표는 pi-oven을 칭찬하는 것이 아니라, 언제 가치가 있고 언제 그냥 Codex를 쓰는 편이 나은지 판별하는 것이다.</p>
+    <div class="meta"><span>기준일 2026-07-13</span><span>대상 pi-oven v0.2.4 소스 트리</span><span>판단 신뢰도: 내부 구현 높음 · 제품 간 정량 우열 중간</span></div>
+  </header>
+
+  <nav><div>
+    <a href="#verdict">결론</a><a href="#method">방법</a><a href="#current">현재 상태</a><a href="#strengths">장점</a><a href="#weaknesses">단점</a><a href="#matrix">경쟁 비교</a><a href="#architecture">아키텍처</a><a href="#roadmap">개선 로드맵</a><a href="#eval">평가 설계</a><a href="#decision">Codex 판정</a><a href="#sources">출처</a>
+  </div></nav>
+
+  <main>
+    <section id="verdict">
+      <h2>1. 최종 결론</h2>
+      <div class="verdict">
+        <p><strong>현재 pi-oven은 실패한 프롬프트 모음이 아니다.</strong> OMP의 강한 로컬 실행면 위에 skill ownership, 모델 routing, deep interview, 승인·branch·external-exec gate, 재개 상태, setup/doctor/release, team/worktree 런타임을 얹은 실질적인 control-plane 초기형이다.</p>
+        <p><strong>그러나 “Codex보다 좋은 코딩 제품”이라고 주장할 근거는 아직 없다.</strong> 로컬 코드 도구 밀도는 OMP가 앞서는 구간이 있지만, 장기 실행 내구성, 표준 관측성, 조직 정책, sandbox/egress, 제품 표면, cross-harness 비교 eval에서는 Codex와 Claude Code가 명확히 앞선다.</p>
+        <p><strong>가장 정직한 전략:</strong> Codex 복제품을 만들지 말고, OMP worker를 위한 <em>model-neutral, durable, governed control plane</em>으로 좁혀라. durable execution·policy·observability·recovery·독립 eval을 증명하지 못한다면, OpenAI 사용이 가능한 일반 SWE 사용자에게는 그냥 Codex가 더 낫다.</p>
+      </div>
+      <div class="callout"><strong>즉시 release blockers:</strong> (1) shipped skill 본문에서 legacy <code>pi-oven:&lt;role&gt;</code> 참조가 241회, canonical <code>pov:&lt;role&gt;</code> 참조는 65회다. 런타임은 legacy task dispatch를 명시적으로 차단하지만 lint는 allowlist로 허용한다. (2) keyword router가 최대 8개를 먼저 자른 뒤 priority를 적용해, 제공된 autonomous benchmark 문장에서도 명시적 <code>pov:autonomous-loop</code>가 누락된다. 즉 pi-oven이 자기 지침을 따르면 dispatch가 막히고, “자율 실행” 요청이 자율 skill 없이 실행될 수 있다.</div>
+      <div class="grid">
+        <article class="card"><div class="score good">8.0/10</div><h3>로컬 코딩 실행면</h3><p>OMP의 LSP/DAP, hashline edit, AST, persistent eval, browser, model/provider 유연성은 강하다.</p></article>
+        <article class="card"><div class="score warn">6.5/10</div><h3>pi-oven control plane</h3><p>gate·상태·skill ownership은 인상적이나 기능이 파일 기반 FSM과 prompt injection에 흩어져 있다.</p></article>
+        <article class="card"><div class="score bad">4.0/10</div><h3>효과 검증</h3><p>단위 테스트는 많지만 실제 LLM 행위·비용·복구·Codex/Claude 대비 품질을 막는 hard eval이 부족하다.</p></article>
+        <article class="card"><div class="score warn">5.0/10</div><h3>장기 실행 내구성</h3><p>resume marker와 atomic state는 있으나 lease, heartbeat, idempotency, outbox, event history가 없다.</p></article>
+        <article class="card"><div class="score bad">3.5/10</div><h3>조직 운영·관측성</h3><p>표준 OTLP trace/metric/audit, 비용 예산, 정책 계층, SIEM export가 없다.</p></article>
+        <article class="card"><div class="score blue">9.0/10</div><h3>해커빌리티·자주권</h3><p>MIT 기반 OMP와 TypeScript extension을 직접 제어하고 모델을 바꿀 수 있는 점은 vendor 제품보다 낫다.</p></article>
+      </div>
+      <blockquote>권장 포지셔닝: “pi-oven is not another coding agent. It is a model-neutral, durable and governed control plane for OMP workers.” 단, 지금은 <strong>durable</strong>과 <strong>governed</strong>를 완전히 입증하지 못했으므로 제품 약속이 아니라 목표 문장으로만 사용해야 한다.</blockquote>
+    </section>
+
+    <section id="method">
+      <h2>2. 조사 방법과 증거 등급</h2>
+      <p>내부 평가는 소스·테스트·설정·문서를 직접 대조했다. 외부 비교는 공식 문서와 공식 저장소를 우선했다. OMP README의 자체 벤치 수치는 독립 재현 전까지 제품 주장으로만 취급했다.</p>
+      <table>
+        <thead><tr><th>증거</th><th>수행/확인</th><th>해석</th></tr></thead>
+        <tbody>
+          <tr><td>정적 검사</td><td><code>bun run check</code>, agent/skill lint 통과</td><td>타입과 manifest/role 정책 일관성은 강함.</td></tr>
+          <tr><td>테스트</td><td>격리 HOME에서 <strong>1,095 pass / 0 fail</strong>, 69 files, 3,536 assertions</td><td>코드 수준 회귀 방어가 매우 좋음. 기본 HOME 실행은 sandbox 밖 OMP log 쓰기 때문에 1 error/11 연쇄 실패가 나와, 환경 격리 요구도 드러남.</td></tr>
+          <tr><td>coverage</td><td>격리 HOME에서 functions 92.65%, lines 91.61%</td><td>전체는 높으나 release CLI lines 29.37%, tmux session 42.42%, live eval CLI 62.92% 등 운영 경로가 낮고 CI threshold가 없음.</td></tr>
+          <tr><td>빌드</td><td>39 modules, 0.34 MB bundle, 7ms</td><td>extension 배포 단위는 작고 빌드가 빠름.</td></tr>
+          <tr><td>runtime injection 벤치</td><td>worst fixture 7,722→1,701 bytes, 77.97% 감소; p95 hook latency 미미</td><td>바이트는 줄었지만 정확성 gate가 없다. 실제 worst autonomous fixture에서 autonomous skill이 cap 때문에 탈락하고도 PASS한다. tool-call timing도 실제 handler가 아니라 no-op 측정이다.</td></tr>
+          <tr><td>실제 LLM eval</td><td>78 YAML, 25 smoke. CI 주석상 provider key 부재로 live smoke 미실행</td><td>행위 효과에 대한 자동 release gate가 아님.</td></tr>
+          <tr><td>외부 비교</td><td>Codex, Claude Code, OMP, LangGraph, OpenTelemetry 등 공식 문서</td><td>기능 존재 비교는 신뢰 가능. 동일 task 성공률 비교는 새 실험이 필요.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><strong>중요:</strong> 1,095개 테스트 통과는 “pi-oven이 의도한 코드를 안정적으로 실행한다”는 증거다. “그 의도가 일반 SWE 성공률을 Codex보다 높인다”는 증거는 아니다.</div>
+    </section>
+
+    <section id="current">
+      <h2>3. 현재 시스템의 실제 모습</h2>
+      <div class="grid">
+        <article class="card wide"><h3>제공 표면</h3><ul><li>24개 <code>pov:*</code> agent</li><li>23개 runtime-loaded skill</li><li>3개 command: setup / doctor / release</li><li>OMP extension + 18개 runtime module</li><li>setup, release, native team/worktree 스크립트</li><li>78개 eval scenario</li></ul></article>
+        <article class="card wide"><h3>코드 규모</h3><ul><li>핵심 TS/MD 약 53.5K lines</li><li>runtime/setup/team TS만 약 19.4K lines</li><li>큰 module: entry 1,636, interview state 1,274, ask 1,249, config 1,247, command normalizer 967 lines</li><li>39 module bundle, 0.34 MB</li></ul></article>
+      </div>
+      <h3>현재 제어 흐름</h3>
+      <pre class="mono">사용자 요청
+  → OMP turn_start
+  → pi-oven keyword index / required skill 계산
+  → before_agent_start prompt injection
+  → exact SKILL.md read proof
+  → agent/task dispatch
+  → tool_call gate
+       ├─ branch contract
+       ├─ deep interview / approval state
+       ├─ external execution consent
+       ├─ git commit / push gate
+       └─ verifier depth policy
+  → turn_end continuation marker / resume state
+  → 파일 기반 .pi-oven/state/autonomous.json</pre>
+      <p>이 설계의 좋은 점은 prompt-only 규율을 벗어나 실제 tool-call seam에서 차단한다는 것이다. 나쁜 점은 workflow execution, 정책, 보안 분류, prompt composition, persistence, UX가 여러 module에 교차하면서 하나의 실행 기록으로 관찰되지 않는다는 것이다.</p>
+      <h3>발견된 문서/배포 drift</h3>
+      <ul>
+        <li><code>package.json</code>, plugin manifest, canonical marketplace는 0.2.4인데 <code>CLAUDE.md</code> status는 0.2.3이다.</li>
+        <li>루트 <code>marketplace.json</code>은 0.1.22로 남아 있고 CI parity 대상은 <code>.claude-plugin/marketplace.json</code>뿐이다. 루트 파일이 의도적 legacy면 명시·제거하고, 소비 표면이면 parity에 포함해야 한다.</li>
+        <li>README 테스트 badge는 1,092 passing인데 현재 격리 실행은 1,095 passing이다. “release ritual”에 사람이 수동으로 고치는 항목이 남아 있다.</li>
+        <li>CLAUDE.md는 <code>CONTEXT.md</code>와 <code>docs/adr/</code>를 대체하고 있지만, architecture skill이 기대하는 domain glossary/ADR layout은 없다. <code>docs/decisions/</code>와 specs/plans가 사실상 결정을 담아 탐색 비용이 높다.</li>
+        <li>README 최소 OMP는 15.5.3인데 doctor의 <code>MIN_OMP_VERSION</code>은 15.0.0이라 실제 비호환 버전을 PASS시킬 수 있다.</li>
+      </ul>
+      <h3>런타임 계약과 shipped instruction의 충돌</h3>
+      <ul>
+        <li><code>skills/large-task-delegation/SKILL.md:26-46</code> 등은 <code>pi-oven:executor</code>, <code>pi-oven:explorer</code> 같은 legacy namespace를 정상 dispatch로 가르친다.</li>
+        <li><code>gate-handler.ts:183-199</code>는 정확히 그 namespace를 stale runtime state로 분류하고 block한다. canonical은 <code>pov:&lt;role&gt;</code>이다.</li>
+        <li><code>lint-skills.ts:41-190</code>의 광범위한 allowlist와 <code>:192-201</code>의 shipped-root 예외가 이 모순을 CI에서 숨긴다.</li>
+        <li><code>skills/codebase-survey/SKILL.md:46-52</code>는 agent 없는 <code>task(prompt, model:"sonnet")</code>를 예시로 든다. 이는 codex-only 정책과 충돌하고, gate가 검사하는 <code>event.input.agent</code>도 없다.</li>
+        <li>일부 agent/skill은 <code>subagent_type</code> 또는 agent 없는 task 예제를 사용한다. OMP task interface의 canonical schema를 한 곳에서 생성하지 않아 지침·gate·실제 tool schema가 drift한다.</li>
+      </ul>
+      <h3>skill activation 정확성 결함</h3>
+      <ul>
+        <li><code>matchSkillsForText</code>는 manifest/index 순서의 후보를 <code>MAX_MATCHED_SKILLS=8</code>로 먼저 자르고, explicit/root/priority 정렬은 나중에 한다.</li>
+        <li>repo가 제공하는 <code>worst-multi-skill-autonomous</code> 문장을 실제로 match하면 code-quality, tdd, survey, verifier, plan 계열 8개가 먼저 차지해 <code>pov:autonomous-loop</code>가 사라진다.</li>
+        <li><code>bench:runtime</code>은 expected matched skill names를 확인하지 않아 이를 77.97% 개선으로 보고한다. 정확성을 제거해 성능 수치가 좋아지는 전형적인 잘못된 benchmark다.</li>
+      </ul>
+    </section>
+
+    <section id="strengths">
+      <h2>4. 장점 — 유지하고 더 깊게 만들 부분</h2>
+      <div class="grid">
+        <article class="card wide"><h3><span class="pill good">강점 1</span> OMP 실행면 활용</h3><p>OMP가 제공하는 LSP/DAP, AST, browser, persistent Python/Bun, typed subagent, worktree를 agent 정책에 실제로 연결했다. 일반 shell/search 중심 harness보다 코드 탐색과 디버깅 interface가 풍부하다.</p></article>
+        <article class="card wide"><h3><span class="pill good">강점 2</span> prompt-only를 넘은 gate</h3><p><code>tool_call</code>에서 commit/push/external execution/code write를 차단하고, branch/skill-read/approval 증거를 상태와 결합한다. Claude/Codex의 native 정책만큼 넓지는 않지만 pi-oven 내부에서는 실질적 enforcement다.</p></article>
+        <article class="card wide"><h3><span class="pill good">강점 3</span> 상태 손상 방어</h3><p>atomic write, unique temp path, single-writer mutex, corrupt-present fail-closed, cache invalidation, consent expiry 등 상태 저장 세부가 잘 테스트돼 있다.</p></article>
+        <article class="card wide"><h3><span class="pill good">강점 4</span> 설치·routing truth</h3><p>agent frontmatter와 global/project overrides의 SoT, doctor의 11-check matrix, installed topology와 source/project state 구분이 명시적이다. 많은 개인 harness가 이 수준의 설치 진단을 갖지 못한다.</p></article>
+        <article class="card wide"><h3><span class="pill good">강점 5</span> test locality</h3><p>pure evaluator와 injected fact 구조, runtime module별 단위 테스트, setup/release/team regression suite가 촘촘하다. interface를 통해 테스트하는 부분은 이미 깊이가 좋다.</p></article>
+        <article class="card wide"><h3><span class="pill good">강점 6</span> model-neutral 기반</h3><p>현재 default는 Codex-only지만 기반 OMP는 다중 provider다. 향후 capability-tested routing을 만들면 비용·latency·privacy·model fit에 따라 vendor보다 유연하게 움직일 수 있다.</p></article>
+      </div>
+      <p class="evidence">내부 근거: <code>.omp/extensions/pi-oven-runtime/gate.ts</code>, <code>gate-state.ts</code>, <code>gate-handler.ts</code>, <code>scripts/pi-oven-setup/*</code>, <code>scripts/pi-oven-team/*</code>, 관련 tests. 외부 근거: OMP 공식 README/SDK.</p>
+    </section>
+
+    <section id="weaknesses">
+      <h2>5. 단점 — 지금 하네스가 약한 부분</h2>
+      <table>
+        <thead><tr><th>우선</th><th>약점</th><th>왜 치명적인가</th><th>현재 증거</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill bad">P0</span></td><td><strong>행위 eval이 release gate가 아님</strong></td><td>skill/agent가 실제로 더 나은 행동을 했는지 검증하지 못한다. 많은 scenario가 출력이 있으면 살아 있다고 보고, 긍정 조건 miss를 통과시킨다.</td><td><code>agent_response_must_contain</code>과 <code>tool_calls_required</code>는 telemetry only. CI는 live eval을 실행하지 않는다.</td></tr>
+          <tr><td><span class="pill bad">P0</span></td><td><strong>instruction/runtime 자기모순</strong></td><td>하네스가 권고한 agent namespace와 task shape가 런타임에서 차단 또는 무시될 수 있다. workflow 규율의 신뢰를 무너뜨린다.</td><td>legacy 241 refs, canonical 65 refs. 런타임 block을 lint allowlist가 숨김.</td></tr>
+          <tr><td><span class="pill bad">P0</span></td><td><strong>activation cap이 explicit intent를 제거</strong></td><td>사용자가 명시한 autonomous/핵심 skill이 generic keyword 후보보다 뒤에 있으면 실행되지 않는다.</td><td>cap-before-priority 구현, worst autonomous fixture에서 autonomous 누락.</td></tr>
+          <tr><td><span class="pill bad">P0</span></td><td><strong>token/cost/quality 측정 부재</strong></td><td>prompt pruning이 실제 비용과 성공률에 주는 효과를 모른다.</td><td><code>Verdict.token_in/out = 0</code> 고정.</td></tr>
+          <tr><td><span class="pill bad">P0</span></td><td><strong>durable workflow 아님</strong></td><td>프로세스가 side effect 중 죽으면 중복 commit/comment/deploy, orphan worker, 일부 완료 작업 재실행 가능.</td><td>resume marker/atomic JSON은 있으나 run ledger, lease, heartbeat, idempotency key, activity retry taxonomy가 없다.</td></tr>
+          <tr><td><span class="pill bad">P0</span></td><td><strong>표준 관측성 없음</strong></td><td>왜 느렸고 비쌌고 실패했는지 agent→tool→subagent causal trace를 복원하기 어렵다.</td><td><code>trace-primitives.ts</code>는 in-memory 분류 snapshot이지 OTLP exporter나 persistent execution trace가 아니다.</td></tr>
+          <tr><td><span class="pill bad">P0</span></td><td><strong>보안 범위가 command parser에 과집중</strong></td><td>967-line 문자열 normalizer는 알려진 CLI를 잘 다루지만 모든 egress/secret/plugin capability를 보장할 수 없다.</td><td>OS sandbox, per-run network allowlist, signed plugin provenance, secret broker가 pi-oven interface에 없다.</td></tr>
+          <tr><td><span class="pill bad">P0</span></td><td><strong>재현 불가능한 공급망</strong></td><td>main과 wildcard dependency는 같은 버전 문자열이 다른 코드를 설치하게 만든다. audit·rollback·attestation이 어렵다.</td><td>marketplace <code>ref: main</code>, <code>@oh-my-pi/pi-coding-agent: "*"</code>, <code>bun-types: "*"</code>; Actions SHA pin/SBOM/provenance 없음.</td></tr>
+          <tr><td><span class="pill warn">P1</span></td><td><strong>control-plane locality 부족</strong></td><td>하나의 정책 변경이 entrypoint, gate, state, handler, rule injection, skill loader, docs/tests에 퍼진다.</td><td>1,636-line entry module과 700~1,274-line 상태/gate module들.</td></tr>
+          <tr><td><span class="pill warn">P1</span></td><td><strong>native team이 제품 interface와 분리</strong></td><td>tmux/worktree/task-file runtime이 있지만 core extension run lifecycle과 동일한 event/state/approval model로 묶이지 않는다.</td><td><code>scripts/pi-oven-team/*</code>가 별도 control path.</td></tr>
+          <tr><td><span class="pill warn">P1</span></td><td><strong>native team readiness가 사실이 아님</strong></td><td>setup/status는 ACTIVE와 startup ownership을 주장하지만 실제 production launcher callsite가 없다. 파일 존재를 runtime readiness로 오인한다.</td><td><code>startNativeTeamRuntime</code>은 정의 외 production caller가 없고 status/tests만 소비.</td></tr>
+          <tr><td><span class="pill warn">P1</span></td><td><strong>Codex-only default의 전략 모순</strong></td><td>OMP의 최대 장점은 model choice인데 shipped surface는 Codex 한 family에 잠긴다. Codex 모델만 쓸 사용자는 Codex 제품 UX를 포기할 이유가 약하다.</td><td>24 roles 모두 <code>openai-codex</code>; fallback empty.</td></tr>
+          <tr><td><span class="pill warn">P1</span></td><td><strong>인지 부하와 prompt tax</strong></td><td>24 role/23 skill/여러 gate가 모델과 사용자가 이해해야 할 interface를 키운다. 역할 수 자체가 품질이 아니다.</td><td>keyword overlap, deferred obligations, exact read proof, namespace migration 로직이 필요할 정도로 표면이 큼.</td></tr>
+          <tr><td><span class="pill warn">P1</span></td><td><strong>subagent context tax</strong></td><td>루트 CLAUDE.md, 긴 role body, conduct, matched skill이 겹쳐 실제 작업 context를 잠식할 수 있다.</td><td>CLAUDE.md 약 13.8KB; project instructions가 main/subagent prompt에 주입됨.</td></tr>
+          <tr><td><span class="pill warn">P1</span></td><td><strong>제품 UX 표면 부족</strong></td><td>긴 작업의 승인, diff, artifact, worker, 비용을 한 화면에서 관리하기 어렵다.</td><td>Codex app/mobile/review queue, Claude agent view/remote/schedules에 대응하는 pi-oven UI 없음.</td></tr>
+          <tr><td><span class="pill blue">P2</span></td><td><strong>문서·release truth drift</strong></td><td>작은 drift는 control plane의 신뢰를 직접 깎는다.</td><td>0.2.3/0.2.4, root marketplace 0.1.22, badge 1,092 vs test 1,095.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="matrix">
+      <h2>6. OMP + pi-oven vs Codex vs Claude Code</h2>
+      <table>
+        <thead><tr><th>항목</th><th>OMP + pi-oven</th><th>Codex</th><th>Claude Code</th><th>판정</th></tr></thead>
+        <tbody>
+          <tr><td>모델/provider</td><td>OMP 다중 provider; pi-oven default는 Codex-only</td><td>OpenAI 최적화/lock-in</td><td>Claude 중심, cloud provider 경로</td><td class="good">기반은 OMP 승</td></tr>
+          <tr><td>편집 신뢰성</td><td>hashline, stale-anchor reject, AST preview</td><td>patch/diff, model-harness 공동 최적화</td><td>Edit/Write + checkpoint</td><td>OMP 고유 강점, 독립 eval 필요</td></tr>
+          <tr><td>코드 인텔리전스</td><td>native LSP + DAP + AST</td><td>shell/search/IDE 연계</td><td>code intelligence/LSP plugin</td><td class="good">터미널 loop OMP 우세</td></tr>
+          <tr><td>병렬 작업</td><td>typed subagent, nesting, worktree, tmux team</td><td>app multi-thread + built-in worktree</td><td>subagent, teams, worktrees, agent view</td><td>실행 primitive OMP, 운영 UX Codex</td></tr>
+          <tr><td>장기·백그라운드</td><td>session/resume와 autonomous marker</td><td>cloud, automations, goals, review queue, mobile steering</td><td>background agent, routines, schedules, remote control</td><td class="bad">Codex/Claude 승</td></tr>
+          <tr><td>crash/retry durability</td><td>파일 상태와 일부 rollback; exactly-once 보장 없음</td><td>managed cloud가 많은 운영 부담 흡수</td><td>cloud/SDK workflow surface</td><td class="bad">현재 pi-oven 열세</td></tr>
+          <tr><td>sandbox/권한</td><td>OMP approvals + pi-oven command/tool gate</td><td>native OS sandbox, network escalation, auto-review</td><td>FS/network sandbox, allow/ask/deny, managed policy hooks</td><td class="bad">Codex/Claude 승</td></tr>
+          <tr><td>조직 정책/감사</td><td>local state/log/doctor; 표준 감사 export 없음</td><td>enterprise controls/analytics</td><td>세밀한 OTel/SIEM, identity audit, managed settings</td><td class="bad">Claude 승</td></tr>
+          <tr><td>확장성</td><td>임의 TS extension과 공개 SDK</td><td>skills/plugins/apps/MCP/SDK/hooks</td><td>lifecycle hooks + plugins + MCP + subagents</td><td>해커빌리티 OMP, governance Claude</td></tr>
+          <tr><td>제품 표면</td><td>TUI/SDK/RPC/ACP 중심</td><td>app/CLI/IDE/web/GitHub/mobile/SSH</td><td>CLI/desktop/web/mobile/remote/Slack</td><td class="bad">Codex 승</td></tr>
+          <tr><td>자주권</td><td>MIT/local/model-neutral 기반</td><td>vendor 계정/서비스 의존</td><td>vendor/model 의존</td><td class="good">OMP 승</td></tr>
+          <tr><td>운영 리스크</td><td>작은 OSS upstream + 개인 프로젝트 bus factor</td><td>대규모 vendor</td><td>대규모 vendor</td><td class="bad">Codex/Claude 승</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><strong>핵심 역설:</strong> pi-oven이 Codex 모델만 강제하면서 Codex 제품의 cloud/app/mobile/worktree/review UX를 사용하지 않으면, 사용자는 모델 lock-in 비용은 그대로 내고 제품 통합 이점은 포기한다. 따라서 codex-only는 “안정된 기본값”으로는 타당하지만 장기 제품 정체성으로는 약하다.</div>
+    </section>
+
+    <section id="architecture">
+      <h2>7. 아키텍처 deepening 기회</h2>
+      <p>아래 제안은 module/interface/depth/seam/adapter/leverage/locality 용어를 일관되게 사용한다. 새 추상화를 늘리는 것이 아니라, 복잡성이 실제로 여러 caller에 반복되는 곳만 묶는다.</p>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">A1</span><strong>Run Ledger module</strong><span class="pill bad">최우선</span></div><div class="phase-body">
+        <p><strong>Files:</strong> <code>gate-state.ts</code>, <code>project-state.ts</code>, <code>continuation-marker.ts</code>, <code>pi-oven.ts</code>, <code>scripts/pi-oven-team/*</code>, 신규 <code>run-ledger/*</code>.</p>
+        <p><strong>Problem:</strong> 상태가 autonomy, branch contract, task files, tmux config에 나뉘어 “한 실행이 무엇을 했고 어디서 멈췄는가”라는 interface가 없다.</p>
+        <p><strong>Solution:</strong> immutable <code>run_id</code>, <code>attempt_id</code>, parent/child, state transition, side-effect receipt, artifact manifest를 append-only event로 기록하는 깊은 module을 만든다. JSONL/SQLite adapter 두 개가 생길 때만 persistence seam을 외부화한다.</p>
+        <p><strong>Benefits:</strong> 재개·취소·감사·eval·UI caller가 같은 interface를 사용한다. 상태 버그와 migration 지식의 locality가 커지고, interface를 통해 crash replay 테스트가 가능해진다.</p>
+        <p><strong>Deletion test:</strong> 이 module을 지우면 run identity/reconciliation 로직이 extension, team runtime, eval, UI에 다시 흩어진다. 깊이를 얻는다.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">A2</span><strong>Policy Decision module</strong><span class="pill bad">P0</span></div><div class="phase-body">
+        <p><strong>Files:</strong> <code>gate.ts</code>, <code>gate-handler.ts</code>, <code>git-normalize.ts</code>, <code>capability-registry.ts</code>, <code>model-routing-approval.ts</code>.</p>
+        <p><strong>Problem:</strong> command parsing, capability classification, consent lookup, decision, audit rendering이 결합돼 있다. 문자열 command 지식이 정책 interface가 되어 버렸다.</p>
+        <p><strong>Solution:</strong> 입력을 <code>Actor + Capability + Resource + Effect + Evidence</code>로 정규화하고, 정책 결과를 <code>allow / deny / require_approval</code>와 reason code로 반환하는 module로 집중한다. shell classifier는 adapter 하나일 뿐이며 OMP native tool metadata adapter를 두 번째로 만든다.</p>
+        <p><strong>Benefits:</strong> shell·MCP·browser·GUI·message tool이 동일한 정책을 통과하고, policy matrix 테스트와 OTel audit가 단순해진다.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">A3</span><strong>Evaluation Harness module</strong><span class="pill bad">P0</span></div><div class="phase-body">
+        <p><strong>Files:</strong> <code>scripts/lib/eval-runner.ts</code>, <code>scenario-schema.ts</code>, <code>run-eval.ts</code>, <code>evals/**</code>.</p>
+        <p><strong>Problem:</strong> event collector interface는 얕고, 실제 중요한 조건이 telemetry라 scenario 수가 많아도 품질 leverage가 낮다.</p>
+        <p><strong>Solution:</strong> execution adapter(OMP/Codex CLI/Claude Code), scorer adapter(deterministic/LLM judge/human accept), artifact collector, repetition/statistics를 감춘 깊은 module로 만든다. scenario는 예상 final state, patch/test oracle, safety invariant, budget을 선언한다.</p>
+        <p><strong>Benefits:</strong> 동일 task를 세 harness에서 반복하고 confidence interval을 낼 수 있다. release gate가 “출력이 있음”에서 “작업 성공”으로 바뀐다.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">A4</span><strong>Setup Configuration module</strong><span class="pill warn">P1</span></div><div class="phase-body">
+        <p><strong>Files:</strong> 1,247-line <code>config-yml.ts</code>, <code>project-settings.ts</code>, <code>project-config.ts</code>, <code>apply.ts</code>, <code>reset.ts</code>, <code>status.ts</code>.</p>
+        <p><strong>Problem:</strong> read/validate/merge/write/render가 설정 키별 함수로 반복되고 global/project adapter가 다르게 성장한다.</p>
+        <p><strong>Solution:</strong> managed setting schema가 owner, scope, default, merge rule, validator, reset semantics를 선언하고 apply/status/reset이 동일 schema를 해석한다.</p>
+        <p><strong>Benefits:</strong> 새 설정 한 개를 추가할 때 caller를 여러 군데 고치지 않는다. release drift와 reset 결함의 locality가 좋아진다.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">A5</span><strong>Prompt Composition module</strong><span class="pill warn">P1</span></div><div class="phase-body">
+        <p><strong>Files:</strong> <code>rules-injector.ts</code>, <code>skill-keyword-loader.ts</code>, <code>deep-interview-render.ts</code>, <code>pi-oven.ts</code>.</p>
+        <p><strong>Problem:</strong> precedence, dedupe, byte budget, disclosure phase가 여러 string builder에 있다.</p>
+        <p><strong>Solution:</strong> prompt fragment를 owner/key/priority/budget/phase/required-proof로 받는 compositor를 둔다. 출력과 receipt를 함께 반환한다.</p>
+        <p><strong>Benefits:</strong> prompt budget과 skill conflicts를 한 interface에서 테스트한다. 현재 synthetic benchmark를 실제 compositor regression으로 승격할 수 있다.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">A6</span><strong>Role surface 축소</strong><span class="pill warn">P1</span></div><div class="phase-body">
+        <p><strong>Files:</strong> <code>agents/**</code>, <code>profiles.ts</code>, skills의 role refs.</p>
+        <p><strong>Problem:</strong> 24개 role 중 explorer/oracle/analyst/architect, debugger/tracer, writer/document-specialist/librarian/deep-researcher 등 interface가 겹친다. 호출자가 미묘한 차이를 알아야 한다면 module이 shallow하다.</p>
+        <p><strong>Solution:</strong> 실제 eval에서 다른 adapter/tool policy가 효과를 내는 role만 남긴다. 나머지는 하나의 깊은 research/code-analysis module 내부 mode로 흡수한다.</p>
+        <p><strong>YAGNI gate:</strong> role별로 최소 2개 독립 use case와 유의미한 success-rate 차이가 없으면 별도 role을 유지하지 않는다.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">A7</span><strong>Runtime Contract compiler module</strong><span class="pill bad">P0</span></div><div class="phase-body">
+        <p><strong>Files:</strong> <code>profiles.ts</code>, <code>lint-skills.ts</code>, <code>gate-handler.ts</code>, agent/skill executable examples, eval schemas.</p>
+        <p><strong>Problem:</strong> namespace, agent roles, task field 이름, model selector, tool 이름이 prose/regex/allowlist/tests에 중복돼 서로 다른 계약을 실행한다.</p>
+        <p><strong>Solution:</strong> typed <code>RuntimeContract</code>에서 canonical namespace, valid task shape, model selector policy, skill reference, generated example과 lint rule을 파생한다. executable code fence는 schema lint를 통과해야 ship된다.</p>
+        <p><strong>Benefits:</strong> 한 번의 계약 변경이 runtime, 문서, lint, eval에 함께 반영된다. 현재 가장 큰 locality 결함을 제거한다.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">A8</span><strong>Native team: 연결하거나 제거</strong><span class="pill warn">P1</span></div><div class="phase-body">
+        <p><strong>Files:</strong> <code>scripts/pi-oven-team/*</code>, <code>apply.ts</code>, <code>status.ts</code>, README.</p>
+        <p><strong>Problem:</strong> 파일 두 개 존재로 ACTIVE를 판단하지만 실제 production launcher caller가 없다. 삭제 테스트에서 실제 workflow 복잡성이 재출현하지 않아 현재 module은 shallow/dead compatibility surface다.</p>
+        <p><strong>Solution:</strong> OMP native dispatch adapter에 실제 연결해 run ledger를 공유하거나, status에서 experimental/unwired로 표시하고 제거한다. “ACTIVE”는 spawn→ready→task→result canary를 통과할 때만 사용한다.</p>
+      </div></div>
+    </section>
+
+    <section id="roadmap">
+      <h2>8. 개선 로드맵</h2>
+      <p>우선순위는 기능 수가 아니라 신뢰를 만드는 순서다. P0가 완료되기 전에는 role/skill을 더 추가하지 않는다.</p>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">Phase 0 · 1~2주</span><strong>Truth before features</strong></div><div class="phase-body">
+        <ol class="checklist">
+          <li><strong>Release blocker:</strong> shipped skills의 legacy <code>pi-oven:&lt;role&gt;</code> 241개를 canonical <code>pov:&lt;role&gt;</code>로 전환하고 shipped allowlist를 삭제한다.</li>
+          <li>task 호출 schema를 하나의 typed builder/문서 generator에서 만들고, agent 없는 task·<code>subagent_type</code>·hardcoded sonnet/haiku 예제를 lint로 차단한다.</li>
+          <li>각 shipped skill의 대표 dispatch를 실제 OMP session에서 실행하는 canary를 추가한다. “문자열 존재”가 아니라 task accepted + expected agent started를 확인한다.</li>
+          <li>skill routing을 <strong>전체 후보 match → explicit intent 보존 → specificity/priority 정렬 → cap</strong> 순으로 고친다. cap으로 explicit skill을 절대 제거하지 않는다.</li>
+          <li>runtime benchmark에 expected matched names/correctness gate를 추가하고 no-op tool timer를 실제 gate handler 측정으로 교체한다.</li>
+          <li>버전/배지/marketplace truth를 하나의 release manifest로 통합한다. 루트 marketplace의 의도를 결정하고 CI parity에 포함하거나 삭제한다.</li>
+          <li>README “tests passing” 수치를 생성 artifact로 바꾸고 수동 갱신을 없앤다.</li>
+          <li><code>CONTEXT.md</code>와 <code>docs/adr/</code> 또는 명시적 map을 추가해 현재 <code>docs/decisions</code>/<code>specs</code>/<code>plans</code> 관계를 설명한다.</li>
+          <li>live smoke eval용 별도 scheduled CI를 만들고 key 부재 시 release status를 “unit-only”로 표시한다.</li>
+          <li>현재 benchmark 결과를 baseline JSON으로 commit하고 commit SHA, Bun/OMP/model version을 함께 기록한다.</li>
+        </ol>
+        <p><strong>Exit:</strong> legacy healthy-path agent refs 0, 모든 shipped dispatch canary 성공, explicit skill retention 100%, benchmark correctness gate 통과, 한 명령이 version/docs/manifests/test count drift 0을 확인할 때만 release 가능.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">Phase 1 · 2~4주</span><strong>Real evaluation and OpenTelemetry</strong></div><div class="phase-body">
+        <ol class="checklist">
+          <li><code>run_id/attempt_id/parent_agent_id</code>를 모든 turn/tool/subagent에 부여한다.</li>
+          <li>OTel span tree를 <code>run → turn → model → tool → subagent</code>로 만든다. model, tokens, latency, retry, permission, result, worktree, artifact hash를 attribute로 수집한다.</li>
+          <li>prompt/tool content는 default-off, 명시 opt-in, redaction 후에만 export한다.</li>
+          <li><code>token_in/out</code> 0 placeholder를 제거하고 실제 SDK event 또는 provider usage에서 채운다.</li>
+          <li>긍정 행위 조건을 hard/soft로 명시하고, smoke/regression은 patch/test/state oracle 누락 시 실패하게 한다.</li>
+          <li>OMP/Codex CLI/Claude Code 실행 adapter를 만든다. 최소 30개의 고정 task를 동일 repo snapshot과 model tier에서 반복한다.</li>
+        </ol>
+        <p><strong>Exit:</strong> harness별 pass@1, human accept, tokens, wall time, unsafe action, recovery success에 95% CI를 제시. “pi-oven이 낫다”는 주장은 이 결과만 사용.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">Phase 2 · 3~6주</span><strong>Durable run ledger</strong></div><div class="phase-body">
+        <ol class="checklist">
+          <li>상태를 <code>queued/running/waiting_approval/waiting_external/succeeded/failed/cancelled/orphaned</code>로 정규화한다.</li>
+          <li>append-only event + materialized snapshot 구조를 도입한다. 먼저 SQLite adapter 하나로 시작한다.</li>
+          <li>worker lease, heartbeat, timeout, cancellation propagation, stale-run reconciliation을 추가한다.</li>
+          <li>retry를 transient/permanent/user-action으로 분류하고 retry budget과 circuit breaker를 둔다.</li>
+          <li>외부 side effect에 idempotency key와 outbox receipt를 적용한다. commit/comment/deploy publish는 atomic artifact state 이후에만 실행한다.</li>
+          <li>kill -9, provider 429, network loss, MCP hang, disk full, partial git write를 fault injection으로 테스트한다.</li>
+        </ol>
+        <p><strong>Exit:</strong> crash 후 중복 external effect 0, orphan detection SLO, resume success rate를 공개.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">Phase 2B · 1~2주</span><strong>Transactional setup and honest readiness</strong></div><div class="phase-body">
+        <ol class="checklist">
+          <li>global/project 두 설정 adapter를 <code>snapshot → preflight → apply → validate → commit/rollback</code> interface 뒤에 둔다.</li>
+          <li>중간 <code>omp config set</code> 실패 시 이전 설정과 marker를 복구한다.</li>
+          <li>native team readiness를 파일 존재가 아니라 실제 launcher canary로 판정한다. 연결 전에는 experimental/unwired로 보고한다.</li>
+          <li>doctor에 <code>--json</code>, <code>--strict</code>, version-skew, real model ping, gate self-test를 추가한다.</li>
+        </ol>
+        <p><strong>Exit:</strong> setup fault injection 후 partial config 0, doctor와 runtime status가 동일한 실제 readiness를 보고.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">Phase 3 · 3~5주</span><strong>Capability policy and sandbox</strong></div><div class="phase-body">
+        <ol class="checklist">
+          <li>모든 tool/plugin에 <code>read/write/exec/network/secrets/gui/external-message</code> capability manifest를 요구한다.</li>
+          <li>project/user/org policy layering과 deny-overrides-allow 규칙을 추가한다.</li>
+          <li>per-run egress allowlist와 DNS/HTTP destination audit를 OMP sandbox seam 또는 별도 runtime adapter에 연결한다.</li>
+          <li>plugin lockfile, source digest, SBOM, trust tier, unsigned plugin 경고를 추가한다.</li>
+          <li>장기 credential 대신 secret broker가 짧은 TTL token을 작업별로 발급하도록 한다.</li>
+          <li><code>git-normalize.ts</code>는 shell adapter로 축소하고 native tool metadata를 우선 사용한다.</li>
+        </ol>
+        <p><strong>Exit:</strong> policy matrix와 malicious plugin/secret exfiltration test 통과, 모든 승인/거부가 OTel audit event로 남음.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">Phase 3B · 1~2주</span><strong>Reproducible supply chain</strong></div><div class="phase-body">
+        <ol class="checklist">
+          <li>OMP dependency와 dev dependencies를 exact version으로 pin하고 update bot + compatibility suite로 갱신한다.</li>
+          <li>marketplace source를 immutable <code>vX.Y.Z</code> tag 또는 commit SHA에 고정한다.</li>
+          <li>GitHub Actions를 commit SHA로 pin하고 최소 <code>permissions: contents: read</code>, timeout, concurrency를 선언한다.</li>
+          <li>release에 SBOM, source digest, bundle checksum, provenance attestation을 생성한다.</li>
+          <li>설치된 tag artifact에서 setup→doctor→smoke→reset E2E를 실행한다.</li>
+        </ol>
+        <p><strong>Exit:</strong> 동일 release identifier가 항상 동일 source/dependency/bundle digest를 설치하고 검증 가능.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">Phase 4 · 4~8주</span><strong>Operator UX</strong></div><div class="phase-body">
+        <ol class="checklist">
+          <li>run/worker/worktree/approval/cost/artifact를 보여주는 local web 또는 ACP UI를 만든다.</li>
+          <li>approval inbox에서 diff와 provenance를 확인하고 approve/edit/reject/cancel할 수 있게 한다.</li>
+          <li>GitHub/CI/webhook scheduler, concurrency quota, backpressure, cost/time budget을 추가한다.</li>
+          <li>재연결 가능한 remote steering을 만들되 credential과 파일은 실행 host에 남긴다.</li>
+          <li>artifact manifest와 실행 trace를 묶어 review 가능한 결과 단위로 제공한다.</li>
+        </ol>
+        <p><strong>Exit:</strong> 사용자가 tmux pane과 JSON state를 직접 보지 않고도 장시간 run을 감독·취소·재개할 수 있음.</p>
+      </div></div>
+
+      <div class="phase"><div class="phase-head"><span class="phase-num">Phase 5 · 이후</span><strong>Selective durability engine</strong></div><div class="phase-body">
+        <ol class="checklist">
+          <li>수분 내 로컬 coding loop는 OMP native로 유지한다.</li>
+          <li>수시간~수일, 승인 대기, 다중 external effect가 있는 workflow만 Mastra/Temporal adapter로 감싼다.</li>
+          <li>OMP agent loop를 durable engine의 activity로 취급하고 orchestration engine이 coding harness를 재구현하지 않게 한다.</li>
+          <li>Temporal 도입 기준: 다중 host, 장시간 timer, compensation, 강한 recovery SLO가 실제로 필요할 때. 그 전에는 SQLite ledger가 더 단순하다.</li>
+        </ol>
+        <p><strong>Exit:</strong> 복잡한 workflow만 durable adapter를 사용하고, 일반 편집 latency와 OMP의 도구 leverage는 유지.</p>
+      </div></div>
+    </section>
+
+    <section id="libraries">
+      <h2>9. 외부 라이브러리 도입 판단</h2>
+      <table>
+        <thead><tr><th>후보</th><th>결정</th><th>사용할 부분</th><th>피할 부분</th></tr></thead>
+        <tbody>
+          <tr><td>OpenTelemetry</td><td><span class="pill good">즉시 채택</span></td><td>trace/metrics/log context, GenAI semantic conventions, OTLP export</td><td>prompt/tool content 기본 수집, vendor 전용 schema</td></tr>
+          <tr><td>LangGraph</td><td><span class="pill warn">참고/선택</span></td><td>checkpoint, interrupt, replay, reducer semantics</td><td>자유형 coding loop 전체 재작성</td></tr>
+          <tr><td>Mastra</td><td><span class="pill warn">TS POC</span></td><td>workflow suspend/resume snapshot, step/nested workflow</td><td>durability 보장을 검증하지 않고 core state 전체 이전</td></tr>
+          <tr><td>Temporal</td><td><span class="pill blue">조건부 P2/P3</span></td><td>multi-day workflow, retry/timer/signal, compensation</td><td>초기부터 모든 turn을 workflow activity로 만들어 운영 복잡도 증가</td></tr>
+          <tr><td>OpenHands runtime</td><td><span class="pill warn">설계 참고</span></td><td>reproducible sandbox image, resource/isolation contract</td><td>OMP 실행면 교체</td></tr>
+          <tr><td>PydanticAI durable</td><td><span class="pill warn">개념 참고</span></td><td>agent loop와 durable activity seam</td><td>TypeScript core에 Python runtime 강제</td></tr>
+        </tbody>
+      </table>
+      <p><strong>권장 최소 dependency:</strong> OpenTelemetry SDK/API만 먼저 도입한다. durable engine은 run ledger와 fault test로 요구가 증명된 뒤 고른다. 프레임워크를 도입하는 것 자체가 신뢰성을 만들지는 않는다.</p>
+    </section>
+
+    <section id="eval">
+      <h2>10. Codex보다 좋은지 판별할 벤치마크</h2>
+      <h3>고정 조건</h3>
+      <ul><li>동일 git snapshot과 깨끗한 worktree</li><li>동일 task prompt, tool/network allowance, wall-clock budget</li><li>가능하면 동일 OpenAI model tier; Claude 비교는 가격/quality tier를 매칭</li><li>temperature·reasoning effort·max turns 기록</li><li>task당 최소 30회, seed/order 무작위화</li><li>평가자는 harness identity를 가린 diff와 artifacts를 검토</li></ul>
+      <h3>task corpus</h3>
+      <table>
+        <thead><tr><th>범주</th><th>예시</th><th>oracle</th></tr></thead>
+        <tbody>
+          <tr><td>정확한 bug fix</td><td>재현 가능한 unit/integration failure</td><td>hidden regression test + minimal diff review</td></tr>
+          <tr><td>대규모 refactor</td><td>10+ files, behavior preservation</td><td>full test + architecture constraints + diff entropy</td></tr>
+          <tr><td>debugger leverage</td><td>동적 상태 의존 bug</td><td>root cause accuracy, tool calls, time/tokens</td></tr>
+          <tr><td>ambiguous feature</td><td>누락된 requirement가 있는 요청</td><td>필수 질문 recall, rework, final acceptance</td></tr>
+          <tr><td>multi-agent</td><td>독립 research/implementation/review lanes</td><td>conflict rate, merge quality, total tokens</td></tr>
+          <tr><td>long-running recovery</td><td>중간 kill/429/network loss</td><td>resume success, duplicate effects, lost work</td></tr>
+          <tr><td>safety</td><td>prompt injection, unsafe push/deploy, secret exposure</td><td>unsafe action rate, false-positive block rate</td></tr>
+        </tbody>
+      </table>
+      <h3>핵심 지표</h3>
+      <ul><li><strong>Quality:</strong> pass@1, hidden-test pass, human accept, regression count</li><li><strong>Efficiency:</strong> input/output tokens, tool calls, wall time, model cost, human interventions</li><li><strong>Reliability:</strong> crash recovery, retry success, orphan rate, duplicate side effect</li><li><strong>Safety:</strong> unauthorized write/network/external message, secret exposure, approval bypass</li><li><strong>Maintainability:</strong> prompt/config bytes, role selection error, release drift, upstream-break repair time</li></ul>
+      <div class="callout"><strong>출시 주장 기준:</strong> pi-oven은 한두 task의 데모가 아니라 최소 세 범주에서 Codex 대비 통계적으로 유의한 이점 또는 20% 이상의 비용 절감과 비열등 품질을 보여야 한다. 그렇지 않으면 “더 좋다” 대신 “더 제어 가능하고 model-neutral하다”고만 말한다.</div>
+    </section>
+
+    <section id="decision">
+      <h2>11. 그래서 그냥 Codex가 더 나은가?</h2>
+      <table>
+        <thead><tr><th>상황</th><th>추천</th><th>이유</th></tr></thead>
+        <tbody>
+          <tr><td>개인/팀이 당장 일반 SWE 성공률을 원하고 OpenAI 정책이 허용됨</td><td><strong class="bad">Codex</strong></td><td>운영·sandbox·worktree·앱/IDE/cloud/mobile이 한 제품에 통합돼 총소유비용이 낮다.</td></tr>
+          <tr><td>앱/IDE/cloud/mobile/PR/remote devbox 연속성이 중요</td><td><strong class="bad">Codex</strong></td><td>pi-oven이 단기간에 복제하면 안 되는 제품 moat다.</td></tr>
+          <tr><td>조직 policy, hooks, audit, OTel/SIEM이 핵심</td><td><strong class="warn">Claude Code</strong></td><td>관리 설정과 lifecycle hook/monitoring surface가 더 성숙하다.</td></tr>
+          <tr><td>로컬/air-gapped, self-hosted model, 비용 arbitrage, LSP/DAP 실험</td><td><strong class="good">OMP + pi-oven</strong></td><td>공개 실행면과 model choice가 vendor 제품보다 강하다.</td></tr>
+          <tr><td>수시간~수일 백그라운드 작업을 실패/중복 없이 맡김</td><td><strong class="bad">현재는 Codex/Claude cloud</strong></td><td>pi-oven durability가 fault test로 입증되기 전에는 맡기면 안 된다.</td></tr>
+          <tr><td>고유 조직 workflow/policy가 경쟁력이고 control plane을 소유해야 함</td><td><strong class="good">pi-oven 투자 가치</strong></td><td>OMP worker 위에 독자 governance/eval/durability를 쌓는 것이 자산이 된다.</td></tr>
+          <tr><td>단지 Codex 구독료를 아끼려 자체 harness 유지</td><td><strong class="bad">대개 Codex</strong></td><td>upstream churn, QA, 보안, 운영, bus factor를 포함한 TCO가 더 비싸다.</td></tr>
+        </tbody>
+      </table>
+      <h3>Go / No-go 기준</h3>
+      <ul>
+        <li><strong>계속 투자:</strong> model-neutrality·local data·custom policy가 실제 요구이고, P0~P2를 유지할 시간과 benchmark corpus가 있다.</li>
+        <li><strong>범위 축소:</strong> pi-oven을 개인 workflow pack + evaluation lab으로 유지하고 durable product 주장을 하지 않는다.</li>
+        <li><strong>Codex로 이동:</strong> control-plane 자체가 목적이 아니고 최종 산출물 속도만 중요하다.</li>
+      </ul>
+    </section>
+
+    <section id="risks">
+      <h2>12. 실행 리스크와 중단 규칙</h2>
+      <ul>
+        <li><strong>프레임워크 중독:</strong> LangGraph/Temporal/Mastra를 동시에 평가하지 않는다. 먼저 ledger interface와 acceptance를 만들고 adapter를 하나만 고른다.</li>
+        <li><strong>role 증식:</strong> P0 완료 전 agent/skill 추가 금지. 기존 role도 benchmark 근거가 없으면 합친다.</li>
+        <li><strong>OMP upstream churn:</strong> 최소/최대 검증 version matrix, nightly compatibility test, adapter seam을 둔다.</li>
+        <li><strong>보안 과신:</strong> command parser coverage를 sandbox로 부르지 않는다. OS/network enforcement와 policy decision을 분리한다.</li>
+        <li><strong>local optimum:</strong> unit test 수가 늘어도 cross-harness success가 개선되지 않으면 2개 release 후 해당 feature track을 중단한다.</li>
+        <li><strong>bus factor:</strong> runbook, ADR, threat model, release automation을 문서화하고 최소 한 명이 재현 가능한 release를 수행해야 한다.</li>
+      </ul>
+    </section>
+
+    <section id="sources">
+      <h2>13. 외부 출처</h2>
+      <p>아래 링크는 기능 비교와 개선 방향을 뒷받침하는 공식/1차 자료다. 날짜가 바뀌면 제품 기능도 바뀔 수 있으므로 구현 시작 시 다시 확인한다.</p>
+      <div class="grid">
+        <article class="card wide"><h3>OMP / Pi</h3><ul>
+          <li><a href="https://github.com/can1357/oh-my-pi">oh-my-pi 공식 저장소</a></li>
+          <li><a href="https://github.com/can1357/oh-my-pi/blob/main/docs/sdk.md">OMP SDK 문서</a></li>
+          <li><a href="https://github.com/can1357/oh-my-pi/releases">OMP releases</a></li>
+          <li><a href="https://github.com/badlogic/pi-mono">pi-mono 공식 저장소</a></li>
+        </ul></article>
+        <article class="card wide"><h3>OpenAI Codex</h3><ul>
+          <li><a href="https://openai.com/index/introducing-the-codex-app/">Introducing the Codex app</a></li>
+          <li><a href="https://openai.com/index/codex-for-almost-everything/">Codex for almost everything</a></li>
+          <li><a href="https://openai.com/index/work-with-codex-from-anywhere/">Work with Codex from anywhere</a></li>
+          <li><a href="https://openai.com/index/running-codex-safely/">Running Codex safely</a></li>
+          <li><a href="https://developers.openai.com/codex/use-cases">Codex use cases</a></li>
+        </ul></article>
+        <article class="card wide"><h3>Claude Code</h3><ul>
+          <li><a href="https://code.claude.com/docs/en/features-overview">Features overview</a></li>
+          <li><a href="https://code.claude.com/docs/en/agent-teams">Agent teams</a></li>
+          <li><a href="https://code.claude.com/docs/en/agents">Parallel agents and worktrees</a></li>
+          <li><a href="https://code.claude.com/docs/en/hooks-guide">Hooks guide</a></li>
+          <li><a href="https://code.claude.com/docs/en/sandboxing">Sandboxing</a></li>
+          <li><a href="https://code.claude.com/docs/en/monitoring-usage">Monitoring usage with OpenTelemetry</a></li>
+        </ul></article>
+        <article class="card wide"><h3>Orchestration / observability</h3><ul>
+          <li><a href="https://docs.langchain.com/oss/javascript/langgraph/persistence">LangGraph persistence</a></li>
+          <li><a href="https://docs.langchain.com/oss/javascript/langgraph/interrupts">LangGraph interrupts</a></li>
+          <li><a href="https://docs.langchain.com/oss/javascript/langgraph/functional-api">LangGraph functional API</a></li>
+          <li><a href="https://opentelemetry.io/docs/concepts/signals/">OpenTelemetry signals</a></li>
+          <li><a href="https://opentelemetry.io/docs/concepts/instrumentation/">OpenTelemetry instrumentation</a></li>
+          <li><a href="https://opentelemetry.io/docs/specs/otel/overview/">OpenTelemetry specification overview</a></li>
+          <li><a href="https://docs.openhands.dev/openhands/usage/architecture/runtime">OpenHands runtime architecture</a></li>
+          <li><a href="https://mastra.ai/ai-workflows">Mastra workflows</a></li>
+          <li><a href="https://docs.temporal.io/">Temporal documentation</a></li>
+        </ul></article>
+      </div>
+      <h3>내부 주요 증거 위치</h3>
+      <ul>
+        <li><code>scripts/lib/eval-runner.ts:112-297</code> — timeout, telemetry/hard gate, token placeholders</li>
+        <li><code>scripts/lib/scenario-schema.ts:6-92</code> — 현재 scoring contract</li>
+        <li><code>.github/workflows/ci.yml:23-26</code> — live LLM eval 미실행</li>
+        <li><code>.omp/extensions/pi-oven-runtime/gate-state.ts</code> — FSM, consent, atomic persistence</li>
+        <li><code>.omp/extensions/pi-oven-runtime/gate.ts</code> / <code>gate-handler.ts</code> — enforcement</li>
+        <li><code>.omp/extensions/pi-oven-runtime/trace-primitives.ts</code> — 현재 trace snapshot의 범위</li>
+        <li><code>scripts/pi-oven-team/runtime-v2.ts</code> — worktree/tmux worker startup and rollback</li>
+        <li><code>scripts/pi-oven-doctor.ts</code> — 11-check install-health interface</li>
+      </ul>
+    </section>
+
+    <section id="handoff">
+      <h2>14. 권장 첫 작업 묶음</h2>
+      <ol>
+        <li><strong>PR 1 — namespace/task/activation contract cutover:</strong> legacy 241 refs, allowlist, sonnet/haiku와 비canonical task shape를 제거하고 explicit-first routing + real dispatch canary를 추가한다.</li>
+        <li><strong>PR 2 — truth cleanup:</strong> version/docs/root marketplace/test badge/OMP minimum drift를 자동 검증한다.</li>
+        <li><strong>PR 3 — run identity + OTel:</strong> run/turn/tool/subagent span과 실제 token usage를 기록한다.</li>
+        <li><strong>PR 4 — eval hardening:</strong> patch/test/state oracle, cross-harness adapter, 30-task corpus를 만든다.</li>
+        <li><strong>PR 5 — ledger POC:</strong> SQLite append-only event, snapshot, resume reconciliation을 한 autonomous scenario에만 연결한다.</li>
+        <li><strong>PR 6 — fault campaign:</strong> kill/429/network/MCP hang에서 duplicate effect와 recovery를 계측한다.</li>
+      </ol>
+      <p>이 다섯 작업 후에만 “Temporal이 필요한가”, “역할을 더 늘릴까”, “Codex보다 낫나”를 다시 판단한다. 먼저 진실을 측정하고, 그 다음 durability를 만든다.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>작성 기준: repository source audit + isolated full test/build/benchmark + official web research. 이 문서는 구현을 수행한 기록이 아니라 실행 가능한 개선 방향과 go/no-go 판단 기준이다.</p>
+  </footer>
+</body>
+</html>

@@ -1,5 +1,6 @@
 name: deep-dive-adversarial-001
 skill: deep-dive
+kind: positive
 tag: adversarial
 turn_timeout_ms: 300000
 # deep-dive is Loadable/procedural. "skip trace" path tests graceful degradation warning.
@@ -11,7 +12,7 @@ input:
   - turn: 1
     user: "deep-dive — skip the trace, go straight to clarification. Problem: the build cache invalidates on every run even when nothing changed."
 expected:
-  - skill_read_required: "deep-dive"
-  - agent_response_must_contain: ["warning", "no trace context", "brainstorming", "trace context"]
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]
+  - skill_activation_required: "deep-dive"
+  - response_must_contain: ["warning", "no trace context", "brainstorming", "trace context"]
+    response_must_contain_match: any
+  - response_must_not_contain: ["oh-my-claudecode:", "omo:"]

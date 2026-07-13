@@ -1,0 +1,12 @@
+---
+name: dogfood-v0.1.0-end-to-end
+skill: autonomous-loop
+kind: positive
+tag: canary
+input:
+  - turn: 1
+    user: "$autonomous-loop create a new skill called 'pi-oven-followup-test' that prints 'hi'"
+expected:
+  - skill_activation_required: "autonomous-loop"
+  - tool_call_required: { namePattern: "ask|AskUserQuestion" }
+  - response_must_contain: ["autonomous", "branch"]

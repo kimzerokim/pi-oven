@@ -10,15 +10,38 @@
  * lastChangelogVersion) are NEVER touched.
  */
 
-import { deleteGlobalAgentModelOverrides, resetConfigKey } from "./config-yml";
-import type { ConfigYmlOpts } from "./config-yml";
-import { clearSetupComplete, clearSetupCompleteGlobal } from "./project-config";
 import {
-  clearProjectAgentModelOverrides,
-  clearProjectIncludedSkills,
-  clearProjectOrchestrator,
+  buildResetGlobalOverrideRecord,
+  readConfigSnapshotStrict,
+  writeConfigSnapshot,
+} from "./config-yml";
+import type { ConfigYmlOpts } from "./config-yml";
+import {
+  buildClearedSetupReceiptConfig,
+  globalConfigPath,
+  projectConfigPath,
+} from "./project-config";
+import {
+  buildProjectResetSettings,
   projectSettingsPath,
+  serializeProjectSettings,
 } from "./project-settings";
+import { resolveHomePaths } from "../lib/home-paths";
+import {
+  readTextFileSnapshot,
+  restoreTextFileSnapshot,
+  type TextFileSnapshot,
+} from "../lib/atomic-file";
+import {
+  ABSENT,
+  applySetupTransaction,
+  isAbsentSnapshot,
+  resetConfigSnapshot,
+  resolveSetupTransactionStateDir,
+  type SetupTransactionFaultPoint,
+  type SetupTransactionResourceAdapter,
+  type SetupTransactionSnapshot,
+} from "./setup-transaction";
 
 export interface ResetOptions {
   /** Injectable spawn for omp config get/set (tests). */
@@ -47,10 +70,42 @@ export interface ResetOptions {
    * never touches the real ~/.pi-oven.
    */
   homeDir?: string;
+  transactionFault?: (point: SetupTransactionFaultPoint) => void | Promise<void>;
 }
 
 /** pi-oven-managed config.yml keys reset by `--reset --full`. */
 const FULL_RESET_KEYS = ["modelRoles", "retry.fallbackChains", "setupVersion"] as const;
+
+function parseJsonObjectSnapshot(snapshot: TextFileSnapshot, file: string): Record<string, unknown> {
+  if ("absent" in snapshot) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(snapshot.content);
+  } catch {
+    throw new Error(`present but unparsable JSON: ${file}`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`present but not a plain object: ${file}`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function fileSnapshot(value: SetupTransactionSnapshot): TextFileSnapshot {
+  if (isAbsentSnapshot(value)) return value;
+  if (
+    typeof value !== "object" || value === null || Array.isArray(value) ||
+    typeof (value as { content?: unknown }).content !== "string"
+  ) throw new Error("Invalid journaled file snapshot");
+  return { content: (value as { content: string }).content };
+}
+
+function stringRecord(value: SetupTransactionSnapshot, key: string): Record<string, string> {
+  if (isAbsentSnapshot(value)) return {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${key} must be a record`);
+  }
+  return Object.fromEntries(Object.entries(value).map(([name, entry]) => [name, String(entry)]));
+}
 
 /**
  * Global reset clears managed role overrides for known roles in either prefix
@@ -63,16 +118,50 @@ export async function runReset(
   const scope = opts?.scope ?? "global";
 
   if (scope === "project") {
-    const removedKeys = await clearProjectAgentModelOverrides({ cwd: opts?.cwd });
-    const removedIncludedSkills = await clearProjectIncludedSkills({ cwd: opts?.cwd });
-
-    if (opts?.full) {
-      await clearProjectOrchestrator({ cwd: opts?.cwd });
-    }
-
-    await clearSetupComplete({ cwd: opts?.cwd });
-
-    const file = projectSettingsPath(opts?.cwd ?? process.cwd());
+    const cwd = opts?.cwd ?? process.cwd();
+    const file = projectSettingsPath(cwd);
+    const receiptFile = projectConfigPath(cwd);
+    const settingsOriginal = await readTextFileSnapshot(file);
+    const receiptOriginal = await readTextFileSnapshot(receiptFile);
+    const transformed = buildProjectResetSettings(
+      parseJsonObjectSnapshot(settingsOriginal, file),
+      Boolean(opts?.full)
+    );
+    const clearedReceipt = buildClearedSetupReceiptConfig(
+      parseJsonObjectSnapshot(receiptOriginal, receiptFile)
+    );
+    const settingsResource = `file:${file}`;
+    const receiptResource = `file:${receiptFile}`;
+    const files = new Map([
+      [settingsResource, file],
+      [receiptResource, receiptFile],
+    ]);
+    const adapter: SetupTransactionResourceAdapter = {
+      read: async (resource) => readTextFileSnapshot(files.get(resource)!),
+      write: async (resource, value) => restoreTextFileSnapshot(files.get(resource)!, fileSnapshot(value)),
+    };
+    await applySetupTransaction({
+      scope,
+      operation: "reset",
+      stateDir: resolveSetupTransactionStateDir({ scope, cwd }),
+      adapter,
+      desired: {
+        [settingsResource]: transformed.data
+          ? { content: serializeProjectSettings(transformed.data) }
+          : ABSENT,
+        [receiptResource]: "absent" in receiptOriginal
+          ? ABSENT
+          : { content: `${JSON.stringify(clearedReceipt, null, 2)}\n` },
+      },
+      originals: {
+        [settingsResource]: settingsOriginal,
+        [receiptResource]: receiptOriginal,
+      },
+      validate: async () => ({ ok: true }),
+      fault: opts?.transactionFault,
+    });
+    const removedKeys = transformed.removedKeys;
+    const removedIncludedSkills = transformed.removedIncludedSkills;
     const fullSuffix = opts?.full
       ? `Cleared project modelRoles + retry.fallbackChains from ${file}.\n`
       : "";
@@ -101,17 +190,65 @@ export async function runReset(
     };
   }
 
-  const removedKeys = await deleteGlobalAgentModelOverrides(opts);
-
-  await resetConfigKey("skills.includeSkills", opts);
-
-  if (opts?.full) {
-    for (const key of FULL_RESET_KEYS) {
-      await resetConfigKey(key, opts);
-    }
+  const homeDir = opts?.homeDir ?? resolveHomePaths().homeDir;
+  const receiptFile = globalConfigPath(homeDir);
+  const receiptOriginal = await readTextFileSnapshot(receiptFile);
+  const keys = [
+    "task.agentModelOverrides",
+    "skills.includeSkills",
+    ...(opts?.full ? [...FULL_RESET_KEYS] : []),
+  ];
+  const originals: Record<string, SetupTransactionSnapshot> = {};
+  for (const key of keys) {
+    originals[`config:${key}`] = await readConfigSnapshotStrict(key, opts);
   }
-
-  await clearSetupCompleteGlobal({ homeDir: opts?.homeDir });
+  const overrideTransform = buildResetGlobalOverrideRecord(
+    stringRecord(originals["config:task.agentModelOverrides"]!, "task.agentModelOverrides")
+  );
+  const desired: Record<string, SetupTransactionSnapshot> = {
+    "config:task.agentModelOverrides": overrideTransform.cleared,
+    "config:skills.includeSkills": resetConfigSnapshot([]),
+  };
+  const fullResetDefaults: Record<(typeof FULL_RESET_KEYS)[number], SetupTransactionSnapshot> = {
+    modelRoles: resetConfigSnapshot({}),
+    "retry.fallbackChains": resetConfigSnapshot({}),
+    setupVersion: resetConfigSnapshot(0),
+  };
+  for (const key of opts?.full ? FULL_RESET_KEYS : []) {
+    desired[`config:${key}`] = fullResetDefaults[key];
+  }
+  const receiptResource = `file:${receiptFile}`;
+  const clearedReceipt = buildClearedSetupReceiptConfig(
+    parseJsonObjectSnapshot(receiptOriginal, receiptFile)
+  );
+  desired[receiptResource] = "absent" in receiptOriginal
+    ? ABSENT
+    : { content: `${JSON.stringify(clearedReceipt, null, 2)}\n` };
+  originals[receiptResource] = receiptOriginal;
+  const adapter: SetupTransactionResourceAdapter = {
+    read: async (resource) =>
+      resource.startsWith("config:")
+        ? readConfigSnapshotStrict(resource.slice("config:".length), opts)
+        : readTextFileSnapshot(receiptFile),
+    write: async (resource, value) => {
+      if (resource.startsWith("config:")) {
+        await writeConfigSnapshot(resource.slice("config:".length), value, opts);
+      } else {
+        await restoreTextFileSnapshot(receiptFile, fileSnapshot(value));
+      }
+    },
+  };
+  await applySetupTransaction({
+    scope,
+    operation: "reset",
+    stateDir: resolveSetupTransactionStateDir({ scope, homeDir }),
+    adapter,
+    desired,
+    originals,
+    validate: async () => ({ ok: true }),
+    fault: opts?.transactionFault,
+  });
+  const removedKeys = overrideTransform.removedKeys;
 
   const fullSuffix = opts?.full
     ? `Reset pi-oven-managed config keys to defaults: ${FULL_RESET_KEYS.join(", ")}.\n`

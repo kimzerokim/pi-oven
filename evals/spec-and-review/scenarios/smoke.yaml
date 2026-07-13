@@ -1,18 +1,19 @@
 name: spec-and-review-smoke-001
 skill: spec-and-review
+kind: positive
 tag: smoke
 input:
   - turn: 1
     user: "Write a spec for a new auth flow. The project has no existing survey on file."
 expected:
-  - skill_read_required: "spec-and-review"
-  - agent_response_must_contain:
+  - skill_activation_required: "spec-and-review"
+  - response_must_contain:
       - "codebase-survey"
       - "survey"
       - "Step 0"
-    agent_response_must_contain_match: any
-  - agent_response_must_contain:
+    response_must_contain_match: any
+  - response_must_contain:
       - "critic"
       - "cross-vendor"
-      - "pi-oven:critic"
-    agent_response_must_contain_match: any
+      - "pov:critic"
+    response_must_contain_match: any

@@ -25,22 +25,52 @@ function makeSpawn(getResponse: object): {
   calls: SpawnCall[];
 } {
   const calls: SpawnCall[] = [];
+  const initial = getResponse as { value?: unknown };
+  const values = new Map<string, unknown>([
+    ["task.agentModelOverrides", initial.value ?? {}],
+    ["skills.includeSkills", ["pov:*"]],
+    ["modelRoles", { default: "openai-codex/gpt-5.4:high" }],
+    ["retry.fallbackChains", {}],
+    ["setupVersion", "0.2.4"],
+  ]);
   const spawnFn = (cmd: string, args: string[]) => {
     calls.push({ cmd, args });
-    // Respond to `omp config get task.agentModelOverrides --json`
     if (args[0] === "config" && args[1] === "get") {
+      if (!values.has(args[2])) {
+        return {
+          exitCode: 1,
+          stdout: Buffer.from(""),
+          stderr: Buffer.from("missing key"),
+        };
+      }
+      const value = values.get(args[2]);
       return {
         exitCode: 0,
-        stdout: Buffer.from(JSON.stringify(getResponse)),
+        stdout: Buffer.from(
+          JSON.stringify({
+            type: Array.isArray(value) ? "array" : typeof value === "object" ? "record" : typeof value,
+            value,
+          })
+        ),
         stderr: Buffer.from(""),
       };
     }
-    // Respond to `omp config set task.agentModelOverrides <json>`
     if (args[0] === "config" && args[1] === "set") {
+      try {
+        values.set(args[2], JSON.parse(args[3]));
+      } catch {
+        values.set(args[2], args[3]);
+      }
       return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
     }
-    // Respond to `omp config reset <key>` (full-reset path)
     if (args[0] === "config" && args[1] === "reset") {
+      const defaults: Record<string, unknown> = {
+        "skills.includeSkills": [],
+        modelRoles: {},
+        "retry.fallbackChains": {},
+        setupVersion: 0,
+      };
+      values.set(args[2], defaults[args[2]] ?? {});
       return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
     }
     return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };

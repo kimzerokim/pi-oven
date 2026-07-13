@@ -22,7 +22,7 @@ Symptom patches mask bugs and spawn new ones. If Phase 1 is not complete, you ca
 
 Do NOT run this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 file simple edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
 
-Match the agent to the work (model-fit + role-fit is first-class): root-cause isolation → `pi-oven:debugger`; evidence tracing → `pi-oven:tracer`. Full role map in **Agent Dispatch (omp)** below.
+Match the agent to the work (model-fit + role-fit is first-class): root-cause isolation → `pov:debugger`; evidence tracing → `pov:tracer`. Full role map in **Agent Dispatch (omp)** below.
 
 ## When to use
 
@@ -60,7 +60,7 @@ When hand-instrumentation yields low-confidence findings, or evidence conflicts 
 
 ### Phase 2 — Pattern analysis (dispatch — Main MUST NOT investigate inline)
 
-ENFORCEMENT: Main dispatches `pi-oven:explorer` or `pi-oven:tracer` for pattern research. Main MUST NOT read 3+ files inline to analyze patterns.
+ENFORCEMENT: Main dispatches `pov:explorer` or `pov:tracer` for pattern research. Main MUST NOT read 3+ files inline to analyze patterns.
 
 1. Find a working example of the same pattern in the codebase using `ast_grep` (structural search) before falling back to plain `search`.
 2. Use `lsp find-references` and `lsp goto-definition` to map the pattern's impact radius and contract.
@@ -77,7 +77,7 @@ ENFORCEMENT: Main dispatches `pi-oven:explorer` or `pi-oven:tracer` for pattern 
 
 ### Phase 4 — Fix the root cause (dispatch — Main MUST NOT investigate inline)
 
-ENFORCEMENT: Main dispatches `pi-oven:executor` for the fix implementation and `pi-oven:tracer` for regression analysis. Main MUST NOT implement the fix or research its side effects inline.
+ENFORCEMENT: Main dispatches `pov:executor` for the fix implementation and `pov:tracer` for regression analysis. Main MUST NOT implement the fix or research its side effects inline.
 
 1. **Failing test first** — simplest reproduction, automated. Must exist before the fix (route via `tdd-strict`). Use `lsp diagnostics` to confirm type errors; use `bash` to run the test suite and confirm the test fails as expected.
 2. **One fix** addressing the root cause. Prefer `lsp` and `ast_grep` for structural navigation over broad file reads. No "while I'm here" extras, no bundled refactor.
@@ -128,12 +128,12 @@ If investigation genuinely shows the issue is environmental/timing/external: doc
 
 In an omp session, route investigation and fix to dedicated heterogeneous-model agents instead of debugging inline:
 
-- Backward call-chain tracing across boundaries (Phase 1.5, multi-component evidence gathering): dispatch `pi-oven:tracer`. Fire multiple lanes in parallel when several origins are plausible — one `task` per hypothesis, each `run_in_background: true`.
-- Reproduce, isolate, and diagnose a specific failing or flaky test (Phases 1–3): dispatch `pi-oven:debugger`.
-- Write the failing test that pins the root cause before the fix, and the regression test after (Phase 4 step 1): dispatch `pi-oven:test-engineer` (defers to `tdd-strict`).
-- Implement the single root-cause fix plus defense-in-depth layers (Phase 4): dispatch `pi-oven:executor`.
-- Independently confirm the fix resolved the issue and broke nothing (Phase 4 step 3): dispatch `pi-oven:verifier` — never self-verify in the same context.
-- After `pi-oven:verifier` PASSes the functional check, dispatch `pi-oven:code-reviewer` for a separate code-quality pass — the two-stage pattern from `subagent-driven-development` (functional verify, then quality review). Never self-review in the executor's context.
-- After 3 failed fixes / suspected architectural fault: escalate to `pi-oven:oracle` for a strategic re-think before any further attempt.
+- Backward call-chain tracing across boundaries (Phase 1.5, multi-component evidence gathering): dispatch `pov:tracer`. Put plausible independent hypotheses into one same-role `tasks[]` call. OMP may execute them concurrently when async is enabled; do not claim concurrency when it is disabled.
+- Reproduce, isolate, and diagnose a specific failing or flaky test (Phases 1–3): dispatch `pov:debugger`.
+- Write the failing test that pins the root cause before the fix, and the regression test after (Phase 4 step 1): dispatch `pov:test-engineer` (defers to `tdd-strict`).
+- Implement the single root-cause fix plus defense-in-depth layers (Phase 4): dispatch `pov:executor`.
+- Independently confirm the fix resolved the issue and broke nothing (Phase 4 step 3): dispatch `pov:verifier` — never self-verify in the same context.
+- After `pov:verifier` PASSes the functional check, dispatch `pov:code-reviewer` for a separate code-quality pass — the two-stage pattern from `subagent-driven-development` (functional verify, then quality review). Never self-review in the executor's context.
+- After 3 failed fixes / suspected architectural fault: escalate to `pov:oracle` for a strategic re-think before any further attempt.
 
 Outside omp the main agent runs the four phases inline.

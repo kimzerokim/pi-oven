@@ -1,16 +1,17 @@
 name: memory-discipline-regression-001
 skill: memory-discipline
+kind: positive
 tag: regression
 input:
   - turn: 1
     user: "We just confirmed the root cause of the skill-activation bug: alwaysApply is inert under omp. Retain this finding and reflect on what it means for the overall skill contract design."
 expected:
-  - tool_calls_required: ["retain|reflect|memory"]
-  - agent_response_must_contain:
+  - tool_call_required: { namePattern: "retain|reflect|memory" }
+  - response_must_contain:
       - "retain"
       - "reflect"
       - "factual"
       - "insight"
       - "synthesis"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain: ["speculation", "we decided to", "hypothesis"]
+    response_must_contain_match: any
+  - response_must_not_contain: ["speculation", "we decided to", "hypothesis"]

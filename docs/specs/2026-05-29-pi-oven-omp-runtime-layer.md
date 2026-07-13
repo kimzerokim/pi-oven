@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Spec F: pi-oven omp-native runtime / discipline layer (Plan 3 reconciliation)
 
 **Status**: FROZEN v3 pending re-review — v2 re-review returned CONTINUE (5/6 v1 blockers resolved); v3 applies the consistency fixes: B2a (`PI_OVEN_GATE_BYPASS` scoped to gateCache-dependent commit/push only — forbidden-command floor always-on), B2b (`PI_OVEN_PUSH_CONSENT` env = per-process, single-use enforced only by the file source via consume-on-use), AC3 (rehydration data-flow corrected — `before_agent_start` carries NO `branchEntries`; preserved rules read from `session_before_compact`/`session_start`, re-injected via `before_agent_start.systemPrompt`), plus 2 NITs (real source path `node_modules/@oh-my-pi/pi-coding-agent/src/**`; AC6 partial-write reconciled with the atomic temp+rename guarantee). Architecture, ACs, and evidence otherwise intact. Verdict source: `docs/research/codex-reviews/2026-05-29-pi-oven-omp-runtime-layer-critic-review.md`. Central architecture validated sound + honestly scoped by both reviewers; pushbacks P1/P4/P5 preserved.

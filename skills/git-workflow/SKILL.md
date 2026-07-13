@@ -13,7 +13,7 @@ One skill, two boundaries of a development branch: **start** (isolate) and **fin
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
 Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched. Main only dispatches, synthesizes, and reviews — it never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
-**Right-agent routing** (model-fit + role-fit is first-class — use these exact names): complex history surgery / multi-file staging / rebase / any git mutation → `pi-oven:git-master`; clean-baseline + pre-finish test evidence → `pi-oven:verifier`; unclear isolation/worktree state recon → `pi-oven:explorer`.
+**Right-agent routing** (model-fit + role-fit is first-class — use these exact names): complex history surgery / multi-file staging / rebase / any git mutation → `pov:git-master`; clean-baseline + pre-finish test evidence → `pov:verifier`; unclear isolation/worktree state recon → `pov:explorer`.
 
 ## When to use
 
@@ -97,6 +97,6 @@ Never: create a worktree when Step 0 already detected isolation · use `git work
 
 The main agent orchestrates the lifecycle and never runs the git ops itself.
 
-- **All git mutations** — `worktree add` / `remove` / `prune`, branch create/`-d`/`-D`, merge, push, and `gh pr create`: dispatch `pi-oven:git-master`. It is a read+bash-only agent that executes the exact op and refuses unsafe history operations (rebasing main, force-push to main without written confirmation).
-- **Clean-baseline and pre-finish test verification**: dispatch `pi-oven:verifier` for evidence that tests actually pass — the main agent must not self-declare green.
-- **Existing-isolation / worktree-directory reconnaissance** when state is unclear: dispatch `pi-oven:explorer`.
+- **All git mutations** — `worktree add` / `remove` / `prune`, branch create/`-d`/`-D`, merge, push, and `gh pr create`: dispatch `pov:git-master`. It is a read+bash-only agent that executes the exact op and refuses unsafe history operations (rebasing main, force-push to main without written confirmation).
+- **Clean-baseline and pre-finish test verification**: dispatch `pov:verifier` for evidence that tests actually pass — the main agent must not self-declare green.
+- **Existing-isolation / worktree-directory reconnaissance** when state is unclear: dispatch `pov:explorer`.

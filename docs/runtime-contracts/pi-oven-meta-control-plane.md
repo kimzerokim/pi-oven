@@ -65,22 +65,20 @@ Evidence anchors:
 
 ## 4. Parallel runtime contract
 
-The native worker runtime is policy-gated before it is parallel.
+OMP `task` is the single runtime dispatch seam.
 
 Locked behavior:
 
-- First-wave fan-out is limited to independence-safe lanes; shared mutable write surfaces do not silently fan out.
-- Startup/scale persistence order is deterministic and captured in startup evidence.
-- Reducer order and collision evidence are treated as first-class runtime outputs.
-- Task 6 leaves numeric startup evidence in the runtime surface: `fanoutLatencyMs`, `sequentialComparableLatencyMs`, and `startupImprovementRatio`.
+- Pi-oven guidance packs dependency-ready, file-disjoint work toward an 8-12 sibling wave.
+- OMP `async.enabled` and `task.maxConcurrency` own scheduling; provider/runtime admission may impose a smaller actual ceiling.
+- Canonical dispatch payloads must satisfy the local strict `RuntimeContract` task schema and, when exported, the installed OMP task schema.
+- Static release evidence is reported separately from the opt-in live dispatch canary. A skipped live canary is `NOT RUN`, never a claimed pass.
 
 Evidence anchors:
 
-- `scripts/pi-oven-team/team-config.ts`
-- `tests/scripts/pi-oven-team/runtime-v2.test.ts`
-- `tests/scripts/pi-oven-team/scaling.test.ts`
-- `tests/scripts/pi-oven-team/index.test.ts`
-- `tests/scripts/pi-oven-team/rollback.test.ts`
+- `tests/plugin/task-dispatch-canary.test.ts`
+- `scripts/canary-runtime-dispatch.ts`
+- `tests/extensions/pi-oven-runtime/runtime-contract.test.ts`
 
 ## 5. Release/install sync contract
 
@@ -104,3 +102,28 @@ Evidence anchors:
 - `tests/scripts/pi-oven-release/release-publisher.test.ts`
 - `README.md`
 - `commands/release.md`
+
+## 6. Shared doctor/status truth contract
+
+`scripts/pi-oven-setup/standalone-truth-surface.ts` owns `collectRuntimeTruthSurface()`. Both `/pi-oven:doctor` and `/pi-oven:setup --status` consume that function, so a single observed state cannot receive contradictory health labels.
+
+The report covers:
+
+- RuntimeContract version and byte-for-byte generated artifact parity.
+- The exact 24-role registry plus canonical-agent and stale-config namespace counts.
+- Project/global setup transaction terminal, recovered, or manual-recovery state.
+- Run-ledger mode, SQLite schema, integrity, WAL, and active/stale leases.
+- Capability-policy coverage of every agent profile tool declaration.
+- Offline discrimination plus the last local trusted live-canary receipt.
+- The exact supported OMP version derived from the pinned package dependency.
+- Package/plugin/marketplace version parity and the immutable `v<version>` ref.
+- Native-team state as `removed; OMP task owns dispatch`.
+
+Only `PASS`, `WARN`, `FAIL`, and `NOT RUN` are public labels. Missing live-canary evidence and an intentionally inactive optional SQLite ledger are `NOT RUN`, never PASS. Recovery guidance is copy-pasteable; no destructive repair is automatic. Setup transaction startup recovery is limited to its journaled compare-and-swap rollback and stops on conflicts with a manual recovery artifact.
+
+Evidence anchors:
+
+- `scripts/pi-oven-setup/standalone-truth-surface.ts`
+- `scripts/pi-oven-setup/status.ts`
+- `scripts/pi-oven-doctor.ts`
+- `tests/scripts/pi-oven-setup/runtime-truth-surface.test.ts`

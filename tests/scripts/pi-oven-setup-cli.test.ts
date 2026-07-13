@@ -676,7 +676,7 @@ describe("pi-oven-setup CLI --scope", () => {
     expect(existsSync(join(tempDir, ".pi-oven", "config.json"))).toBe(false);
   });
 
-  it("--scope project --apply seeds nativeWorkers.maxWorkers in project config and reports the new fan-out contract", async () => {
+  it("--scope project --apply stores only receipt metadata and reports OMP task concurrency", async () => {
     const { exitCode, stdout } = await runCLIInCwd(["--apply", "--scope", "project"], tempDir, {
       PI_OVEN_MOCK_SPAWN: "1",
       PI_OVEN_VALIDATE_MODE: "none",
@@ -687,14 +687,14 @@ describe("pi-oven-setup CLI --scope", () => {
     const projectCfg = JSON.parse(
       readFileSync(join(tempDir, ".pi-oven", "config.json"), "utf-8")
     );
-    expect(projectCfg.nativeWorkers.maxWorkers).toBe(100);
+    expect(Object.keys(projectCfg)).toEqual(["setupCompletedAt"]);
     expect(stdout).toContain('skills.includeSkills = ["pov:*"]');
     expect(stdout).toContain("workflow skills only");
-    expect(stdout).toContain("nativeWorkers.maxWorkers=100");
-    expect(stdout).toContain("scripts/pi-oven-team/index.ts");
+    expect(stdout).toContain("OMP task owns dispatch");
+    expect(stdout).toContain("task.maxConcurrency");
   });
 
-  it("--scope global --apply seeds nativeWorkers.maxWorkers in global config", async () => {
+  it("--scope global --apply stores only receipt metadata and reports OMP task concurrency", async () => {
     const { exitCode, stdout } = await runCLIInCwd(["--apply", "--scope", "global"], tempDir, {
       PI_OVEN_MOCK_SPAWN: "1",
       PI_OVEN_VALIDATE_MODE: "none",
@@ -705,10 +705,11 @@ describe("pi-oven-setup CLI --scope", () => {
     const globalCfg = JSON.parse(
       readFileSync(join(homeDir, ".pi-oven", "config.json"), "utf-8")
     );
-    expect(globalCfg.nativeWorkers.maxWorkers).toBe(100);
+    expect(Object.keys(globalCfg)).toEqual(["setupCompletedAt"]);
     expect(stdout).toContain('skills.includeSkills = ["pov:*"]');
     expect(stdout).toContain("workflow skills only");
-    expect(stdout).toContain("nativeWorkers.maxWorkers=100");
+    expect(stdout).toContain("OMP task owns dispatch");
+    expect(stdout).toContain("task.maxConcurrency");
   });
 
   it("--scope project --apply writes canonical pov:* keys to the project .omp/settings.json", async () => {

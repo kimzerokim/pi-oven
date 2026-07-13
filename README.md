@@ -2,7 +2,7 @@
 
 > A curated omp marketplace plugin distilled from four frozen sources (oh-my-claudecode / oh-my-openagent / Pocock skills / superpowers). Zero external dispatch dependency; everything you need ships in one plugin.
 
-[![Version](https://img.shields.io/badge/version-0.2.4-blue.svg)]() [![Tests](https://img.shields.io/badge/tests-1092%20passing-green.svg)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+[![GitHub Release](https://img.shields.io/github/v/release/kimzerokim/pi-oven)](https://github.com/kimzerokim/pi-oven/releases) [![CI](https://github.com/kimzerokim/pi-oven/actions/workflows/ci.yml/badge.svg)](https://github.com/kimzerokim/pi-oven/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 ---
 
@@ -34,7 +34,7 @@ omp plugin install pi-oven@kzk --force
 
 # 3. Verify
 omp plugin list | grep pi-oven
-# Expected: pi-oven@kzk (0.2.4)
+# Expected: pi-oven@kzk (<package.json version>)
 ```
 
 ### One-shot (install automatic, setup interactive)
@@ -76,7 +76,7 @@ The wizard will:
 1. Verify that `openai-codex` models are available from `omp models`.
 2. Ask the setup scope: global machine config or this project's `.omp/settings.json`.
 3. Optionally let you override individual agent roles with `openai-codex/<model>[:effort]` selectors.
-4. Persist the codex-only default routing to the selected layer: global writes all 24 per-role `task.agentModelOverrides` entries for runtime-visible `pov:*` roles plus `skills.includeSkills = ["pov:*"]`, `modelRoles`, and empty `retry.fallbackChains`; project scope writes the same routing surface to `.omp/settings.json`. This filters a populated `~/.claude/skills` workflow-skill source without deleting it, scoped only to workflow skills. User setup does not rewrite committed agent files, and `~/.pi-oven/config.json` / `.pi-oven/config.json` keep language, `nativeWorkers.maxWorkers`, and setup receipt metadata while readiness is judged from live routing + prerequisites.
+4. Persist the codex-only default routing to the selected layer: global writes all 24 per-role `task.agentModelOverrides` entries for runtime-visible `pov:*` roles plus `skills.includeSkills = ["pov:*"]`, `modelRoles`, and empty `retry.fallbackChains`; project scope writes the same routing surface to `.omp/settings.json`. This filters a populated `~/.claude/skills` workflow-skill source without deleting it, scoped only to workflow skills. User setup does not rewrite committed agent files, and `~/.pi-oven/config.json` / `.pi-oven/config.json` keep language and setup receipt metadata while readiness is judged from live routing + prerequisites.
 5. Run exact-id validation against the canonical `omp models` list and report the result.
 
 ### 2. Dispatch agents directly
@@ -112,6 +112,8 @@ Run inside omp:
 
 If the provider-auth check FAILs, authenticate `openai-codex` in omp first, then rerun the command. If doctor WARNs only on memory / async / `task.enableLsp` prerequisites, run `/pi-oven:setup --repair-prereqs` and rerun `/pi-oven:doctor`.
 
+Doctor and `/pi-oven:setup --status` consume one RuntimeContract truth function. Both distinguish `PASS`, `WARN`, `FAIL`, and `NOT RUN`; an absent live-canary receipt is `NOT RUN`, never PASS. The shared report covers generated-contract parity, the 24-role/namespace migration counts, setup transactions, ledger integrity/leases, capability parity, offline/live eval evidence, the package-derived OMP support version, immutable release metadata, and native-team removal (`removed; OMP task owns dispatch`). Recovery hints are copy-paste commands; neither surface performs destructive repair.
+
 ### 3.2 Dry-run release automation
 
 Run inside omp from the pi-oven **source repo** checkout:
@@ -120,7 +122,7 @@ Run inside omp from the pi-oven **source repo** checkout:
 /pi-oven:release --bump patch --dry-run --update-changelog --sync-label
 ```
 
-Release automation is source-repo only. The **source repo** is the authoring target, the **release artifact** is the version-synced package/tag produced from that checkout, and the **installed cache** is an observation-only consumer snapshot under `~/.omp/plugins/cache/plugins/`. The helper refuses installed-cache roots, keeps local git pushes on the current branch plus the `vX.Y.Z` tag, and prints a `boundary` object in dry-run output so the source repo → release artifact → installed cache contract stays explicit.
+Release automation is source-repo only. The **source repo** is the authoring target, the **release artifact** is the version-synced package produced from a `vX.Y.Z` tag, and the **installed cache** is an observation-only consumer snapshot under `~/.omp/plugins/cache/plugins/`. The helper refuses installed-cache roots and prints a `boundary` object in dry-run output. `--prepare` may create a validated local release commit; only the tag-triggered GitHub workflow may build attestations and publish. The local helper never tags or pushes.
 ### 4. Verify before claiming done
 
 The `pov:fresh-verifier` skill enforces a hard rule: **the main agent cannot verify its own work**. When you finish a task and want to confirm completion, the skill auto-dispatches `pov:verifier` (a fresh agent with no memory of the implementation) to run a 4-check audit:
@@ -218,7 +220,7 @@ The wizard accepts subcommands:
 | Subcommand | Purpose |
 |---|---|
 | `/pi-oven:setup` | Interactive first-run flow (default) |
-| `/pi-oven:setup --status` | Show the shared setup readiness summary first — global readiness from machine-global routing + prerequisites, project readiness from `.omp/settings.json` routing — then show effective per-role models across project, global override, and frontmatter layers, plus the standalone workflow-skill ownership classifications (`owned-surface active` / `compatibility aids only` / `ownership not established`) and the shared migration/install vocabulary (`healthy single pov surface`, `old config keys`, `mixed migration state`, `dual plugin surface`, `agent namespace drift`), plus the secondary bootstrap-parity track |
+| `/pi-oven:setup --status` | Show readiness/effective model layers, then the same PASS/WARN/FAIL/NOT RUN RuntimeContract report as doctor, including live-canary and migration state without inventing PASS |
 | `/pi-oven:setup --reset` | Clear pi-oven-managed routing overrides; with `--scope project`, clear project `.omp/settings.json` routing |
 | `/pi-oven:setup --repair-prereqs` | Repair only the machine-global prerequisites: `memory.backend=mnemopi`, `mnemopi.noEmbeddings=true`, `mnemopi.llmMode=none`, `async.enabled=true`, `task.enableLsp=true`, and the 6 gated tool flags. Does not touch routing, project settings, or setup receipt metadata. |
 | `/pi-oven:setup --import <file>` | Apply a JSON config with `primary` and optional `thinkingLevel` selectors, restricted to `openai-codex/<model>[:effort]` |
@@ -241,17 +243,19 @@ The default profile also sets the main orchestrator to `openai-codex/gpt-5.4:hig
 
 ### Per-project routing (`--scope project`)
 
-By default, setup applies **globally** — model routing is written to your machine-global config (`~/.omp/agent/config.yml`), while language + `nativeWorkers.maxWorkers` + setup receipt metadata are written to `~/.pi-oven/config.json`, shared by every project. The wizard's **Step 0.5** lets you choose per-project instead:
+By default, setup applies **globally** — model routing is written to your machine-global config (`~/.omp/agent/config.yml`), while language + setup receipt metadata are written to `~/.pi-oven/config.json`, shared by every project. The wizard's **Step 0.5** lets you choose per-project instead:
 
 | | `--scope global` (default) | `--scope project` |
 |---|---|---|
 | Per-role overrides | global `config.yml` — codex-only default writes all 24 roles | `<repoRoot>/.omp/settings.json` — all 24 roles |
 | workflow-skill ownership | global `config.yml` — `skills.includeSkills = ["pov:*"]` | `<repoRoot>/.omp/settings.json` — same filter, project layer wins because arrays replace |
 | `modelRoles` + `retry.fallbackChains` | global `config.yml` | `<repoRoot>/.omp/settings.json` |
-| language + setup receipt metadata + `nativeWorkers.maxWorkers` | global `~/.pi-oven/config.json` | `<repoRoot>/.pi-oven/config.json` |
+| language + setup receipt metadata | global `~/.pi-oven/config.json` | `<repoRoot>/.pi-oven/config.json` |
 | machine-global prerequisites | global `config.yml` (`/pi-oven:setup --repair-prereqs` repairs just this layer) | global-only (not written under project scope) |
 
 The shared readiness model follows those live facts directly: global readiness comes from machine-global routing plus the machine-global prerequisites, while project readiness comes from live `.omp/settings.json` routing. `setupCompletedAt` remains receipt metadata only.
+
+OMP `task` is the single dispatch seam. Pi-oven packs dependency-ready work toward an 8-12 sibling wave, while `async.enabled`, `task.maxConcurrency`, and provider/runtime admission determine actual concurrency.
 
 omp reads `<repoRoot>/.omp/settings.json` at project level and **deep-merges it over** your global config (record settings merge key-by-key; arrays replace), so a project override wins per-role over global. The same array-replace rule is why workflow-skill ownership is judged on the *effective* visible surface: success means the resolved `skills.includeSkills` value is exactly `["pov:*"]`, not any incidental state under `~/.claude/skills`. That means a single project can pin different Codex selectors from your global default while still filtering workflow skills to the `pov:*` visible surface. The file is **committable** (share routing with a team) or **gitignorable** (machine-local) — your choice. Launch omp from the **repo root** so the project settings are discovered. The setup notice at session start shows a `↳ project model routing active (N roles)` line whenever this file carries `pov:*` overrides.
 
@@ -280,14 +284,6 @@ For gated work, pi-oven opens the control plane only through explicit runtime pr
 - Ownership truth surfaces use three labels: `owned-surface active` when the effective `skills.includeSkills` surface is exactly `["pov:*"]`; `compatibility aids only` when legacy aids are active but the mainline ownership filter is still missing or wrong; `ownership not established` otherwise. Empty `~/.claude/skills` is not the target state in any branch. The shared migration/install vocabulary across runtime/setup/status/doctor is `healthy single pov surface`, `old config keys`, `mixed migration state`, `dual plugin surface`, and `agent namespace drift`. A repo reaches `healthy setup — healthy single pov surface` only when project routing is active and ownership is `owned-surface active`; missing project routing remains its own warning.
 - Secondary track only: bootstrap-level gajae parity remains visible as an OMP/architecture follow-up, but it is not a blocker for the owned-surface success above.
 
-## Temporary compatibility boundary
-
-- Scope: vendored native worker runtime under `scripts/pi-oven-team/*` only.
-- Owner: pi-oven maintainers.
-- Removal condition: remove this boundary once native worker startup/scale is owned end-to-end by the omp-native control plane and no runtime path depends on `scripts/pi-oven-team/*`.
-
----
-
 ## Provider whitelist
 
 One provider is live for routing:
@@ -314,7 +310,7 @@ When a pi-oven agent's primary model is unauthenticated (for example OpenAI Code
 
 ### Install cache must be populated
 
-After installing pi-oven@kzk from the marketplace, run `/pi-oven:doctor` and inspect the installed-topology line in the standalone truth surface. It should report the shipped assets path cleanly; if it reports missing shipped assets, force a reinstall:
+After installing pi-oven@kzk from the marketplace, run `/pi-oven:doctor` and inspect the installed-topology line in the RuntimeContract truth surface. It should report the shipped assets path cleanly; if it reports missing shipped assets, force a reinstall:
 
 ```sh
 omp plugin install pi-oven@kzk --force
@@ -343,7 +339,7 @@ The CI hard-lint script (`scripts/lint-agents.ts`) walks `agents/pov-*.md` and f
 ### Test suite
 
 ```sh
-bun test       # 933 tests across 51 files
+bun test       # full test suite
 bun check      # tsc --noEmit typecheck
 bun run build  # extension bundle (pi-oven.js)
 bun run lint:agents  # CI-grade agent file lint
@@ -368,7 +364,7 @@ If you're hacking on pi-oven itself, point omp at your local checkout instead of
 ```sh
 cd /path/to/pi-oven
 bun install
-bun test           # baseline 1092 passing
+bun test           # full test suite
 bun check          # typecheck clean
 bun run build      # extension bundles to dist/pi-oven.js
 bun run lint:agents
@@ -402,9 +398,9 @@ pi-oven/
 │   ├── lint-agents.ts       # CI hard lint
 │   ├── run-eval.ts          # scenario runner against omp SDK
 │   ├── pi-oven-setup.ts         # /pi-oven:setup batch CLI
-│   ├── pi-oven-release/         # release automation modules (bump/sync/changelog/publish)
+│   ├── pi-oven-release/         # release preparation + reproducible artifact contract
 │   ├── pi-oven-setup/           # 13 submodules (profiles, persist, apply, ...)
-├── tests/                   # bun test suite (933 tests, 51 files)
+├── tests/                   # bun test suite
 │   ├── extensions/
 │   ├── plugin/
 │   └── scripts/

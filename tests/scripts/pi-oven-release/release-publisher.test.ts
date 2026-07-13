@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { runRelease } from "../../../scripts/pi-oven-release/index";
-import { publishRelease } from "../../../scripts/pi-oven-release/release-publisher";
+import { prepareReleaseCommit } from "../../../scripts/pi-oven-release/release-publisher";
 import type { SpawnFn } from "../../../scripts/pi-oven-release/changelog-generator";
 
 function makeSpawn(failures: Record<string, boolean> = {}): { spawn: SpawnFn; calls: string[] } {
@@ -17,61 +17,82 @@ function makeSpawn(failures: Record<string, boolean> = {}): { spawn: SpawnFn; ca
 }
 
 describe("release-publisher", () => {
-  it("skips when publish=false", () => {
+  it("skips when prepare=false", () => {
     const { spawn, calls } = makeSpawn();
-    const result = publishRelease({
+    const result = prepareReleaseCommit({
       version: "0.5.0",
-      publish: false,
+      prepare: false,
       dryRun: false,
       currentBranch: "feature/harness-overhaul",
       spawnFn: spawn,
     });
-    expect(result.performed).toBe(false);
+    expect(result.prepared).toBe(false);
     expect(calls.length).toBe(0);
   });
 
-  it("publishing dry-run performs no git writes", () => {
+  it("prepare dry-run performs no git writes", () => {
     const { spawn, calls } = makeSpawn();
-    const result = publishRelease({
+    const result = prepareReleaseCommit({
       version: "0.5.0",
-      publish: true,
+      prepare: true,
       dryRun: true,
       currentBranch: "feature/harness-overhaul",
       spawnFn: spawn,
     });
-    expect(result.performed).toBe(true);
+    expect(result.prepared).toBe(true);
     expect(result.commit).toBeUndefined();
-    expect(result.tag).toBeUndefined();
-    expect(result.pushes).toEqual([]);
     expect(calls).toEqual([]);
   });
 
-  it("publishing non-dry-run requires the current source branch for git pushes", () => {
+  it("prepare creates only a release commit and never tags or pushes", () => {
     const { spawn, calls } = makeSpawn();
-    const result = publishRelease({
+    const result = prepareReleaseCommit({
       version: "0.5.0",
-      publish: true,
+      prepare: true,
       dryRun: false,
       currentBranch: "feature/harness-overhaul",
       spawnFn: spawn,
     });
-    expect(result.performed).toBe(true);
+    expect(result.prepared).toBe(true);
     expect(result.commit?.args).toEqual(["commit", "-am", "release: v0.5.0"]);
-    expect(result.tag?.args).toEqual(["tag", "v0.5.0"]);
     expect(calls).toEqual([
+      "install --frozen-lockfile",
+      "run release:contract -- --tag v0.5.0 --check-only",
+      "run contract:check",
+      "run check",
+      "run lint:agents",
+      "run lint:skills",
+      "run build",
+      "run test:hermetic -- --only-failures",
       "commit -am release: v0.5.0",
-      "tag v0.5.0",
-      "push origin feature/harness-overhaul",
-      "push origin v0.5.0",
     ]);
   });
 
-  it("publishing non-dry-run refuses to guess the git branch before any local git writes", () => {
+  it("validation failure prevents the release commit", () => {
+    const { spawn, calls } = makeSpawn({ "run check": true });
+    expect(() =>
+      prepareReleaseCommit({
+        version: "0.5.0",
+        prepare: true,
+        dryRun: false,
+        currentBranch: "main",
+        spawnFn: spawn,
+      }),
+    ).toThrow("release validation failed");
+    expect(calls).toEqual([
+      "install --frozen-lockfile",
+      "run release:contract -- --tag v0.5.0 --check-only",
+      "run contract:check",
+      "run check",
+    ]);
+  });
+
+  it("prepare non-dry-run refuses to guess the git branch before local git writes", () => {
     const { spawn, calls } = makeSpawn();
     expect(() =>
-      publishRelease({
+      prepareReleaseCommit({
         version: "0.5.0",
-        publish: true,
+        prepare: true,
         dryRun: false,
         spawnFn: spawn,
       })
@@ -79,7 +100,7 @@ describe("release-publisher", () => {
     expect(calls).toEqual([]);
   });
 
-  it("runRelease rejects missing currentBranch before publish-mode sync or changelog work", () => {
+  it("runRelease rejects --publish because publishing belongs to the tag workflow", () => {
     const calls: string[] = [];
     expect(() =>
       runRelease(
@@ -112,9 +133,9 @@ describe("release-publisher", () => {
             calls.push("updateChangelog");
             return { updated: false, commits: [] };
           },
-          publishRelease: () => {
-            calls.push("publishRelease");
-            return { performed: false, pushes: [] };
+          prepareReleaseCommit: () => {
+            calls.push("prepareReleaseCommit");
+            return { prepared: false };
           },
           buildReleaseInstallBoundary: () => {
             calls.push("buildReleaseInstallBoundary");
@@ -130,7 +151,7 @@ describe("release-publisher", () => {
           },
         }
       )
-    ).toThrow("current git branch");
+    ).toThrow("tag workflow");
     expect(calls).toEqual([]);
   });
 });

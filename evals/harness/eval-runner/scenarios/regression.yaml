@@ -1,0 +1,11 @@
+name: eval-runner-regression-001
+skill: eval-runner
+kind: positive
+tag: regression
+input:
+  - turn: 1
+    user: "run the eval scenarios for the tdd-strict skill"
+expected:
+  - response_must_contain: ["run-eval", "scenario"]
+    response_must_contain_match: any
+  - tool_call_required: { namePattern: "bash|Bash" }

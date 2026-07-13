@@ -16,7 +16,7 @@ If `memory.backend` is not `hindsight` or `mnemopi`, log a warning and skip all 
 
 ## When to `recall` (flow start, before planning)
 
-Call `recall` before the first substantive tool call in any planning or analysis step. Core roles that must recall before first tool call: `pi-oven:planner`, `pi-oven:oracle`, `pi-oven:architect`, `pi-oven:critic`, `pi-oven:deep-researcher`.
+Call `recall` before the first substantive tool call in any planning or analysis step. Core roles that must recall before first tool call: `pov:planner`, `pov:oracle`, `pov:architect`, `pov:critic`, `pov:deep-researcher`.
 
 Recall query patterns:
 - `"prior decisions for <feature/module>"`
@@ -69,7 +69,7 @@ Do not retain: intermediate tool results, work-in-progress, uncertain hypotheses
 `recall` prior investigation of this component before tracer fan-out (Phase 2). `retain` confirmed root cause on exit.
 
 ### improve-codebase-architecture
-`recall` prior architecture decisions and ADRs before `pi-oven:explorer` dispatch (Step 1 Survey). `retain` the accepted architecture change.
+`recall` prior architecture decisions and ADRs before `pov:explorer` dispatch (Step 1 Survey). `retain` the accepted architecture change.
 
 ### large-task-delegation
 `recall` prior delegation outcomes for this task type before dispatch anatomy. `retain` delegation result and lessons.

@@ -105,12 +105,30 @@ If classification is ambiguous, ask one clarifying question before proceeding.
 
 For **Build from Scratch**, **Architecture**, and **Research** intents: dispatch explorer and librarian agents first to gather context, then ask informed questions.
 
+Submit these heterogeneous calls in the same response turn. OMP may run them concurrently when async is enabled.
+
+<!-- pi-oven-contract:task-example -->
+```ts
+task({
+  agent: "pov:explorer",
+  tasks: [{
+    id: "existing-patterns",
+    description: "Find existing implementation patterns",
+    assignment: "Analyze the request to build [feature type]. Find similar implementations, their structure, naming patterns, and architectural approach. Return absolute file paths.",
+  }],
+});
 ```
-# Dispatch in parallel when possible
 
-task(subagent_type="pov:explorer", prompt="Context: analyzing a request to build [feature type]. Goal: understand existing patterns. Question: what similar implementations exist in this codebase? Request: find their structure, naming patterns, and architectural approach. Return absolute file paths.")
-
-task(subagent_type="pov:librarian", prompt="Context: implementing [technology/library]. Goal: understand best practices before making recommendations. Question: what are the official guidance, common patterns, and known pitfalls? Request: find Tier 1 sources with citations.")
+<!-- pi-oven-contract:task-example -->
+```ts
+task({
+  agent: "pov:librarian",
+  tasks: [{
+    id: "official-guidance",
+    description: "Research official implementation guidance",
+    assignment: "Research [technology/library]. Find official guidance, common patterns, and known pitfalls. Return Tier 1 sources with citations.",
+  }],
+});
 ```
 
 For **Refactoring** intents: dispatch explorer to map all usages and call sites before asking questions.

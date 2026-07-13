@@ -1,19 +1,20 @@
 name: systematic-debugging-smoke-001
 skill: systematic-debugging
+kind: positive
 tag: smoke
 input:
   - turn: 1
     user: "The auth tests are failing with a TypeError: Cannot read properties of undefined. Help me debug this."
 expected:
-  - skill_read_required: "systematic-debugging"
-  - agent_response_must_contain:
+  - skill_activation_required: "systematic-debugging"
+  - response_must_contain:
       - "root cause"
       - "Phase 1"
       - "reproduce"
       - "stack trace"
       - "investigate"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "quick fix"
       - "just try"
       - "probably"

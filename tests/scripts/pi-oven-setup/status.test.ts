@@ -605,13 +605,7 @@ describe("runStatus — project layer", () => {
     expect(plannerLine).toContain("default(frontmatter)");
   });
 
-  it("surfaces the wide-wave policy separately from the configured native worker ceiling", async () => {
-    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
-    writeFileSync(
-      join(cwd, ".pi-oven", "config.json"),
-      JSON.stringify({ nativeWorkers: { maxWorkers: 32 } }, null, 2) + "\n",
-      "utf-8"
-    );
+  it("surfaces OMP task as the dispatch seam and its actual concurrency controls", async () => {
     const spawnFn = makeSpawnFn({ overrides: {}, ignoredSkills: [] });
 
     const result = await runStatus({
@@ -620,13 +614,11 @@ describe("runStatus — project layer", () => {
       cwd,
       pluginAssetPath: join(import.meta.dir, "..", "..", ".."),
     });
-    expect(result.output).toContain("native worker runtime");
-    expect(result.output).toContain("scripts/pi-oven-team/index.ts");
-    expect(result.output).toContain("native worker ceiling");
+    expect(result.output).toContain("task dispatch");
+    expect(result.output).toContain("OMP task is the single dispatch seam");
     expect(result.output).toContain("8-12");
-    expect(result.output).toContain("nativeWorkers.maxWorkers=32");
-    expect(result.output).toContain(join(cwd, ".pi-oven", "config.json"));
-    expect(result.output).toMatch(/enforces this ceiling|cannot enforce this ceiling/i);
+    expect(result.output).toContain("task.maxConcurrency");
+    expect(result.output).toContain("provider/runtime admission");
   });
 
   it("surfaces missing machine-global prerequisites when project routing is active", async () => {
@@ -645,7 +637,7 @@ describe("runStatus — project layer", () => {
     });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
-    expect(result.output).toContain("Standalone truth surface:");
+    expect(result.output).toContain("Runtime contract truth surface:");
     expect(result.output).toContain("project-scope remediation");
     expect(result.output).toContain("memory.backend");
     expect(result.output).toContain("async.enabled");
@@ -775,7 +767,7 @@ describe("runStatus — project layer", () => {
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toContain("control-plane front door");
-    expect(result.output).toContain("native worker runtime");
+    expect(result.output).toContain("task dispatch");
     expect(result.output).not.toContain("sibling-skill suppression");
   });
 
@@ -787,7 +779,7 @@ describe("runStatus — project layer", () => {
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
     expect(result.output).toContain("control-plane front door");
-    expect(result.output).toContain("native worker runtime");
+    expect(result.output).toContain("task dispatch");
     expect(result.output).not.toContain("sibling-skill suppression");
   });
 
@@ -800,7 +792,7 @@ describe("runStatus — project layer", () => {
     expect(result.output).toContain("not a blocker yet");
   });
 
-  it("treats the vendored native worker runtime as the only temporary adapter boundary", async () => {
+  it("reports OMP task dispatch without a temporary scheduler boundary", async () => {
     const spawnFn = makeSpawnFn({
       overrides: {},
       ignoredSkills: [],
@@ -808,9 +800,9 @@ describe("runStatus — project layer", () => {
     });
 
     const result = await runStatus({ spawnFn, agentsDir, cwd });
-    expect(result.output).toContain("native worker runtime");
-    expect(result.output).toContain("Only temporary adapter boundary remains");
-    expect(result.output).toContain("scripts/pi-oven-team/index.ts");
+    expect(result.output).toContain("task dispatch");
+    expect(result.output).toContain("OMP task is the single dispatch seam");
+    expect(result.output).toContain("task.maxConcurrency");
     expect(result.output).not.toContain("clean-room isolation");
   });
 

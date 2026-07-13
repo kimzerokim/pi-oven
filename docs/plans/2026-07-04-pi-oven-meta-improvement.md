@@ -1,3 +1,6 @@
+> Historical architecture; implementation removed in vNext; OMP task is current dispatch seam
+> Superseded by [the runtime contract remediation implementation plan](2026-07-13-pi-oven-runtime-contract-remediation-implementation-plan.md).
+
 ## Goal
 
 pi-oven의 메타 제어면을 cwd source repo 기준의 pi-oven-native 계약으로 재정렬하고, deep interview·parallel runtime·autonomous gate·state split·release/install sync를 현재 코드 현실에 맞는 migration 순서와 검증 경계로 고정한다.

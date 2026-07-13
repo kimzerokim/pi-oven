@@ -37,7 +37,7 @@ deep-dive is **not** a relentless requirements interview — when full spec conv
 
 1. Parse the user's idea from the trigger input
 2. Generate a slug: kebab-case from the first 5 words, lowercased, special characters stripped
-3. Detect brownfield vs greenfield: dispatch `pov:explorer` (model: haiku) to check whether the working directory has existing source files, package files, or git history
+3. Detect brownfield vs greenfield: dispatch `pov:explorer` to check whether the working directory has existing source files, package files, or git history; runtime routing selects the model
 4. Generate 3 trace lane hypotheses. Default lanes (use unless the problem strongly suggests a better partition):
    - **Lane 1**: Code-path / implementation cause
    - **Lane 2**: Config / environment / orchestration cause
@@ -80,13 +80,13 @@ Present the 3 hypotheses to the user via `ask` for a single confirmation round:
 
 ## Phase 3: Trace execution
 
-Dispatch `pov:tracer` (agent file: `agents/pov-tracer.md`) for each confirmed hypothesis, and co-spawn `pov:deep-researcher` as ONE additional sibling in the same `task` call. All agents run concurrently — one task entry per tracer lane plus one for deep-researcher, all in the same response turn, each with `run_in_background: true`.
+Dispatch one `task` call with `agent: "pov:tracer"` and one task item per confirmed hypothesis. Submit a separate `task` call with `agent: "pov:deep-researcher"` in the same response turn. A single call cannot mix heterogeneous agents. OMP may execute the calls concurrently when async is enabled; concurrency is not guaranteed when it is disabled.
 
 `pov:deep-researcher` is NOT a numbered hypothesis lane. Its role is to surface prior art and known issues for the problem area. Its output feeds Phase-4 Injection-2 (codebase/context) — not the `## Ranked Hypotheses` table. Do not use "4th parallel lane" framing; lane count = N confirmed hypotheses.
 
 **irc coordination.** Each tracer and deep-researcher should call `irc(op:"list")` on start to discover co-resident sibling peer ids. When a tracer lane confirms the root cause, it broadcasts in plain prose: `irc(op:"send", to:"all", message:"root cause confirmed in <component>: <summary>")` — other lanes may terminate early on receiving this. When deep-researcher completes its prior-art sweep, it broadcasts: `irc(op:"send", to:"all", message:"prior-art research complete: <key finding>")`.
 
-This parallel dispatch pattern is established in `skills/large-task-delegation/SKILL.md:51`: "multiple task calls in one response, each with run_in_background: true".
+This dispatch pattern follows `skills/large-task-delegation/SKILL.md`: same-role work shares one `tasks[]` call, while heterogeneous roles use separate calls submitted in the same response turn.
 
 Each tracer lane must use `ast_grep` for structural pattern analysis and `lsp references` / `lsp definition` to map causal chains. For any external/library/API/framework question encountered during tracing, the lane MUST use `web_search` and read the source — never answer from training data (source is truth, training data is history). Each lane must:
 - Own exactly one hypothesis
@@ -182,8 +182,8 @@ Any option whose path writes code must follow `tdd-strict` — the failing test 
 ## Tool usage
 
 - `ask` for lane confirmation (Phase 2) and each bounded clarification question (Phase 4) — prefer `pi-oven_ask` with `{label, description}` options for single-select choices so rationales show beside each option; keep built-in `ask` for multi-select / free-form
-- `task` with `run_in_background: true` to dispatch 3 parallel `pov:tracer` lanes (Phase 3)
-- `pov:explorer` (model: haiku) for brownfield codebase detection (Phase 1)
+- `task` with one `pov:tracer` call containing 3 independent lane items (Phase 3)
+- `pov:explorer` for brownfield codebase detection (Phase 1)
 - `write` to save trace result to `.pi-oven/specs/deep-dive-trace-{slug}.md` and final spec to `.pi-oven/specs/deep-dive-{slug}.md`
 
 ## Stop conditions
@@ -207,7 +207,7 @@ User: deep dive into why our auth token expires early
 
 [Phase 2] User confirms hypotheses.
 
-[Phase 3] 3 parallel pov:tracer dispatches (run_in_background: true).
+[Phase 3] One pov:tracer dispatch with 3 independent task items; actual concurrency depends on OMP async settings.
   Synthesis: Most likely = clock skew (Lane 2, High confidence)
   Per-lane critical unknowns:
     Lane 1: where TTL is set vs. where it is validated

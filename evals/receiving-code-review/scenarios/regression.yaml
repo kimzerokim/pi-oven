@@ -1,12 +1,13 @@
 name: receiving-code-review-regression-001
 skill: receiving-code-review
+kind: positive
 tag: regression
 input:
   - turn: 1
     user: "리뷰 피드백 반영: the PR thread has three comments. Comment 1: rename getUserById to fetchUserById. Comment 2 and 3 are unclear — comment 2 says 'fix the handler' without specifying which handler, and comment 3 references a file path that does not exist."
 expected:
-  - skill_read_required: "receiving-code-review"
-  - agent_response_must_contain:
+  - skill_activation_required: "receiving-code-review"
+  - response_must_contain:
       - "unclear"
       - "clarif"
       - "comment 2"
@@ -14,8 +15,8 @@ expected:
       - "which handler"
       - "does not exist"
       - "before implementing"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "Let me implement that now"
       - "will implement all"
       - "implementing now"

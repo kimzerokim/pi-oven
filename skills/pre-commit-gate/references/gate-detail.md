@@ -50,7 +50,7 @@ Preserved invariants:
 
 **Trigger**: every commit. Skip if the diff is a trivial 1-line flag change (must state `ai-slop-cleaner skipped (trivial)` in commit body).
 
-**Procedure**: invoke `pi-oven:code-simplifier` on the changed files. Removes dead code, duplicate logic, needless abstraction, and boundary leaks.
+**Procedure**: invoke `pov:code-simplifier` on the changed files. Removes dead code, duplicate logic, needless abstraction, and boundary leaks.
 
 **Failure**: apply cleaner output, re-stage, new commit.
 

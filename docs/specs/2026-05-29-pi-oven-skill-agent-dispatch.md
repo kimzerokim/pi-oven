@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Spec D: omp plugin 의 15 skill ↔ 23 pi-oven agent dispatch 정합
 
 **Status**: Draft v1 — 2026-05-29 (cycle 1)

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { validateAgentRegistry } from "../../.omp/extensions/pi-oven";
+import { inspectAgentRegistry } from "../../.omp/extensions/pi-oven";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-repro-${Date.now()}`);
@@ -10,15 +10,12 @@ function makeTempDir(): string {
   return dir;
 }
 
-describe("validateAgentRegistry multiline repro", () => {
+describe("inspectAgentRegistry multiline repro", () => {
   let tempDir: string;
-  let errors: string[];
-  let logger: { error(msg: string): void };
 
   beforeEach(() => {
     tempDir = makeTempDir();
-    errors = [];
-    logger = { error(msg: string) { errors.push(msg); } };
+    cpSync(join(import.meta.dir, "../../agents"), tempDir, { recursive: true });
   });
 
   afterEach(() => {
@@ -28,28 +25,27 @@ describe("validateAgentRegistry multiline repro", () => {
   it("still catches the provider violation when the body mentions pov dispatch syntax", () => {
     // This model block uses multiline format.
     // The broken parser would see "model: " and yield an empty string or undefined.
-    // If it yields undefined/missing, validateAgentRegistry might log a "Profile A guarantee broken" error
-    // instead of a "WHITELIST VIOLATION" error.
+    // If it yields undefined/missing, inspection reports missing-model instead of
+    // the provider violation.
     // The body mention of `pov:explorer` is a regression guard for the runtime canonical namespace:
     // registry validation must remain driven by frontmatter model parsing only.
 
+    const executorPath = join(tempDir, "pov-executor.md");
     writeFileSync(
-      join(tempDir, "pov-bad.md"),
-      [
-        "---",
-        "model:",
-        "  - google/gemini-flash",
-        "---",
-        "# Agent",
-        "Dispatch via pov:explorer",
-      ].join("\n")
+      executorPath,
+      readFileSync(executorPath, "utf8").replace(
+        /^model:\s*\n(?:\s+- .+\n?)+/m,
+        "model:\n  - google/gemini-flash\n"
+      )
     );
 
-    validateAgentRegistry(tempDir, logger);
-
-    // If the parser is fixed, it should see google/gemini-flash and log a WHITELIST VIOLATION.
-    // If it is broken, it might log "Profile A guarantee broken: model missing" (because it thinks model is empty).
-    const violation = errors.find(e => e.includes("WHITELIST VIOLATION") && e.includes("google/gemini-flash"));
-    expect(violation).toBeDefined();
+    const report = inspectAgentRegistry(tempDir);
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({
+        code: "invalid-model-provider",
+        file: "pov-executor.md",
+        role: "executor",
+      })
+    );
   });
 });

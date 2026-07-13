@@ -1,14 +1,15 @@
 name: subagent-driven-development-smoke-001
 skill: subagent-driven-development
+kind: positive
 tag: smoke
 input:
   - turn: 1
     user: "I have a plan at docs/plans/foo-plan.md with 3 independent tasks. Execute the plan by dispatching subagents per task."
 expected:
-  - skill_read_required: "subagent-driven-development"
-  - agent_response_must_contain:
+  - skill_activation_required: "subagent-driven-development"
+  - response_must_contain:
       - "spec compliance"
       - "fresh subagent"
       - "two-stage"
       - "implementer"
-    agent_response_must_contain_match: any
+    response_must_contain_match: any

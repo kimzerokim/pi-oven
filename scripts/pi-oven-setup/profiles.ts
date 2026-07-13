@@ -3,36 +3,15 @@
  * pi-oven runtime/setup now exposes a single codex-only routing surface.
  */
 
-export const EXPECTED_AGENT_COUNT = 24; // matches Spec A §4 taxonomy
+import {
+  EXPECTED_ROLE_COUNT,
+  ROLE_NAMES,
+  type RoleName,
+} from "../../.omp/extensions/pi-oven-runtime/runtime-contract";
 
-export const ROLES = [
-  "executor",
-  "explorer",
-  "verifier",
-  "critic",
-  "planner",
-  "code-reviewer",
-  "debugger",
-  "test-engineer",
-  "security-reviewer",
-  "writer",
-  "designer",
-  "code-simplifier",
-  "qa-tester",
-  "git-master",
-  "document-specialist",
-  "tracer",
-  "analyst",
-  "architect",
-  "librarian",
-  "multimodal-looker",
-  "oracle",
-  "metis",
-  "deep-researcher",
-  "data-runner",
-] as const;
-
-export type Role = (typeof ROLES)[number];
+export const EXPECTED_AGENT_COUNT = EXPECTED_ROLE_COUNT; // compatibility alias
+export const ROLES = ROLE_NAMES; // one-release compatibility alias
+export type Role = RoleName;
 
 export interface ModelEntry {
   primary: string;
@@ -104,9 +83,8 @@ const QA_TESTER_TOOLS = [
  *     rollouts where extra latency buys correctness.
  *   - medium for retrieval, docs, writing, git, and vision fan-out.
  * This biases routing for aggressive subagent batching. The policy target stays
- * 8-12 dependency-safe siblings per wave; `nativeWorkers.maxWorkers` is
- * pi-oven's own ceiling knob, but until the native runtime path is active actual
- * live workers still depend on omp/runtime/provider limits.
+ * 8-12 dependency-safe siblings per wave; OMP `task.maxConcurrency` and
+ * provider/runtime admission determine actual live-worker capacity.
  */
 export const DEFAULT_PROFILE: ProfileMap = {
   executor: {

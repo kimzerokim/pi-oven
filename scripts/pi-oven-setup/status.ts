@@ -26,9 +26,9 @@ import {
 } from "./project-settings";
 import {
   AGENT_NAMESPACE_DRIFT_LABEL,
-  collectStandaloneTruthSignals,
+  collectRuntimeTruthSurface,
   DUAL_PLUGIN_SURFACE_LABEL,
-  formatStandaloneTruthSignals,
+  formatRuntimeTruthSurface,
   HEALTHY_SINGLE_POV_SURFACE_LABEL,
   MIXED_MIGRATION_STATE_LABEL,
   OLD_CONFIG_KEYS_LABEL,
@@ -48,6 +48,8 @@ export interface StatusOptions extends ConfigYmlOpts {
   homeDir?: string;
   /** Project root whose `.omp/settings.json` layer is shown (default cwd). */
   cwd?: string;
+  /** Last trusted-provider canary receipt (tests or downloaded CI artifact). */
+  liveCanaryReceiptPath?: string;
 }
 
 const ROLE_NAME_MAP: Record<string, true> = Object.fromEntries(
@@ -64,7 +66,10 @@ async function resolveStatusPluginAssetPath(
   cwd: string
 ): Promise<string> {
   if (opts?.pluginAssetPath) return path.resolve(opts.pluginAssetPath);
-  if (opts?.agentsDir) return path.resolve(opts.agentsDir, "..");
+  if (opts?.agentsDir) {
+    const candidate = path.resolve(opts.agentsDir, "..");
+    return looksLikePluginRoot(candidate) ? candidate : PLUGIN_ROOT_UNAVAILABLE;
+  }
   if (looksLikePluginRoot(cwd)) return path.resolve(cwd);
   return PLUGIN_ROOT_UNAVAILABLE;
 }
@@ -316,19 +321,16 @@ export async function runStatus(
   }
 
   const pluginAssetPath = await resolveStatusPluginAssetPath(opts, cwd);
+  const runtimeTruth = await collectRuntimeTruthSurface({
+    ...opts,
+    pluginAssetPath,
+    projectRoot: cwd,
+  });
   lines.push("");
-  lines.push(
-    ...formatStandaloneTruthSignals(
-      await collectStandaloneTruthSignals({
-        ...opts,
-        pluginAssetPath,
-        projectRoot: cwd,
-      })
-    )
-  );
+  lines.push(formatRuntimeTruthSurface(runtimeTruth));
 
   return {
-    exitCode: 0,
+    exitCode: runtimeTruth.checks.some(({ status }) => status === "FAIL") ? 1 : 0,
     output: lines.join("\n") + "\n",
   };
 }

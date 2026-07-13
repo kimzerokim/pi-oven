@@ -1,17 +1,29 @@
 name: CI
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
 
 jobs:
   typecheck-and-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.14
       - name: Install deps
@@ -20,10 +32,24 @@ jobs:
         run: bun check
       - name: Build extension
         run: bun run build
-      - name: Run TDD tests (eval-runner + scripts)
-        run: bun test
-        # Real eval execution (bun scripts/run-eval.ts --tag smoke) requires LLM provider keys
-        # and is gated behind Plan 4 (setup wizard + CI secrets bootstrap).
+      - name: Run hermetic tests with coverage
+        run: bun run test:hermetic -- --coverage --coverage-reporter=lcov --coverage-reporter=text
+      - name: Enforce coverage floors and no-decrease ratchet
+        run: bun run check:coverage -- --baseline-ref origin/main
+      - name: Offline eval contract, adapter, and static dispatch gate
+        run: >-
+          bun test
+          tests/scripts/eval-scenario-shape.test.ts
+          tests/scripts/eval-runner.test.ts
+          tests/scripts/omp-eval-event-adapter.test.ts
+          tests/scripts/run-eval.test.ts
+          tests/plugin/task-dispatch-canary.test.ts
+      - name: Run correctness-first runtime benchmark
+        run: bun run bench:runtime
+      - name: Run fake-ok discrimination gate
+        run: bun scripts/check-eval-discrimination.ts
+      - name: Run integrated release rehearsal
+        run: bun scripts/rehearse-release.ts
       - name: Lint pi-oven agent files
         run: bun run lint:agents
       - name: Lint pi-oven skill files
@@ -32,13 +58,138 @@ jobs:
         run: |
           jq . .claude-plugin/marketplace.json > /dev/null
           jq . .claude-plugin/plugin.json > /dev/null
-      - name: Version parity check (package.json == plugin.json == marketplace.json)
+      - name: Version and immutable-ref contract
+        run: bun run release:contract -- --tag "v$(jq -r .version package.json)" --check-only
+      - name: Upload release rehearsal receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime-contract-rehearsal-${{ github.run_id }}
+          path: artifacts/runtime-contract-rehearsal.json
+          if-no-files-found: error
+
+  trusted-provider-canary:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      PI_OVEN_EVAL_AGENT_DB_B64: ${{ secrets.PI_OVEN_EVAL_AGENT_DB_B64 }}
+      PI_OVEN_EVAL_MODEL: openai-codex/gpt-5.4
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - name: Install exact dependencies
+        run: bun install --frozen-lockfile
+      - name: Determine trusted canary eligibility
+        id: trust
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
         run: |
-          PKG=$(jq -r .version package.json)
-          PLG=$(jq -r .version .claude-plugin/plugin.json)
-          MKT=$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)
-          echo "package.json=$PKG plugin.json=$PLG marketplace.json=$MKT"
-          if [ "$PKG" != "$PLG" ] || [ "$PLG" != "$MKT" ]; then
-            echo "::error::Version SoT mismatch across package.json / plugin.json / marketplace.json"
-            exit 1
+          mkdir -p artifacts
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=fork-pull-request" >> "$GITHUB_OUTPUT"
+          elif [ -z "$PI_OVEN_EVAL_AGENT_DB_B64" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=credentials-unavailable" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=trusted" >> "$GITHUB_OUTPUT"
           fi
+      - name: Record trusted canary NOT RUN
+        if: steps.trust.outputs.run != 'true'
+        run: >-
+          bun scripts/canary-runtime-dispatch.ts
+          --out artifacts/trusted-canary-receipt.json
+          --not-run-reason "${{ steps.trust.outputs.reason }}"
+      - name: Install trusted provider credentials
+        if: steps.trust.outputs.run == 'true'
+        run: |
+          mkdir -p "$HOME/.omp/agent"
+          printf '%s' "$PI_OVEN_EVAL_AGENT_DB_B64" | base64 --decode > "$HOME/.omp/agent/agent.db"
+          chmod 600 "$HOME/.omp/agent/agent.db"
+      - name: Run exact six-scenario trusted provider canary
+        if: steps.trust.outputs.run == 'true'
+        run: >-
+          timeout --signal=TERM 12m
+          bun scripts/canary-runtime-dispatch.ts
+          --out artifacts/trusted-canary-receipt.json
+          --model "$PI_OVEN_EVAL_MODEL"
+          --strict --require-scenarios
+      - name: Report trusted provider canary status
+        if: always()
+        run: |
+          STATUS=$(jq -r .status artifacts/trusted-canary-receipt.json)
+          echo "Trusted provider canary: ${STATUS/NOT_RUN/NOT RUN}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload trusted canary receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: trusted-provider-canary-${{ github.run_id }}
+          path: artifacts/trusted-canary-receipt.json
+          if-no-files-found: error
+
+  nightly-full-eval:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PI_OVEN_EVAL_AGENT_DB_B64: ${{ secrets.PI_OVEN_EVAL_AGENT_DB_B64 }}
+      PI_OVEN_EVAL_MODEL: openai-codex/gpt-5.4
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - name: Install exact dependencies
+        run: bun install --frozen-lockfile
+      - name: Prepare nightly eval receipt
+        id: nightly
+        run: |
+          mkdir -p artifacts
+          if [ -z "$PI_OVEN_EVAL_AGENT_DB_B64" ]; then
+            jq -n --arg model "$PI_OVEN_EVAL_MODEL" '{tier:"nightly-full-eval",status:"NOT_RUN",reason:"credentials-unavailable",exactModel:$model,seedPolicy:"scenario-authored input order",retryPolicy:"none"}' > artifacts/nightly-receipt.json
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            jq -n --arg model "$PI_OVEN_EVAL_MODEL" '{tier:"nightly-full-eval",status:"RUNNING",exactModel:$model,seedPolicy:"scenario-authored input order",retryPolicy:"none"}' > artifacts/nightly-receipt.json
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install trusted provider credentials
+        if: steps.nightly.outputs.run == 'true'
+        run: |
+          mkdir -p "$HOME/.omp/agent"
+          printf '%s' "$PI_OVEN_EVAL_AGENT_DB_B64" | base64 --decode > "$HOME/.omp/agent/agent.db"
+          chmod 600 "$HOME/.omp/agent/agent.db"
+      - name: Run nightly full strict eval
+        if: steps.nightly.outputs.run == 'true'
+        run: >-
+          timeout --signal=TERM 50m
+          bun scripts/run-eval.ts --strict --require-scenarios
+          --model "$PI_OVEN_EVAL_MODEL"
+          --out artifacts/nightly-eval.jsonl
+      - name: Mark nightly eval PASS
+        if: steps.nightly.outputs.run == 'true' && success()
+        run: >-
+          jq '.status = "PASS"' artifacts/nightly-receipt.json
+          > artifacts/nightly-receipt.next.json
+          && mv artifacts/nightly-receipt.next.json artifacts/nightly-receipt.json
+      - name: Report nightly eval status
+        if: always()
+        run: |
+          STATUS=$(jq -r .status artifacts/nightly-receipt.json)
+          echo "Nightly full eval: ${STATUS/NOT_RUN/NOT RUN}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload nightly eval evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nightly-full-eval-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: error

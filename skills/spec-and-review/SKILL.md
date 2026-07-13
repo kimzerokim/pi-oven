@@ -19,7 +19,7 @@ Do not invoke for doc-only edits, changelog entries, or minor README updates. Th
 
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
-Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits (≤30 LoC) or operational commands (git status / ls / install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`). Match the agent to the work (model-fit + role-fit is first-class): critic review → `pi-oven:critic`; design pressure-test → `pi-oven:architect`; plan synthesis → `pi-oven:planner`.
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits (≤30 LoC) or operational commands (git status / ls / install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`). Match the agent to the work (model-fit + role-fit is first-class): critic review → `pov:critic`; design pressure-test → `pov:architect`; plan synthesis → `pov:planner`.
 
 ## Step 0 — codebase-survey precondition
 
@@ -57,8 +57,8 @@ Repeat until Gate decides PASS or HALT:
 Draft → Critic → Synthesize → Gate
 ```
 
-- **Draft** (Cycle 1): dispatch `pi-oven:planner` or `pi-oven:executor` via omp `task`. ENFORCEMENT: Main dispatches a subagent for the draft research and authoring. Main MUST NOT research or draft the spec inline. Exception: ≤5 LoC changes may be drafted inline by main.
-- **Critic**: dispatch one fresh `pi-oven:critic` from the current session provider family by default. Widen to same-family parallel critics only when the review is high-risk and an independent disagreement check is justified (see Current-session provider-family critic).
+- **Draft** (Cycle 1): dispatch `pov:planner` or `pov:executor` via omp `task`. ENFORCEMENT: Main dispatches a subagent for the draft research and authoring. Main MUST NOT research or draft the spec inline. Exception: ≤5 LoC changes may be drafted inline by main.
+- **Critic**: dispatch one fresh `pov:critic` from the current session provider family by default. Widen to same-family parallel critics only when the review is high-risk and an independent disagreement check is justified (see Current-session provider-family critic).
 - **Synthesize**: merge critic outputs; categorize findings as 🔴 / 🟡 / ⚪.
 - **Gate**: evaluate cycle outcome (see Gate decision).
 
@@ -78,7 +78,7 @@ pi-oven uses internal omp `task` fan-out for critic passes. Do not treat this as
 
 Default path: dispatch one fresh critic pass from the current-session provider family and synthesize that verdict.
 
-High-risk exception: widen to two independent critic passes from the same provider family only when the change needs an explicit disagreement check. Both critics receive the identical prompt. Collect every configured same-family critic response before synthesizing. If one of the widened critics fails, retry that lane once before collapsing back to the single-critic path.
+High-risk exception: widen to two independent critic passes from the same provider family only when the change needs an explicit disagreement check. Both critics receive the identical prompt. Collect every configured same-family critic response before synthesizing. If one widened lane fails, dispatch a fresh `pov:critic` process once with the failed lane's prior report and original context before collapsing back to the single-critic path.
 
 ## Verdict file convention
 
@@ -115,15 +115,15 @@ When running spec-and-review inside omp:
 
 **Memory (Hindsight).** At flow entry, before any agent dispatch: `recall({query: "prior specs decisions <topic>"})` to surface relevant prior decisions, past spec outcomes, and rejected alternatives. After Gate PASS (plan approved): `retain({items: [{content: "<spec-name> approved — key decisions: <summary>", context: "spec-and-review"}]})`. If `memory.backend` is not configured, skip gracefully without error.
 
-- Step 0 (codebase survey precondition): dispatch `pi-oven:explorer`, and `pi-oven:librarian` when external research is needed.
-- Step 0b (novel domain / SOTA research): dispatch `pi-oven:deep-researcher` for academic papers, external library research, or SOTA landscape — runs alongside librarian, not as a replacement.
-- Step 1 (draft authoring): dispatch `pi-oven:planner` or `pi-oven:executor` for draft authoring; main scopes and reviews the loop, and consults `pi-oven:architect` for system-design decisions. If the draft will reference external SDK/framework APIs, dispatch `pi-oven:document-specialist` BEFORE writing the API-surface section to verify signatures and version compatibility — do not draft external API surfaces from memory.
-- Step 2 (same-provider-family critic review): dispatch one fresh `pi-oven:critic` by default, and widen to same-family parallel critics only for high-risk disagreement checks.
+- Step 0 (codebase survey precondition): dispatch `pov:explorer`, and `pov:librarian` when external research is needed.
+- Step 0b (novel domain / SOTA research): dispatch `pov:deep-researcher` for academic papers, external library research, or SOTA landscape — runs alongside librarian, not as a replacement.
+- Step 1 (draft authoring): dispatch `pov:planner` or `pov:executor` for draft authoring; main scopes and reviews the loop, and consults `pov:architect` for system-design decisions. If the draft will reference external SDK/framework APIs, dispatch `pov:document-specialist` BEFORE writing the API-surface section to verify signatures and version compatibility — do not draft external API surfaces from memory.
+- Step 2 (same-provider-family critic review): dispatch one fresh `pov:critic` by default, and widen to same-family parallel critics only for high-risk disagreement checks.
 
 **irc coordination at critic fan-out.** When dispatching the optional parallel critic review inside the current session provider family, each critic subagent must: (1) call `irc(op:"list")` to discover sibling peer ids; (2) broadcast confirmed P0/P1 findings via `irc(op:"send", to:"all", message:"P0 finding confirmed in <file>: <summary>", awaitReply:false)` so the other critics and the orchestrator are immediately notified. The orchestrator awaits all critic replies before synthesizing — do not poll; await the task results directly.
 
 - Step 3 (synthesis and acceptance loop): the main agent owns synthesis.
-- Experiment-style verification (falsifiability) when relevant: dispatch `pi-oven:analyst`.
-- Empirical metric / performance spec validation: dispatch `pi-oven:data-runner` to confirm numeric claims before locking the spec.
+- Experiment-style verification (falsifiability) when relevant: dispatch `pov:analyst`.
+- Empirical metric / performance spec validation: dispatch `pov:data-runner` to confirm numeric claims before locking the spec.
 
-**External-research trigger heuristic.** Dispatch `pi-oven:librarian` (Step 0) or `pi-oven:document-specialist` (Step 1) when the survey or draft involves an external API, SDK, third-party service, open-source library, or external data source whose behavior is not adequately documented in the codebase. When the codebase already pins the behavior (existing wrappers, recorded contracts, in-repo docs), no external research is needed.
+**External-research trigger heuristic.** Dispatch `pov:librarian` (Step 0) or `pov:document-specialist` (Step 1) when the survey or draft involves an external API, SDK, third-party service, open-source library, or external data source whose behavior is not adequately documented in the codebase. When the codebase already pins the behavior (existing wrappers, recorded contracts, in-repo docs), no external research is needed.

@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Critic Review (cycle 2) — omp-tool-discipline + orchestrator-conduct (REVISED spec + plan)
 
 > Codex CLI unavailable; fell back to `oh-my-claudecode:critic` (opus). **Cycle: 2.**

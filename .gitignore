@@ -45,6 +45,9 @@ dist/
 evals/.runs/
 evals/.tmp/
 
+# Harness receipts — nondeterministic per-run evidence uploaded by CI, not source.
+artifacts/
+
 # Build artifacts
 *.tsbuildinfo
 coverage/

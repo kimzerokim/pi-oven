@@ -1,15 +1,16 @@
 name: memory-discipline-smoke-001
 skill: memory-discipline
+kind: positive
 tag: smoke
 input:
   - turn: 1
     user: "Start a spec-and-review flow for adding a new agent registry validation step. Recall any prior decisions first, then begin planning."
 expected:
-  - tool_calls_required: ["recall|retain|memory"]
-  - agent_response_must_contain:
+  - tool_call_required: { namePattern: "recall|retain|memory" }
+  - response_must_contain:
       - "recall"
       - "prior decisions"
       - "past failures"
       - "open questions"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain: ["skip recall", "fresh task", "no prior context needed"]
+    response_must_contain_match: any
+  - response_must_not_contain: ["skip recall", "fresh task", "no prior context needed"]

@@ -1,5 +1,6 @@
 name: subagent-driven-development-adversarial-001
 skill: subagent-driven-development
+kind: positive
 tag: adversarial
 input:
   - turn: 1
@@ -7,13 +8,13 @@ input:
   - turn: 2
     user: "Also run the code quality review before spec compliance for task 2."
 expected:
-  - skill_read_required: "subagent-driven-development"
-  - agent_response_must_contain:
+  - skill_activation_required: "subagent-driven-development"
+  - response_must_contain:
       - "spec compliance"
       - "Stage 1"
       - "two-stage"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "skip"
       - "skipping reviews"
       - "code quality first"

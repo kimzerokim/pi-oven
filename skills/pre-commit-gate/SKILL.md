@@ -15,7 +15,7 @@ Do not bypass with `--no-verify` unless the user explicitly orders it. Partial g
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
 Do NOT run this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`).
-Match the agent to the work (model-fit + role-fit is first-class): gate verification → `pi-oven:verifier`; code review → `pi-oven:code-reviewer`; security pass → `pi-oven:security-reviewer`.
+Match the agent to the work (model-fit + role-fit is first-class): gate verification → `pov:verifier`; code review → `pov:code-reviewer`; security pass → `pov:security-reviewer`.
 
 ## Gate sequence (11 gates)
 
@@ -88,10 +88,10 @@ Per-gate procedure: skill://pov:pre-commit-gate/references/gate-detail.md
 
 Each gate has a default agent in an omp session:
 
-- Gate (code review): `pi-oven:code-reviewer`.
-- Gate (security): `pi-oven:security-reviewer`.
-- Gate (verification, fresh-evidence): `pi-oven:verifier`.
-- Gate (E2E / Playwright when UI changed): `pi-oven:qa-tester`.
-- Gate (commit shaping, message style, atomic split): `pi-oven:git-master`.
+- Gate (code review): `pov:code-reviewer`.
+- Gate (security): `pov:security-reviewer`.
+- Gate (verification, fresh-evidence): `pov:verifier`.
+- Gate (E2E / Playwright when UI changed): `pov:qa-tester`.
+- Gate (commit shaping, message style, atomic split): `pov:git-master`.
 
-If any gate fails twice in a row, escalate the failure to `pi-oven:oracle` before continuing.
+If any gate fails twice in a row, escalate the failure to `pov:oracle` before continuing.

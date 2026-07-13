@@ -26,6 +26,7 @@ import {
 } from "./gate-state";
 import type { ApprovalFlowState, DeepInterviewState } from "./deep-interview-state";
 import type { VerifierDepthDecision } from "./verifier-depth-policy";
+import type { CapabilityPolicyDecision } from "./capability-policy";
 export interface FsmStateData {
   active: boolean;
   gateCache: { commit?: string; regression?: string };
@@ -34,7 +35,7 @@ export interface FsmStateData {
 /** Discriminated view of the FSM state file as seen by the gate. */
 export type FsmStateView =
   | { kind: "ABSENT" }
-  | { kind: "CORRUPT" }
+  | { kind: "CORRUPT"; reason?: string }
   | { kind: "OK"; state: FsmStateData };
 
 export interface GateEnv {
@@ -58,6 +59,7 @@ export interface GateInput {
   verifierDepth?: VerifierDepthDecision;
   deepInterview?: DeepInterviewState;
   approvalFlow?: ApprovalFlowState;
+  capabilityPolicy?: CapabilityPolicyDecision;
 }
 
 export type ConsentSource = "env" | "file" | "none";
@@ -469,6 +471,29 @@ export function decideGate(input: GateInput): GateDecision {
     externalExecConsent,
   } = input;
 
+  if (input.capabilityPolicy?.block) {
+    return {
+      block: true,
+      reason:
+        input.capabilityPolicy.reason ??
+        "pi-oven: capability policy denied this tool call (fail-closed).",
+    };
+  }
+
+  const capabilityRule = input.capabilityPolicy?.rule;
+  if (
+    capabilityRule?.approval === "user-consent" &&
+    capabilityRule.risk === "external-mutation" &&
+    capabilityRule.toolName !== "bash"
+  ) {
+    return {
+      block: true,
+      reason:
+        `pi-oven: external mutation \`${capabilityRule.toolName}\` blocked — ` +
+        "no exact existing consent proof/consume-once adapter mediates this capability.",
+    };
+  }
+
   const externalMatches = normalized.externalMatches ?? [];
   const inlineSecretMatches = normalized.inlineSecretMatches ?? [];
 
@@ -528,10 +553,14 @@ export function decideGate(input: GateInput): GateDecision {
 
   const wantsCommit = normalized.gitVerbs.includes("commit");
   const wantsPush = normalized.gitVerbs.includes("push");
-  const wantsCodeWrite = isCodeWriteTool(toolName);
+  const wantsCodeWrite =
+    isCodeWriteTool(toolName) ||
+    (capabilityRule?.capability === "code_write" && capabilityRule.approval === "state-proof");
+  const wantsLocalStateProof =
+    capabilityRule?.risk === "local-write" && capabilityRule.approval === "state-proof";
 
   // No gated verb → allow.
-  if (!wantsCommit && !wantsPush && !wantsCodeWrite) {
+  if (!wantsCommit && !wantsPush && !wantsCodeWrite && !wantsLocalStateProof) {
     return { block: false, consumeExternalExecConsent };
   }
 
@@ -564,6 +593,35 @@ export function decideGate(input: GateInput): GateDecision {
   }
   if (!fsm.state.active) {
     // no autonomous run in progress → gate inactive
+    return { block: false, consumeExternalExecConsent };
+  }
+
+  if (wantsLocalStateProof && !wantsCodeWrite) {
+    const { missingOwnershipSkills, unreadProofTargets } = getRemainingSkillProofs(
+      requiredSkills,
+      ownedSkillReadTargets,
+      skillReads
+    );
+    if (missingOwnershipSkills.length > 0 || unreadProofTargets.length > 0) {
+      const missing = [
+        ...missingOwnershipSkills,
+        ...unreadProofTargets.map(({ name, target }) => `${name} -> ${target}`),
+      ].join(", ");
+      const reason =
+        `pi-oven: local mutation \`${capabilityRule?.toolName ?? toolName ?? "unknown"}\` blocked — ` +
+        `the existing autonomous skill state proof is incomplete (${missing}).`;
+      return {
+        block: true,
+        reason,
+        autonomyStopBoundary: {
+          blockedReason: { kind: "skill-proof-incomplete", message: reason },
+          nextAction: {
+            kind: "complete-skill-proof",
+            message: "Complete the exact plugin-owned skill reads, then retry the local mutation.",
+          },
+        },
+      };
+    }
     return { block: false, consumeExternalExecConsent };
   }
 

@@ -1,12 +1,14 @@
 ---
 name: autonomous-loop-refactor-routing-001
 skill: autonomous-loop
+kind: positive
 tag: regression
 input:
   - turn: 1
-    user: "/pi-oven:autonomous Refactor the release modules — they are tightly coupled and hard to test."
+    user: "$autonomous-loop Refactor the release modules — they are tightly coupled and hard to test."
 expected:
-  - skill_triggered: true
-  - agent_response_must_contain: ["branch", "destination", "PR", "improve-codebase-architecture"]
-  - agent_response_must_not_contain: ["main에서 바로", "직접 구현"]
-  - tool_calls_required: ["task|Task", "ask|AskUserQuestion"]
+  - skill_activation_required: "autonomous-loop"
+  - response_must_contain: ["branch", "destination", "PR", "improve-codebase-architecture"]
+  - response_must_not_contain: ["main에서 바로", "직접 구현"]
+  - tool_call_required: { namePattern: "task|Task" }
+  - tool_call_required: { namePattern: "ask|AskUserQuestion" }

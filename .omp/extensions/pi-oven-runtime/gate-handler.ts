@@ -9,9 +9,12 @@
 //   - emitToolCall is UN-TIMED in omp (§2 row 7). All handler work is wrapped in
 //     a Promise.race against a self-deadline (default 1500 ms). On overrun the
 //     handler THROWS → omp converts to {block:true} = fail-CLOSED (SAFE).
-//   - Bash calls are inspected for commit/push/forbidden gating. Task calls are
-//     inspected for canonical pi-oven dispatch ownership (allow exact `pov:<role>`,
-//     rewrite bare owned roles to `pov:<role>`, and surface legacy `pi-oven:<role>` as explicit migration feedback). Any other tool, or any
+//   - Every tool call first crosses the versioned capability-policy allowlist.
+//     Bash calls then reuse commit/push/external-consent mediation. Task calls
+//     enforce canonical pi-oven dispatch ownership (exact `pov:<role>` or a
+//     registered bare role rewritten to it; legacy names get migration feedback).
+//   - This is pi-oven policy mediation, not an OS/filesystem/network sandbox;
+//     the independent OMP sandbox remains the execution boundary.
 //   - Subagent sessions (isParentSession=false) are still GATED (read-only
 //     lookup) but NEVER mutate the FSM (single-writer rule, B4).
 //   - File push-consent is consumed (single-use) inside the mutex before the
@@ -57,6 +60,19 @@ import {
   deriveVerifierRisk,
   type VerifierDepthDecision,
 } from "./verifier-depth-policy";
+import {
+  ROLE_NAMES,
+  TaskDispatchSchema,
+  canonicalAgentName,
+  isRuntimeAgentName,
+  type RoleName,
+} from "./runtime-contract";
+import { getCapabilityRule } from "./capability-registry";
+import {
+  evaluateCapabilityPolicy,
+  type CapabilityPolicyDecision,
+  type CapabilityPolicyMode,
+} from "./capability-policy";
 
 export interface GateLogger {
   info(msg: string): void;
@@ -155,10 +171,9 @@ function decideCurrentVerifierDepth(
   });
 }
 
-const POV_AGENT_PREFIX = "pov:";
 const LEGACY_PI_OVEN_AGENT_PREFIX = "pi-oven:";
-const CANONICAL_AGENT_PATTERN = /^[a-z0-9-]+:[a-z0-9-]+$/;
 const BARE_AGENT_ROLE_PATTERN = /^[a-z0-9-]+$/;
+const REGISTERED_ROLE_SET = new Set<string>(ROLE_NAMES);
 
 interface TaskAgentDecision {
   block: boolean;
@@ -178,7 +193,6 @@ function classifyTaskAgent(
 ): TaskAgentDecision {
   const requested = agent.trim();
   const normalized = normalizeAgentName(agent);
-  const explicitForeign = new Set(explicitForeignAgents.map(normalizeAgentName));
 
   if (normalized.startsWith(LEGACY_PI_OVEN_AGENT_PREFIX)) {
     const role = normalized.slice(LEGACY_PI_OVEN_AGENT_PREFIX.length);
@@ -199,7 +213,7 @@ function classifyTaskAgent(
     };
   }
 
-  if (normalized.startsWith(POV_AGENT_PREFIX) && CANONICAL_AGENT_PATTERN.test(normalized)) {
+  if (isRuntimeAgentName(normalized)) {
     return {
       block: false,
       nextAgent: normalized,
@@ -218,8 +232,8 @@ function classifyTaskAgent(
     };
   }
 
-  if (BARE_AGENT_ROLE_PATTERN.test(normalized)) {
-    const canonical = `${POV_AGENT_PREFIX}${normalized}`;
+  if (BARE_AGENT_ROLE_PATTERN.test(normalized) && REGISTERED_ROLE_SET.has(normalized)) {
+    const canonical = canonicalAgentName(normalized as RoleName);
     return {
       block: false,
       nextAgent: canonical,
@@ -235,7 +249,7 @@ function classifyTaskAgent(
     };
   }
 
-  if (explicitForeign.has(normalized)) {
+  if (explicitForeignAgents.includes(requested)) {
     return {
       block: false,
       nextAgent: requested,
@@ -267,6 +281,19 @@ function classifyTaskAgent(
   };
 }
 
+function formatTaskDispatchSchemaIssues(
+  issues: ReadonlyArray<{ code: string; path?: ReadonlyArray<PropertyKey> }>
+): string {
+  return issues
+    .map((issue) => {
+      const path = issue.path?.length
+        ? issue.path.map((part) => String(part)).join(".")
+        : "<root>";
+      return `path=${path} code=${issue.code}`;
+    })
+    .join(", ");
+}
+
 async function appendOwnershipTrace(
   deps: GateHandlerDeps,
   trace: OwnershipTraceEntry
@@ -285,16 +312,38 @@ async function decideForTaskDispatch(
 ): Promise<ToolCallResultLike | void> {
   if (event.toolName !== "task") return undefined;
   const agent = event.input?.agent;
-  if (typeof agent !== "string" || agent.trim().length === 0) return { block: false };
+  if (typeof agent !== "string" || agent.trim().length === 0) {
+    const parsed = TaskDispatchSchema.safeParse(event.input);
+    return {
+      block: true,
+      reason: `pi-oven: task dispatch blocked — invalid runtime contract (${formatTaskDispatchSchemaIssues(parsed.success ? [] : parsed.error.issues)}).`,
+    };
+  }
   const currentState = deps.isParentSession ? await deps.store.readState() : { kind: "ABSENT" as const };
   const explicitForeignAgents =
     currentState.kind === "OK" ? (currentState.state.explicitForeignAgents ?? []) : [];
   const decision = classifyTaskAgent(agent, explicitForeignAgents);
+  if (decision.block) {
+    await appendOwnershipTrace(deps, decision.trace);
+    return { block: true, reason: decision.reason };
+  }
+
+  const schemaInput =
+    decision.trace.origin === "user-explicit"
+      ? { ...event.input, agent: canonicalAgentName(ROLE_NAMES[0]) }
+      : { ...event.input, agent: decision.nextAgent };
+  const parsed = TaskDispatchSchema.safeParse(schemaInput);
+  if (!parsed.success) {
+    return {
+      block: true,
+      reason: `pi-oven: task dispatch blocked — invalid runtime contract (${formatTaskDispatchSchemaIssues(parsed.error.issues)}).`,
+    };
+  }
   if (decision.nextAgent !== undefined && event.input !== undefined) {
     event.input = { ...event.input, agent: decision.nextAgent };
   }
   await appendOwnershipTrace(deps, decision.trace);
-  return decision.block ? { block: true, reason: decision.reason } : { block: false };
+  return { block: false };
 }
 
 export function toGateFsmView(view: FsmStateView): GateFsmView {
@@ -457,7 +506,8 @@ async function clearRecoveredAutonomyBoundaryState(
 async function decideForCodeWrite(
   deps: GateHandlerDeps,
   runtimeState: GateRuntimeState,
-  event: ToolCallEventLike
+  event: ToolCallEventLike,
+  capabilityPolicy: CapabilityPolicyDecision
 ): Promise<ToolCallResultLike | void> {
   const targetPath = getTargetPath(event.input);
   const traceWithFunction = traceFunction(
@@ -487,6 +537,7 @@ async function decideForCodeWrite(
     verifierDepth,
     deepInterview,
     approvalFlow,
+    capabilityPolicy,
   });
   await persistAutonomyBoundaryBlock(deps, fsmRaw, decision);
   await clearRecoveredAutonomyBoundaryState(deps, decision);
@@ -513,6 +564,11 @@ async function decideForToolCall(
   runtimeState: GateRuntimeState,
   event: ToolCallEventLike
 ): Promise<ToolCallResultLike | void> {
+  const capabilityPolicy = await evaluateToolCallCapability(deps, runtimeState, event);
+  if (capabilityPolicy.block) {
+    return { block: true, reason: capabilityPolicy.reason };
+  }
+
   const skillReadTarget = event.toolName === "read" ? getTargetPath(event.input) : null;
   if (skillReadTarget !== null) {
     await observeSkillRead(deps, runtimeState, skillReadTarget);
@@ -524,14 +580,45 @@ async function decideForToolCall(
     return taskDecision;
   }
 
-  if (isCodeWriteTool(event.toolName)) {
-    return decideForCodeWrite(deps, runtimeState, event);
+  if (
+    isCodeWriteTool(event.toolName) || capabilityPolicy.approval === "state-proof"
+  ) {
+    return decideForCodeWrite(deps, runtimeState, event, capabilityPolicy);
   }
 
-  if (event.toolName !== "bash") return undefined;
+  if (event.toolName !== "bash") {
+    if (capabilityPolicy.approval !== "user-consent") return undefined;
+    const decision = decideGate({
+      normalized: EMPTY_NORMALIZED_COMMAND,
+      fsm: { kind: "ABSENT" },
+      env: {},
+      fileConsentValid: false,
+      toolName: event.toolName,
+      capabilityPolicy,
+    });
+    return { block: decision.block, reason: decision.reason };
+  }
   const command = event.input?.command;
   if (typeof command !== "string" || command.length === 0) return undefined;
-  return decideForCommand(deps, runtimeState, command);
+  return decideForCommand(deps, runtimeState, command, capabilityPolicy);
+}
+
+async function evaluateToolCallCapability(
+  deps: GateHandlerDeps,
+  runtimeState: GateRuntimeState,
+  event: ToolCallEventLike
+): Promise<CapabilityPolicyDecision> {
+  let mode: CapabilityPolicyMode = "interactive";
+  if (getCapabilityRule(event.toolName) === undefined) {
+    const fsm = await readCachedFsm(deps, runtimeState);
+    mode = fsm.kind === "OK" && !fsm.state.active ? "interactive" : fsm.kind === "ABSENT" ? "interactive" : "autonomous";
+  }
+  return evaluateCapabilityPolicy({
+    toolName: event.toolName,
+    input: event.input,
+    mode,
+    audience: deps.isParentSession ? "parent" : "worker",
+  });
 }
 
 
@@ -584,7 +671,8 @@ export function createGateHandler(
 async function decideForCommand(
   deps: GateHandlerDeps,
   runtimeState: GateRuntimeState,
-  command: string
+  command: string,
+  capabilityPolicy?: CapabilityPolicyDecision
 ): Promise<ToolCallResultLike | void> {
   const normalized = normalizeCommand(command, deps.roots);
 
@@ -627,6 +715,7 @@ async function decideForCommand(
     fileConsentValid: fileConsent.valid,
     externalExecConsent,
     verifierDepth,
+    capabilityPolicy,
   });
   if (decision.block && wantsCommit) {
     runtimeState.trace = attachFailurePath(

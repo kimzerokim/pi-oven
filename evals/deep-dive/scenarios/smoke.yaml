@@ -1,5 +1,6 @@
 name: deep-dive-smoke-001
 skill: deep-dive
+kind: positive
 tag: smoke
 turn_timeout_ms: 300000
 # deep-dive is Loadable/procedural: model must read skill://deep-dive when WHEN-condition matches.
@@ -8,7 +9,7 @@ input:
   - turn: 1
     user: "deep dive into why our auth token expires early. The auth service and validator run on separate hosts. NTP is not configured on the validator."
 expected:
-  - skill_read_required: "deep-dive"
-  - agent_response_must_contain: ["hypothesis", "lane", "tracer", "trace"]
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain: ["oh-my-claudecode:", "omo:"]
+  - skill_activation_required: "deep-dive"
+  - response_must_contain: ["hypothesis", "lane", "tracer", "trace"]
+    response_must_contain_match: any
+  - response_must_not_contain: ["oh-my-claudecode:", "omo:"]

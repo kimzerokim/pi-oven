@@ -1,0 +1,12 @@
+name: task-dispatch-regression-001
+skill: large-task-delegation
+kind: positive
+tag: regression
+turn_timeout_ms: 300000
+input:
+  - turn: 1
+    user: "multi-agent: build the auth module"
+expected:
+  - skill_activation_required: "large-task-delegation"
+  - response_must_not_contain: ["oh-my-claudecode:", "omo:"]
+  - tool_call_required: { namePattern: "task|Task" }

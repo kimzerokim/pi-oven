@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Pi-oven-first tracking implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `pi-oven:executor` task-by-task under TDD-strict. Steps use checkbox syntax for tracking.

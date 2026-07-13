@@ -170,18 +170,38 @@ import { runApply } from "../../../scripts/pi-oven-setup/apply";
 describe("runApply user path — memory + async keys written", () => {
   function makeUserPathSpawn() {
     const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+    const values = new Map<string, unknown>();
     const mockSpawnFn = (cmd: string, args: string[]) => {
       spawnCalls.push({ cmd, args });
       // serve record-typed config gets used by runApply
       if (args[0] === "config" && args[1] === "get") {
         const key = args[2];
+        const value = key === undefined ? {} : values.get(key) ?? {};
         return {
           exitCode: 0,
           stdout: Buffer.from(
-            JSON.stringify({ key, value: {}, type: "record", description: "" })
+            JSON.stringify({
+              key,
+              value,
+              type: Array.isArray(value) ? "array" : typeof value === "object" ? "record" : typeof value,
+              description: "",
+            })
           ),
           stderr: Buffer.from(""),
         } as any;
+      }
+      if (args[0] === "config" && args[1] === "set" && args[2] !== undefined) {
+        const raw = args[3] ?? "";
+        let value: unknown = raw;
+        try {
+          value = JSON.parse(raw);
+        } catch {
+          // OMP scalar strings are transported without JSON quotes.
+        }
+        values.set(args[2], value);
+      }
+      if (args[0] === "config" && args[1] === "reset" && args[2] !== undefined) {
+        values.delete(args[2]);
       }
       return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") } as any;
     };

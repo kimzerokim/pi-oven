@@ -4,58 +4,25 @@ import {
   resolveShippedSkillSurfaceEntry,
 } from "../../../scripts/pi-oven-setup/shipped-skill-registry";
 import { getCapabilitiesByTag } from "./capability-registry";
+import {
+  DEFAULT_MAX_IMPLICIT_ROOTS,
+  RUNTIME_SKILL_CLASSIFICATION,
+  selectSkillsForTurn,
+  type RuntimeSkillClass,
+  type RuntimeSkillClassification,
+  type RuntimeSkillPhase,
+  type SkillSelectionIndexEntry,
+} from "./skill-selection";
 
+export {
+  RUNTIME_SKILL_CLASSIFICATION,
+  type RuntimeSkillClass,
+  type RuntimeSkillClassification,
+  type RuntimeSkillPhase,
+};
 
 export const PUBLIC_SKILL_NS = "pov";
 export const KEYWORD_SKILL_DEDUP_KEY = "pi-oven:keyword-skills@v1";
-const MAX_MATCHED_SKILLS = 8;
-
-export type RuntimeSkillPhase = "explore" | "plan" | "mutate" | "verify";
-export type RuntimeSkillClass = "root" | "deferred";
-
-export interface RuntimeSkillClassification {
-  class: RuntimeSkillClass;
-  phases: RuntimeSkillPhase[];
-  priority: number;
-}
-
-const ROOT_CAPABLE_SKILLS = new Set([
-  "autonomous-loop",
-  "deep-dive",
-  "systematic-debugging",
-  "spec-and-review",
-  "writing-plans",
-  "brainstorming",
-  "improve-codebase-architecture",
-  "receiving-code-review",
-  "html-research-orchestrator",
-]);
-
-export const RUNTIME_SKILL_CLASSIFICATION: Record<string, RuntimeSkillClassification> = {
-  "autonomous-loop": { class: "root", phases: ["explore", "plan", "mutate", "verify"], priority: 100 },
-  "deep-dive": { class: "root", phases: ["explore", "plan"], priority: 90 },
-  "systematic-debugging": { class: "root", phases: ["explore", "mutate", "verify"], priority: 95 },
-  "spec-and-review": { class: "root", phases: ["explore", "plan", "verify"], priority: 80 },
-  "writing-plans": { class: "root", phases: ["explore", "plan"], priority: 70 },
-  brainstorming: { class: "root", phases: ["plan"], priority: 60 },
-  "improve-codebase-architecture": { class: "root", phases: ["explore", "plan"], priority: 75 },
-  "receiving-code-review": { class: "root", phases: ["mutate", "verify"], priority: 85 },
-  "html-research-orchestrator": { class: "root", phases: ["explore", "plan"], priority: 65 },
-  "memory-discipline": { class: "deferred", phases: ["verify"], priority: 10 },
-  "code-quality-discipline": { class: "deferred", phases: ["mutate", "verify"], priority: 30 },
-  "tdd-strict": { class: "deferred", phases: ["mutate", "verify"], priority: 35 },
-  "codebase-survey": { class: "deferred", phases: ["explore"], priority: 20 },
-  "fresh-verifier": { class: "deferred", phases: ["verify"], priority: 40 },
-  "pre-commit-gate": { class: "deferred", phases: ["verify"], priority: 45 },
-  "large-task-delegation": { class: "deferred", phases: ["plan", "mutate"], priority: 25 },
-  "subagent-driven-development": { class: "deferred", phases: ["mutate"], priority: 25 },
-  "git-workflow": { class: "deferred", phases: ["mutate", "verify"], priority: 30 },
-  aws: { class: "deferred", phases: ["explore"], priority: 20 },
-  cloudflare: { class: "deferred", phases: ["explore"], priority: 20 },
-  "bitbucket-pipeline": { class: "deferred", phases: ["explore", "verify"], priority: 20 },
-  "html-spec-decision-maker": { class: "deferred", phases: ["plan"], priority: 15 },
-  "deep-init": { class: "deferred", phases: ["explore"], priority: 15 },
-};
 
 export const SKILL_KEYWORD_WHITELIST: Record<string, readonly string[]> = {
   "autonomous-loop": [
@@ -277,13 +244,7 @@ export const SKILL_KEYWORD_WHITELIST: Record<string, readonly string[]> = {
   ],
 };
 
-export interface SkillKeywordIndexEntry {
-  name: string;
-  description: string;
-  phrases: string[];
-  ownedReadTarget: string;
-  pluginRoot: string;
-}
+export type SkillKeywordIndexEntry = SkillSelectionIndexEntry;
 
 export interface MatchedSkill {
   name: string;
@@ -352,52 +313,25 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-function localSkillName(publicSkillName: string): string {
-  return publicSkillName.startsWith(`${PUBLIC_SKILL_NS}:`)
-    ? publicSkillName.slice(PUBLIC_SKILL_NS.length + 1)
-    : publicSkillName;
-}
-
-function isExplicitSkillInvocation(text: string, skillName: string): boolean {
-  const normalized = normalizeText(text);
-  const local = localSkillName(skillName);
-  return (
-    normalized.includes(`${PUBLIC_SKILL_NS}:${local}`) ||
-    normalized.includes(`$${local}`) ||
-    normalized.includes(`/${local}`)
-  );
-}
-
 export function pruneMatchedSkillsForRuntime(
   matchedSkills: MatchedSkill[],
   latestUserText: string
 ): { rootSkills: MatchedSkill[]; deferredSkillObligations: MatchedSkill[] } {
-  const enriched = matchedSkills.map((skill) => {
-    const local = localSkillName(skill.name);
-    const explicit = isExplicitSkillInvocation(latestUserText, skill.name);
-    const classification =
-      RUNTIME_SKILL_CLASSIFICATION[local] ??
-      (ROOT_CAPABLE_SKILLS.has(local)
-        ? { class: "root" as const, phases: ["explore", "plan", "mutate", "verify"] as RuntimeSkillPhase[], priority: 50 }
-        : { class: "deferred" as const, phases: ["mutate", "verify"] as RuntimeSkillPhase[], priority: 0 });
-    return {
-      skill: { ...skill, phases: classification.phases },
-      classification,
-      explicit,
-    };
+  const index = matchedSkills.map((skill, manifestOrder) => ({
+    ...skill,
+    description: "",
+    phrases: skill.rawMatchedPhrases,
+    manifestOrder,
+  }));
+  const receipt = selectSkillsForTurn({
+    latestUserText,
+    index,
+    maxImplicitRoots: DEFAULT_MAX_IMPLICIT_ROOTS,
   });
 
-  const rootCandidates = enriched
-    .filter((entry) => entry.classification.class === "root" || entry.explicit)
-    .sort((a, b) => b.classification.priority - a.classification.priority);
-  const rootNames = new Set(rootCandidates.map((entry) => entry.skill.name));
-  const deferredSkillObligations = enriched
-    .filter((entry) => !rootNames.has(entry.skill.name))
-    .map((entry) => ({ ...entry.skill, deferred: true }));
-
   return {
-    rootSkills: rootCandidates.map((entry) => entry.skill).slice(0, MAX_MATCHED_SKILLS),
-    deferredSkillObligations,
+    rootSkills: [...receipt.explicit, ...receipt.implicitRoot],
+    deferredSkillObligations: receipt.deferred,
   };
 }
 
@@ -432,8 +366,7 @@ export function matchSkillsForText(
           }
         : null;
     })
-    .filter((entry): entry is MatchedSkill => entry !== null)
-    .slice(0, MAX_MATCHED_SKILLS);
+    .filter((entry): entry is MatchedSkill => entry !== null);
 }
 
 
@@ -448,7 +381,7 @@ export function loadSkillKeywordIndexReport(pluginRoot: string): SkillKeywordInd
   const index: SkillKeywordIndexEntry[] = [];
   const issues: SkillKeywordIndexIssue[] = [];
 
-  for (const skillPath of skillPaths) {
+  for (const [manifestOrder, skillPath] of skillPaths.entries()) {
     let skillName = skillPath;
     try {
       const surface = resolveShippedSkillSurfaceEntry(resolvedPluginRoot, skillPath);
@@ -492,6 +425,7 @@ export function loadSkillKeywordIndexReport(pluginRoot: string): SkillKeywordInd
         phrases,
         ownedReadTarget: surface.ownedReadTarget,
         pluginRoot: surface.pluginRoot,
+        manifestOrder,
       });
     } catch (err) {
       issues.push({
@@ -557,13 +491,16 @@ export function updateSkillKeywordLoaderOnTurnStart(
   if (latestUserId === null) return state;
   if (state.lastUserMessageId === latestUserId) return state;
 
-  const matchedSkills = matchSkillsForText(latestUserText, index);
-  const pruned = pruneMatchedSkillsForRuntime(matchedSkills, latestUserText);
+  const receipt = selectSkillsForTurn({
+    latestUserText,
+    index,
+    maxImplicitRoots: DEFAULT_MAX_IMPLICIT_ROOTS,
+  });
 
   return {
     lastUserMessageId: latestUserId,
-    matchedSkills: pruned.rootSkills,
-    deferredSkillObligations: pruned.deferredSkillObligations,
+    matchedSkills: [...receipt.explicit, ...receipt.implicitRoot],
+    deferredSkillObligations: receipt.deferred,
     phaseReceipts: [],
   };
 }

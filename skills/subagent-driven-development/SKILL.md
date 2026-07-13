@@ -52,30 +52,30 @@ The controller — not any subagent — owns checkbox state in the plan file.
 |---|---|
 | `DONE` | Proceed to Stage 1 spec compliance review |
 | `DONE_WITH_CONCERNS` | Read concerns; address correctness/scope issues before review; note observations and proceed |
-| `NEEDS_CONTEXT` | Provide missing context; re-dispatch same implementer |
-| `BLOCKED` | Diagnose: provide context and re-dispatch, escalate to more capable model, break into smaller pieces, or surface to user |
+| `NEEDS_CONTEXT` | Provide missing context; dispatch a fresh `pov:executor` process with the prior report and added context |
+| `BLOCKED` | Diagnose: change the context or scope, then dispatch a fresh same-role process with the prior report; otherwise break the task down or surface it to the user |
 
-Never force the same model to retry a `BLOCKED` task without changing something.
+Never claim to reuse a subagent process. Every retry is a fresh process of the same role with the prior verdict/report and changed context re-injected.
 
 ## Review loop on FAIL
 
 When a reviewer returns FAIL:
 
-1. Same implementer subagent fixes the reported issues
-2. Same reviewer re-reviews (never skip re-review)
+1. A fresh `pov:executor` process receives the prior implementation context and reviewer verdict, then fixes the reported issues
+2. A fresh process of the same reviewer role receives the prior verdict and updated diff, then re-reviews (never skip re-review)
 3. Loop until approved
 
 Do not swap reviewers mid-loop. Do not accept "close enough".
 
-## Model selection
+## Role selection
 
-| Task type | Model |
+| Task type | Role/process shape |
 |---|---|
-| Mechanical (1–2 files, clear spec, isolated) | cheap |
-| Integration (multi-file, pattern matching, debugging) | standard |
-| Architecture, design, or review | most capable |
+| Mechanical (1–2 files, clear spec, isolated) | fresh `pov:executor` with a narrow assignment |
+| Integration (multi-file, pattern matching, debugging) | fresh `pov:executor`, or `pov:debugger` when root cause is unknown |
+| Architecture, design, or review | `pov:architect`, `pov:planner`, or the fixed reviewer role |
 
-When in doubt, upgrade the model rather than retry the cheaper one.
+Runtime `task.agentModelOverrides` owns model choice; authored guidance selects roles and scopes assignments.
 
 ## Continuous execution
 
@@ -97,11 +97,11 @@ Dispatch prompt templates: skill://pov:subagent-driven-development/references/pr
 
 A single-session implementation flow chains dedicated agents:
 
-- Decomposition into atomic tasks: dispatch `pi-oven:planner`.
-- Per-task code implementation: dispatch `pi-oven:executor`.
-- Evidence-based verification per task: dispatch `pi-oven:verifier`.
-- Severity-rated review after implementation: dispatch `pi-oven:code-reviewer`.
+- Decomposition into atomic tasks: dispatch `pov:planner`.
+- Per-task code implementation: dispatch `pov:executor`.
+- Evidence-based verification per task: dispatch `pov:verifier`.
+- Severity-rated review after implementation: dispatch `pov:code-reviewer`.
 
 The main agent orchestrates ONLY: it MUST NOT implement inline. Any multi-file change, 3+ file reads, or 200+ LoC MUST go to a subagent — main may not absorb the work itself, and may not self-evaluate completion.
 
-**Right-agent routing (model-fit + role-fit is first-class):** match the agent to the work — one FRESH `pi-oven:executor` per task; two-stage review via `pi-oven:code-reviewer` then `pi-oven:verifier`.
+**Right-agent routing (role-fit is first-class):** match the agent to the work — one FRESH `pov:executor` per task; two-stage review via `pov:verifier` then `pov:code-reviewer`.

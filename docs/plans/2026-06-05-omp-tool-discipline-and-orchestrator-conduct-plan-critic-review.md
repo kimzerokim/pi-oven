@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Critic Review (cycle 1) — omp-tool-discipline + orchestrator-conduct (spec + plan)
 
 > Codex CLI stalled (no first token); fell back to `oh-my-claudecode:critic` (opus) per kzk-codex-handoff.

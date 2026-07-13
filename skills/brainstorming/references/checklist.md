@@ -26,7 +26,7 @@ Source: superpowers:brainstorming (ported to pi-oven)
 - For single-select option questions, prefer the `pi-oven_ask` tool with options as `{label, description}` so each option's rationale shows beside it in the live picker; write a substantive 1–3 sentence `description` per option (trade-off + when to pick + consequence), not a few words; keep the built-in `ask` for multi-select or free-form questions
 - Walk every branch of the design tree, resolving inter-decision dependencies one-by-one
 - Explore instead of asking: when an answer is discoverable in the codebase, read the code rather than asking the user
-- Dispatch for external docs: when a design question depends on external API/SDK/library behavior, dispatch `pi-oven:document-specialist` (or `pi-oven:librarian` for web/citations) to fetch current docs rather than asking the user
+- Dispatch for external docs: when a design question depends on external API/SDK/library behavior, dispatch `pov:document-specialist` (or `pov:librarian` for web/citations) to fetch current docs rather than asking the user
 - Sharpen fuzzy or overloaded terms into a precise canonical term; challenge any term that conflicts with existing project language ("you say 'account' — Customer or User?")
 - Stress-test with concrete edge-case scenarios that force precision on concept boundaries
 - Cross-reference each stated claim against the code; surface contradictions explicitly

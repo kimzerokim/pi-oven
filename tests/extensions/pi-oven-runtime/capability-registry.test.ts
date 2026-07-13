@@ -1,5 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import {
+  CAPABILITY_POLICY_VERSION,
+  CAPABILITY_RULES,
   CAPABILITY_IDS,
   CAPABILITY_TAGS,
   CAPABILITY_TAGS_BY_ID,
@@ -8,6 +10,13 @@ import {
 } from "../../../.omp/extensions/pi-oven-runtime/capability-registry";
 
 describe("capability-registry", () => {
+  it("publishes a unique versioned rule key for each registered tool", () => {
+    expect(CAPABILITY_POLICY_VERSION).toBe(1);
+    expect(new Set(CAPABILITY_RULES.map((rule) => rule.toolName)).size).toBe(
+      CAPABILITY_RULES.length
+    );
+  });
+
   it("declares the Task 1 minimum capability set", () => {
     expect(CAPABILITY_IDS).toEqual(
       expect.arrayContaining([

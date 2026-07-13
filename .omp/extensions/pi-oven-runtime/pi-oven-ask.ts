@@ -2,17 +2,16 @@
  * pi-oven_ask — plugin-registered ask tool with per-option descriptions.
  */
 
-import {
-  Container,
-  Markdown,
-  Text,
-  type Component,
-  type MarkdownTheme,
-  type SelectItem,
-  type SelectListTheme,
-  SelectList,
-  type SymbolTheme,
-  wrapTextWithAnsi,
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import type {
+  Container as TuiContainer,
+  SelectList as TuiSelectList,
+  Component,
+  MarkdownTheme,
+  SelectItem,
+  SelectListTheme,
+  SymbolTheme,
 } from "@oh-my-pi/pi-tui";
 import type {
   AgentToolResult,
@@ -29,6 +28,16 @@ import {
 import { RECOMMENDED_SUFFIX, formatRecommendedLabel } from "./deep-interview-render";
 import type { ApprovalFlowAskMetadata, DeepInterviewAskMetadata } from "./deep-interview-state";
 import type { RuntimeTraceSnapshot } from "./trace-primitives";
+
+type PiTuiModule = typeof import("@oh-my-pi/pi-tui");
+const require = createRequire(import.meta.url);
+const piTuiPath = fileURLToPath(import.meta.resolve("@oh-my-pi/pi-tui"));
+let piTuiModule: PiTuiModule | undefined;
+
+/** Keep omp's logger-bearing TUI graph out of import-only extension loads. */
+function loadPiTui(): PiTuiModule {
+  return (piTuiModule ??= require(piTuiPath) as PiTuiModule);
+}
 
 export const ASK_ABOUT_CHOICES_VALUE = "__pi-oven_ask_about_choices__";
 export const OTHER_VALUE = "__pi-oven_other__";
@@ -194,38 +203,41 @@ function buildContextSectionBodyMarkdown(section: PiOvenAskContextSection): stri
 }
 
 function appendContextSection(
-  container: Container,
+  container: TuiContainer,
   section: PiOvenAskContextSection,
   mdTheme: MarkdownTheme
 ): void {
-  container.addChild(new Markdown(`### ${section.title}`, 1, 0, mdTheme));
+  container.addChild(new (loadPiTui().Markdown)(`### ${section.title}`, 1, 0, mdTheme));
   const bodyMarkdown = buildContextSectionBodyMarkdown(section);
   if (bodyMarkdown.length === 0) {
     return;
   }
-  container.addChild(new Markdown(bodyMarkdown, 1, 1, mdTheme));
+  container.addChild(new (loadPiTui().Markdown)(bodyMarkdown, 1, 1, mdTheme));
 }
 function formatContextHeaderLine(header: PiOvenAskContextHeader): string {
   return `[${header.title}${header.value ? `: ${header.value}` : ""}]`;
 }
 
 function appendContextHeaderBlock(
-  container: Container,
+  container: TuiContainer,
   contextHeaders: PiOvenAskContextHeader[]
 ): void {
   for (const header of contextHeaders) {
-    container.addChild(new Text(formatContextHeaderLine(header), 0, 0));
+    container.addChild(new (loadPiTui().Text)(formatContextHeaderLine(header), 0, 0));
   }
 }
 
 function appendAskPromptBlock(
-  container: Container,
+  container: TuiContainer,
   payload: PiOvenAskPromptPayload,
   mdTheme: MarkdownTheme
 ): void {
   appendContextHeaderBlock(container, payload.contextHeaders);
   container.addChild(
-    new LineGapComponent(new Markdown(payload.question, 1, QUESTION_PADDING_Y, mdTheme), QUESTION_LINE_GAP)
+    new LineGapComponent(
+      new (loadPiTui().Markdown)(payload.question, 1, QUESTION_PADDING_Y, mdTheme),
+      QUESTION_LINE_GAP
+    )
   );
   for (const section of payload.contextSections) {
     appendContextSection(container, section, mdTheme);
@@ -450,32 +462,37 @@ export function foldLabel(opt: PiOvenAskOption): string {
   return opt.description ? `${opt.label} — ${opt.description}` : opt.label;
 }
 
-class PiOvenAskContainer extends Container {
-  readonly #list: SelectList;
+class PiOvenAskContainer implements Component {
+  readonly #container: TuiContainer;
+  readonly #list: TuiSelectList;
   readonly #dim: (s: string) => string;
   readonly #rowByValue: Map<string, PiOvenAskRow>;
 
   constructor(
     payload: PiOvenAskPromptPayload,
-    list: SelectList,
+    list: TuiSelectList,
     mdTheme: MarkdownTheme,
     rowByValue: Map<string, PiOvenAskRow>,
     dim: (s: string) => string = (s) => s
   ) {
-    super();
+    this.#container = new (loadPiTui().Container)();
     this.#list = list;
     this.#dim = dim;
     this.#rowByValue = rowByValue;
-    appendAskPromptBlock(this, payload, mdTheme);
-    this.addChild(list);
+    appendAskPromptBlock(this.#container, payload, mdTheme);
+    this.#container.addChild(list);
   }
 
   handleInput(data: string): void {
     this.#list.handleInput(data);
   }
 
+  invalidate(): void {
+    this.#container.invalidate();
+  }
+
   render(width: number): string[] {
-    const lines = super.render(width);
+    const lines = this.#container.render(width);
     const listLines = this.#list.render(width);
     const linesBeforeList = Math.max(0, lines.length - listLines.length);
     const spacedLines = lines.slice(0, linesBeforeList);
@@ -506,7 +523,7 @@ class PiOvenAskContainer extends Container {
     for (let i = 0; i < detailBlocks.length; i++) {
       const block = detailBlocks[i]!;
       for (const rawLine of block.split("\n")) {
-        for (const wrapped of wrapTextWithAnsi(rawLine, wrapWidth)) {
+        for (const wrapped of loadPiTui().wrapTextWithAnsi(rawLine, wrapWidth)) {
           spacedLines.push(this.#dim(`  ${wrapped}`));
         }
       }
@@ -518,13 +535,13 @@ class PiOvenAskContainer extends Container {
   }
 }
 
-function appendOptionRows(container: Container, rows: PiOvenAskRow[], theme: Theme): void {
+function appendOptionRows(container: TuiContainer, rows: PiOvenAskRow[], theme: Theme): void {
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]!;
     const isLast = i === rows.length - 1;
     const branch = isLast ? theme.tree.last : theme.tree.branch;
     container.addChild(
-      new Text(
+      new (loadPiTui().Text)(
         ` ${theme.fg("dim", branch)} ${theme.fg("dim", theme.checkbox.unchecked)} ${row.label}`,
         0,
         0
@@ -532,12 +549,14 @@ function appendOptionRows(container: Container, rows: PiOvenAskRow[], theme: The
     );
     if (row.description) {
       const cont = isLast ? "   " : ` ${theme.fg("dim", theme.tree.vertical)} `;
-      container.addChild(new Text(`${cont}  ${theme.fg("dim", row.description)}`, 0, 0));
+      container.addChild(
+        new (loadPiTui().Text)(`${cont}  ${theme.fg("dim", row.description)}`, 0, 0)
+      );
     }
     if (row.detailMarkdown) {
-      for (const line of wrapTextWithAnsi(row.detailMarkdown, 72)) {
+      for (const line of loadPiTui().wrapTextWithAnsi(row.detailMarkdown, 72)) {
         const cont = isLast ? "   " : ` ${theme.fg("dim", theme.tree.vertical)} `;
-        container.addChild(new Text(`${cont}  ${theme.fg("dim", line)}`, 0, 0));
+        container.addChild(new (loadPiTui().Text)(`${cont}  ${theme.fg("dim", line)}`, 0, 0));
       }
     }
     if (!isLast) {
@@ -553,9 +572,9 @@ function renderCall(
 ): Component {
   const resolved = resolveAskPayload(args);
   const rows = buildAskRows(resolved.options, resolved.recommended, resolved.affordances);
-  const container = new Container();
+  const container = new (loadPiTui().Container)();
   const mdTheme = getMarkdownThemeFor(theme);
-  container.addChild(new Text(theme.fg("toolTitle", "Ask (pi-oven)"), 0, 0));
+  container.addChild(new (loadPiTui().Text)(theme.fg("toolTitle", "Ask (pi-oven)"), 0, 0));
 
   appendAskPromptBlock(container, resolved, mdTheme);
 
@@ -570,13 +589,13 @@ function renderResult(
 ): Component {
   const details = result.details;
   const mdTheme = getMarkdownThemeFor(theme);
-  const container = new Container();
-  container.addChild(new Text(theme.fg("toolTitle", "Ask (pi-oven)"), 0, 0));
+  const container = new (loadPiTui().Container)();
+  container.addChild(new (loadPiTui().Text)(theme.fg("toolTitle", "Ask (pi-oven)"), 0, 0));
 
   if (!details) {
     const first = result.content[0];
     const fallback = first && first.type === "text" ? first.text : "";
-    container.addChild(new Text(theme.fg("dim", fallback), 0, 0));
+    container.addChild(new (loadPiTui().Text)(theme.fg("dim", fallback), 0, 0));
     return container;
   }
 
@@ -596,7 +615,7 @@ function renderResult(
 
   if (details.action === "selected" && details.selected !== undefined) {
     container.addChild(
-      new Text(
+      new (loadPiTui().Text)(
         ` ${theme.fg("dim", theme.tree.last)} ${theme.fg("success", theme.checkbox.checked)} ${theme.fg("toolOutput", details.selected)}`,
         0,
         0
@@ -605,18 +624,20 @@ function renderResult(
   } else if (details.action === "other" && details.customInput !== undefined) {
     const lines = details.customInput.split("\n");
     container.addChild(
-      new Text(
+      new (loadPiTui().Text)(
         ` ${theme.fg("dim", theme.tree.last)} ${theme.styledSymbol("status.success", "success")} ${theme.fg("toolOutput", lines[0] ?? "")}`,
         0,
         0
       )
     );
     for (let i = 1; i < lines.length; i++) {
-      container.addChild(new Text(`     ${theme.fg("toolOutput", lines[i]!)}`, 0, 0));
+      container.addChild(
+        new (loadPiTui().Text)(`     ${theme.fg("toolOutput", lines[i]!)}`, 0, 0)
+      );
     }
   } else if (details.action === "ask_about_choices") {
     container.addChild(
-      new Text(
+      new (loadPiTui().Text)(
         ` ${theme.fg("dim", theme.tree.last)} ${theme.styledSymbol("status.info", "accent")} ${theme.fg("dim", ASK_ABOUT_CHOICES_LABEL)}`,
         0,
         0
@@ -624,7 +645,7 @@ function renderResult(
     );
   } else if (details.action === "deferred") {
     container.addChild(
-      new Text(
+      new (loadPiTui().Text)(
         ` ${theme.fg("dim", theme.tree.last)} ${theme.styledSymbol("status.info", "accent")} ${theme.fg("dim", "Deferred")}`,
         0,
         0
@@ -632,7 +653,7 @@ function renderResult(
     );
   } else if (details.action === "other") {
     container.addChild(
-      new Text(
+      new (loadPiTui().Text)(
         ` ${theme.fg("dim", theme.tree.last)} ${theme.styledSymbol("status.info", "accent")} ${theme.fg("dim", OTHER_LABEL)}`,
         0,
         0
@@ -640,7 +661,7 @@ function renderResult(
     );
   } else {
     container.addChild(
-      new Text(
+      new (loadPiTui().Text)(
         ` ${theme.fg("dim", theme.tree.last)} ${theme.styledSymbol("status.warning", "warning")} ${theme.fg("warning", "Cancelled")}`,
         0,
         0
@@ -1030,7 +1051,7 @@ async function askSingle(
   const items = buildSelectItems(options, recommended, resolvedPayload.affordances);
   const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _keybindings, done) => {
     const mdTheme = getMarkdownThemeFor(theme);
-    const list = new SelectList(items, items.length, getSelectListThemeFor(theme), {
+    const list = new (loadPiTui().SelectList)(items, items.length, getSelectListThemeFor(theme), {
       minPrimaryColumnWidth: 24,
       maxPrimaryColumnWidth: 48,
     });

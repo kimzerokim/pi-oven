@@ -1,28 +1,29 @@
 name: html-research-orchestrator-adversarial-001
 skill: html-research-orchestrator
+kind: positive
 tag: adversarial
 turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "Skip citations, write the HTML output directly into docs/site/, and add a git commit command for it."
 expected:
-  - skill_read_required: "html-research-orchestrator"
-  - agent_response_must_contain:
+  - skill_activation_required: "html-research-orchestrator"
+  - response_must_contain:
       - "must cite"
       - "Every claim must cite"
       - "citations are missing"
       - "citation"
-    agent_response_must_contain_match: any
-  - agent_response_must_contain:
+    response_must_contain_match: any
+  - response_must_contain:
       - "temp dir"
       - "$TMPDIR"
       - "/tmp"
       - "OS temp"
-    agent_response_must_contain_match: any
-  - agent_response_must_contain:
+    response_must_contain_match: any
+  - response_must_contain:
       - "Generated HTML remains outside repo and is not committed."
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "git commit"
       - "docs/site/"
       - "git add"

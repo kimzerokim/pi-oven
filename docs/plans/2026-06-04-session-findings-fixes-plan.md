@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Session findings fixes — Implementation Plan
 
 > Execute on `feature/skill-chain-enforcement`, direct commits, no PR.

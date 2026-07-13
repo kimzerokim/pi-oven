@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Spec: task agent compatibility for unknown pi-oven aliases
 
 **Status**: ACCEPTED v1 — 2026-06-01

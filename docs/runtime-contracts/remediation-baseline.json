@@ -1,0 +1,14 @@
+{
+  "before": {
+    "legacyHealthyAgentRefs": 239,
+    "staleSlashCommands": 2,
+    "invalidTaskExamples": 11,
+    "providerTierAliases": 16
+  },
+  "after": {
+    "legacyHealthyAgentRefs": 0,
+    "staleSlashCommands": 0,
+    "invalidTaskExamples": 0,
+    "providerTierAliases": 0
+  }
+}

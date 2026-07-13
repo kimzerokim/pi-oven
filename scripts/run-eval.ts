@@ -1,58 +1,80 @@
 #!/usr/bin/env bun
-import { parseScenario, runScenario, type SessionLike, type RunnerEvent } from "./lib/eval-runner";
-import { createAgentSession, ModelRegistry, SessionManager, discoverAuthStorage, discoverSkills } from "@oh-my-pi/pi-coding-agent";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { parseScenario, runScenario, type SessionLike } from "./lib/eval-runner";
+import {
+  OmpEvalEventAdapter,
+  type EvidenceEvent,
+  type ModelReceipt,
+} from "./lib/omp-eval-event-adapter";
+import type { Verdict } from "./lib/scenario-schema";
+import { loadSkillKeywordIndex } from "../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
 
-interface Args {
+export interface Args {
   skill?: string;
   scenario?: string;
   tag?: string;
   outFile?: string;
   model?: string;
+  strict: boolean;
+  requireScenarios: boolean;
 }
 
-function parseArgs(argv: string[]): Args {
-  const args: Args = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--skill") args.skill = argv[++i];
-    else if (a === "--scenario") args.scenario = argv[++i];
-    else if (a === "--tag") args.tag = argv[++i];
-    else if (a === "--out") args.outFile = argv[++i];
-    else if (a === "--model") args.model = argv[++i];
+export function parseArgs(argv: string[]): Args {
+  const args: Args = { strict: false, requireScenarios: false };
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--skill") args.skill = argv[++index];
+    else if (argument === "--scenario") args.scenario = argv[++index];
+    else if (argument === "--tag") args.tag = argv[++index];
+    else if (argument === "--out") args.outFile = argv[++index];
+    else if (argument === "--model") args.model = argv[++index];
+    else if (argument === "--strict") args.strict = true;
+    else if (argument === "--require-scenarios") args.requireScenarios = true;
+    else throw new Error(`Unknown argument: ${argument}`);
   }
   return args;
 }
 
-async function listScenarios(rootDir: string, args: Args): Promise<string[]> {
-  const evalsDir = path.join(rootDir, "evals");
-  const skillDirs = args.skill
-    ? [path.join(evalsDir, args.skill)]
-    : (await fs.readdir(evalsDir)).map((d) => path.join(evalsDir, d));
-  const out: string[] = [];
-  for (const dir of skillDirs) {
-    const scenDir = path.join(dir, "scenarios");
-    try {
-      const files = await fs.readdir(scenDir);
-      for (const f of files) {
-        if (!f.endsWith(".yaml")) continue;
-        if (args.scenario && !f.includes(args.scenario)) continue;
-        if (args.tag) {
-          const text = await fs.readFile(path.join(scenDir, f), "utf8");
-          if (!new RegExp(`^tag:\\s*${args.tag}`, "m").test(text)) continue;
-        }
-        out.push(path.join(scenDir, f));
-      }
-    } catch {}
+async function collectScenarioFiles(directory: string, output: string[]): Promise<void> {
+  let entries: Array<{ name: string; isDirectory(): boolean }>;
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return;
+    throw error;
   }
-  return out;
+  for (const entry of entries) {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await collectScenarioFiles(absolute, output);
+    } else if (
+      path.basename(path.dirname(absolute)) === "scenarios" &&
+      (entry.name.endsWith(".yaml") || entry.name.endsWith(".yml"))
+    ) {
+      output.push(absolute);
+    }
+  }
 }
 
-// Current fast/cheap model id fragments, highest preference first. Legacy or
-// dead aliases (e.g. claude-3-haiku, which returns empty over the OAuth path)
-// are deliberately excluded — a bare "haiku" needle would match the broken
-// claude-3-haiku before claude-haiku-4-5, so we pin current family fragments.
+export async function listScenarios(rootDir: string, args: Args): Promise<string[]> {
+  const evalsDir = path.join(rootDir, "evals");
+  const searchRoot = args.skill ? path.join(evalsDir, args.skill) : evalsDir;
+  const files: string[] = [];
+  await collectScenarioFiles(searchRoot, files);
+  const filtered: string[] = [];
+  for (const file of files.sort()) {
+    if (args.scenario && !path.basename(file).includes(args.scenario)) continue;
+    if (args.tag) {
+      const parsed = parseScenario(await fs.readFile(file, "utf8"));
+      if (parsed.tag !== args.tag) continue;
+    }
+    filtered.push(file);
+  }
+  return filtered;
+}
+
 const FAST_EVAL_MODEL_PRIORITY = [
   "haiku-4-5",
   "gemini-3-flash",
@@ -66,56 +88,77 @@ const FAST_EVAL_MODEL_PRIORITY = [
   "lite",
 ] as const;
 
-/** Resolve the model pattern for an eval session.
- *  Precedence: explicit --model > PI_OVEN_EVAL_MODEL env > fastest available
- *  model (by id substring priority) > first available > undefined. Returns a
- *  `provider/id` pattern so resolution is unambiguous. The session settings
- *  default can be a slow reasoning model that times out scenarios, so evals
- *  auto-pick a fast tier when the caller does not pin one. */
+/** Non-release convenience selection. Strict trusted runs must supply an exact pin. */
 export function pickEvalModelPattern(
   explicit: string | undefined,
   envValue: string | undefined,
   available: ReadonlyArray<{ provider: string; id: string }> | undefined,
 ): string | undefined {
   if (explicit) return explicit;
-  if (envValue && envValue.length > 0) return envValue;
-  if (!available || available.length === 0) return undefined;
+  if (envValue) return envValue;
+  if (!available?.length) return undefined;
   for (const needle of FAST_EVAL_MODEL_PRIORITY) {
-    const hit = available.find((m) => m.id.toLowerCase().includes(needle));
+    const hit = available.find((model) => model.id.toLocaleLowerCase("en-US").includes(needle));
     if (hit) return `${hit.provider}/${hit.id}`;
   }
-  const [first] = available;
-  return `${first.provider}/${first.id}`;
+  return `${available[0].provider}/${available[0].id}`;
 }
 
-/** Wrap a real AgentSession into the SessionLike interface.
- *  subscribe() forwards to session.subscribe() with event shape adaptation.
- *  prompt() returns Promise<void> — matching the real SDK signature exactly.
- *
- *  Headless fixes (ported from v0.1.1 main branch):
- *  - autoApprove:true  — no UI approver; avoid blocking on tool approval prompts
- *  - hasUI:false       — disables interactive tools (ask/pi-oven_ask) mid-scenario
- *  - skills loaded from worktree .claude-plugin/plugin.json so this worktree's
- *    skill changes are visible (not just the installed plugin cache)
- *  - agent_end used as turn-end signal (not message_end on user/tool messages)
- *  - message_end.message content captured with role==='assistant' guard
+export function parseExactModelPattern(pattern: string | undefined): ModelReceipt | undefined {
+  if (!pattern) return undefined;
+  const separator = pattern.indexOf("/");
+  if (separator <= 0 || separator === pattern.length - 1) return undefined;
+  const provider = pattern.slice(0, separator);
+  const model = pattern.slice(separator + 1);
+  if (/[*?]/.test(pattern)) return undefined;
+  return { provider, model };
+}
+
+function hasExactModelReceipt(verdict: Verdict, expected: ModelReceipt): boolean {
+  return verdict.model_receipts.some(
+    (receipt) => receipt.provider === expected.provider && receipt.model === expected.model,
+  );
+}
+
+export function computeEvalExitCode(
+  verdicts: Verdict[],
+  options: Pick<Args, "strict" | "requireScenarios">,
+): number {
+  if (verdicts.length === 0) return options.requireScenarios ? 1 : 0;
+  const nonAssertionFailure = /^(?:turn_timeout|scenario_timeout|infrastructure_error):/;
+  const hardAssertionFailed = verdicts.some((verdict) =>
+    verdict.failures.some((failure) => !nonAssertionFailure.test(failure)),
+  );
+  if (hardAssertionFailed) return 1;
+  if (
+    options.strict &&
+    verdicts.some(
+      (verdict) => verdict.inconclusive || verdict.timed_out || verdict.infrastructure_error,
+    )
+  ) {
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * Create a real SDK session. The SDK is deliberately dynamically imported so
+ * importing this module performs no auth discovery, logger setup, or DB I/O.
  */
 async function makeSession(modelPattern?: string): Promise<SessionLike> {
+  const {
+    createAgentSession,
+    ModelRegistry,
+    SessionManager,
+    discoverAuthStorage,
+    discoverSkills,
+  } = await import("@oh-my-pi/pi-coding-agent");
   const cwd = process.cwd();
   const auth = await discoverAuthStorage();
   const models = new ModelRegistry(auth);
   await models.refresh();
-
-  // Load skills from this worktree so eval sees the current skill changes,
-  // not just the installed plugin cache. discoverSkills(cwd) walks .claude-plugin/
-  // and local skill directories starting from cwd.
   const { skills } = await discoverSkills(cwd);
-
-  // Default to a fast available model when --model is not given. The session
-  // settings default can be a slow reasoning model that times out scenarios;
-  // PI_OVEN_EVAL_MODEL and --model override the auto-pick.
-  const available =
-    typeof models.getAvailable === "function" ? models.getAvailable() : undefined;
+  const available = typeof models.getAvailable === "function" ? models.getAvailable() : undefined;
   const resolvedPattern = pickEvalModelPattern(
     modelPattern,
     process.env.PI_OVEN_EVAL_MODEL,
@@ -125,134 +168,109 @@ async function makeSession(modelPattern?: string): Promise<SessionLike> {
     console.error(`eval: auto-selected model pattern ${resolvedPattern}`);
   }
 
-  // Load this repo's pi-oven extension so the keyword->skill-read injection and
-  // discipline layer are actually exercised by evals. A bare createAgentSession
-  // discovery does NOT load the workspace extension, so without this the
-  // keyword-trigger path is never tested. Skip gracefully if absent.
   const extensionPath = path.resolve(cwd, ".omp/extensions/pi-oven.ts");
-  const extensionExists = await fs
-    .access(extensionPath)
-    .then(() => true)
-    .catch(() => false);
-
+  const extensionExists = await fs.access(extensionPath).then(() => true).catch(() => false);
   const { session } = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
     authStorage: auth,
     modelRegistry: models,
-    // Headless eval: no UI to approve tool calls, so auto-approve every tier —
-    // otherwise the agent blocks forever on the first task/Bash approval prompt
-    // (the eval runner has no interactive approver). hasUI:false also keeps the
-    // agent from invoking interactive ask/pi-oven_ask tools mid-scenario.
     autoApprove: true,
     hasUI: false,
-    // Load this worktree's skills so eval exercises the current code, not the
-    // installed plugin snapshot.
     skills,
-    // Activate the pi-oven extension (keyword-skill injection + discipline).
     ...(extensionExists ? { additionalExtensionPaths: [extensionPath] } : {}),
-    // Auto-picked fast model unless --model / PI_OVEN_EVAL_MODEL pinned one.
     ...(resolvedPattern ? { modelPattern: resolvedPattern } : {}),
   });
+  const adapter = new OmpEvalEventAdapter({
+    skillReadTargets: loadSkillKeywordIndex(cwd).map((entry) => ({
+      skill: entry.name,
+      ownedReadTarget: entry.ownedReadTarget,
+    })),
+  });
+
   return {
-    subscribe(listener: (event: RunnerEvent) => void): () => void {
+    subscribe(listener: (event: EvidenceEvent) => void): () => void {
       return session.subscribe((sdkEvent) => {
-        // Capture from the COMPLETED assistant message (message_end.message)
-        // rather than streamed text_delta events. The role guard is essential —
-        // message_end also fires for user echo and tool-result messages.
-        if (sdkEvent.type === "message_end") {
-          const msg = (sdkEvent as { message?: { role?: string; content?: unknown } }).message;
-          if (msg?.role === "assistant" && Array.isArray(msg.content)) {
-            for (const b of msg.content as Array<Record<string, unknown>>) {
-              if (b && b.type === "text" && typeof b.text === "string") {
-                listener({ type: "message_update", delta: b.text });
-              } else if (b && typeof b.name === "string" && b.type !== "text") {
-                // ToolCall / tool_use content block — record the requested tool name.
-                listener({ type: "tool_execution_start", toolName: b.name as string, toolCallId: "" });
-              }
-            }
-          }
-        } else if (sdkEvent.type === "agent_end") {
-          // Signal turn completion only when the whole agent run ends, so multi-step
-          // turns (assistant → tool → assistant) are fully captured before unsubscribe.
-          listener({ type: "message_end" });
-        } else {
-          // Forward SDK-level terminal error events (error, abort, session_error,
-          // stream_error) so the runner ends the turn instead of hitting the cap.
-          // Cast via { type: string } because the SDK union may not declare these
-          // event types even though the runtime can emit them.
-          const raw = sdkEvent as { type: string };
-          if (
-            raw.type === "error" ||
-            raw.type === "abort" ||
-            raw.type === "session_error" ||
-            raw.type === "stream_error"
-          ) {
-            listener({ type: raw.type });
-          }
+        for (const event of adapter.adapt(sdkEvent)) {
+          listener(event);
         }
       });
     },
     async prompt(message: string, options?: { signal?: AbortSignal }): Promise<void> {
-      // Real SDK PromptOptions does not have a signal field — wire abort via
-      // session.abort() instead: listen on the AbortSignal and call session.abort()
-      // so the in-flight turn is actually cancelled when the per-turn timer fires.
-      if (options?.signal) {
-        const handler = () => { void session.abort(); };
-        options.signal.addEventListener("abort", handler, { once: true });
+      const signal = options?.signal;
+      const abort = () => {
+        void session.abort();
+      };
+      signal?.addEventListener("abort", abort, { once: true });
+      try {
+        await session.prompt(message);
+      } finally {
+        signal?.removeEventListener("abort", abort);
       }
-      await session.prompt(message);
     },
   };
 }
 
-/** Exported for unit testing — same as makeSession() but exposed so tests can
- *  mock @oh-my-pi/pi-coding-agent and assert the options passed to createAgentSession. */
 export const makeSessionForTest = makeSession;
 
-async function main() {
-  const args = parseArgs(Bun.argv.slice(2));
-  const rootDir = process.cwd();
-  const files = await listScenarios(rootDir, args);
-  if (files.length === 0) {
-    process.exit(0);
-  }
-  // Fix 2: create a fresh session per scenario so a stuck/aborted scenario
-  // cannot poison the next one (per-scenario isolation).
-  const verdicts = [];
-  for (const file of files) {
-    const text = await fs.readFile(file, "utf8");
-    const scenario = parseScenario(text);
-    const session = await makeSession(args.model);
-    const verdict = await runScenario(scenario, session);
-    verdicts.push(verdict);
-    const mark = verdict.inconclusive ? "⊘" : (verdict.passed ? "✓" : "✗");
-    console.log(`${mark} ${verdict.skill}/${verdict.scenario} (${verdict.latency_ms}ms)`);
-    for (const f of verdict.failures) console.log(`  fail: ${f}`);
-    // Print telemetry observations for transparency
-    for (const obs of verdict.observations) {
-      if (
-        obs.startsWith("response_contains[telemetry]") ||
-        obs.startsWith("tool_required[telemetry]") ||
-        obs.startsWith("skill_read") ||
-        obs.startsWith("timeout:")
-      ) {
-        console.log(`  · ${obs}`);
-      }
-    }
-  }
-  if (args.outFile) {
-    await fs.writeFile(args.outFile, verdicts.map((v) => JSON.stringify(v)).join("\n") + "\n");
-  }
-  const passCount = verdicts.filter((v) => v.passed).length;
-  const failCount = verdicts.filter((v) => !v.passed && !v.inconclusive).length;
-  const inconclusiveCount = verdicts.filter((v) => v.inconclusive).length;
-  console.log(`\n${passCount} pass, ${failCount} fail, ${inconclusiveCount} inconclusive`);
-  // Inconclusive is NOT a hard failure — only !passed && !inconclusive counts
-  const hardFail = verdicts.some((v) => !v.passed && !v.inconclusive);
-  process.exit(hardFail ? 1 : 0);
+export interface MainDependencies {
+  rootDir?: string;
+  makeSession?: (model?: string) => Promise<SessionLike>;
+  log?: (message: string) => void;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(2);
-});
+export async function main(
+  argv = Bun.argv.slice(2),
+  dependencies: MainDependencies = {},
+): Promise<number> {
+  const args = parseArgs(argv);
+  const rootDir = dependencies.rootDir ?? process.cwd();
+  const log = dependencies.log ?? console.log;
+  const files = await listScenarios(rootDir, args);
+  if (files.length === 0) return args.requireScenarios ? 1 : 0;
+
+  const pinnedPattern = args.model ?? process.env.PI_OVEN_EVAL_MODEL;
+  const exactModel = parseExactModelPattern(pinnedPattern);
+  if (args.strict && !exactModel) {
+    throw new Error("--strict requires an exact provider/model via --model or PI_OVEN_EVAL_MODEL");
+  }
+
+  const createSession = dependencies.makeSession ?? makeSession;
+  const verdicts: Verdict[] = [];
+  for (const file of files) {
+    const scenario = parseScenario(await fs.readFile(file, "utf8"));
+    const session = await createSession(args.model);
+    const verdict = await runScenario(scenario, session);
+    if (exactModel && !hasExactModelReceipt(verdict, exactModel)) {
+      verdict.failures.push(
+        `model_receipt: expected exact ${exactModel.provider}/${exactModel.model}, observed ${JSON.stringify(verdict.model_receipts)}`,
+      );
+      verdict.passed = false;
+    }
+    verdicts.push(verdict);
+    const mark = verdict.inconclusive ? "⊘" : verdict.passed ? "✓" : "✗";
+    log(`${mark} ${verdict.skill}/${verdict.scenario} (${verdict.latency_ms}ms)`);
+    for (const failure of verdict.failures) log(`  fail: ${failure}`);
+    for (const observation of verdict.observations) log(`  · ${observation}`);
+  }
+
+  if (args.outFile) {
+    await fs.writeFile(
+      args.outFile,
+      `${verdicts.map((verdict) => JSON.stringify(verdict)).join("\n")}\n`,
+    );
+  }
+  const passCount = verdicts.filter((verdict) => verdict.passed).length;
+  const inconclusiveCount = verdicts.filter((verdict) => verdict.inconclusive).length;
+  const failCount = verdicts.length - passCount - inconclusiveCount;
+  log(`\n${passCount} pass, ${failCount} fail, ${inconclusiveCount} inconclusive`);
+  return computeEvalExitCode(verdicts, args);
+}
+
+if (import.meta.main) {
+  try {
+    process.exitCode = await main();
+  } catch (error) {
+    console.error(error);
+    process.exitCode = 2;
+  }
+}

@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Spec C: SKILL.md English Rewrite, New Skills, and Existing Skill Boosts
 
 **Status**: Draft v3 — 2026-05-28 (cycle 3 revision: BLOCKER 3/3, NIT 6/6 + extras applied)

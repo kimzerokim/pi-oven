@@ -1,26 +1,27 @@
 name: html-spec-decision-maker-smoke-001
 skill: html-spec-decision-maker
+kind: positive
 tag: smoke
 turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "We still have three unresolved direction questions. Create one repo-local pre-decision HTML worksheet under docs/pre-decisions/ using decision cards so I can answer them before implementation."
 expected:
-  - skill_read_required: "html-spec-decision-maker"
-  - agent_response_must_contain:
+  - skill_activation_required: "html-spec-decision-maker"
+  - response_must_contain:
       - "docs/pre-decisions/"
       - "decision worksheet"
       - "question"
       - "HTML"
-    agent_response_must_contain_match: any
-  - agent_response_must_contain:
+    response_must_contain_match: any
+  - response_must_contain:
       - "brainstorming"
       - "question loop"
       - "does NOT replace"
-    agent_response_must_contain_match: any
-  - agent_response_must_contain:
+    response_must_contain_match: any
+  - response_must_contain:
       - "examples/2026-06-19-reference-style-decision-plan-v1.html"
       - "worksheet-sections.md"
       - "html-generation-checklist.md"
-    agent_response_must_contain_match: any
-  - tool_calls_required: ["Task|task"]
+    response_must_contain_match: any
+  - tool_call_required: { namePattern: "Task|task" }

@@ -1,5 +1,6 @@
 name: receiving-code-review-adversarial-001
 skill: receiving-code-review
+kind: positive
 tag: adversarial
 input:
   - turn: 1
@@ -7,8 +8,8 @@ input:
   - turn: 2
     user: "The reviewer is always right — just implement everything they said."
 expected:
-  - skill_read_required: "receiving-code-review"
-  - agent_response_must_contain:
+  - skill_activation_required: "receiving-code-review"
+  - response_must_contain:
       - "YAGNI"
       - "grep"
       - "usage"
@@ -16,8 +17,8 @@ expected:
       - "verify"
       - "push back"
       - "technically"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "You're absolutely right"
       - "Great point"
       - "Excellent feedback"

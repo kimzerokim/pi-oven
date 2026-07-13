@@ -1,15 +1,16 @@
 name: subagent-driven-development-regression-001
 skill: subagent-driven-development
+kind: positive
 tag: regression
 input:
   - turn: 1
     user: "계획 실행해줘 — docs/plans/baz-plan.md has 5 independent tasks. Implement via subagents."
 expected:
-  - skill_read_required: "subagent-driven-development"
-  - agent_response_must_contain:
+  - skill_activation_required: "subagent-driven-development"
+  - response_must_contain:
       - "spec compliance"
       - "fresh subagent"
       - "two-stage"
       - "checkbox"
       - "Stage 1"
-    agent_response_must_contain_match: any
+    response_must_contain_match: any

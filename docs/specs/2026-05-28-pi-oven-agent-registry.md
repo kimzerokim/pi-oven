@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Spec A: pi-oven Agent Registry
 
 **상태**: Draft v4 — 2026-05-28 (cycle 4 revision)

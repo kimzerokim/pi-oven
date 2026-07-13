@@ -204,6 +204,26 @@ describe("skill-keyword-loader", () => {
     expect(prompt).toContain("Deferred obligations");
   });
 
+  it("resolves an explicit alias from the full registry even when no keyword phrase matches", () => {
+    const repoRoot = path.resolve(__dirname, "../../..");
+    const started = updateSkillKeywordLoaderOnTurnStart(
+      createSkillKeywordLoaderState(),
+      [userEntry("u-explicit", "Please apply $memory-discipline to this request.")],
+      loadSkillKeywordIndex(repoRoot)
+    );
+
+    expect(started.matchedSkills.map((skill) => skill.name)).toEqual([
+      publicSkillName("memory-discipline"),
+    ]);
+    expect(started.matchedSkills[0]).toEqual(
+      expect.objectContaining({
+        explicit: true,
+        ownedReadTarget: ownedSkillTarget(repoRoot, "memory-discipline"),
+      })
+    );
+    expect(started.deferredSkillObligations).toEqual([]);
+  });
+
   it("the matched-skills prompt frames exact plugin-owned reads as the explicit control-plane front door", () => {
     const prompt = buildKeywordMatchedSkillsPrompt([
       {

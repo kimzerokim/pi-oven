@@ -1,21 +1,22 @@
 name: pre-commit-gate-regression-001
 skill: pre-commit-gate
+kind: positive
 tag: regression
 description: >
   Korean trigger phrase 커밋 전 점검 causes the model to read the skill and
-  run the 11-gate sequence. Regression guard: skill_read_required must fire
+  run the 11-gate sequence. Regression guard: skill_activation_required must fire
   (not just the skill name appearing in prose).
 input:
   - turn: 1
     user: "staged 변경사항 커밋 전 점검 해줘 — run the full gate sequence."
 expected:
-  - skill_read_required: "pre-commit-gate"
-  - agent_response_must_contain:
+  - skill_activation_required: "pre-commit-gate"
+  - response_must_contain:
       - "Gate 0"
       - "Gate"
       - "build"
       - "AGENTS.md"
       - "새 커밋"
       - "new commit"
-    agent_response_must_contain_match: any
-  - tool_calls_required: ["Bash"]
+    response_must_contain_match: any
+  - tool_call_required: { namePattern: "Bash" }

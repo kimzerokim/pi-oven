@@ -27,6 +27,7 @@ import {
   projectStatePath,
 } from "../../../.omp/extensions/pi-oven-runtime/project-state";
 import { normalizeDeepInterviewState } from "../../../.omp/extensions/pi-oven-runtime/deep-interview-state";
+import { ROLE_NAMES } from "../../../.omp/extensions/pi-oven-runtime/runtime-contract";
 function makeTempDir(): string {
   const dir = join(tmpdir(), `pi-oven-gh-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
@@ -38,8 +39,15 @@ function bashEvent(command: string, toolCallId = "tc1") {
 }
 
 function taskEvent(agent: string, toolCallId = "tc-task") {
-  // a `task` dispatch tool_call (subagent spawn). Carries params.agent.
-  return { type: "tool_call" as const, toolCallId, toolName: "task", input: { agent, prompt: "x" } };
+  return {
+    type: "tool_call" as const,
+    toolCallId,
+    toolName: "task",
+    input: {
+      agent,
+      tasks: [{ id: "task-1", description: "test", assignment: "test" }],
+    },
+  };
 }
 
 function readEvent(path: string, toolCallId = "tc-read") {
@@ -1278,6 +1286,86 @@ describe("gateHandler — self-deadline + p95 (AC2)", () => {
   });
 });
 
+describe("gateHandler — enforced capability policy", () => {
+  let dir: string;
+  beforeEach(() => { dir = makeTempDir(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("denies an unknown tool during an active autonomous run", async () => {
+    writeState(dir, activeState());
+    const h = createGateHandler(await deps(dir));
+
+    const result = await h({
+      type: "tool_call",
+      toolCallId: "tc-unknown-auto",
+      toolName: "mystery_tool",
+      input: {},
+    });
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/unknown tool.*autonomous.*default deny/i);
+  });
+
+  it("denies an unknown mutation in interactive mode", async () => {
+    const h = createGateHandler(await deps(dir));
+
+    const result = await h({
+      type: "tool_call",
+      toolCallId: "tc-unknown-mutation",
+      toolName: "cloud_deploy",
+      input: { action: "deploy" },
+    });
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/unknown mutation.*policy/i);
+  });
+
+  it("fails closed on malformed known-tool arguments before tool-specific handling", async () => {
+    const h = createGateHandler(await deps(dir));
+
+    const result = await h({
+      type: "tool_call",
+      toolCallId: "tc-malformed-read",
+      toolName: "read",
+      input: {},
+    });
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/malformed arguments/i);
+  });
+
+  it("combines code-capability classification with the existing autonomous state proof", async () => {
+    writeState(dir, activeState());
+    const h = createGateHandler(await deps(dir));
+
+    const result = await h({
+      type: "tool_call",
+      toolCallId: "tc-eval-write-capability",
+      toolName: "eval",
+      input: {
+        cells: [{ language: "js", code: "await Bun.write('generated.txt', 'x')" }],
+      },
+    });
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/branch-contract/i);
+  });
+
+  it("denies a known external mutation when no exact consent adapter can prove and consume it", async () => {
+    const h = createGateHandler(await deps(dir));
+
+    const result = await h({
+      type: "tool_call",
+      toolCallId: "tc-generate-image-no-consent",
+      toolName: "generate_image",
+      input: {},
+    });
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toMatch(/external mutation.*no exact existing consent/i);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // AC8b — nested task-subagent is gated (read-only) but does NOT mutate the FSM
 // ---------------------------------------------------------------------------
@@ -1319,6 +1407,51 @@ describe("gateHandler — task dispatch ownership guard", () => {
   let dir: string;
   beforeEach(() => { dir = makeTempDir(); });
   afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("blocks missing and whitespace-only task agents", async () => {
+    const h = createGateHandler(await deps(dir));
+    const missing = taskEvent("executor");
+    delete (missing.input as { agent?: string }).agent;
+    const blank = taskEvent("   ");
+
+    expect((await h(missing))?.block).toBe(true);
+    expect((await h(blank))?.block).toBe(true);
+  });
+
+  it("blocks unknown canonical and bare agent names", async () => {
+    const h = createGateHandler(await deps(dir));
+
+    expect((await h(taskEvent("pov:phantom")))?.block).toBe(true);
+    expect((await h(taskEvent("phantom")))?.block).toBe(true);
+  });
+
+  it("allows every canonical role unchanged and canonicalizes every registered bare role", async () => {
+    const h = createGateHandler(await deps(dir));
+
+    for (const role of ROLE_NAMES) {
+      const canonical = taskEvent(`pov:${role}`, `canonical-${role}`);
+      expect((await h(canonical))?.block ?? false).toBe(false);
+      expect(canonical.input.agent).toBe(`pov:${role}`);
+
+      const bare = taskEvent(role, `bare-${role}`);
+      expect((await h(bare))?.block ?? false).toBe(false);
+      expect(bare.input.agent).toBe(`pov:${role}`);
+    }
+  });
+
+  it("blocks an invalid task shape before recording a successful ownership trace", async () => {
+    const h = createGateHandler(await deps(dir));
+    const event = taskEvent("executor");
+    (event.input as Record<string, unknown>).secretAssignment = "do-not-echo";
+
+    const result = await h(event);
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toContain("unrecognized_keys");
+    expect(result?.reason).not.toContain("do-not-echo");
+
+    const after = await new GateStateStore(dir).readState();
+    expect(after.kind).toBe("ABSENT");
+  });
 
   it("canonicalizes bare built-in agent names to the pov namespace and records the rewrite", async () => {
     const h = createGateHandler(await deps(dir));
@@ -1402,6 +1535,41 @@ describe("gateHandler — task dispatch ownership guard", () => {
       status: "resolved",
       reason: "preserved exact user-explicit foreign agent dispatch",
     });
+  });
+
+  it("requires an exact case-sensitive foreign allowlist match", async () => {
+    writeState(dir, {
+      active: false,
+      gateCache: {},
+      version: 1,
+      schemaVersion: 1,
+      explicitForeignAgents: ["kzk:explorer"],
+    });
+    const h = createGateHandler(await deps(dir));
+
+    const result = await h(taskEvent("KZK:EXPLORER"));
+    expect(result?.block).toBe(true);
+  });
+
+  it("strictly validates explicit foreign payloads without weakening TaskDispatchSchema", async () => {
+    writeState(dir, {
+      active: false,
+      gateCache: {},
+      version: 1,
+      schemaVersion: 1,
+      explicitForeignAgents: ["kzk:explorer"],
+    });
+    const h = createGateHandler(await deps(dir));
+    const event = taskEvent("kzk:explorer");
+    (event.input as Record<string, unknown>).prompt = "legacy payload";
+
+    const result = await h(event);
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toContain("unrecognized_keys");
+
+    const after = await new GateStateStore(dir).readState();
+    expect(after.kind).toBe("OK");
+    if (after.kind === "OK") expect(after.state.ownershipTrace).toBeUndefined();
   });
 
   it("blocks foreign task dispatch when the exact agent was not explicitly allowlisted", async () => {
@@ -1580,4 +1748,3 @@ describe("gateHandler — pure helpers", () => {
     expect(toGateFsmView({ kind: "ABSENT" } as any)).toEqual({ kind: "ABSENT" });
   });
 });
-

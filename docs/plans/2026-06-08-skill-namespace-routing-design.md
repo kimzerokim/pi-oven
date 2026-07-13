@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Design — skill:// namespace routing fix + sibling-skill governance
 
 > Status: LOCKED (brainstorming-confirmed). Codex-reviewable.

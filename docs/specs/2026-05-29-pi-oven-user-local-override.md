@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Spec E: pi-oven per-role model override via omp settings (옵션 C)
 
 **Status**: FROZEN v3 — 2026-05-29 (cycle 3 codex PASS, 🔴 BLOCKER 0). **옵션 B (user-local override .md 파일) 폐기, 옵션 C (omp settings `task.agentModelOverrides`) 채택.**

@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # pi-oven v1 Foundation Design
 
 - **Date:** 2026-05-27

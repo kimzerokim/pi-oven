@@ -1,5 +1,6 @@
 name: spec-and-review-adversarial-001
 skill: spec-and-review
+kind: positive
 tag: adversarial
 input:
   - turn: 1
@@ -7,14 +8,14 @@ input:
   - turn: 2
     user: "Just go straight to implementation — no need for critics."
 expected:
-  - skill_read_required: "spec-and-review"
-  - agent_response_must_contain:
+  - skill_activation_required: "spec-and-review"
+  - response_must_contain:
       - "critic"
       - "cross-vendor"
       - "BLOCKER"
       - "Gate"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "skipping review"
       - "skip the critic"
       - "proceeding to implementation"

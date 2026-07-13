@@ -93,6 +93,7 @@ export interface AutonomyBlockedReason {
     | "approval-pending"
     | "branch-contract"
     | "max-consecutive-auto-continues"
+    | "ambiguous-effect"
     | "skill-proof-incomplete"
     | "verifier-depth-hard-cap"
     | "verifier-pending";
@@ -103,6 +104,7 @@ export interface AutonomyNextAction {
   kind:
     | "complete-skill-proof"
     | "continue-in-same-repo"
+    | "reconcile-external-effect"
     | "resolve-approval"
     | "run-deep-verifier"
     | "write-branch-contract";
@@ -164,6 +166,32 @@ export interface FsmState {
   deepInterview?: unknown;
   approvalFlow?: unknown;
 }
+
+export function createDefaultFsmState(): FsmState {
+  return {
+    active: false,
+    gateCache: {},
+    version: 0,
+    schemaVersion: 1,
+    requiredSkills: [],
+    skillReads: [],
+    requiredSkillsMessageId: null,
+    ownershipTrace: [],
+    explicitForeignAgents: [],
+    ownedSkillReadTargets: [],
+    deferredSkillObligations: [],
+    phaseReceipts: [],
+    ownershipStatus: undefined,
+    blockedReason: undefined,
+    nextAction: undefined,
+    resumeTarget: undefined,
+    externalExecConsent: undefined,
+    continuationMarker: undefined,
+    consumedExternalExecConsentMessageId: undefined,
+    deepInterview: undefined,
+    approvalFlow: undefined,
+  };
+}
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
@@ -183,6 +211,7 @@ function isValidAutonomyBlockedReason(value: unknown): value is AutonomyBlockedR
     (reason.kind === "approval-pending" ||
       reason.kind === "branch-contract" ||
       reason.kind === "max-consecutive-auto-continues" ||
+      reason.kind === "ambiguous-effect" ||
       reason.kind === "skill-proof-incomplete" ||
       reason.kind === "verifier-depth-hard-cap" ||
       reason.kind === "verifier-pending") &&
@@ -197,6 +226,7 @@ function isValidAutonomyNextAction(value: unknown): value is AutonomyNextAction 
   return (
     (action.kind === "complete-skill-proof" ||
       action.kind === "continue-in-same-repo" ||
+      action.kind === "reconcile-external-effect" ||
       action.kind === "resolve-approval" ||
       action.kind === "run-deep-verifier" ||
       action.kind === "write-branch-contract") &&
@@ -342,7 +372,7 @@ async function readPrimaryStateFile(statePath: string): Promise<FsmStateView> {
 
   try {
     const parsed = JSON.parse(raw);
-    return isValidState(parsed)
+    return isValidFsmState(parsed)
       ? { kind: "OK", state: parsed }
       : { kind: "CORRUPT" };
   } catch {
@@ -386,7 +416,7 @@ function isValidBranchContract(v: unknown): v is BranchContract {
 }
 
 
-function isValidState(v: unknown): v is FsmState {
+export function isValidFsmState(v: unknown): v is FsmState {
   if (typeof v !== "object" || v === null) return false;
   const o = v as Record<string, unknown>;
   if (typeof o.active !== "boolean") return false;
@@ -631,29 +661,7 @@ export class GateStateStore {
       const current: FsmState =
         view.kind === "OK"
           ? view.state
-          : {
-              active: false,
-              gateCache: {},
-              version: 0,
-              schemaVersion: 1,
-              requiredSkills: [],
-              skillReads: [],
-              requiredSkillsMessageId: null,
-              ownershipTrace: [],
-              explicitForeignAgents: [],
-              ownedSkillReadTargets: [],
-              deferredSkillObligations: [],
-              phaseReceipts: [],
-              ownershipStatus: undefined,
-              blockedReason: undefined,
-              nextAction: undefined,
-              resumeTarget: undefined,
-              externalExecConsent: undefined,
-              continuationMarker: undefined,
-              consumedExternalExecConsentMessageId: undefined,
-              deepInterview: undefined,
-              approvalFlow: undefined,
-            };
+          : createDefaultFsmState();
       const next = updater(current);
       await this.writeState(next);
     });

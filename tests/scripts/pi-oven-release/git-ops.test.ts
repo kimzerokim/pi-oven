@@ -1,11 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   createReleaseCommit,
-  createReleaseTag,
   ensureGitClean,
   getCurrentBranch,
   getCurrentTag,
-  pushRelease,
 } from "../../../scripts/pi-oven-release/git-ops";
 import type { SpawnFn } from "../../../scripts/pi-oven-release/changelog-generator";
 
@@ -44,29 +42,15 @@ describe("git-ops", () => {
     expect(() => ensureGitClean(spawn)).toThrow("working tree is dirty");
   });
 
-  it("createReleaseCommit and createReleaseTag are no-ops in dry-run", () => {
+  it("createReleaseCommit is a no-op in dry-run", () => {
     const spawn = makeSpawn({});
     expect(createReleaseCommit("0.5.0", true, spawn)).toBeUndefined();
-    expect(createReleaseTag("0.5.0", true, spawn)).toBeUndefined();
-    expect(pushRelease("0.5.0", "feature/harness-overhaul", true, spawn)).toEqual([]);
   });
 
-  it("pushRelease refuses to guess a branch outside dry-run", () => {
-    const spawn = makeSpawn({});
-    expect(() => pushRelease("0.5.0", undefined, false, spawn)).toThrow("current git branch");
-  });
-
-  it("createReleaseCommit/createReleaseTag/pushRelease emit expected git commands", () => {
+  it("createReleaseCommit emits only the expected local git command", () => {
     const spawn = makeSpawn({});
     const commit = createReleaseCommit("0.5.0", false, spawn);
-    const tag = createReleaseTag("0.5.0", false, spawn);
-    const pushes = pushRelease("0.5.0", "feature/harness-overhaul", false, spawn);
 
     expect(commit).toEqual({ command: "git", args: ["commit", "-am", "release: v0.5.0"] });
-    expect(tag).toEqual({ command: "git", args: ["tag", "v0.5.0"] });
-    expect(pushes).toEqual([
-      { command: "git", args: ["push", "origin", "feature/harness-overhaul"] },
-      { command: "git", args: ["push", "origin", "v0.5.0"] },
-    ]);
   });
 });

@@ -1,3 +1,7 @@
+> Historical; do not copy runtime syntax examples from this document.
+> Historical architecture; implementation removed in vNext; OMP task is current dispatch seam
+> Superseded by [the runtime contract remediation implementation plan](2026-07-13-pi-oven-runtime-contract-remediation-implementation-plan.md).
+
 ## Goal
 
 pi-oven의 workflow optimization과 gajae-style deep-interview redesign을 staged cutover로 구현해, provider-specific review/verifier wording 제거, runtime-owned provider-family routing, spec-persistence-based interview completion, native `pi-oven_ask` redesign, mutation guard, 그리고 throughput benchmark contract를 코드/테스트/문서에 동시에 반영한다.

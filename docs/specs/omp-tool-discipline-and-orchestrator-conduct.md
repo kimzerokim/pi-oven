@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Spec — omp-style tool discipline + main-orchestrator conduct protocol
 
 > Status: design (2026-06-05). Brainstormed + approved. Implements three approved prongs:

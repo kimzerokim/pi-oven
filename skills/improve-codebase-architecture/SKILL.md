@@ -8,13 +8,13 @@ description: "Read this skill for architecture improvement, deepening modules, c
 
 Surface architectural friction and propose **deepening opportunities** — refactors that turn shallow modules into deep ones. The aim is testability and AI-navigability. The main agent dispatches and synthesises; it does not run the survey or draw the report inline.
 
-This skill is the **single entry point for all refactoring**. A plain "refactor module X" request lands here; Step 0 classifies the intent and routes — light DRY/YAGNI/KISS cleanup to `code-quality-discipline` + `pi-oven:code-simplifier`, deepening / seam work through the full process below.
+This skill is the **single entry point for all refactoring**. A plain "refactor module X" request lands here; Step 0 classifies the intent and routes — light DRY/YAGNI/KISS cleanup to `code-quality-discipline` + `pov:code-simplifier`, deepening / seam work through the full process below.
 
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
 ENFORCEMENT: do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow — 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation MUST go to a subagent; main only dispatches, synthesises, and reviews — never implements inline (see `large-task-delegation` + `subagent-driven-development`).
 
-RIGHT-AGENT ROUTING — match the agent to the work (model-fit + role-fit is first-class), using these exact names: architecture deepening → `pi-oven:architect`; coupling / testability analysis → `pi-oven:analyst`.
+RIGHT-AGENT ROUTING — match the agent to the work (model-fit + role-fit is first-class), using these exact names: architecture deepening → `pov:architect`; coupling / testability analysis → `pov:analyst`.
 
 ## Vocabulary (use exactly)
 
@@ -42,22 +42,22 @@ This skill is *informed* by the project's domain model. If a `CONTEXT.md` / doma
 
 Classify the refactor intent before doing anything else:
 
-- **Pure DRY/YAGNI/KISS cleanup** — duplication removal, local simplification, no interface reshaping. Apply the `code-quality-discipline` checklist and dispatch `pi-oven:code-simplifier`. Skip Steps 1–5.
+- **Pure DRY/YAGNI/KISS cleanup** — duplication removal, local simplification, no interface reshaping. Apply the `code-quality-discipline` checklist and dispatch `pov:code-simplifier`. Skip Steps 1–5.
 - **Shallow→deep deepening, or tightly-coupled consolidation / seam work** — run the full process below (Steps 1–5: survey → candidates → grilling → interface design → verify).
 
 When in doubt, treat it as deepening and run the full process.
 
 ### 1. Survey (dispatch — Main MUST NOT investigate inline)
 
-ENFORCEMENT: Main dispatches `pi-oven:explorer` or `codebase-survey` for the architectural survey. Main MUST NOT read 5+ files inline to analyze structure.
+ENFORCEMENT: Main dispatches `pov:explorer` or `codebase-survey` for the architectural survey. Main MUST NOT read 5+ files inline to analyze structure.
 
 **Memory first.** Before dispatching any subagent, call `recall(query="architecture decisions and ADRs for this codebase")` to retrieve prior architecture decisions, ADRs, and previous refactor outcomes. This prevents re-litigating settled decisions and seeds the survey with known friction.
 
-**Pre-survey research.** If the architecture area involves unfamiliar patterns, academic techniques, or ecosystem-level design decisions, dispatch `pi-oven:deep-researcher` before the explorer to research relevant architecture patterns, prior art, and known trade-offs. The deep-researcher returns a synthesis with citations; feed it as context into the explorer brief.
+**Pre-survey research.** If the architecture area involves unfamiliar patterns, academic techniques, or ecosystem-level design decisions, dispatch `pov:deep-researcher` before the explorer to research relevant architecture patterns, prior art, and known trade-offs. The deep-researcher returns a synthesis with citations; feed it as context into the explorer brief.
 
 Before exploring, read any domain glossary and the ADRs in the area being touched. If the survey will require 5+ file reads, route through `codebase-survey` rather than reading in the main session.
 
-Dispatch `pi-oven:explorer` AND `pi-oven:analyst` in parallel: the explorer walks the codebase organically and notes friction using `lsp references` to map coupling and `ast_grep` to detect shallow module patterns — not rigid heuristics; the analyst assesses coupling and testability. Have both report, with file + line evidence:
+Dispatch `pov:explorer` AND `pov:analyst` in parallel: the explorer walks the codebase organically and notes friction using `lsp references` to map coupling and `ast_grep` to detect shallow module patterns — not rigid heuristics; the analyst assesses coupling and testability. Have both report, with file + line evidence:
 
 - Where understanding one concept means bouncing between many small modules (analyze call-hierarchy depth via `lsp`).
 - Where modules are **shallow** — interface nearly as complex as implementation (identify via `ast_grep` pattern matching).
@@ -67,11 +67,11 @@ Dispatch `pi-oven:explorer` AND `pi-oven:analyst` in parallel: the explorer walk
 
 Apply the **deletion test** to each suspect. A "yes, concentrates complexity" is the signal worth surfacing.
 
-**Benchmark baseline.** After the explorer returns its friction report, dispatch `pi-oven:data-runner` to run a benchmark/performance baseline in the REPL for any modules flagged as performance-sensitive or high-churn. This establishes a pre-change baseline so that any recommended deepening can be validated against real numbers, not assumptions.
+**Benchmark baseline.** After the explorer returns its friction report, dispatch `pov:data-runner` to run a benchmark/performance baseline in the REPL for any modules flagged as performance-sensitive or high-churn. This establishes a pre-change baseline so that any recommended deepening can be validated against real numbers, not assumptions.
 
 ### 2. Candidates as an HTML report
 
-Dispatch `pi-oven:architect` to synthesise the explorer's findings into deepening candidates and write a self-contained HTML report to the OS temp dir — never into the repo. Resolve the temp dir from `$TMPDIR` (fall back to `/tmp`, `%TEMP%` on Windows) and write `<tmpdir>/architecture-review-<timestamp>.html`. Open it (`open` on macOS, `xdg-open` on Linux, `start` on Windows) and report the absolute path.
+Dispatch `pov:architect` to synthesise the explorer's findings into deepening candidates and write a self-contained HTML report to the OS temp dir — never into the repo. Resolve the temp dir from `$TMPDIR` (fall back to `/tmp`, `%TEMP%` on Windows) and write `<tmpdir>/architecture-review-<timestamp>.html`. Open it (`open` on macOS, `xdg-open` on Linux, `start` on Windows) and report the absolute path.
 
 The report uses **Tailwind via CDN** for layout and **Mermaid via CDN** for graph-shaped diagrams (call graphs, dependencies, sequences). Mix Mermaid with hand-built divs / inline SVG for editorial visuals (mass diagrams, cross-sections, call-graph collapse) so it doesn't read as generic. Each candidate gets a **before/after** visualisation — the diagrams carry the weight; prose is sparse.
 
@@ -102,7 +102,7 @@ Once the user picks a candidate, walk the design tree with them — constraints,
 
 ### 4. Interface design (optional — Design It Twice)
 
-When the user wants alternative interfaces for the chosen candidate, first frame the problem space for them: constraints any new interface must satisfy, the dependencies it relies on and their category, and a rough code sketch to ground the constraints (not a proposal). Then dispatch 3+ `pi-oven:architect` agents in parallel, each with a separate technical brief (file paths, coupling, what sits behind the seam) and a different constraint:
+When the user wants alternative interfaces for the chosen candidate, first frame the problem space for them: constraints any new interface must satisfy, the dependencies it relies on and their category, and a rough code sketch to ground the constraints (not a proposal). Then dispatch 3+ `pov:architect` agents in parallel, each with a separate technical brief (file paths, coupling, what sits behind the seam) and a different constraint:
 
 - Minimise the interface — 1–3 entry points, maximise leverage per entry point.
 - Maximise flexibility — many use cases, extension points.
@@ -115,7 +115,7 @@ Each agent returns: interface (types + invariants + ordering + error modes), a c
 
 Each deepening must **preserve behavior under `tdd-strict`** — tests green before AND after the change; author or extend tests for the deepened interface first, then land the deepening.
 
-When a deepening lands as code, dispatch `pi-oven:code-simplifier` to confirm the wrappers actually collapsed and a separate `pi-oven:verifier` to confirm the interface still passes its tests. Once both PASS (collapse confirmed + interface tests green), dispatch `pi-oven:code-reviewer` for a separate code-quality review — no new coupling or `code-quality-discipline` violations introduced by the deepening. The main agent must not self-approve the refactor in the same context.
+When a deepening lands as code, dispatch `pov:code-simplifier` to confirm the wrappers actually collapsed and a separate `pov:verifier` to confirm the interface still passes its tests. Once both PASS (collapse confirmed + interface tests green), dispatch `pov:code-reviewer` for a separate code-quality review — no new coupling or `code-quality-discipline` violations introduced by the deepening. The main agent must not self-approve the refactor in the same context.
 
 The landed refactor exits through `pre-commit-gate`, consistent with the other flows.
 
@@ -132,13 +132,13 @@ The landed refactor exits through `pre-commit-gate`, consistent with the other f
 
 The main agent dispatches and synthesises; the heavy work routes to per-model agents.
 
-- **Pre-survey research** → `pi-oven:deep-researcher` — researches architecture patterns, prior art, and ecosystem-level design decisions before the explorer survey (Step 1). Dispatch when the area involves unfamiliar patterns or academic techniques.
-- **Benchmark baseline** → `pi-oven:data-runner` — runs benchmark/performance baseline in REPL after the survey, before recommending changes (Step 1 post-survey). Dispatch when modules are performance-sensitive or high-churn.
-- **Survey / friction walk** → `pi-oven:explorer` — organic codebase exploration, returns file+line friction evidence (Step 1). For 5+ reads, go through `codebase-survey` first.
-- **Candidate synthesis + HTML report** → `pi-oven:architect` — turns friction into deepening candidates and writes the before/after report (Step 2).
-- **Interface alternatives** → 3+ parallel `pi-oven:architect` agents, one constraint each (Step 4).
-- **Collapse verification** → `pi-oven:code-simplifier` — confirms shallow wrappers actually disappeared after a landed deepening (Step 5).
-- **Test-surface verification** → `pi-oven:verifier` — confirms the deepened interface still passes its tests; separate context from the author (Step 5).
-- **Code-quality review** → `pi-oven:code-reviewer` — after collapse + interface tests both PASS, confirms the deepening introduced no new coupling or `code-quality-discipline` violations (Step 5).
+- **Pre-survey research** → `pov:deep-researcher` — researches architecture patterns, prior art, and ecosystem-level design decisions before the explorer survey (Step 1). Dispatch when the area involves unfamiliar patterns or academic techniques.
+- **Benchmark baseline** → `pov:data-runner` — runs benchmark/performance baseline in REPL after the survey, before recommending changes (Step 1 post-survey). Dispatch when modules are performance-sensitive or high-churn.
+- **Survey / friction walk** → `pov:explorer` — organic codebase exploration, returns file+line friction evidence (Step 1). For 5+ reads, go through `codebase-survey` first.
+- **Candidate synthesis + HTML report** → `pov:architect` — turns friction into deepening candidates and writes the before/after report (Step 2).
+- **Interface alternatives** → 3+ parallel `pov:architect` agents, one constraint each (Step 4).
+- **Collapse verification** → `pov:code-simplifier` — confirms shallow wrappers actually disappeared after a landed deepening (Step 5).
+- **Test-surface verification** → `pov:verifier` — confirms the deepened interface still passes its tests; separate context from the author (Step 5).
+- **Code-quality review** → `pov:code-reviewer` — after collapse + interface tests both PASS, confirms the deepening introduced no new coupling or `code-quality-discipline` violations (Step 5).
 
 Agents return findings and designs; the main agent makes the call and runs the grilling loop with the user.

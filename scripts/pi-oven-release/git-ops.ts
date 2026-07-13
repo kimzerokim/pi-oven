@@ -14,14 +14,6 @@ function run(spawnFn: SpawnFn, cmd: string, args: string[]): { stdout: string; s
 }
 
 
-function requireCurrentBranch(currentBranch: string | undefined): string {
-  const branch = currentBranch?.trim();
-  if (!branch) {
-    throw new Error("Refusing release: could not resolve current git branch");
-  }
-  return branch;
-}
-
 export function getCurrentTag(spawnFn: SpawnFn): string | undefined {
   const result = spawnFn("git", ["describe", "--tags", "--abbrev=0"]);
   if (result.exitCode !== 0) {
@@ -47,15 +39,6 @@ export function ensureGitClean(spawnFn: SpawnFn): void {
   }
 }
 
-export function createReleaseTag(version: string, dryRun: boolean, spawnFn: SpawnFn): GitRunResult | undefined {
-  if (dryRun) {
-    return undefined;
-  }
-  const args = ["tag", `v${version}`];
-  run(spawnFn, "git", args);
-  return { command: "git", args };
-}
-
 export function createReleaseCommit(version: string, dryRun: boolean, spawnFn: SpawnFn): GitRunResult | undefined {
   if (dryRun) {
     return undefined;
@@ -63,22 +46,4 @@ export function createReleaseCommit(version: string, dryRun: boolean, spawnFn: S
   const args = ["commit", "-am", `release: v${version}`];
   run(spawnFn, "git", args);
   return { command: "git", args };
-}
-
-export function pushRelease(
-  version: string,
-  currentBranch: string | undefined,
-  dryRun: boolean,
-  spawnFn: SpawnFn
-): GitRunResult[] {
-  if (dryRun) {
-    return [];
-  }
-  const branch = requireCurrentBranch(currentBranch);
-  run(spawnFn, "git", ["push", "origin", branch]);
-  run(spawnFn, "git", ["push", "origin", `v${version}`]);
-  return [
-    { command: "git", args: ["push", "origin", branch] },
-    { command: "git", args: ["push", "origin", `v${version}`] },
-  ];
 }

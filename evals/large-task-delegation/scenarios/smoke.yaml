@@ -1,5 +1,6 @@
 name: large-task-delegation-smoke-001
 skill: large-task-delegation
+kind: positive
 tag: smoke
 turn_timeout_ms: 300000
 description: >
@@ -9,16 +10,16 @@ input:
   - turn: 1
     user: "Refactor the auth module — 5 files, ~300 LoC"
 expected:
-  - skill_read_required: "large-task-delegation"
-  - agent_response_must_contain:
+  - skill_activation_required: "large-task-delegation"
+  - response_must_contain:
       - "dispatch"
       - "executor"
       - "scope"
-      - "pi-oven:executor"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+      - "pov:executor"
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "editing directly"
       - "I will edit"
       - "Let me edit"
       - "writing the code myself"
-  - tool_calls_required: ["Task|task"]
+  - tool_call_required: { namePattern: "Task|task", args: { agent: "pov:executor" } }

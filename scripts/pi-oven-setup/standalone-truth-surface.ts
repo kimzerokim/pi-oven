@@ -1,5 +1,24 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
+import {
+  ROLE_NAMES,
+  RUNTIME_CONTRACT_VERSION,
+  SUPPORTED_OMP_VERSION,
+  TaskDispatchSchema,
+  canonicalAgentName,
+} from "../../.omp/extensions/pi-oven-runtime/runtime-contract";
+import {
+  CAPABILITY_POLICY_VERSION,
+  CAPABILITY_RULES,
+} from "../../.omp/extensions/pi-oven-runtime/capability-registry";
+import { inspectRunLedgerSurface } from "../../.omp/extensions/pi-oven-runtime/run-ledger-health";
+import { checkEvalDiscrimination } from "../check-eval-discrimination";
+import {
+  generatedArtifacts,
+  renderGeneratedArtifacts,
+} from "../pi-oven-contract/generate";
+import { compareSemver } from "./cache-resolver";
+import { DEFAULT_PROFILE } from "./profiles";
 import {
   formatSkillKeywordIndexIssues,
   loadSkillKeywordIndexReport,
@@ -13,6 +32,7 @@ import {
   readDisabledProvidersDisplayState,
   readIgnoredSkillsDisplayState,
   readIncludedSkillsDisplayState,
+  readOverridesStrict,
   type ConfigYmlOpts,
   type DisplayReadResult,
 } from "./config-yml";
@@ -30,10 +50,9 @@ import {
   type ProjectSettingsDisplayState,
 } from "./project-settings";
 import {
-  describeNativeWorkerRuntime,
-  resolveNativeWorkerRuntimeStatus,
-  type NativeWorkerRuntimeStatus,
-} from "../pi-oven-team";
+  recoverSetupTransactionsOnStartup,
+  type SetupTransactionScopeHealth,
+} from "./setup-transaction";
 
 export type StandaloneTruthLevel = "INFO" | "WARN";
 
@@ -71,7 +90,7 @@ export interface StandaloneTruthFacts {
     cacheLoadedCount: number;
     cacheShippedSkillCount: number;
   };
-  nativeWorkerRuntime: NativeWorkerRuntimeStatus;
+  setupTransactions?: SetupTransactionScopeHealth[];
 }
 
 export const GLOBAL_CONFIG_PATH = "~/.omp/agent/config.yml";
@@ -79,8 +98,6 @@ export const PROJECT_SCOPE_GLOBAL_REMEDIATION_FIX =
   "Run /pi-oven:setup --repair-prereqs on this machine to restore those prerequisites. Project scope does not write ~/.omp/agent/config.yml.";
 export const PROJECT_SCOPE_FILE_REPAIR_FIX =
   "Repair or remove the project's .omp/settings.json, then rerun /pi-oven:setup --status.";
-export const NATIVE_WORKER_RUNTIME_FIX =
-  "Restore the vendored native worker launcher under scripts/pi-oven-team/ or reinstall pi-oven@kzk.";
 export const KEYWORD_SKILL_INTEGRITY_FIX =
   "Sync .claude-plugin/plugin.json skills[], shipped SKILL frontmatter names, and SKILL_KEYWORD_WHITELIST entries. Reinstall pi-oven@kzk if installed assets are stale.";
 export const WORKFLOW_SKILL_OWNERSHIP_FIX =
@@ -95,6 +112,7 @@ export const OLD_CONFIG_KEYS_LABEL = "old config keys";
 export const DUAL_PLUGIN_SURFACE_LABEL = "dual plugin surface";
 export const MIXED_MIGRATION_STATE_LABEL = "mixed migration state";
 export const AGENT_NAMESPACE_DRIFT_LABEL = "agent namespace drift";
+export const SETUP_TRANSACTION_SIGNAL_NAME = "setup transaction";
 
 export type WorkflowSkillOwnershipClassification =
   | "owned-surface active"
@@ -385,22 +403,51 @@ export function buildStandaloneTruthSignals(
         "Secondary OMP/architecture track only: bootstrap-level gajae parity remains open. Task 1 ownership success comes from the effective workflow-skill filter plus runtime capability proofs; matching gajae-style bootstrap exclusivity is visible here but is not a blocker yet.",
     },
     {
-      level: facts.nativeWorkerRuntime.active ? "INFO" : "WARN",
-      name: "native worker runtime",
-      detail:
-        "Only temporary adapter boundary remains: " + describeNativeWorkerRuntime(facts.nativeWorkerRuntime),
-      fix: facts.nativeWorkerRuntime.active ? undefined : NATIVE_WORKER_RUNTIME_FIX,
-    },
-    {
       level: "INFO",
-      name: "native worker ceiling",
+      name: "task dispatch",
       detail:
-        `dependency-ready wave target remains 8-12 siblings. Effective native worker ceiling is nativeWorkers.maxWorkers=${facts.nativeWorkerRuntime.maxWorkers} from ${facts.nativeWorkerRuntime.maxWorkersConfigPath} (${facts.nativeWorkerRuntime.maxWorkersSource}); ` +
-        (facts.nativeWorkerRuntime.active
-          ? "the vendored pi-oven launcher enforces this ceiling while that temporary adapter boundary remains."
-          : "pi-oven cannot enforce this ceiling until the vendored native runtime path is restored."),
+        "OMP task is the single dispatch seam. The dependency-ready wave target remains 8-12 siblings, while async.enabled, task.maxConcurrency, and provider/runtime admission determine actual concurrency.",
     },
   ];
+  if (facts.setupTransactions) {
+    for (const transaction of facts.setupTransactions) {
+      const { health } = transaction;
+      if (transaction.recovered) {
+        signals.push({
+          level: "INFO",
+          name: SETUP_TRANSACTION_SIGNAL_NAME,
+          detail: `${transaction.scope} transaction recovered safely; original state was restored before diagnostics ran.`,
+        });
+      } else if (health.state === "healthy") {
+        signals.push({
+          level: "INFO",
+          name: SETUP_TRANSACTION_SIGNAL_NAME,
+          detail: `${transaction.scope} transaction journal is terminal or absent.`,
+        });
+      } else if (health.state === "rollback_failed") {
+        signals.push({
+          level: "WARN",
+          name: SETUP_TRANSACTION_SIGNAL_NAME,
+          detail: `${transaction.scope} setup rollback failed; partial desired state is not healthy and automatic overwrite stopped at a CAS conflict.`,
+          fix: `Review and apply the manual recovery diff at ${health.manualRecoveryPath}.`,
+        });
+      } else if (health.state === "recovery_needed") {
+        signals.push({
+          level: "WARN",
+          name: SETUP_TRANSACTION_SIGNAL_NAME,
+          detail: `${transaction.scope} setup transaction still needs recovery (${health.phase}, ${health.txnId}); partial desired state is not healthy.`,
+          fix: "Stop the competing setup process, then rerun /pi-oven:setup --status to retry safe rollback.",
+        });
+      } else {
+        signals.push({
+          level: "WARN",
+          name: SETUP_TRANSACTION_SIGNAL_NAME,
+          detail: `${transaction.scope} setup transaction journal is corrupt: ${health.error}`,
+          fix: `Inspect ${transaction.stateDir} and repair the journal before changing routing.`,
+        });
+      }
+    }
+  }
   const duplicatePluginSurface = facts.duplicatePluginSurface;
   if (duplicatePluginSurface) {
     const cacheDriftDetail =
@@ -492,8 +539,14 @@ export async function collectStandaloneTruthSignals(
     pluginAssetPath: string;
     projectRoot: string;
     homeDir?: string;
+    setupTransactions?: SetupTransactionScopeHealth[];
   } & ConfigYmlOpts
 ): Promise<StandaloneTruthSignal[]> {
+  const setupTransactions = opts.setupTransactions ?? await recoverSetupTransactionsOnStartup({
+    cwd: opts.projectRoot,
+    homeDir: opts.homeDir,
+    spawnFn: opts.spawnFn,
+  });
   const projectSettings = await readProjectSettingsDisplayState({ cwd: opts.projectRoot });
   const globalPrerequisiteStates: StandaloneTruthFacts["globalPrerequisiteStates"] = await Promise.all(
     SETUP_GLOBAL_PREREQUISITES.map(async ({ key, expected }) => {
@@ -513,12 +566,6 @@ export async function collectStandaloneTruthSignals(
     opts.pluginAssetPath === PLUGIN_ROOT_UNAVAILABLE
       ? PLUGIN_ROOT_UNAVAILABLE
       : path.resolve(opts.pluginAssetPath);
-
-  const nativeWorkerRuntime = await resolveNativeWorkerRuntimeStatus({
-    pluginRoot: pluginAssetPath === PLUGIN_ROOT_UNAVAILABLE ? opts.projectRoot : pluginAssetPath,
-    projectRoot: opts.projectRoot,
-    homeDir: opts.homeDir,
-  });
 
   let keywordIndexTruth: StandaloneTruthFacts["keywordIndexTruth"];
   if (pluginAssetPath === PLUGIN_ROOT_UNAVAILABLE) {
@@ -629,7 +676,7 @@ export async function collectStandaloneTruthSignals(
     projectIncludedSkillsState,
     keywordIndexTruth,
     duplicatePluginSurface: duplicatePluginSurfaceFacts,
-    nativeWorkerRuntime,
+    setupTransactions,
   });
 }
 
@@ -642,4 +689,415 @@ export function formatStandaloneTruthSignals(signals: StandaloneTruthSignal[]): 
     }
   }
   return lines;
+}
+
+export type RuntimeTruthStatus = "PASS" | "WARN" | "FAIL" | "NOT RUN";
+
+export interface RuntimeTruthCheck {
+  status: RuntimeTruthStatus;
+  name: string;
+  detail: string;
+  fix?: string;
+}
+
+export interface RuntimeTruthReport {
+  checks: RuntimeTruthCheck[];
+}
+
+export interface RuntimeTruthOptions extends ConfigYmlOpts {
+  pluginAssetPath: string;
+  projectRoot: string;
+  homeDir?: string;
+  liveCanaryReceiptPath?: string;
+  now?: number;
+}
+
+function readJsonObject(file: string): Record<string, unknown> {
+  const value = JSON.parse(readFileSync(file, "utf8")) as unknown;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${file} must contain a JSON object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function runtimeContractCheck(pluginRoot: string): RuntimeTruthCheck {
+  if (pluginRoot === PLUGIN_ROOT_UNAVAILABLE) {
+    return {
+      status: "WARN",
+      name: "RuntimeContract",
+      detail: `${RUNTIME_CONTRACT_VERSION}; plugin root unavailable, generated parity not inspected`,
+      fix: "Reinstall pi-oven@kzk, then run /pi-oven:doctor.",
+    };
+  }
+  try {
+    const expected = renderGeneratedArtifacts();
+    const drift = generatedArtifacts.filter((file) => {
+      const absolute = path.join(pluginRoot, file);
+      return !existsSync(absolute) || readFileSync(absolute, "utf8") !== expected[file];
+    });
+    return drift.length === 0
+      ? {
+          status: "PASS",
+          name: "RuntimeContract",
+          detail: `${RUNTIME_CONTRACT_VERSION}; ${generatedArtifacts.length}/${generatedArtifacts.length} generated artifacts match`,
+        }
+      : {
+          status: "FAIL",
+          name: "RuntimeContract",
+          detail: `${RUNTIME_CONTRACT_VERSION}; generated artifact drift: ${drift.join(", ")}`,
+          fix: "Run `bun run contract:generate`, review the diff, then rerun /pi-oven:doctor.",
+        };
+  } catch (error) {
+    return {
+      status: "FAIL",
+      name: "RuntimeContract",
+      detail: `generated parity inspection failed: ${error instanceof Error ? error.message : String(error)}`,
+      fix: "Run `bun run contract:generate`, review the diff, then rerun /pi-oven:doctor.",
+    };
+  }
+}
+
+function roleRegistryCheck(): RuntimeTruthCheck {
+  const unique = new Set(ROLE_NAMES);
+  const canonical = ROLE_NAMES.map(canonicalAgentName);
+  const healthy = ROLE_NAMES.length === 24 && unique.size === 24 && new Set(canonical).size === 24;
+  return {
+    status: healthy ? "PASS" : "FAIL",
+    name: "role registry",
+    detail: `${ROLE_NAMES.length}/24 roles; ${unique.size} unique; canonical namespace pov:*`,
+    fix: healthy ? undefined : "Restore ROLE_NAMES from the generated RuntimeContract, then run `bun run contract:generate`.",
+  };
+}
+
+function namespaceMigrationCheck(
+  pluginRoot: string,
+  projectOverrides: Record<string, string> | null,
+  globalOverrides: Record<string, string> | null,
+): RuntimeTruthCheck {
+  if (pluginRoot === PLUGIN_ROOT_UNAVAILABLE) {
+    return {
+      status: "WARN",
+      name: "namespace migration",
+      detail: "canonical agent count unavailable; plugin root unavailable",
+      fix: "Reinstall pi-oven@kzk, then run /pi-oven:doctor.",
+    };
+  }
+  try {
+    const agentsDir = path.join(pluginRoot, "agents");
+    const files = existsSync(agentsDir) ? readdirSync(agentsDir).filter((file) => file.endsWith(".md")) : [];
+    let canonicalCount = 0;
+    let staleAgentCount = 0;
+    for (const role of ROLE_NAMES) {
+      const file = `pov-${role}.md`;
+      const absolute = path.join(agentsDir, file);
+      if (existsSync(absolute) && new RegExp(`^name:\\s*${canonicalAgentName(role)}\\s*$`, "m").test(readFileSync(absolute, "utf8"))) {
+        canonicalCount += 1;
+      }
+    }
+    staleAgentCount = files.filter((file) => file.startsWith("pi-oven-")).length;
+    const knownOverrides = [projectOverrides, globalOverrides].filter(
+      (record): record is Record<string, string> => record !== null,
+    );
+    const unknownConfigScopes = 2 - knownOverrides.length;
+    const staleConfigCount = knownOverrides
+      .flatMap((record) => Object.keys(record))
+      .filter((key) => key.startsWith("pi-oven:") && ROLE_NAMES.includes(key.slice("pi-oven:".length) as typeof ROLE_NAMES[number]))
+      .length;
+    const healthy = canonicalCount === ROLE_NAMES.length && staleAgentCount === 0 && staleConfigCount === 0 && unknownConfigScopes === 0;
+    return {
+      status: healthy ? "PASS" : "WARN",
+      name: "namespace migration",
+      detail: `${canonicalCount}/${ROLE_NAMES.length} canonical agents; ${staleAgentCount} stale agent files; ${staleConfigCount} known stale config keys; ${unknownConfigScopes} unreadable config scopes`,
+      fix: healthy ? undefined : "Run /pi-oven:setup --status, then use the reported scope-specific migration command.",
+    };
+  } catch (error) {
+    return {
+      status: "FAIL",
+      name: "namespace migration",
+      detail: `namespace inspection failed: ${error instanceof Error ? error.message : String(error)}`,
+      fix: "Run /pi-oven:setup --status and repair the reported namespace drift.",
+    };
+  }
+}
+
+function setupTransactionChecks(
+  transactions: readonly SetupTransactionScopeHealth[],
+): RuntimeTruthCheck[] {
+  return transactions.map(({ scope, health, recovered }) => {
+    if (recovered) {
+      return {
+        status: "PASS",
+        name: `setup transaction (${scope})`,
+        detail: "recovered safely; original state restored before diagnostics",
+      };
+    }
+    if (health.state === "healthy") {
+      return {
+        status: "PASS",
+        name: `setup transaction (${scope})`,
+        detail: "terminal or absent",
+      };
+    }
+    if (health.state === "rollback_failed") {
+      return {
+        status: "FAIL",
+        name: `setup transaction (${scope})`,
+        detail: `rollback stopped at a conflict; manual recovery diff: ${health.manualRecoveryPath}`,
+        fix: `/pi-oven:setup --status  # inspect ${health.manualRecoveryPath}; no destructive action is automatic`,
+      };
+    }
+    if (health.state === "recovery_needed") {
+      return {
+        status: "FAIL",
+        name: `setup transaction (${scope})`,
+        detail: `non-terminal ${health.phase} transaction ${health.txnId} remains after safe recovery attempt`,
+        fix: "/pi-oven:setup --status",
+      };
+    }
+    return {
+      status: "FAIL",
+      name: `setup transaction (${scope})`,
+      detail: `corrupt journal: ${health.error}`,
+      fix: "/pi-oven:doctor  # inspect the reported journal path before any manual edit",
+    };
+  });
+}
+
+function capabilityParityCheck(): RuntimeTruthCheck {
+  const policyTools = new Set(CAPABILITY_RULES.map((rule) => rule.toolName));
+  const profileRoles = Object.keys(DEFAULT_PROFILE);
+  const rosterMismatch = profileRoles.filter((role) => !ROLE_NAMES.includes(role as typeof ROLE_NAMES[number]));
+  const missingRoles = ROLE_NAMES.filter((role) => !(role in DEFAULT_PROFILE));
+  const unclassified = [...new Set(
+    Object.values(DEFAULT_PROFILE).flatMap((entry) => [...entry.tools, ...entry.blocked_tools]),
+  )].filter((tool) => !policyTools.has(tool));
+  const healthy = rosterMismatch.length === 0 && missingRoles.length === 0 && unclassified.length === 0;
+  return {
+    status: healthy ? "PASS" : "FAIL",
+    name: "capability policy / agent parity",
+    detail: healthy
+      ? `${ROLE_NAMES.length}/${ROLE_NAMES.length} agent profiles; every declared tool is classified by capability policy v${CAPABILITY_POLICY_VERSION}`
+      : `missing roles=${missingRoles.join(",") || "none"}; extra roles=${rosterMismatch.join(",") || "none"}; unclassified tools=${unclassified.join(",") || "none"}`,
+    fix: healthy ? undefined : "Align profiles.ts and capability-registry.ts, then run `bun run lint:agents`.",
+  };
+}
+
+async function offlineDiscriminationCheck(pluginRoot: string): Promise<RuntimeTruthCheck> {
+  if (pluginRoot === PLUGIN_ROOT_UNAVAILABLE || !existsSync(path.join(pluginRoot, "evals"))) {
+    return {
+      status: "NOT RUN",
+      name: "offline eval discrimination",
+      detail: "eval assets unavailable in this installed surface",
+      fix: "Reinstall pi-oven@kzk, then run `bun scripts/check-eval-discrimination.ts`.",
+    };
+  }
+  try {
+    const report = await checkEvalDiscrimination(path.join(pluginRoot, "evals"));
+    const passed = report.positiveScenarios > 0 && report.vacuousPasses.length === 0;
+    return {
+      status: passed ? "PASS" : "FAIL",
+      name: "offline eval discrimination",
+      detail: `${report.rejectedScenarios}/${report.positiveScenarios} positive scenarios reject the vacuous response`,
+      fix: passed ? undefined : "Run `bun scripts/check-eval-discrimination.ts` and repair every vacuous pass.",
+    };
+  } catch (error) {
+    return {
+      status: "FAIL",
+      name: "offline eval discrimination",
+      detail: `discrimination check failed: ${error instanceof Error ? error.message : String(error)}`,
+      fix: "Run `bun scripts/check-eval-discrimination.ts` and repair the reported scenario.",
+    };
+  }
+}
+
+function liveCanaryCheck(opts: RuntimeTruthOptions): RuntimeTruthCheck {
+  const receipt = opts.liveCanaryReceiptPath ?? process.env.PI_OVEN_CANARY_RECEIPT ?? path.join(opts.projectRoot, "artifacts", "trusted-canary-receipt.json");
+  if (!existsSync(receipt)) {
+    return {
+      status: "NOT RUN",
+      name: "live dispatch canary",
+      detail: `no local receipt at ${receipt}; absence is not PASS`,
+      fix: "Run the trusted-provider-canary workflow, download its receipt, and set PI_OVEN_CANARY_RECEIPT to that file.",
+    };
+  }
+  try {
+    const value = readJsonObject(receipt);
+    const stored = value.status;
+    const status: RuntimeTruthStatus = stored === "NOT_RUN" ? "NOT RUN" : stored === "PASS" || stored === "FAIL" ? stored : "FAIL";
+    return {
+      status,
+      name: "live dispatch canary",
+      detail: `last receipt ${receipt}: ${String(stored)}${typeof value.reason === "string" ? ` (${value.reason})` : ""}`,
+      fix: status === "PASS" ? undefined : "Run the trusted-provider-canary workflow and inspect the uploaded receipt before release.",
+    };
+  } catch (error) {
+    return {
+      status: "FAIL",
+      name: "live dispatch canary",
+      detail: `receipt is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      fix: "Replace the receipt with the JSON artifact from trusted-provider-canary, then rerun /pi-oven:doctor.",
+    };
+  }
+}
+
+function ompPackageCheck(pluginRoot: string, opts: RuntimeTruthOptions): RuntimeTruthCheck {
+  if (pluginRoot === PLUGIN_ROOT_UNAVAILABLE) {
+    return { status: "WARN", name: "OMP package", detail: `supported exact version ${SUPPORTED_OMP_VERSION}; package manifest unavailable` };
+  }
+  try {
+    const manifest = readJsonObject(path.join(pluginRoot, "package.json"));
+    const dependencies = manifest.dependencies as Record<string, unknown> | undefined;
+    const pinned = dependencies?.["@oh-my-pi/pi-coding-agent"];
+    if (pinned !== SUPPORTED_OMP_VERSION) {
+      return {
+        status: "FAIL",
+        name: "OMP package",
+        detail: `package pin ${String(pinned)} differs from RuntimeContract ${SUPPORTED_OMP_VERSION}`,
+        fix: "Restore the exact package.json OMP dependency and run `bun install --frozen-lockfile`.",
+      };
+    }
+    const spawn = opts.spawnFn ?? ((cmd: string, args: string[]) => {
+      const result = Bun.spawnSync([cmd, ...args], { stdout: "pipe", stderr: "pipe" });
+      return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
+    });
+    const result = spawn("omp", ["--version"]);
+    const installed = result.exitCode === 0 ? result.stdout?.toString().match(/\d+\.\d+\.\d+/)?.[0] : undefined;
+    if (!installed) {
+      return {
+        status: "WARN",
+        name: "OMP package",
+        detail: `exact package pin ${SUPPORTED_OMP_VERSION}; installed omp version not observed`,
+        fix: "Run `omp --version`, then rerun /pi-oven:doctor.",
+      };
+    }
+    const supported = compareSemver(installed, SUPPORTED_OMP_VERSION) >= 0;
+    return {
+      status: supported ? "PASS" : "FAIL",
+      name: "OMP package",
+      detail: `exact package pin ${SUPPORTED_OMP_VERSION}; installed omp ${installed}`,
+      fix: supported ? undefined : `Upgrade omp to ${SUPPORTED_OMP_VERSION} or newer, then rerun /pi-oven:doctor.`,
+    };
+  } catch (error) {
+    return {
+      status: "FAIL",
+      name: "OMP package",
+      detail: `package inspection failed: ${error instanceof Error ? error.message : String(error)}`,
+      fix: "Restore package.json and run `bun install --frozen-lockfile`.",
+    };
+  }
+}
+
+function releaseMetadataCheck(pluginRoot: string): RuntimeTruthCheck {
+  if (pluginRoot === PLUGIN_ROOT_UNAVAILABLE) {
+    return { status: "WARN", name: "release metadata", detail: "plugin root unavailable; version/ref parity not inspected" };
+  }
+  try {
+    const pkg = readJsonObject(path.join(pluginRoot, "package.json"));
+    const plugin = readJsonObject(path.join(pluginRoot, ".claude-plugin", "plugin.json"));
+    const marketplace = readJsonObject(path.join(pluginRoot, ".claude-plugin", "marketplace.json"));
+    const entry = Array.isArray(marketplace.plugins) ? marketplace.plugins[0] as Record<string, unknown> | undefined : undefined;
+    const source = entry?.source as Record<string, unknown> | undefined;
+    const version = pkg.version;
+    const ref = source?.ref;
+    const duplicateMarketplace = existsSync(path.join(pluginRoot, "marketplace.json"));
+    const healthy = typeof version === "string" && plugin.version === version && entry?.version === version && ref === `v${version}` && !duplicateMarketplace;
+    return {
+      status: healthy ? "PASS" : "FAIL",
+      name: "release metadata",
+      detail: healthy
+        ? `package/plugin/marketplace version ${version}; immutable ref ${ref}; duplicate catalog 0`
+        : `package=${String(version)}, plugin=${String(plugin.version)}, marketplace=${String(entry?.version)}, ref=${String(ref)}, duplicate catalog=${duplicateMarketplace ? 1 : 0}`,
+      fix: healthy ? undefined : "Run `bun run release:contract -- --tag v<package-version> --check-only` and repair version/ref parity.",
+    };
+  } catch (error) {
+    return {
+      status: "FAIL",
+      name: "release metadata",
+      detail: `release metadata inspection failed: ${error instanceof Error ? error.message : String(error)}`,
+      fix: "Restore package and plugin marketplace manifests, then rerun /pi-oven:doctor.",
+    };
+  }
+}
+
+function dispatchOwnershipCheck(): RuntimeTruthCheck {
+  const ompOwnsDispatch = TaskDispatchSchema.safeParse({
+    agent: canonicalAgentName("executor"),
+    tasks: [{
+      id: "contract-probe",
+      description: "Validate canonical dispatch ownership",
+      assignment: "Validate the RuntimeContract task seam without executing work.",
+    }],
+  }).success;
+  return {
+    status: ompOwnsDispatch ? "PASS" : "FAIL",
+    name: "native team",
+    detail: ompOwnsDispatch
+      ? "removed; OMP task owns dispatch"
+      : "RuntimeContract rejected the canonical OMP task ownership probe",
+    fix: ompOwnsDispatch
+      ? undefined
+      : "Restore TaskDispatchSchema and rerun `bun run contract:check`.",
+  };
+}
+
+/** Shared, read-only contract report consumed by both setup status and doctor. */
+export async function collectRuntimeTruthSurface(
+  opts: RuntimeTruthOptions,
+): Promise<RuntimeTruthReport> {
+  const pluginRoot = opts.pluginAssetPath === PLUGIN_ROOT_UNAVAILABLE
+    ? PLUGIN_ROOT_UNAVAILABLE
+    : path.resolve(opts.pluginAssetPath);
+  const projectState = await readProjectSettingsDisplayState({ cwd: opts.projectRoot });
+  const projectOverrides = projectState.state === "present"
+    ? (((projectState.data.task as Record<string, unknown> | undefined)?.agentModelOverrides as Record<string, string> | undefined) ?? {})
+    : projectState.state === "absent" ? {} : null;
+  const globalRead = await readOverridesStrict(opts);
+  const globalOverrides = globalRead.ok ? globalRead.record : null;
+  const transactions = await recoverSetupTransactionsOnStartup({
+    cwd: opts.projectRoot,
+    homeDir: opts.homeDir,
+    spawnFn: opts.spawnFn,
+  });
+  const ledger = inspectRunLedgerSurface(opts.projectRoot, process.env.PI_OVEN_RUN_LEDGER_MODE, opts.now);
+  const standalone = await collectStandaloneTruthSignals({
+    ...opts,
+    pluginAssetPath: pluginRoot,
+    setupTransactions: transactions,
+  });
+  const checks: RuntimeTruthCheck[] = [
+    runtimeContractCheck(pluginRoot),
+    roleRegistryCheck(),
+    namespaceMigrationCheck(pluginRoot, projectOverrides, globalOverrides),
+    ...setupTransactionChecks(transactions),
+    {
+      status: ledger.status === "INACTIVE" ? "NOT RUN" : ledger.status,
+      name: "run ledger",
+      detail: ledger.detail,
+      fix: ledger.status === "FAIL" ? "Set PI_OVEN_RUN_LEDGER_MODE=json for rollback mode, then inspect the database before retrying." : undefined,
+    },
+    capabilityParityCheck(),
+    await offlineDiscriminationCheck(pluginRoot),
+    liveCanaryCheck(opts),
+    ompPackageCheck(pluginRoot, opts),
+    releaseMetadataCheck(pluginRoot),
+    dispatchOwnershipCheck(),
+    ...standalone
+      .filter((signal) => signal.name !== SETUP_TRANSACTION_SIGNAL_NAME)
+      .map((signal): RuntimeTruthCheck => ({
+        status: signal.level === "INFO" ? "PASS" : "WARN",
+        name: signal.name,
+        detail: signal.detail,
+        fix: signal.fix,
+      })),
+  ];
+  return { checks };
+}
+
+export function formatRuntimeTruthSurface(report: RuntimeTruthReport): string {
+  const lines = ["Runtime contract truth surface:"];
+  for (const check of report.checks) {
+    lines.push(`  [${check.status}] ${check.name}: ${check.detail}`);
+    if (check.fix && check.status !== "PASS") lines.push(`         fix: ${check.fix}`);
+  }
+  return lines.join("\n");
 }

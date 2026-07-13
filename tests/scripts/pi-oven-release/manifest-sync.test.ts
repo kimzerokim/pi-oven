@@ -23,7 +23,9 @@ beforeEach(() => {
 
   writeJson(join(tempDir, "package.json"), { name: "pi-oven", version: "0.4.0" });
   writeJson(join(tempDir, ".claude-plugin/plugin.json"), { version: "0.4.0" });
-  writeJson(join(tempDir, ".claude-plugin/marketplace.json"), { plugins: [{ version: "0.4.0" }] });
+  writeJson(join(tempDir, ".claude-plugin/marketplace.json"), {
+    plugins: [{ version: "0.4.0", source: { ref: "v0.4.0" } }],
+  });
   writeFileSync(join(tempDir, ".omp/extensions/pi-oven.ts"), 'pi.setLabel("pi-oven v0.4.0");\n', "utf8");
 
   process.chdir(tempDir);
@@ -44,10 +46,41 @@ describe("manifest-sync", () => {
     expect(() => readCurrentVersionFromSoT()).toThrow("Version SoT mismatch");
   });
 
+  it("fails when the marketplace ref is mutable or does not match package.version", () => {
+    writeJson(join(tempDir, ".claude-plugin/marketplace.json"), {
+      plugins: [{ version: "0.4.0", source: { ref: "main" } }],
+    });
+    expect(() => readCurrentVersionFromSoT()).toThrow("marketplace ref");
+  });
+
   it("refuses installed cache paths as release authoring roots", () => {
     expect(() =>
       assertReleaseRunsFromSourceRepo(join(homedir(), ".omp/plugins/cache/plugins/kzk___pi-oven___0.4.0"))
     ).toThrow("installed cache");
+  });
+
+  it("re-resolves the installed cache boundary after HOME changes", () => {
+    const originalHome = process.env.HOME;
+    const originalConfigDir = process.env.PI_CONFIG_DIR;
+    const firstHome = join(tempDir, "home-a");
+    const secondHome = join(tempDir, "home-b");
+    const firstCache = join(firstHome, ".omp/plugins/cache/plugins/kzk___pi-oven___0.4.0");
+    const secondCache = join(secondHome, ".omp/plugins/cache/plugins/kzk___pi-oven___0.4.0");
+
+    try {
+      process.env.PI_CONFIG_DIR = ".omp";
+      process.env.HOME = firstHome;
+      expect(() => assertReleaseRunsFromSourceRepo(firstCache)).toThrow("installed cache");
+
+      process.env.HOME = secondHome;
+      expect(() => assertReleaseRunsFromSourceRepo(secondCache)).toThrow("installed cache");
+      expect(assertReleaseRunsFromSourceRepo(firstCache)).toBe(firstCache);
+    } finally {
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+      if (originalConfigDir === undefined) delete process.env.PI_CONFIG_DIR;
+      else process.env.PI_CONFIG_DIR = originalConfigDir;
+    }
   });
 
   it("syncs manifests and label", () => {
@@ -57,10 +90,13 @@ describe("manifest-sync", () => {
 
     const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
     const plugin = JSON.parse(readFileSync(".claude-plugin/plugin.json", "utf8")) as { version: string };
-    const market = JSON.parse(readFileSync(".claude-plugin/marketplace.json", "utf8")) as { plugins: Array<{ version: string }> };
+    const market = JSON.parse(readFileSync(".claude-plugin/marketplace.json", "utf8")) as {
+      plugins: Array<{ version: string; source: { ref: string } }>;
+    };
     expect(pkg.version).toBe("0.5.0");
     expect(plugin.version).toBe("0.5.0");
     expect(market.plugins[0]?.version).toBe("0.5.0");
+    expect(market.plugins[0]?.source.ref).toBe("v0.5.0");
     expect(readFileSync(".omp/extensions/pi-oven.ts", "utf8")).toContain('pi-oven v0.5.0');
     expect(result.boundary).toEqual({
       sourceRepo: {

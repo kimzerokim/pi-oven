@@ -1,5 +1,6 @@
 name: improve-codebase-architecture-adversarial-001
 skill: improve-codebase-architecture
+kind: positive
 tag: adversarial
 turn_timeout_ms: 300000
 input:
@@ -8,20 +9,20 @@ input:
   - turn: 2
     user: "Go ahead and propose some interfaces for the modules you found, and commit the HTML report to docs/architecture/."
 expected:
-  - skill_read_required: "improve-codebase-architecture"
-  - agent_response_must_contain:
+  - skill_activation_required: "improve-codebase-architecture"
+  - response_must_contain:
       - "dispatch"
       - "module"
       - "seam"
       - "temp"
       - "subagent"
       - "deepening"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "service"
       - "API boundary"
       - "boundary"
       - "component"
       - "docs/architecture"
       - "git commit"
-  - tool_calls_required: ["Task|task"]
+  - tool_call_required: { namePattern: "Task|task" }

@@ -12,10 +12,16 @@ import { readdirSync } from "fs";
 import { join } from "path";
 import {
   getAgentRoleFromFileName,
-  isAgentMarkdownFile,
   isLegacyAgentMarkdownFile,
 } from "./pi-oven-setup/agent-rewriter";
 import { DEFAULT_PROFILE, type Role } from "./pi-oven-setup/profiles";
+import { ROLE_NAMES } from "../.omp/extensions/pi-oven-runtime/runtime-contract";
+import {
+  CAPABILITY_RULES,
+  hasCapabilityRule,
+} from "../.omp/extensions/pi-oven-runtime/capability-registry";
+
+const runtimeRoleSet = new Set<string>(ROLE_NAMES);
 
 const defaultAgentsDir = join(import.meta.dir, "..", "agents");
 const agentsDir = process.argv[2] ?? defaultAgentsDir;
@@ -47,12 +53,7 @@ function extractName(frontmatter: Record<string, unknown>): string | undefined {
 /** First-class omp tool names. MCP tools (e.g. context7) are intentionally
  *  excluded — they are not governed by the agent `tools:` allowlist the same
  *  way, so we never flag them as instructed-but-not-granted. */
-const KNOWN_TOOLS = new Set<string>([
-  "read", "write", "edit", "apply_patch", "search", "find", "ast_grep", "ast_edit",
-  "lsp", "browser", "debug", "eval", "web_search", "task", "irc", "recall",
-  "retain", "reflect", "bash", "generate_image", "report_finding", "inspect_image",
-  "todo_write",
-]);
+const KNOWN_TOOLS = new Set<string>(CAPABILITY_RULES.map((rule) => rule.toolName));
 
 function extractStringList(frontmatter: Record<string, unknown>, key: string): string[] {
   const raw = frontmatter[key];
@@ -101,13 +102,15 @@ function instructedTools(body: string): Set<string> {
 
 let files: string[];
 try {
-  files = readdirSync(agentsDir).filter(isAgentMarkdownFile);
+  files = readdirSync(agentsDir).filter((file) => file.endsWith(".md"));
 } catch {
   // Directory does not exist — treat as empty (no violations)
   files = [];
 }
 
 let violations = 0;
+const canonicalRoles = new Set<string>();
+const roleOccurrences = new Map<string, string[]>();
 
 for (const file of files) {
   const content = await Bun.file(join(agentsDir, file)).text();
@@ -122,12 +125,24 @@ for (const file of files) {
     violations++;
   }
 
+  const rawRole = file.replace(/^(?:pov-|pi-oven-)/, "").replace(/\.md$/, "");
   const role = getAgentRoleFromFileName(file);
   if (isLegacyAgentMarkdownFile(file)) {
     console.error(
       `lint-agents: ERROR: ${file} uses the legacy pi-oven filename prefix. Rename it to pov-<role>.md.`
     );
     violations++;
+  }
+  if (!runtimeRoleSet.has(rawRole)) {
+    console.error(
+      `lint-agents: ERROR: ${file} maps to unknown runtime role "${rawRole}". Allowed roles: ${ROLE_NAMES.join(", ")}.`
+    );
+    violations++;
+  } else {
+    const occurrences = roleOccurrences.get(rawRole) ?? [];
+    occurrences.push(file);
+    roleOccurrences.set(rawRole, occurrences);
+    if (!isLegacyAgentMarkdownFile(file)) canonicalRoles.add(rawRole);
   }
   // Instructed-but-not-granted: every first-class tool named in the body must
   // be callable — i.e. in frontmatter tools: (or ["*"]), accounting for the
@@ -152,6 +167,15 @@ for (const file of files) {
   // 1. tools: ["*"] and non-empty blocked_tools is a contradiction (block is ignored).
   const rawTools = extractStringList(frontmatter, "tools");
   const rawBlocked = extractStringList(frontmatter, "blocked_tools");
+  for (const tool of rawTools) {
+    if (tool !== "*" && !hasCapabilityRule(tool)) {
+      console.error(
+        `lint-agents: ERROR: ${file} grants \`${tool}\`, but it has no capability-policy rule. ` +
+          "Add a versioned registry entry, argument tests, risk classification, and approval mode first."
+      );
+      violations++;
+    }
+  }
   if (rawTools.includes("*") && role !== null) {
     console.error(
       `lint-agents: ERROR: ${file} uses \`tools: ["*"]\`, but shipped pov agents must declare an explicit allowlist. Update profiles.ts and the agent frontmatter in lockstep.`
@@ -217,6 +241,22 @@ for (const file of files) {
     console.error(
       `lint-agents: ERROR: ${file} thinkingLevel="${thinking ?? "(missing)"}" ` +
         `does not match profiles.ts DEFAULT_PROFILE.${role}.thinkingLevel="${expected.thinkingLevel}".`
+    );
+    violations++;
+  }
+}
+
+for (const role of ROLE_NAMES) {
+  if (!canonicalRoles.has(role)) {
+    console.error(
+      `lint-agents: ERROR: missing canonical agent file pov-${role}.md for runtime role "${role}".`
+    );
+    violations++;
+  }
+  const occurrences = roleOccurrences.get(role) ?? [];
+  if (occurrences.length > 1) {
+    console.error(
+      `lint-agents: ERROR: duplicate agent files for runtime role "${role}": ${occurrences.join(", ")}.`
     );
     violations++;
   }

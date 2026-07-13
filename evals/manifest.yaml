@@ -1,0 +1,29 @@
+version: 1
+suites:
+  - { id: autonomous-loop, class: skill, path: autonomous-loop/scenarios, skill: autonomous-loop }
+  - { id: aws, class: skill, path: aws/scenarios, skill: aws }
+  - { id: bitbucket-pipeline, class: skill, path: bitbucket-pipeline/scenarios, skill: bitbucket-pipeline }
+  - { id: brainstorming, class: skill, path: brainstorming/scenarios, skill: brainstorming }
+  - { id: cloudflare, class: skill, path: cloudflare/scenarios, skill: cloudflare }
+  - { id: code-quality-discipline, class: skill, path: code-quality-discipline/scenarios, skill: code-quality-discipline }
+  - { id: codebase-survey, class: skill, path: codebase-survey/scenarios, skill: codebase-survey }
+  - { id: deep-dive, class: skill, path: deep-dive/scenarios, skill: deep-dive }
+  - { id: deep-init, class: skill, path: deep-init/scenarios, skill: deep-init }
+  - { id: fresh-verifier, class: skill, path: fresh-verifier/scenarios, skill: fresh-verifier }
+  - { id: git-workflow, class: skill, path: git-workflow/scenarios, skill: git-workflow }
+  - { id: html-research-orchestrator, class: skill, path: html-research-orchestrator/scenarios, skill: html-research-orchestrator }
+  - { id: html-spec-decision-maker, class: skill, path: html-spec-decision-maker/scenarios, skill: html-spec-decision-maker }
+  - { id: improve-codebase-architecture, class: skill, path: improve-codebase-architecture/scenarios, skill: improve-codebase-architecture }
+  - { id: large-task-delegation, class: skill, path: large-task-delegation/scenarios, skill: large-task-delegation, dispatch: task, concurrency: task.maxConcurrency }
+  - { id: memory-discipline, class: skill, path: memory-discipline/scenarios, skill: memory-discipline }
+  - { id: pre-commit-gate, class: skill, path: pre-commit-gate/scenarios, skill: pre-commit-gate }
+  - { id: receiving-code-review, class: skill, path: receiving-code-review/scenarios, skill: receiving-code-review }
+  - { id: spec-and-review, class: skill, path: spec-and-review/scenarios, skill: spec-and-review }
+  - { id: subagent-driven-development, class: skill, path: subagent-driven-development/scenarios, skill: subagent-driven-development }
+  - { id: systematic-debugging, class: skill, path: systematic-debugging/scenarios, skill: systematic-debugging }
+  - { id: tdd-strict, class: skill, path: tdd-strict/scenarios, skill: tdd-strict }
+  - { id: writing-plans, class: skill, path: writing-plans/scenarios, skill: writing-plans }
+  - { id: harness/dogfood, class: harness, path: harness/dogfood/scenarios, skill: autonomous-loop }
+  - { id: harness/eval-runner, class: harness, path: harness/eval-runner/scenarios }
+  - { id: harness/task-dispatch, class: harness, path: harness/task-dispatch/scenarios, skill: large-task-delegation, dispatch: task, concurrency: task.maxConcurrency }
+  - { id: harness/runtime-canary, class: harness, path: harness/runtime-canary/scenarios, skill: large-task-delegation, dispatch: task, concurrency: task.maxConcurrency }

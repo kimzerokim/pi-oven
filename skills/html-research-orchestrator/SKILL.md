@@ -12,7 +12,7 @@ Produce a deterministic, research-backed HTML deliverable by routing work throug
 
 ENFORCEMENT: never do this skill's substantive work in the main context. Main's direct-action budget is narrow — 1-2 file simple edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent. Main only dispatches, synthesizes, and reviews — never implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
 
-RIGHT-AGENT ROUTING (model-fit + role-fit is first-class): external research → `pi-oven:document-specialist`; synthesis + writing → `pi-oven:writer`; visual inspection → `pi-oven:multimodal-looker`.
+RIGHT-AGENT ROUTING (model-fit + role-fit is first-class): external research → `pov:document-specialist`; synthesis + writing → `pov:writer`; visual inspection → `pov:multimodal-looker`.
 
 ## Contract
 
@@ -24,7 +24,7 @@ RIGHT-AGENT ROUTING (model-fit + role-fit is first-class): external research →
 
 ## Stage 1 — External research dispatch (evidence collection)
 
-Dispatch `pi-oven:document-specialist` (or `pi-oven:librarian` when source-code-level references are needed) with explicit citation requirements. The dispatched agent MUST use `web_search` for every external/library/API/framework/doc question — source is truth, training data is history. Never let an agent answer from memory on a factual claim that can be verified against a live source.
+Dispatch `pov:document-specialist` (or `pov:librarian` when source-code-level references are needed) with explicit citation requirements. The dispatched agent MUST use `web_search` for every external/library/API/framework/doc question — source is truth, training data is history. Never let an agent answer from memory on a factual claim that can be verified against a live source.
 
 - Every claim must cite a source URL obtained via `web_search` or direct source read; claims with no verifiable source are excluded.
 - Prefer primary sources (official docs, standards, vendor docs, papers) before secondary commentary.
@@ -41,7 +41,7 @@ If citations are missing for a claim, that claim is excluded from synthesis.
 
 ## Stage 2 — Synthesis dispatch (self-contained HTML)
 
-Dispatch `pi-oven:architect` (or `pi-oven:writer` for prose-heavy outputs) to generate a single-file, self-contained HTML report from Stage 1 findings.
+Dispatch `pov:architect` (or `pov:writer` for prose-heavy outputs) to generate a single-file, self-contained HTML report from Stage 1 findings.
 
 Output constraints:
 
@@ -109,9 +109,9 @@ Do not emit free-form recommendation prose without this structure.
 
 ## Dispatch defaults
 
-- Research collection: `pi-oven:document-specialist`.
-- Source-code provenance or API-surface verification: `pi-oven:librarian`.
-- HTML synthesis and visual structuring: `pi-oven:architect`.
-- Editorial polish only (no architecture diagrams needed): `pi-oven:writer`.
+- Research collection: `pov:document-specialist`.
+- Source-code provenance or API-surface verification: `pov:librarian`.
+- HTML synthesis and visual structuring: `pov:architect`.
+- Editorial polish only (no architecture diagrams needed): `pov:writer`.
 
 Main agent orchestrates, validates structure/citations, and returns the temp-path handoff.

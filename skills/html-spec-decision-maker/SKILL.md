@@ -10,7 +10,7 @@ Create one self-contained pre-decision HTML worksheet that helps a human lock di
 
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
-Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 file simple edits ≤ 30 LoC, or operational commands. Any multi-step grounding, evidence collection, or HTML assembly should be delegated. Route by role-fit: codebase grounding → `pi-oven:explorer`; external/library grounding → `pi-oven:document-specialist` or `pi-oven:librarian`; HTML assembly/polish → `pi-oven:writer` or `pi-oven:designer`.
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 file simple edits ≤ 30 LoC, or operational commands. Any multi-step grounding, evidence collection, or HTML assembly should be delegated. Route by role-fit: codebase grounding → `pov:explorer`; external/library grounding → `pov:document-specialist` or `pov:librarian`; HTML assembly/polish → `pov:writer` or `pov:designer`.
 
 ## When to use
 

@@ -1,9 +1,23 @@
 import { describe, it, expect } from "bun:test";
 import {
+  classifyDurableExternalToolEffect,
   createStopGuardState,
   decideStopGuardOnTurnEnd,
   updateStopGuardOnTurnStart,
 } from "../../../.omp/extensions/pi-oven-runtime/autonomous-stop-guard";
+
+describe("autonomous durable effects", () => {
+  it("classifies gated git/external mutations but not local read commands", () => {
+    expect(classifyDurableExternalToolEffect("bash", { command: "git push origin main" }))
+      .toMatchObject({ kind: "git-push", target: "origin main" });
+    expect(classifyDurableExternalToolEffect("bash", { command: "aws s3 cp file s3://bucket/key" }))
+      .toMatchObject({ kind: "external-mutation" });
+    expect(classifyDurableExternalToolEffect("bash", { command: "git status --short" }))
+      .toBeUndefined();
+    expect(classifyDurableExternalToolEffect("read", { path: "README.md" }))
+      .toBeUndefined();
+  });
+});
 
 function userEntry(id: string, text: string) {
   return {

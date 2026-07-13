@@ -14,7 +14,7 @@ Whenever review feedback arrives and you are about to act on it — from the use
 
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
-Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched. Main only dispatches, synthesizes, and reviews — never implements inline. Match the agent to the work (model-fit + role-fit is first-class): re-review / verify the feedback technically → `pi-oven:code-reviewer` or `pi-oven:critic` before implementing. (See `large-task-delegation` + `subagent-driven-development`.)
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched. Main only dispatches, synthesizes, and reviews — never implements inline. Match the agent to the work (model-fit + role-fit is first-class): re-review / verify the feedback technically → `pov:code-reviewer` or `pov:critic` before implementing. (See `large-task-delegation` + `subagent-driven-development`.)
 
 ## Response pattern
 
@@ -85,9 +85,9 @@ External feedback = suggestions to evaluate, not orders to follow. Verify. Quest
 
 In an omp session, route the evaluate-then-implement passes to the right agent instead of doing everything inline:
 
-- **VERIFY a contested suggestion against codebase reality** (does the callsite/test/version actually behave as the reviewer claims?) → dispatch `pi-oven:verifier` for an evidence-backed VERDICT before accepting or rejecting the item.
-- **IMPLEMENT accepted items** (multi-file or non-trivial) → dispatch `pi-oven:executor`; keep authoring and reviewing in separate lanes (model routing per `large-task-delegation`).
-- **Re-review after implementing review feedback** (separate pass, never self-approve) → dispatch `pi-oven:code-reviewer` to confirm the fixes are sound and introduced no regressions.
+- **VERIFY a contested suggestion against codebase reality** (does the callsite/test/version actually behave as the reviewer claims?) → dispatch `pov:verifier` for an evidence-backed VERDICT before accepting or rejecting the item.
+- **IMPLEMENT accepted items** (multi-file or non-trivial) → dispatch `pov:executor`; keep authoring and reviewing in separate lanes (model routing per `large-task-delegation`).
+- **Re-review after implementing review feedback** (separate pass, never self-approve) → dispatch `pov:code-reviewer` to confirm the fixes are sound and introduced no regressions.
 
 Structured critic review feedback from `spec-and-review` originates there; this skill governs how to receive and act on it. Outside omp, the main agent runs the same evaluate → verify → implement passes inline.
 

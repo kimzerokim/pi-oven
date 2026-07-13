@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Design: pi-oven omp-Native Agent Upgrade
 
 > Status: LOCKED (brainstorming-confirmed decisions). Codex-reviewable.

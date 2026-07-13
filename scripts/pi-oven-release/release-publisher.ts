@@ -1,24 +1,48 @@
 import type { SpawnFn } from "./changelog-generator";
-import { createReleaseCommit, createReleaseTag, pushRelease, type GitRunResult } from "./git-ops";
+import { createReleaseCommit, type GitRunResult } from "./git-ops";
 
-export interface PublishOptions {
+export interface PrepareOptions {
   version: string;
-  publish: boolean;
+  prepare: boolean;
   dryRun: boolean;
   currentBranch?: string;
   spawnFn: SpawnFn;
 }
 
-export interface PublishResult {
-  performed: boolean;
+export interface PrepareResult {
+  prepared: boolean;
   commit?: GitRunResult;
-  tag?: GitRunResult;
-  pushes: GitRunResult[];
 }
 
-export function publishRelease(options: PublishOptions): PublishResult {
-  if (!options.publish) {
-    return { performed: false, pushes: [] };
+export const RELEASE_VALIDATION_COMMANDS = [
+  ["bun", "install", "--frozen-lockfile"],
+  ["bun", "run", "contract:check"],
+  ["bun", "run", "check"],
+  ["bun", "run", "lint:agents"],
+  ["bun", "run", "lint:skills"],
+  ["bun", "run", "build"],
+  ["bun", "run", "test:hermetic", "--", "--only-failures"],
+] as const;
+
+function validateReleaseCandidate(version: string, spawnFn: SpawnFn): void {
+  const commands: ReadonlyArray<readonly string[]> = [
+    RELEASE_VALIDATION_COMMANDS[0],
+    ["bun", "run", "release:contract", "--", "--tag", `v${version}`, "--check-only"],
+    ...RELEASE_VALIDATION_COMMANDS.slice(1),
+  ];
+  for (const [command, ...args] of commands) {
+    const result = spawnFn(command, [...args]);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `release validation failed: ${command} ${args.join(" ")}: ${result.stderr || result.stdout}`,
+      );
+    }
+  }
+}
+
+export function prepareReleaseCommit(options: PrepareOptions): PrepareResult {
+  if (!options.prepare) {
+    return { prepared: false };
   }
 
   const currentBranch = options.currentBranch?.trim();
@@ -26,14 +50,12 @@ export function publishRelease(options: PublishOptions): PublishResult {
     throw new Error("Refusing release: could not resolve current git branch");
   }
 
+  if (!options.dryRun) validateReleaseCandidate(options.version, options.spawnFn);
+
   const commit = createReleaseCommit(options.version, options.dryRun, options.spawnFn);
-  const tag = createReleaseTag(options.version, options.dryRun, options.spawnFn);
-  const pushes = pushRelease(options.version, currentBranch, options.dryRun, options.spawnFn);
 
   return {
-    performed: true,
+    prepared: true,
     commit,
-    tag,
-    pushes,
   };
 }

@@ -3,7 +3,6 @@ import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
-  DEFAULT_NATIVE_WORKER_MAX,
   SETUP_GLOBAL_PREREQUISITES,
   clearSetupComplete,
   clearSetupCompleteGlobal,
@@ -14,11 +13,7 @@ import {
   markSetupCompleteGlobal,
   normalizeLanguage,
   readGlobalLanguage,
-  readGlobalNativeWorkerMax,
   readProjectLanguage,
-  readProjectNativeWorkerMax,
-  seedGlobalNativeWorkerMax,
-  seedProjectNativeWorkerMax,
   setGlobalLanguage,
   setProjectLanguage,
   type ProjectLanguage,
@@ -272,45 +267,6 @@ describe("project-config — preserve other keys (read-merge)", () => {
     }
   });
 });
-
-describe("project-config — native worker ceiling", () => {
-  let cwd: string;
-
-  beforeEach(() => {
-    cwd = makeTempDir();
-  });
-
-  afterEach(() => {
-    rmSync(cwd, { recursive: true, force: true });
-  });
-
-  it("seedProjectNativeWorkerMax writes the default ceiling and readProjectNativeWorkerMax returns it", async () => {
-    const value = await seedProjectNativeWorkerMax({ cwd });
-    expect(value).toBe(DEFAULT_NATIVE_WORKER_MAX);
-    expect(await readProjectNativeWorkerMax({ cwd })).toBe(DEFAULT_NATIVE_WORKER_MAX);
-
-    const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
-    expect(parsed.nativeWorkers).toEqual({ maxWorkers: DEFAULT_NATIVE_WORKER_MAX });
-  });
-
-  it("seedProjectNativeWorkerMax preserves an existing explicit value and sibling keys", async () => {
-    mkdirSync(join(cwd, ".pi-oven"), { recursive: true });
-    writeFileSync(
-      configFile(cwd),
-      JSON.stringify({ language: "ko", nativeWorkers: { maxWorkers: 12, keep: true } }),
-      "utf-8"
-    );
-
-    const value = await seedProjectNativeWorkerMax({ cwd });
-    expect(value).toBe(12);
-    expect(await readProjectNativeWorkerMax({ cwd })).toBe(12);
-
-    const parsed = JSON.parse(readFileSync(configFile(cwd), "utf-8"));
-    expect(parsed.language).toBe("ko");
-    expect(parsed.nativeWorkers).toEqual({ maxWorkers: 12, keep: true });
-  });
-});
-
 
 describe("project-config — setup readiness truth", () => {
   let cwd: string;
@@ -579,47 +535,25 @@ describe("project-config — setGlobalLanguage / readGlobalLanguage round-trip",
     );
     expect(await readGlobalLanguage({ homeDir })).toBeNull();
   });
-});
 
-describe("project-config — global native worker ceiling", () => {
-  let homeDir: string;
+  it("re-resolves the default global config after HOME changes", async () => {
+    const originalHome = process.env.HOME;
+    const firstHome = join(homeDir, "first");
+    const secondHome = join(homeDir, "second");
+    mkdirSync(join(firstHome, ".pi-oven"), { recursive: true });
+    mkdirSync(join(secondHome, ".pi-oven"), { recursive: true });
+    writeFileSync(globalConfigFile(firstHome), JSON.stringify({ language: "ko" }), "utf-8");
+    writeFileSync(globalConfigFile(secondHome), JSON.stringify({ language: "en" }), "utf-8");
 
-  beforeEach(() => {
-    homeDir = join(
-      tmpdir(),
-      `global-native-worker-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    );
-    mkdirSync(homeDir, { recursive: true });
-  });
-
-  afterEach(() => {
-    rmSync(homeDir, { recursive: true, force: true });
-  });
-
-  it("seedGlobalNativeWorkerMax writes the default ceiling and readGlobalNativeWorkerMax returns it", async () => {
-    const value = await seedGlobalNativeWorkerMax({ homeDir });
-    expect(value).toBe(DEFAULT_NATIVE_WORKER_MAX);
-    expect(await readGlobalNativeWorkerMax({ homeDir })).toBe(DEFAULT_NATIVE_WORKER_MAX);
-
-    const parsed = JSON.parse(readFileSync(globalConfigFile(homeDir), "utf-8"));
-    expect(parsed.nativeWorkers).toEqual({ maxWorkers: DEFAULT_NATIVE_WORKER_MAX });
-  });
-
-  it("seedGlobalNativeWorkerMax preserves an existing explicit value", async () => {
-    mkdirSync(join(homeDir, ".pi-oven"), { recursive: true });
-    writeFileSync(
-      globalConfigFile(homeDir),
-      JSON.stringify({ nativeWorkers: { maxWorkers: 24 }, keepMe: true }),
-      "utf-8"
-    );
-
-    const value = await seedGlobalNativeWorkerMax({ homeDir });
-    expect(value).toBe(24);
-    expect(await readGlobalNativeWorkerMax({ homeDir })).toBe(24);
-
-    const parsed = JSON.parse(readFileSync(globalConfigFile(homeDir), "utf-8"));
-    expect(parsed.keepMe).toBe(true);
-    expect(parsed.nativeWorkers).toEqual({ maxWorkers: 24 });
+    try {
+      process.env.HOME = firstHome;
+      expect(await readGlobalLanguage()).toBe("ko");
+      process.env.HOME = secondHome;
+      expect(await readGlobalLanguage()).toBe("en");
+    } finally {
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+    }
   });
 });
 

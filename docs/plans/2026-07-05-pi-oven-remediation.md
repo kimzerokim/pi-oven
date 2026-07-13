@@ -1,3 +1,6 @@
+> Historical architecture; implementation removed in vNext; OMP task is current dispatch seam
+> Superseded by [the runtime contract remediation implementation plan](2026-07-13-pi-oven-runtime-contract-remediation-implementation-plan.md).
+
 ## Goal
 
 pi-oven의 remediation wave를 실행해 Codex-only default routing, ask-driven per-agent effort approval, detailed code-grounded survey/research enforcement, legacy compatibility cleanup, and follow-up runtime coherence를 현재 repo code/test/doc surfaces에 맞게 구현한다.

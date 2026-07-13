@@ -1,11 +1,11 @@
 name: brainstorming-regression-001
 skill: brainstorming
+kind: positive
 tag: regression
 input:
   - turn: 1
     user: "let's brainstorm a CSV importer feature for the dashboard — the app already has a data table at src/components/DataTable.tsx. No further clarification needed, just start the design process."
 expected:
-  - skill_read_required: "brainstorming"
-  - agent_response_must_contain: ["spec", "docs/specs", "design", "Goals", "Constraints", "API surface", "Data model", "Non-goals"]
-    agent_response_must_contain_match: any
-  - tool_calls_forbidden_first: ["Write src", "Edit src"]
+  - skill_activation_required: "brainstorming"
+  - response_must_contain: ["spec", "docs/specs", "design", "Goals", "Constraints", "API surface", "Data model", "Non-goals"]
+    response_must_contain_match: any

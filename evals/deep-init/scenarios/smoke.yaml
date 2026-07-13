@@ -1,12 +1,13 @@
 name: deep-init-smoke-001
 skill: deep-init
+kind: positive
 tag: smoke
 turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "deepinit"
 expected:
-  - skill_read_required: "deep-init"
-  - agent_response_must_contain: ["AGENTS.md", "directory", "explorer", "hierarchical"]
-    agent_response_must_contain_match: any
-  - tool_calls_required: ["task|Task"]
+  - skill_activation_required: "deep-init"
+  - response_must_contain: ["AGENTS.md", "directory", "explorer", "hierarchical"]
+    response_must_contain_match: any
+  - tool_call_required: { namePattern: "task|Task" }

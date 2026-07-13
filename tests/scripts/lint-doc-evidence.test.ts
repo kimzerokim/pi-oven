@@ -181,7 +181,7 @@ Research docs should still trigger research checks even when the filename also s
   - live repo state
 
 ## Findings
-- Proof gating already blocks code-write without exact owned skill reads (.omp/extensions/pi-oven-runtime/gate.ts:435-480; scripts/pi-oven-team/task-file-ops.ts:99-145).
+- The strict local dispatch schema validates dependency-safe OMP task payloads (.omp/extensions/pi-oven-runtime/runtime-contract.ts:45-120).
 
 ## Explicit unknowns
 - I did not inspect the matching regression tests in this sample.
@@ -236,7 +236,7 @@ Official-link recognition should not be hard-pinned to OpenAI hosts.
 
 ## Findings
 - Proof gating already blocks code-write without exact owned skill reads (.omp/extensions/pi-oven-runtime/gate.ts:435-480; tests/extensions/pi-oven-runtime/gate.test.ts:559-653).
-- Dependency-aware batching rejects colliding write lanes before startup fan-out (scripts/pi-oven-team/task-file-ops.ts:99-145; scripts/pi-oven-team/runtime-v2.ts:141-230).
+- OMP task payloads are checked against the local strict schema and the exported runtime subset (.omp/extensions/pi-oven-runtime/runtime-contract.ts:45-120; tests/plugin/task-dispatch-canary.test.ts:1-55).
 
 ## Explicit unknowns
 - I did not validate whether any additional runtime gate should lint these docs automatically outside this command yet.

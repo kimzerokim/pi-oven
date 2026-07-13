@@ -1,0 +1,10 @@
+name: eval-runner-smoke-001
+skill: eval-runner
+kind: positive
+tag: smoke
+input:
+  - turn: 1
+    user: "Run eval for skill code-quality-discipline smoke tag"
+expected:
+  - response_must_contain: ["run-eval", "scenario"]
+    tool_call_required: { namePattern: "bash|Bash" }

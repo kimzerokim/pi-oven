@@ -1,6 +1,7 @@
 ---
 name: autonomous-loop-smoke-001
 skill: autonomous-loop
+kind: positive
 tag: smoke
 turn_timeout_ms: 300000
 # Category: Autonomous (§4d). Runtime keyword loader should force a real
@@ -9,8 +10,8 @@ input:
   - turn: 1
     user: "ralph로 돌려 — add a new utility function to format ISO timestamps. Use the current branch, no new branch needed. No PR required, direct commits are fine."
 expected:
-  - skill_read_required: "autonomous-loop"
-  - agent_response_must_not_contain:
+  - skill_activation_required: "autonomous-loop"
+  - response_must_not_contain:
       - "awaiting next instruction"
       - "Should I proceed"
       - "Shall I continue"
@@ -19,4 +20,4 @@ expected:
       - "Done, awaiting"
       - "직접 구현"
       - "main에서 바로"
-  - tool_calls_required: ["task|Task"]
+  - tool_call_required: { namePattern: "task|Task" }

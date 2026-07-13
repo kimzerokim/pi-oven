@@ -4,10 +4,10 @@ import path from "node:path";
 import { ROLES } from "../../scripts/pi-oven-setup/profiles";
 
 const SKILLS_ROOT = path.resolve(__dirname, "../../skills");
-const ROLE_TOKEN = /(?<!\/)pi-oven:([a-z][a-z0-9-]*)/g;
+const ROLE_TOKEN = /(?<!\/)pov:([a-z][a-z0-9-]*)/g;
 
 describe("skill role coverage", () => {
-  it("all declared pi-oven roles appear in at least one SKILL.md", async () => {
+  it("all declared pov roles appear in at least one SKILL.md", async () => {
     const dirs = await readdir(SKILLS_ROOT, { withFileTypes: true });
     const seen = new Set<string>();
 

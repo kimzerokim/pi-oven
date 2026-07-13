@@ -1,13 +1,14 @@
 name: writing-plans-regression-001
 skill: writing-plans
+kind: positive
 tag: regression
 input:
   - turn: 1
     user: "write a plan for the settings page feature"
 expected:
-  - skill_read_required: "writing-plans"
-  - agent_response_must_contain:
+  - skill_activation_required: "writing-plans"
+  - response_must_contain:
       - "## Goal"
       - "## Architecture"
       - "## Tech Stack"
-    agent_response_must_contain_match: any
+    response_must_contain_match: any

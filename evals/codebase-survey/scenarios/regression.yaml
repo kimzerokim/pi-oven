@@ -1,22 +1,23 @@
 name: codebase-survey-regression-001
 skill: codebase-survey
+kind: positive
 tag: regression
 turn_timeout_ms: 300000
 input:
   - turn: 1
     user: "We're changing plugin-surface behavior across skills, commands, agents, and evals. Do a full survey and prepare a plan."
 expected:
-  - skill_read_required: "codebase-survey"
-  - agent_response_must_contain:
+  - skill_activation_required: "codebase-survey"
+  - response_must_contain:
       - "explore"
       - "dispatch"
       - "8-step"
       - "docs/harness/surveys"
       - "evidence"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "spot-check is enough"
       - "sample only"
       - "plan first and survey later"
       - "skip the survey"
-  - tool_calls_required: ["Task|task"]
+  - tool_call_required: { namePattern: "Task|task" }

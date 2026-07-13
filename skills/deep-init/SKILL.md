@@ -14,7 +14,7 @@ Generates hierarchical AGENTS.md documentation across an entire codebase. Every 
 
 ENFORCEMENT: do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow — a 1-2 file simple edit (≤ 30 LoC) or an operational command (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched. Main only dispatches, synthesizes, and reviews — never implements inline (see `large-task-delegation` + `subagent-driven-development`).
 
-RIGHT-AGENT ROUTING: match the agent to the work — model-fit + role-fit is first-class. Hierarchical doc generation → `pi-oven:explorer` (map + read) + `pi-oven:document-specialist` (per-dir context authoring) + `pi-oven:librarian` (cross-reference + hierarchy validation).
+RIGHT-AGENT ROUTING: match the agent to the work — model-fit + role-fit is first-class. Hierarchical doc generation → `pov:explorer` (map + read) + `pov:document-specialist` (per-dir context authoring) + `pov:librarian` (cross-reference + hierarchy validation).
 
 ## When to use
 
@@ -98,7 +98,7 @@ Root AGENTS.md omits the `<!-- Parent: -->` tag. The `<!-- MANUAL: -->` sentinel
 
 ### Step 1: Map directory structure
 
-Dispatch `pi-oven:explorer` (model: haiku) to list all directories recursively. Exclude:
+Dispatch `pov:explorer` to list all directories recursively. Runtime routing selects the model. Exclude:
 `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.venv`, `coverage`, `.next`, `.nuxt`
 
 The explorer returns a flat list organized by depth level:
@@ -116,9 +116,9 @@ Generate one work item per directory, grouped by level. Parent levels must be co
 
 For each level, process all directories at that depth in parallel:
 
-- Dispatch `pi-oven:explorer` to read all files in the directory (model: haiku for small dirs, sonnet for dirs with 10+ files or complex modules)
-- Dispatch `pi-oven:writer` to draft the AGENTS.md content from the explorer's findings
-- Same-level directories fire in parallel with `run_in_background: true`; different levels are sequential (parent before child)
+- Dispatch `pov:explorer` to read all files in the directory; batch small directories and give large or complex directories dedicated task items
+- Dispatch `pov:writer` to draft the AGENTS.md content from the explorer's findings
+- Put independent same-level directories in one `task({agent:"pov:explorer", tasks:[...]})` call; different levels are sequential (parent before child). Actual simultaneous execution depends on OMP `async.enabled` and `task.maxConcurrency` and is not guaranteed when async is disabled.
 
 **Batching rule**: directories with fewer than 5 files are batched into a single explorer dispatch. Directories with 10+ files each get a dedicated explorer call.
 
@@ -157,17 +157,17 @@ After all files are generated, run validation:
 
 | Task | Agent |
 |------|-------|
-| Directory mapping | `pi-oven:explorer` (model: haiku) |
-| File content analysis — small dirs | `pi-oven:explorer` (model: haiku), batched |
-| File content analysis — large/complex dirs | `pi-oven:explorer` (model: sonnet), dedicated |
-| AGENTS.md content authoring | `pi-oven:writer` |
+| Directory mapping | `pov:explorer` |
+| File content analysis — small dirs | `pov:explorer`, batched |
+| File content analysis — large/complex dirs | `pov:explorer`, dedicated |
+| AGENTS.md content authoring | `pov:writer` |
 
 ## Parallelization rules
 
 1. Same-level directories: dispatch in parallel in a single turn
 2. Different levels: sequential (parent must exist before child)
-3. Large directories (10+ files): one dedicated `pi-oven:explorer` per directory
-4. Small directories (< 5 files): batch multiple into one `pi-oven:explorer` call
+3. Large directories (10+ files): one dedicated `pov:explorer` per directory
+4. Small directories (< 5 files): batch multiple into one `pov:explorer` call
 
 ## Quality standards
 

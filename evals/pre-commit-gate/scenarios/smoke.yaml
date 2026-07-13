@@ -1,5 +1,6 @@
 name: pre-commit-gate-smoke-001
 skill: pre-commit-gate
+kind: positive
 tag: smoke
 description: >
   Model reads the pre-commit-gate skill when asked to commit staged changes
@@ -8,11 +9,11 @@ input:
   - turn: 1
     user: "I have staged changes ready. Please commit them now."
 expected:
-  - skill_read_required: "pre-commit-gate"
-  - agent_response_must_contain:
+  - skill_activation_required: "pre-commit-gate"
+  - response_must_contain:
       - "Gate 0"
       - "Gate"
       - "build"
       - "test"
-    agent_response_must_contain_match: any
-  - tool_calls_required: ["Bash"]
+    response_must_contain_match: any
+  - tool_call_required: { namePattern: "Bash" }

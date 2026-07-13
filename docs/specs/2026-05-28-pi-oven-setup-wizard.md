@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Spec B: /pi-oven:setup Wizard
 
 **Status**: Draft v4 — 2026-05-28 (cycle 4 revision)

@@ -1,22 +1,23 @@
 name: cloudflare-regression-001
 skill: cloudflare
+kind: positive
 tag: regression
 input:
   - turn: 1
     user: "레코드 확인 — check if the CNAME record for api.example.com exists in our Cloudflare zone. Credentials file is .external-credentials."
 expected:
-  - skill_read_required: "cloudflare"
-  - agent_response_must_contain:
+  - skill_activation_required: "cloudflare"
+  - response_must_contain:
       - "CNAME"
       - "api.example.com"
-    agent_response_must_contain_match: any
-  - agent_response_must_contain:
+    response_must_contain_match: any
+  - response_must_contain:
       - ".external-credentials"
       - "account_id"
       - "zone_id"
-    agent_response_must_contain_match: any
-  - agent_response_must_contain:
+    response_must_contain_match: any
+  - response_must_contain:
       - "Filter"
       - "List DNS"
       - "record"
-    agent_response_must_contain_match: any
+    response_must_contain_match: any

@@ -153,4 +153,4 @@ When writing code:
 Return task BLOCKED + request plan revision on violation.
 ```
 
-This block is injected into every `executor` sonnet dispatch prompt. Plugin binding: `before_agent_start` hook via `pi.on('before_agent_start')`. omp install identifier: `pi-oven@kzk`.
+This block is an authored task-assignment template for `pov:executor`; it is not injected by a model-specific `before_agent_start` hook. Runtime model routing is owned by `task.agentModelOverrides`. omp install identifier: `pi-oven@kzk`.

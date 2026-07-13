@@ -6,17 +6,12 @@
 
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
+import { resolveHomePaths } from "../lib/home-paths";
 import {
   isCanonicalAgentMarkdownFile,
   isLegacyAgentMarkdownFile,
 } from "./agent-rewriter";
 import { EXPECTED_AGENT_COUNT } from "./profiles";
-
-const DEFAULT_CACHE_ROOT = path.resolve(
-  os.homedir(),
-  ".omp/plugins/cache/plugins"
-);
 
 export interface DuplicatePluginSurface {
   activePluginRoot: string;
@@ -49,7 +44,7 @@ export function compareSemver(a: string, b: string): number {
 export async function resolveCacheAgentsDir(
   cacheRoot?: string
 ): Promise<string | null> {
-  const root = cacheRoot ?? DEFAULT_CACHE_ROOT;
+  const root = cacheRoot ?? resolveHomePaths().ompPluginCacheDir;
   const dirs = await fs.readdir(root).catch(() => [] as string[]);
   const piOvenDirs = dirs.filter((d) => d.startsWith("kzk___pi-oven___"));
   if (piOvenDirs.length === 0) return null;

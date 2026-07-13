@@ -4,6 +4,7 @@
  */
 
 import { ROLES, type Role } from "./profiles";
+import type { SetupTransactionSnapshot } from "./setup-transaction";
 
 export interface ConfigYmlOpts {
   /** Injectable spawn for omp config get/set (tests). Default: Bun.spawnSync wrapper. */
@@ -214,6 +215,25 @@ function buildClearedGlobalOverrideRecord(
   return { cleared, removedKeys: removedKeys.sort() };
 }
 
+export function buildDesiredGlobalOverrideRecord(
+  current: Record<string, string>,
+  desired: Record<string, string>
+): Record<string, string> {
+  const result = buildNormalizedGlobalOverrideRecord(current, desired);
+  if (result.conflicts.length > 0) {
+    throw new Error(
+      `same-scope dual-key conflict(s): ${formatManagedOverrideConflicts(result.conflicts)}`
+    );
+  }
+  return result.normalized;
+}
+
+export function buildResetGlobalOverrideRecord(
+  current: Record<string, string>
+): { cleared: Record<string, string>; removedKeys: string[] } {
+  return buildClearedGlobalOverrideRecord(current);
+}
+
 function formatManagedOverrideConflicts(conflicts: ManagedOverrideConflict[]): string {
   return conflicts
     .map(
@@ -415,6 +435,63 @@ export async function readConfigValueDisplayState(
     return { state: "absent" };
   }
   return { state: "present", value: obj.value };
+}
+
+/** Strict generic config snapshot used by the setup transaction preflight. */
+export async function readConfigSnapshotStrict(
+  key: string,
+  opts?: ConfigYmlOpts
+): Promise<SetupTransactionSnapshot> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const result = spawn("omp", ["config", "get", key, "--json"]);
+  if (result.exitCode !== 0) {
+    const classified = classifyDisplayReadFailure(result);
+    if (classified.state === "absent") return { absent: true };
+    throw new Error(`readConfigSnapshotStrict: ${key}: ${classified.error}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout?.toString() ?? "");
+  } catch {
+    throw new Error(`readConfigSnapshotStrict: ${key}: malformed JSON`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed) || !("value" in parsed)) {
+    throw new Error(`readConfigSnapshotStrict: ${key}: invalid omp config shape`);
+  }
+  const value = (parsed as { value: unknown }).value;
+  if (value === undefined || typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
+    throw new Error(`readConfigSnapshotStrict: ${key}: value is not JSON`);
+  }
+  return structuredClone(value) as SetupTransactionSnapshot;
+}
+
+/** Restore/set one generic config snapshot, including true ABSENT via reset. */
+export async function writeConfigSnapshot(
+  key: string,
+  value: SetupTransactionSnapshot,
+  opts?: ConfigYmlOpts
+): Promise<void> {
+  const spawn = opts?.spawnFn ?? defaultSpawn;
+  const resetRequested =
+    typeof value === "object" && value !== null && !Array.isArray(value) &&
+    ((value as { absent?: unknown }).absent === true ||
+      (value as { resetToDefault?: unknown }).resetToDefault === true);
+  const args = resetRequested
+    ? ["config", "reset", key]
+    : [
+        "config",
+        "set",
+        key,
+        typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+          ? String(value)
+          : JSON.stringify(value),
+      ];
+  const result = spawn("omp", args);
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `writeConfigSnapshot: omp ${args.slice(0, 3).join(" ")} failed (exit ${String(result.exitCode)}): ${result.stderr?.toString() ?? ""}`
+    );
+  }
 }
 
 export async function readConfigValueDisplay(
@@ -817,11 +894,9 @@ export async function setMemoryAndAsyncConfig(opts?: ConfigYmlOpts): Promise<voi
 /**
  * Subagent runtime prerequisites written on global-scope setup. The gated tool
  * flags ensure the mandated tools stay callable, and `task.enableLsp=true`
- * removes omp's default subagent LSP gate. Worker breadth is intentionally NOT
- * stored here; the pi-oven-owned launcher (`scripts/pi-oven-team/index.ts` →
- * `runtime-v2.ts`) resolves `.pi-oven/config.json` and enforces
- * `nativeWorkers.maxWorkers` itself, so setup/status can tell the truth without
- * claiming omp-core scheduling control. Scalar keys → individual
+ * removes omp's default subagent LSP gate. OMP task owns dispatch, and worker
+ * breadth is controlled by `async.enabled`, `task.maxConcurrency`, and
+ * provider/runtime admission. Scalar keys → individual
  * `omp config set <dotted.key> <value>` (no read-merge needed; not
  * record-typed). The EXACT casing is the omp setting key (astGrep camelCase,
  * inspect_image snake) — do not normalize it.

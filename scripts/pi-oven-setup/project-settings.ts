@@ -28,6 +28,7 @@
 
 import { promises as fs } from "fs";
 import * as path from "path";
+import { atomicReplaceFile } from "../lib/atomic-file";
 import {
   GLOBAL_OVERRIDE_PREFIX,
   LEGACY_GLOBAL_OVERRIDE_PREFIX,
@@ -254,10 +255,92 @@ export async function readProjectSettingsDisplayState(opts?: {
  * match the repo's JSON-file convention.
  */
 async function atomicWrite(file: string, data: Record<string, unknown>): Promise<void> {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2) + "\n", "utf-8");
-  await fs.rename(tmp, file);
+  await atomicReplaceFile(file, JSON.stringify(data, null, 2) + "\n");
+}
+
+export function serializeProjectSettings(data: Record<string, unknown>): string {
+  return `${JSON.stringify(data, null, 2)}\n`;
+}
+
+/** Pure whole-file setup transform used by the project transaction. */
+export function buildProjectSetupSettings(
+  current: Record<string, unknown>,
+  input: {
+    overrides: Record<string, string>;
+    modelRoles: Record<string, string>;
+    fallbackChains: Record<string, string[]>;
+  }
+): Record<string, unknown> {
+  for (const key of Object.keys(input.overrides)) {
+    if (managedProjectRoleFromKey(key) === null) {
+      throw new Error(`buildProjectSetupSettings: invalid managed role key: ${key}`);
+    }
+  }
+  const existingTask = isPlainObject(current.task) ? current.task : {};
+  const withRouting: Record<string, unknown> = {
+    ...current,
+    task: {
+      ...existingTask,
+      agentModelOverrides: buildNormalizedProjectOverrideRecord(
+        readRawProjectOverrideRecord(current),
+        input.overrides
+      ),
+    },
+  };
+  const existingSkills = isPlainObject(withRouting.skills) ? withRouting.skills : {};
+  const existingModelRoles = isPlainObject(withRouting.modelRoles) ? withRouting.modelRoles : {};
+  const existingRetry = isPlainObject(withRouting.retry) ? withRouting.retry : {};
+  return {
+    ...withRouting,
+    skills: { ...existingSkills, includeSkills: [...PI_OVEN_WORKFLOW_SKILL_INCLUDE] },
+    modelRoles: { ...existingModelRoles, ...input.modelRoles },
+    retry: { ...existingRetry, fallbackChains: input.fallbackChains },
+  };
+}
+
+export interface ProjectResetTransform {
+  data: Record<string, unknown> | null;
+  removedKeys: string[];
+  removedIncludedSkills: boolean;
+}
+
+/** Pure whole-file reset transform; unrelated keys and siblings survive. */
+export function buildProjectResetSettings(
+  current: Record<string, unknown>,
+  full: boolean
+): ProjectResetTransform {
+  const data = structuredClone(current);
+  const task = isPlainObject(data.task) ? data.task : undefined;
+  const overrides = task && isPlainObject(task.agentModelOverrides)
+    ? task.agentModelOverrides
+    : undefined;
+  const removedKeys = overrides
+    ? Object.keys(overrides).filter((key) => managedProjectRoleFromKey(key) !== null).sort()
+    : [];
+  for (const key of removedKeys) delete overrides![key];
+  if (overrides && Object.keys(overrides).length === 0) delete task!.agentModelOverrides;
+  if (task && Object.keys(task).length === 0) delete data.task;
+
+  const skills = isPlainObject(data.skills) ? data.skills : undefined;
+  const removedIncludedSkills = Boolean(skills && "includeSkills" in skills);
+  if (skills) {
+    delete skills.includeSkills;
+    if (Object.keys(skills).length === 0) delete data.skills;
+  }
+
+  if (full) {
+    delete data.modelRoles;
+    const retry = isPlainObject(data.retry) ? data.retry : undefined;
+    if (retry) {
+      delete retry.fallbackChains;
+      if (Object.keys(retry).length === 0) delete data.retry;
+    }
+  }
+  return {
+    data: Object.keys(data).length === 0 ? null : data,
+    removedKeys,
+    removedIncludedSkills,
+  };
 }
 
 // ---------------------------------------------------------------------------

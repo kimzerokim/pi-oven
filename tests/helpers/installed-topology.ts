@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -21,6 +21,9 @@ export function createInstalledTopologyFixture(opts: {
   mkdirSync(pluginRoot, { recursive: true });
   mkdirSync(projectRoot, { recursive: true });
   mkdirSync(join(pluginRoot, ".claude-plugin"), { recursive: true });
+  cpSync(join(import.meta.dir, "../../agents"), join(pluginRoot, "agents"), {
+    recursive: true,
+  });
 
   return {
     root,

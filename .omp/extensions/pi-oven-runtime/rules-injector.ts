@@ -1,4 +1,12 @@
 // ---------------------------------------------------------------------------
+
+import { createHash } from "crypto";
+import {
+  composeRuntimePrompt,
+  type PromptCompositionReceipt,
+  type PromptFragment,
+  type PromptPhase,
+} from "./prompt-compositor";
 // rules-injector.ts — Layer 4 discipline-rule injection (Spec F §3 Layer 4, B6)
 //
 // Absorbs the omo `rules-injector` pattern as an extension module (N5):
@@ -41,6 +49,111 @@ export const PROJECT_INSTRUCTIONS_DEDUP_KEY = "pi-oven:project-instructions";
  * system prompt (unshifted by the extension) so it reads before everything else.
  */
 export const ORCHESTRATOR_CONDUCT_DEDUP_KEY = "pi-oven:orchestrator-conduct@v3";
+
+/** One-release rollback seam. The compositor remains the default. */
+export type RuntimePromptMode = "compositor" | "legacy";
+
+export function resolveRuntimePromptMode(
+  value: string | undefined = process.env.PI_OVEN_PROMPT_MODE
+): RuntimePromptMode {
+  if (value === undefined || value === "" || value === "compositor") return "compositor";
+  if (value === "legacy") return "legacy";
+  throw new Error(
+    `invalid PI_OVEN_PROMPT_MODE=${value}; expected compositor or legacy`
+  );
+}
+
+function legacyPromptComposition(input: {
+  audience: "parent" | "worker";
+  phase: PromptPhase;
+  maxBytes: number;
+  existing: string[];
+  fragments: PromptFragment[];
+}): { systemPrompt: string[]; receipt: PromptCompositionReceipt } {
+  const ids = new Set<string>();
+  const dedupKeys = new Set<string>();
+  for (const fragment of input.fragments) {
+    if (!fragment.id || !fragment.dedupKey) {
+      throw new Error("legacy prompt fragments require non-empty id and dedupKey");
+    }
+    if (ids.has(fragment.id)) throw new Error(`duplicate prompt fragment id: ${fragment.id}`);
+    if (dedupKeys.has(fragment.dedupKey)) {
+      throw new Error(`duplicate prompt fragment dedupKey: ${fragment.dedupKey}`);
+    }
+    ids.add(fragment.id);
+    dedupKeys.add(fragment.dedupKey);
+  }
+
+  const rendered = input.fragments
+    .map((fragment) => {
+      const content = fragment.render();
+      if (typeof content !== "string") {
+        throw new Error(`fragment ${fragment.id} render() must return a string`);
+      }
+      return {
+        fragment,
+        content,
+        bytes: Buffer.byteLength(content, "utf8"),
+        hash: `sha256:${createHash("sha256").update(content).digest("hex")}`,
+      };
+    })
+    .sort((left, right) =>
+      right.fragment.priority - left.fragment.priority ||
+      left.fragment.id.localeCompare(right.fragment.id)
+    );
+  const systemPrompt = [...input.existing];
+  let includedBytes = 0;
+  let droppedBytes = 0;
+  const receipts: PromptCompositionReceipt["fragments"] = [];
+
+  for (const entry of rendered) {
+    const { fragment, content, bytes, hash } = entry;
+    const audienceMatches = fragment.audience === "both" || fragment.audience === input.audience;
+    const phaseMatches = fragment.phase === "always" || fragment.phase === input.phase;
+    const alreadyPresent = systemPrompt.some((existing) => existing.includes(fragment.dedupKey));
+    const included = audienceMatches && phaseMatches && !alreadyPresent;
+    const reason = !audienceMatches
+      ? "audience-mismatch"
+      : !phaseMatches
+        ? "phase-mismatch"
+        : alreadyPresent
+          ? "already-present"
+          : fragment.required
+            ? "required"
+            : "included";
+    if (included) {
+      systemPrompt.push(content);
+      includedBytes += bytes;
+    } else {
+      droppedBytes += bytes;
+    }
+    receipts.push({
+      id: fragment.id,
+      dedupKey: fragment.dedupKey,
+      audience: fragment.audience,
+      phase: fragment.phase,
+      priority: fragment.priority,
+      required: fragment.required,
+      included,
+      reason,
+      hash,
+      bytes,
+    });
+  }
+
+  return {
+    systemPrompt,
+    receipt: {
+      contractVersion: 1,
+      audience: input.audience,
+      phase: input.phase,
+      maxBytes: input.maxBytes,
+      includedBytes,
+      droppedBytes,
+      fragments: receipts,
+    },
+  };
+}
 
 /**
  * Project response language (mirrors scripts/pi-oven-setup/project-config.ts).
@@ -88,6 +201,7 @@ export class RulesInjector {
   private projectInstructions: string | null = null;
   /** Optional per-turn autonomous reminder appended to the discipline block. */
   private reminder: string | null = null;
+  private lastCompositionReceipt: PromptCompositionReceipt | null = null;
 
 
   setPhase(phase: string): void {
@@ -96,6 +210,25 @@ export class RulesInjector {
 
   getPhase(): string {
     return this.phase;
+  }
+
+  getPromptPhase(): PromptPhase {
+    switch (this.phase.trim().toLowerCase()) {
+      case "explore":
+        return "explore";
+      case "plan":
+        return "plan";
+      case "verify":
+        return "verify";
+      default:
+        return "mutate";
+    }
+  }
+
+  getLastCompositionReceipt(): PromptCompositionReceipt | null {
+    return this.lastCompositionReceipt === null
+      ? null
+      : structuredClone(this.lastCompositionReceipt);
   }
 
   /**
@@ -262,36 +395,109 @@ export class RulesInjector {
     return lines.join("\n");
   }
 
+  buildRuntimeFragments(opts: {
+    audience: "parent" | "worker";
+    autonomousActive?: boolean;
+    includeDiscipline?: boolean;
+    includeLanguage?: boolean;
+    includeProjectInstructions?: boolean;
+  }): PromptFragment[] {
+    const fragments: PromptFragment[] = [];
+    if (opts.audience === "parent" && opts.autonomousActive !== undefined) {
+      fragments.push({
+        id: "orchestrator-conduct",
+        audience: "parent",
+        phase: "always",
+        priority: 100,
+        required: true,
+        dedupKey: ORCHESTRATOR_CONDUCT_DEDUP_KEY,
+        render: () => this.buildOrchestratorConductBlock({
+          autonomousActive: opts.autonomousActive ?? false,
+        }),
+      });
+    }
+    if (opts.includeDiscipline !== false) {
+      fragments.push({
+        id: "runtime-discipline",
+        audience: opts.audience,
+        phase: "always",
+        priority: 90,
+        required: true,
+        dedupKey: DISCIPLINE_DEDUP_KEY,
+        render: () => this.buildSystemPromptBlock(),
+      });
+    }
+    const language = this.buildLanguageDirective();
+    if (opts.includeLanguage !== false && language !== null) {
+      fragments.push({
+        id: "response-language",
+        audience: opts.audience,
+        phase: "always",
+        priority: 85,
+        required: true,
+        dedupKey: LANGUAGE_DEDUP_KEY,
+        render: () => language,
+      });
+    }
+    const project = this.buildProjectInstructionsBlock();
+    if (
+      opts.audience === "parent" &&
+      opts.includeProjectInstructions !== false &&
+      project !== null
+    ) {
+      fragments.push({
+        id: "project-instructions",
+        audience: "parent",
+        phase: "always",
+        priority: 80,
+        required: true,
+        dedupKey: PROJECT_INSTRUCTIONS_DEDUP_KEY,
+        render: () => project,
+      });
+    }
+    return fragments;
+  }
+
+  composeSystemPrompt(opts: {
+    systemPrompt: string[];
+    audience: "parent" | "worker";
+    phase?: PromptPhase;
+    autonomousActive?: boolean;
+    includeDiscipline?: boolean;
+    includeLanguage?: boolean;
+    includeProjectInstructions?: boolean;
+    maxBytes?: number;
+    additionalFragments?: PromptFragment[];
+    mode?: RuntimePromptMode;
+  }): { systemPrompt: string[]; receipt: PromptCompositionReceipt } {
+    const input = {
+      audience: opts.audience,
+      phase: opts.phase ?? this.getPromptPhase(),
+      maxBytes: opts.maxBytes ?? (opts.audience === "worker" ? 8_192 : 64 * 1_024),
+      existing: opts.systemPrompt,
+      fragments: [
+        ...this.buildRuntimeFragments(opts),
+        ...(opts.additionalFragments ?? []),
+      ],
+    };
+    const mode = opts.mode ?? resolveRuntimePromptMode();
+    const result = mode === "legacy"
+      ? legacyPromptComposition(input)
+      : composeRuntimePrompt(input);
+    this.lastCompositionReceipt = result.receipt;
+    return result;
+  }
+
   /**
    * Add the discipline block to a systemPrompt[] exactly once. If a block
    * carrying the dedup key is already present, the array is returned unchanged
    * (dedup). A non-mutating copy is returned.
    */
   applyToSystemPrompt(systemPrompt: string[]): string[] {
-    // Discipline block — unchanged behavior: inject at most once.
-    let out: string[];
-    if (systemPrompt.some((s) => s.includes(DISCIPLINE_DEDUP_KEY))) {
-      out = systemPrompt.slice();
-    } else {
-      out = [...systemPrompt, this.buildSystemPromptBlock()];
-    }
-
-    // Language directive — appended ONLY when a language is set (non-null) AND
-    // no language marker is already present (dedup). null => inject NOTHING.
-    const directive = this.buildLanguageDirective();
-    if (directive !== null && !out.some((s) => s.includes(LANGUAGE_DEDUP_KEY))) {
-      out = [...out, directive];
-    }
-
-    // Project instructions (repo-root CLAUDE.md) — appended ONLY when set
-    // (non-null) AND no project marker is already present (dedup). null =>
-    // inject NOTHING. This applies to main AND sub agents (no parent guard).
-    const projectBlock = this.buildProjectInstructionsBlock();
-    if (projectBlock !== null && !out.some((s) => s.includes(PROJECT_INSTRUCTIONS_DEDUP_KEY))) {
-      out = [...out, projectBlock];
-    }
-
-    return out;
+    return this.composeSystemPrompt({
+      systemPrompt,
+      audience: "parent",
+    }).systemPrompt;
   }
 
   /** Build the `preserveData` payload for a `session.compacting` result. */

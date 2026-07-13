@@ -1,135 +1,110 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "bun";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 
 const LINT = join(import.meta.dir, "../../scripts/lint-agents.ts");
-const SHIPPED_EXECUTOR_PATH = join(import.meta.dir, "../../agents/pov-executor.md");
+const SHIPPED_AGENTS_DIR = join(import.meta.dir, "../../agents");
 
 function runLint(dir: string): { code: number; stderr: string } {
-  const r = spawnSync({ cmd: [process.execPath, LINT, dir] });
-  return { code: r.exitCode, stderr: r.stderr.toString() };
+  const result = spawnSync({ cmd: [process.execPath, LINT, dir] });
+  return { code: result.exitCode, stderr: result.stderr.toString() };
 }
 
-// A non-ROLES role name keeps the SoT model/thinkingLevel/name checks from
-// firing (the loop `continue`s for unknown roles), isolating the
-// instructed-but-not-granted check under test. A model field is still required.
-function agent(tools: string, body: string, blocked?: string, name: string = "pov:zzfixture"): string {
-  const bt = blocked ? `\nblocked_tools: ${blocked}` : "";
-  return `---\nname: ${name}\nmodel: ["x/y"]\nthinkingLevel: low\nmode: subagent\ntools: ${tools}${bt}\n---\n\n## Role\n\n${body}\n`;
-}
-
-describe("lint-agents instructed-but-not-granted", () => {
+describe("lint-agents exact shipped roster", () => {
   let dir: string;
+
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "lint-agents-"));
+    cpSync(SHIPPED_AGENTS_DIR, dir, { recursive: true });
   });
+
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("flags a tool instructed in the body but not granted", () => {
-    writeFileSync(join(dir, "pov-zzfixture.md"), agent(`["read"]`, "Use `web_search` to look things up."));
-    const { code, stderr } = runLint(dir);
-    expect(code).toBe(1);
-    expect(stderr).toContain("web_search");
+  it("passes the current exact 24-role registry", () => {
+    expect(runLint(dir)).toEqual({ code: 0, stderr: "" });
   });
 
-  it("passes when the instructed tool is granted", () => {
-    writeFileSync(join(dir, "pov-zzfixture.md"), agent(`["read", "web_search"]`, "Use `web_search` to look things up."));
-    expect(runLint(dir).code).toBe(0);
+  it("rejects an unknown canonical filename before skipping profile checks", () => {
+    cpSync(join(dir, "pov-executor.md"), join(dir, "pov-phantom.md"));
+    const result = runLint(dir);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('unknown runtime role "phantom"');
   });
 
-  it("passes when tools is [\"*\"] (grants everything)", () => {
-    writeFileSync(join(dir, "pov-zzfixture.md"), agent(`["*"]`, "Use `web_search` and `debug` and `eval`."));
-    expect(runLint(dir).code).toBe(0);
+  it("rejects a markdown filename outside the canonical pov prefix", () => {
+    cpSync(join(dir, "pov-executor.md"), join(dir, "phantom.md"));
+    const result = runLint(dir);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('unknown runtime role "phantom"');
   });
 
-  it("does not flag a tool named in a negation (prohibition) context", () => {
-    writeFileSync(join(dir, "pov-zzfixture.md"), agent(`["read"]`, "Injection guidance: never use `eval` in production code."));
-    expect(runLint(dir).code).toBe(0);
-  });
-
-  it("does not flag a blocked tool mentioned as a prohibition", () => {
-    writeFileSync(join(dir, "pov-zzfixture.md"), agent(`["read"]`, "`task` tool is blocked — no recursive dispatch.", `["task"]`));
-    expect(runLint(dir).code).toBe(0);
-  });
-
-  it("ignores backtick spans that are not tool names", () => {
-    writeFileSync(join(dir, "pov-zzfixture.md"), agent(`["read"]`, "Run `git commit` and read `package.json`."));
-    expect(runLint(dir).code).toBe(0);
-  });
-});
-
-describe("lint-agents tool contradiction checks", () => {
-  let dir: string;
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "lint-agents-safety-"));
-  });
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("fails when tools contains \"*\" and blocked_tools is non-empty", () => {
-    writeFileSync(join(dir, "pov-zzfixture.md"), agent(`["*"]`, "Hello.", `["edit"]`));
-    const { code, stderr } = runLint(dir);
-    expect(code).toBe(1);
-    expect(stderr).toContain("ignores blocks");
-  });
-
-  it("fails when tools and blocked_tools overlap", () => {
-    writeFileSync(join(dir, "pov-zzfixture.md"), agent(`["read", "edit"]`, "Hello.", `["edit"]`));
-    const { code, stderr } = runLint(dir);
-    expect(code).toBe(1);
-    expect(stderr).toContain("overlapping tools");
-  });
-
-  it("passes with constrained allowlist and no overlap", () => {
-    writeFileSync(join(dir, "pov-zzfixture.md"), agent(`["read", "web_search"]`, "Hello.", `["edit", "write"]`));
-    const { code, stderr } = runLint(dir);
-    expect(code).toBe(0);
-  });
-});
-
-describe("lint-agents shipped contract", () => {
-  let dir: string;
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "lint-agents-shipped-"));
-  });
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("passes on the current shipped pov agents", () => {
-    expect(runLint(join(import.meta.dir, "../../agents")).code).toBe(0);
-  });
-
-  it("fails when a shipped pov role uses tools wildcard", () => {
+  it("rejects an unknown frontmatter role on a registered filename", () => {
+    const path = join(dir, "pov-executor.md");
     writeFileSync(
-      join(dir, "pov-executor.md"),
-      `---\nname: pov:executor\nmodel: ["openai-codex/gpt-5.4", "alternate-provider/gpt-5.4"]\nthinkingLevel: high\nmode: subagent\ntools: ["*"]\nblocked_tools: []\n---\n\n## Role\n\nUse \`bash\`.\n`
+      path,
+      readFileSync(path, "utf-8").replace(/^name:\s*.+$/m, "name: pov:phantom")
     );
-    const { code, stderr } = runLint(dir);
-    expect(code).toBe(1);
-    expect(stderr).toContain("explicit allowlist");
+    const result = runLint(dir);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('must equal "pov:executor"');
   });
 
-  it("rejects legacy pi-oven namespace names on canonical pov filenames", () => {
-    const legacyExecutor = readFileSync(SHIPPED_EXECUTOR_PATH, "utf-8").replace(
-      /^name:\s*.+$/m,
-      "name: pi-oven:executor"
-    );
-    writeFileSync(join(dir, "pov-executor.md"), legacyExecutor);
-    const { code, stderr } = runLint(dir);
-    expect(code).toBe(1);
-    expect(stderr).toContain('must equal "pov:executor"');
+  it("rejects a missing canonical role", () => {
+    rmSync(join(dir, "pov-executor.md"));
+    const result = runLint(dir);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("missing canonical agent file pov-executor.md");
   });
 
-  it("rejects legacy pi-oven filenames even when the frontmatter name is canonical", () => {
-    writeFileSync(join(dir, "pi-oven-executor.md"), readFileSync(SHIPPED_EXECUTOR_PATH, "utf-8"));
-    const { code, stderr } = runLint(dir);
-    expect(code).toBe(1);
-    expect(stderr).toContain("legacy pi-oven filename prefix");
+  it("rejects legacy/canonical duplicates", () => {
+    cpSync(join(dir, "pov-executor.md"), join(dir, "pi-oven-executor.md"));
+    const result = runLint(dir);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("legacy pi-oven filename prefix");
+    expect(result.stderr).toContain('duplicate agent files for runtime role "executor"');
+  });
+
+  it("rejects tools wildcard on a shipped role", () => {
+    const path = join(dir, "pov-executor.md");
+    writeFileSync(
+      path,
+      readFileSync(path, "utf-8").replace(/^tools:\s*\[[^\n]+\]$/m, 'tools: ["*"]')
+    );
+    const result = runLint(dir);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("explicit allowlist");
+  });
+
+  it("rejects overlapping granted and blocked tools", () => {
+    const path = join(dir, "pov-executor.md");
+    writeFileSync(
+      path,
+      readFileSync(path, "utf-8").replace(
+        /^blocked_tools:\s*\[[^\n]*\]$/m,
+        'blocked_tools: ["write"]'
+      )
+    );
+    const result = runLint(dir);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("overlapping tools");
+  });
+
+  it("rejects an agent tool that has no versioned capability-policy rule", () => {
+    const path = join(dir, "pov-executor.md");
+    writeFileSync(
+      path,
+      readFileSync(path, "utf-8").replace(
+        /^tools:\s*\[([^\n]+)\]$/m,
+        (_match, tools: string) => `tools: [${tools}, "unclassified_tool"]`
+      )
+    );
+
+    const result = runLint(dir);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("no capability-policy rule");
   });
 });

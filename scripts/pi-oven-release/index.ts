@@ -8,7 +8,7 @@ import {
 } from "./manifest-sync";
 import { updateChangelog } from "./changelog-generator";
 import { ensureGitClean, getCurrentBranch, getCurrentTag } from "./git-ops";
-import { publishRelease } from "./release-publisher";
+import { prepareReleaseCommit } from "./release-publisher";
 
 export type Values = {
   bump?: string;
@@ -16,19 +16,21 @@ export type Values = {
   "from-tag"?: string;
   "dry-run"?: boolean;
   publish?: boolean;
+  prepare?: boolean;
   "update-changelog"?: boolean;
   "sync-label"?: boolean;
 };
 
-function parseCli(): Values {
+export function parseReleaseArgs(args: string[]): Values {
   const { values } = parseArgs({
-    args: Bun.argv.slice(2),
+    args,
     options: {
       bump: { type: "string" },
       version: { type: "string" },
       "from-tag": { type: "string" },
       "dry-run": { type: "boolean" },
       publish: { type: "boolean" },
+      prepare: { type: "boolean" },
       "update-changelog": { type: "boolean" },
       "sync-label": { type: "boolean" },
     },
@@ -75,30 +77,34 @@ const defaultReleaseDeps = {
     dryRun: boolean;
     updateChangelog: boolean;
   }) => updateChangelog({ ...options, spawnFn }),
-  publishRelease: (options: {
+  prepareReleaseCommit: (options: {
     version: string;
-    publish: boolean;
+    prepare: boolean;
     dryRun: boolean;
     currentBranch?: string;
-  }) => publishRelease({ ...options, spawnFn }),
+  }) => prepareReleaseCommit({ ...options, spawnFn }),
   buildReleaseInstallBoundary,
 };
 
 export function runRelease(values: Values, deps = defaultReleaseDeps) {
-  const dryRun = values["dry-run"] ?? !values.publish;
+  if (values.publish) {
+    throw new Error("Publishing is tag workflow only; use --prepare for a local release commit");
+  }
+
+  const prepare = values.prepare ?? false;
+  const dryRun = values["dry-run"] ?? !prepare;
   const updateChangelogFlag = values["update-changelog"] ?? false;
   const syncLabel = values["sync-label"] ?? false;
-  const publish = values.publish ?? false;
 
   const currentVersion = deps.readCurrentVersionFromSoT();
   const targetVersion = resolveTargetVersion(values, currentVersion);
   const currentBranch = deps.getCurrentBranch();
   const fromTag = values["from-tag"] ?? deps.getCurrentTag();
 
-  if (publish && !dryRun && !currentBranch?.trim()) {
+  if (prepare && !dryRun && !currentBranch?.trim()) {
     throw new Error("Refusing release: could not resolve current git branch");
   }
-  if (publish) {
+  if (prepare) {
     deps.ensureGitClean();
   }
 
@@ -115,9 +121,9 @@ export function runRelease(values: Values, deps = defaultReleaseDeps) {
     updateChangelog: updateChangelogFlag,
   });
 
-  const publishResult = deps.publishRelease({
+  const prepareResult = deps.prepareReleaseCommit({
     version: targetVersion,
-    publish,
+    prepare,
     dryRun,
     currentBranch,
   });
@@ -140,24 +146,24 @@ export function runRelease(values: Values, deps = defaultReleaseDeps) {
 
   return {
     safeByDefault: dryRun,
-    publish,
+    prepare,
     currentVersion,
     targetVersion,
     fromTag,
     boundary,
     sync: syncResult,
     changelog,
-    publishResult,
+    prepareResult,
   };
 }
 
-async function main() {
-  const output = runRelease(parseCli());
+export async function main(args: string[]) {
+  const output = runRelease(parseReleaseArgs(args));
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 }
 
 if (import.meta.main) {
-  main().catch((err: unknown) => {
+  main(Bun.argv.slice(2)).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`${msg}\n`);
     process.exit(1);

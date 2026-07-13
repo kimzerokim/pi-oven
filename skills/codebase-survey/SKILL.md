@@ -10,7 +10,7 @@ description: "Read this skill before planning or fixing when the task needs a br
 
 ENFORCEMENT: Main does NOT do this skill's substantive work inline. Main's direct-action budget is narrow — 1–2 simple file edits (≤30 LoC) or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation MUST be dispatched. Main only dispatches, synthesizes, and reviews — it never reads 5+ files or implements inline. (See `large-task-delegation` + `subagent-driven-development`.)
 
-RIGHT-AGENT ROUTING (model-fit + role-fit is first-class; use these exact names): read-heavy survey → `pi-oven:explorer`; causal trace → `pi-oven:tracer`; structural analysis → `pi-oven:analyst`. Navigation tools: prefer `lsp` (diagnostics, goto-definition, find-references, hover) and `ast_grep` (structural search) over manual reads or plain grep for code traversal.
+RIGHT-AGENT ROUTING (model-fit + role-fit is first-class; use these exact names): read-heavy survey → `pov:explorer`; causal trace → `pov:tracer`; structural analysis → `pov:analyst`. Navigation tools: prefer `lsp` (diagnostics, goto-definition, find-references, hover) and `ast_grep` (structural search) over manual reads or plain grep for code traversal.
 
 ## When to use
 
@@ -43,13 +43,18 @@ For remediation-wave survey outputs, Step 8 is not complete until the report is 
 
 Main agent role: dispatch only. Do not perform the 8 steps inline.
 
-Dispatch pattern (omp `task` tool, model `sonnet`):
+Dispatch pattern (omp `task` tool; runtime routing selects the model):
 
-```
-task(
-  prompt: "Run codebase-survey 8-step checklist for <topic>. Write report to docs/harness/surveys/<date>-<topic>-survey.md.",
-  model: "sonnet"
-)
+<!-- pi-oven-contract:task-example -->
+```ts
+task({
+  agent: "pov:explorer",
+  tasks: [{
+    id: "survey-topic",
+    description: "Survey the codebase for <topic>",
+    assignment: "Run the codebase-survey 8-step checklist for <topic>. Write the report to docs/harness/surveys/<date>-<topic>-survey.md.",
+  }],
+});
 ```
 
 The subagent returns a 200-word evidence summary in its final message. Main agent reads that summary and the report file before proceeding to planning.
@@ -82,9 +87,9 @@ Per-step detail: skill://pov:codebase-survey/references/8-step-checklist.md
 
 When running inside omp, push read-only investigation to specialised agents instead of doing it in the main session:
 
-- File/pattern/symbol search: dispatch `pi-oven:explorer`.
-- Causal call-graph or execution trace: dispatch `pi-oven:tracer`.
-- External SDK or library reference: dispatch `pi-oven:document-specialist`.
-- Web/citation research: dispatch `pi-oven:librarian`.
+- File/pattern/symbol search: dispatch `pov:explorer`.
+- Causal call-graph or execution trace: dispatch `pov:tracer`.
+- External SDK or library reference: dispatch `pov:document-specialist`.
+- Web/citation research: dispatch `pov:librarian`.
 
 The main agent synthesises results; agents return findings, not edits.

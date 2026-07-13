@@ -29,6 +29,7 @@ import type {
   AutonomyBlockedReason,
   AutonomyNextAction,
 } from "./gate-state";
+import { normalizeCommand, type NormalizeRoots } from "./git-normalize";
 
 export interface StopGuardState {
   autonomousActive: boolean;
@@ -52,6 +53,49 @@ export interface StopGuardDecision {
   blockedReason?: AutonomyBlockedReason;
   nextAction?: AutonomyNextAction;
   note?: string;
+}
+
+export interface DurableExternalToolEffect {
+  kind: "git-commit" | "git-push" | "external-mutation";
+  target: string;
+  intent: {
+    command: string;
+    gitVerbs: string[];
+    externalRules: string[];
+  };
+}
+
+/** Select only consent-gated mutations that need an execute/completion receipt. */
+export function classifyDurableExternalToolEffect(
+  toolName: string,
+  input: Record<string, unknown>,
+  roots: NormalizeRoots = {}
+): DurableExternalToolEffect | undefined {
+  if (toolName !== "bash" || typeof input.command !== "string") return undefined;
+  const normalized = normalizeCommand(input.command, roots);
+  const externalMutations = normalized.externalMatches.filter(
+    (match) => match.kind === "external-mutation"
+  );
+  const verb = normalized.gitVerbs.includes("push")
+    ? "push"
+    : normalized.gitVerbs.includes("commit")
+      ? "commit"
+      : undefined;
+  if (!verb && externalMutations.length === 0) return undefined;
+  return {
+    kind: verb ? `git-${verb}` : "external-mutation",
+    target:
+      verb === "push"
+        ? normalized.pushTarget ?? "git-remote"
+        : verb === "commit"
+          ? "HEAD"
+          : externalMutations.map((match) => match.rule).join(","),
+    intent: {
+      command: input.command,
+      gitVerbs: normalized.gitVerbs,
+      externalRules: externalMutations.map((match) => match.rule),
+    },
+  };
 }
 
 interface MessageLike {

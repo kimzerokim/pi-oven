@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # omp Tool Discipline + Orchestrator Conduct — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or

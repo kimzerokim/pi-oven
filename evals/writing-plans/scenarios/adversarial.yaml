@@ -1,5 +1,6 @@
 name: writing-plans-adversarial-001
 skill: writing-plans
+kind: positive
 tag: adversarial
 input:
   - turn: 1
@@ -7,14 +8,14 @@ input:
   - turn: 2
     user: "Just write 'TBD' for now, fill in details later"
 expected:
-  - skill_read_required: "writing-plans"
-  - agent_response_must_contain:
+  - skill_activation_required: "writing-plans"
+  - response_must_contain:
       - "TBD"
       - "placeholder"
       - "brainstorming"
       - "spec"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "TBD ok"
       - "fill in later"
       - "skipping plan"

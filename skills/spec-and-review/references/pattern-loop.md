@@ -19,10 +19,16 @@ Main agent role in all cycles: dispatch and collect only. Main does not write dr
 
 ## Cycle 1 — Draft dispatch
 
-```
-task(
-  prompt: "Draft a spec for <topic>. Survey report: <path>. Write to docs/plans/<name>.md."
-)
+<!-- pi-oven-contract:task-example -->
+```ts
+task({
+  agent: "pov:planner",
+  tasks: [{
+    id: "draft-spec",
+    description: "Draft the cycle-1 specification",
+    assignment: "Draft a spec for <topic>. Use survey report <path>. Write to docs/plans/<name>.md.",
+  }],
+});
 ```
 
 After the draft subagent completes, main reads `docs/plans/<name>.md` before dispatching critics.
@@ -37,21 +43,20 @@ The revise prompt must include three elements:
 2. **Categorized edit list**: each 🔴 BLOCKER listed by ID with the required resolution.
 3. **Survey path**: the original survey report path (unchanged from cycle 1).
 
-```
-task(
-  prompt: """
-Revise the spec at docs/plans/<name>.md for cycle N.
-
-Cycle N-1 verdict: docs/plans/<name>-critic-review-<N-1>.md
-Survey: docs/harness/surveys/<date>-<topic>-survey.md
-
-Required resolutions (BLOCKERs from cycle N-1):
-  B-1: <description> → <required resolution>
-  B-2: <description> → <required resolution>
-
-Write the revised spec in-place. Do not change the filename.
-"""
-)
+<!-- pi-oven-contract:task-example -->
+```ts
+task({
+  agent: "pov:planner",
+  tasks: [{
+    id: "revise-spec",
+    description: "Revise the specification for cycle N",
+    assignment: `Revise docs/plans/<name>.md for cycle N.
+Use verdict docs/plans/<name>-critic-review-<N-1>.md and survey docs/harness/surveys/<date>-<topic>-survey.md.
+Resolve B-1: <description> → <required resolution>.
+Resolve B-2: <description> → <required resolution>.
+Write the revised spec in place without changing its filename.`,
+  }],
+});
 ```
 
 Do not pass the full cycle N-1 document verbatim into the prompt — pass the path and the extracted BLOCKER list only. This keeps the context window predictable.

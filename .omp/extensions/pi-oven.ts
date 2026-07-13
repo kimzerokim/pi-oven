@@ -7,9 +7,9 @@ import {
   statSync,
   existsSync,
 } from "fs";
-import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { createHash, randomUUID } from "crypto";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import {
   KEYWORD_SKILL_DEDUP_KEY,
@@ -17,11 +17,14 @@ import {
   createSkillKeywordLoaderState,
   formatSkillKeywordIndexIssues,
   loadSkillKeywordIndexReport,
-  matchSkillsForText,
-  pruneMatchedSkillsForRuntime,
   updateSkillKeywordLoaderOnTurnStart,
   type SkillKeywordIndexIssue,
 } from "./pi-oven-runtime/skill-keyword-loader";
+import {
+  DEFAULT_MAX_IMPLICIT_ROOTS,
+  ExplicitSkillSafetyCeilingError,
+  selectSkillsForTurn,
+} from "./pi-oven-runtime/skill-selection";
 import {
   BOOTSTRAP_PARITY_TRACK_SIGNAL_NAME,
   buildKeywordSkillIntegritySignal,
@@ -34,10 +37,15 @@ import {
   type WorkflowSkillOwnershipClassification,
 } from "../../scripts/pi-oven-setup/standalone-truth-surface";
 import {
-  getAgentRoleFromFileName,
-  isAgentMarkdownFile,
   isLegacyAgentMarkdownFile,
 } from "../../scripts/pi-oven-setup/agent-rewriter";
+import {
+  ROLE_NAMES,
+  canonicalAgentName,
+  isRuntimeAgentName,
+  type RoleName,
+  type RuntimeAgentName,
+} from "./pi-oven-runtime/runtime-contract";
 import {
   buildSetupReadinessNotice as buildSharedSetupReadinessNotice,
   collectSetupReadiness,
@@ -45,6 +53,7 @@ import {
 } from "../../scripts/pi-oven-setup/project-config";
 import {
   STOP_GUARD_MESSAGE,
+  classifyDurableExternalToolEffect,
   createStopGuardState,
   decideStopGuardOnTurnEnd,
   extractTextFromContent,
@@ -53,6 +62,8 @@ import {
 import {
   RulesInjector,
   ORCHESTRATOR_CONDUCT_DEDUP_KEY,
+  resolveRuntimePromptMode,
+  type RuntimePromptMode,
 } from "./pi-oven-runtime/rules-injector";
 import {
   GateStateStore,
@@ -93,14 +104,15 @@ import {
   SUPPORTED_SESSION_PROVIDER_FAMILIES,
   type SessionProviderFamily,
 } from "./pi-oven-runtime/model-routing-approval";
+import { resolveHomePaths } from "../../scripts/lib/home-paths";
+import { GateStateLedgerAdapter } from "./pi-oven-runtime/gate-state-ledger-adapter";
+import { SqliteRunLedger } from "./pi-oven-runtime/sqlite-run-ledger";
+import { createWorkerContextFragments } from "./pi-oven-runtime/context-capsule";
+import type { PromptFragment } from "./pi-oven-runtime/prompt-compositor";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-export interface AgentFileEntry {
-  modelArray: string[];
-}
 
 export interface SessionProviderFamilyResolution {
   sessionProviderFamily: string | null;
@@ -111,6 +123,22 @@ export interface SessionProviderFamilyResolution {
 export interface SessionModelCapture extends SessionProviderFamilyResolution {
   model: string;
   capturedAt: number;
+}
+
+export type RuntimeRunLedgerMode = "json" | "shadow" | "primary";
+
+export function resolveRuntimeRunLedgerMode(
+  value: string | undefined = process.env.PI_OVEN_RUN_LEDGER_MODE
+): RuntimeRunLedgerMode {
+  if (value === undefined || value === "" || value === "off" || value === "json") return "json";
+  if (value === "shadow" || value === "primary") return value;
+  throw new Error(
+    `invalid PI_OVEN_RUN_LEDGER_MODE=${value}; expected json, shadow, or primary`
+  );
+}
+
+export function autonomousRunLedgerId(repoRoot: string, branch: string): string {
+  return `autonomy:${createHash("sha256").update(`${repoRoot}\0${branch}`).digest("hex").slice(0, 24)}`;
 }
 
 export interface SetupChecklistNotice {
@@ -282,23 +310,6 @@ export function countProjectRoutingRoles(settingsPath: string): number {
 
 
 // ---------------------------------------------------------------------------
-// getAllowedPrefixes (dynamic — option c from Spec B §10.5)
-// ---------------------------------------------------------------------------
-
-const RELEASE_DEFAULT_ALLOWED_PREFIXES = [
-  "openai-codex",
-] as const;
-
-/**
- * Compute ALLOWED_PREFIXES for the shipped release-default registry.
- * Load-time validation is intentionally locked to the codex-only baseline:
- * committed frontmatter must stay on openai-codex primaries only.
- */
-export function getAllowedPrefixes(_agentFiles: AgentFileEntry[]): string[] {
-  return [...RELEASE_DEFAULT_ALLOWED_PREFIXES].sort();
-}
-
-// ---------------------------------------------------------------------------
 // Frontmatter helpers
 // ---------------------------------------------------------------------------
 
@@ -355,86 +366,116 @@ function extractName(frontmatter: Record<string, unknown>): string | undefined {
   return typeof raw === "string" ? raw : undefined;
 }
 
+export type AgentRegistryIssueCode =
+  | "read-error"
+  | "missing-role"
+  | "unknown-role"
+  | "duplicate-role"
+  | "legacy-filename"
+  | "frontmatter-name"
+  | "missing-model"
+  | "invalid-model-provider";
 
-// ---------------------------------------------------------------------------
-// validateAgentRegistry (two-pass — Spec B §10.5)
-// ---------------------------------------------------------------------------
+export interface AgentRegistryIssue {
+  code: AgentRegistryIssueCode;
+  file?: string;
+  role?: string;
+}
 
-/**
- * Validate all agent markdown files in agentsDir.
- * Pass 1: Parse all files and extract models.
- * Pass 2: Ensure all models use an allowed provider prefix.
- * Errors are logged via pi.logger.error.
- */
-export function validateAgentRegistry(
-  agentsDir: string,
-  logger: { error(msg: string): void }
-): void {
-  const agentFiles: Array<{
-    file: string;
-    name: string | undefined;
-    modelArray: string[];
-  }> = [];
+export interface AgentRegistryReport {
+  ok: boolean;
+  roles: RoleName[];
+  issues: AgentRegistryIssue[];
+}
+
+function roleTokenFromAgentFile(file: string): string | null {
+  const match = file.match(/^(?:pov-|pi-oven-)([a-z][a-z0-9-]*)\.md$/);
+  return match?.[1] ?? null;
+}
+
+/** Inspect the shipped registry without logging or mutating runtime state. */
+export function inspectAgentRegistry(agentsDir: string): AgentRegistryReport {
+  const issues: AgentRegistryIssue[] = [];
+  let files: string[];
   try {
-    const files = readdirSync(agentsDir).filter(isAgentMarkdownFile);
-    for (const file of files) {
-      const content = readFileSync(path.join(agentsDir, file), "utf-8");
-      const frontmatter = parseFrontmatter(content);
-      agentFiles.push({
-        file,
-        name: extractName(frontmatter),
-        modelArray: extractModels(frontmatter),
-      });
-    }
-  } catch (err) {
-    logger.error(`pi-oven: failed to read agent registry: ${err}`);
-    return;
+    files = readdirSync(agentsDir).filter((file) => file.endsWith(".md")).sort();
+  } catch {
+    return { ok: false, roles: [], issues: [{ code: "read-error" }] };
   }
-  const allowed = getAllowedPrefixes(agentFiles);
-  const ABSOLUTE_BLACKLIST = ["google"];
-  let hasOpenAICodex = false;
-  for (const agent of agentFiles) {
-    const role = getAgentRoleFromFileName(agent.file);
-    if (isLegacyAgentMarkdownFile(agent.file)) {
-      logger.error(
-        `pi-oven: ${agent.file} is agent namespace drift — legacy filename still uses pi-oven-. Rename it to pov-<role>.md so the registry stays on the ${HEALTHY_SINGLE_POV_SURFACE_LABEL}.`
-      );
-    }
-    if (role !== null) {
-      const expectedName = `pov:${role}`;
-      if (agent.name !== expectedName) {
-        logger.error(
-          `pi-oven: ${agent.file} is agent namespace drift — frontmatter name "${agent.name ?? "(missing)"}" does not match the healthy registry contract ${expectedName}.`
-        );
-      }
-    }
-    if (agent.modelArray.length === 0) {
-      logger.error(
-        `DEFAULT_PROFILE guarantee broken — agent file missing "model" field.`
-      );
+
+  const occurrences = new Map<RoleName, string[]>();
+  const canonicalRoles = new Set<RoleName>();
+
+  for (const file of files) {
+    const roleToken = roleTokenFromAgentFile(file);
+    if (roleToken === null || !(ROLE_NAMES as readonly string[]).includes(roleToken)) {
+      issues.push({ code: "unknown-role", file, role: roleToken ?? undefined });
       continue;
     }
-    for (const modelId of agent.modelArray) {
-      const slashIdx = modelId.indexOf("/");
-      if (slashIdx === -1) continue;
-      const prefix = modelId.substring(0, slashIdx);
-      if (prefix === "openai-codex") hasOpenAICodex = true;
-      if (ABSOLUTE_BLACKLIST.includes(prefix)) {
-        logger.error(
-          `pi-oven: agent registry contains WHITELIST VIOLATION: unallowed provider prefix "${prefix}" (model: ${modelId}). Allowed: ${allowed.join(", ")}`
-        );
-      } else if (!allowed.includes(prefix)) {
-        logger.error(
-          `pi-oven: agent registry contains provider mismatch: prefix "${prefix}" not in allowed set (model: ${modelId}). Allowed: ${allowed.join(", ")}`
-        );
-      }
+
+    const role = roleToken as RoleName;
+    const roleFiles = occurrences.get(role) ?? [];
+    roleFiles.push(file);
+    occurrences.set(role, roleFiles);
+
+    if (isLegacyAgentMarkdownFile(file)) {
+      issues.push({ code: "legacy-filename", file, role });
+    } else {
+      canonicalRoles.add(role);
+    }
+
+    let content: string;
+    try {
+      content = readFileSync(path.join(agentsDir, file), "utf-8");
+    } catch {
+      issues.push({ code: "read-error", file, role });
+      continue;
+    }
+    const frontmatter = parseFrontmatter(content);
+    if (extractName(frontmatter) !== canonicalAgentName(role)) {
+      issues.push({ code: "frontmatter-name", file, role });
+    }
+    const models = extractModels(frontmatter);
+    if (models.length === 0) {
+      issues.push({ code: "missing-model", file, role });
+    } else if (models.some((modelId) => !modelId.startsWith("openai-codex/"))) {
+      issues.push({ code: "invalid-model-provider", file, role });
     }
   }
-  if (agentFiles.length > 0 && !hasOpenAICodex) {
-    logger.error(
-      `DEFAULT_PROFILE guarantee broken — agent registry missing required "openai-codex/" model.`
-    );
+
+  for (const role of ROLE_NAMES) {
+    const roleFiles = occurrences.get(role) ?? [];
+    if (!canonicalRoles.has(role)) {
+      issues.push({ code: "missing-role", role });
+    }
+    if (roleFiles.length > 1) {
+      issues.push({ code: "duplicate-role", role });
+    }
   }
+
+  const roles = ROLE_NAMES.filter((role) => canonicalRoles.has(role));
+  return { ok: issues.length === 0, roles: [...roles], issues };
+}
+
+export class AgentRegistryError extends Error {
+  constructor(readonly report: AgentRegistryReport) {
+    super(
+      `pi-oven: invalid agent registry: ${report.issues
+        .map((issue) =>
+          [issue.code, issue.file && `file=${issue.file}`, issue.role && `role=${issue.role}`]
+            .filter(Boolean)
+            .join(" ")
+        )
+        .join("; ")}`
+    );
+    this.name = "AgentRegistryError";
+  }
+}
+
+/** Fail closed before any runtime handler is wired. */
+export function assertAgentRegistry(agentsDir: string): void {
+  const report = inspectAgentRegistry(agentsDir);
+  if (!report.ok) throw new AgentRegistryError(report);
 }
 
 // ---------------------------------------------------------------------------
@@ -560,13 +601,46 @@ export function applyOrchestratorConduct(
   opts: { isParentSession: boolean; autonomousActive: boolean }
 ): string[] {
   if (!opts.isParentSession) return systemPrompt.slice();
-  if (systemPrompt.some((s) => s.includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY))) {
-    return systemPrompt.slice();
+  const existingIndex = systemPrompt.findIndex((entry) =>
+    entry.includes(ORCHESTRATOR_CONDUCT_DEDUP_KEY)
+  );
+  if (existingIndex >= 0) {
+    return [
+      systemPrompt[existingIndex]!,
+      ...systemPrompt.filter((_entry, index) => index !== existingIndex),
+    ];
   }
   return [
     injector.buildOrchestratorConductBlock({ autonomousActive: opts.autonomousActive }),
     ...systemPrompt,
   ];
+}
+
+export function resolveWorkerRuntimeRole(value: string | undefined): RuntimeAgentName {
+  if (isRuntimeAgentName(value)) return value;
+  if (value && (ROLE_NAMES as readonly string[]).includes(value)) {
+    return canonicalAgentName(value as RoleName);
+  }
+  throw new Error(
+    `pi-oven worker context requires PI_BLOCKED_AGENT to name a canonical pov role; received ${value ?? "unset"}`
+  );
+}
+
+function promptFragment(
+  id: string,
+  dedupKey: string,
+  content: string,
+  options: { priority: number; required: boolean }
+): PromptFragment {
+  return {
+    id,
+    audience: "parent",
+    phase: "always",
+    priority: options.priority,
+    required: options.required,
+    dedupKey,
+    render: () => content,
+  };
 }
 const PI_OVEN_SKILL_TRACE_REASON = "matched by pi-oven runtime keyword whitelist";
 
@@ -1099,25 +1173,57 @@ export function shouldNotifySessionStartTruthSignal(name: string): boolean {
 
 export default function piOvenPi(
   pi: ExtensionAPI,
-  opts?: { pluginRoot?: string }
+  opts?: {
+    pluginRoot?: string;
+    runLedgerMode?: RuntimeRunLedgerMode;
+    runLedgerOwnerId?: string;
+    promptMode?: RuntimePromptMode;
+  }
 ): void {
   const pluginRoot = opts?.pluginRoot ?? resolvePluginRoot(import.meta.url);
   const agentsDir = path.resolve(pluginRoot, "agents");
 
-  validateAgentRegistry(agentsDir, pi.logger);
+  assertAgentRegistry(agentsDir);
+  const homePaths = resolveHomePaths();
 
-  const sessionModelPath = path.resolve(os.homedir(), ".omp/plugins/pi-oven-session-model.json");
+  const sessionModelPath = path.resolve(
+    homePaths.ompConfigRoot,
+    "plugins/pi-oven-session-model.json"
+  );
 
   const repoRoot = process.cwd();
   const stateRoot = path.resolve(repoRoot, ".pi-oven");
-  const store = new GateStateStore(stateRoot);
+  const runLedgerMode = opts?.runLedgerMode ?? resolveRuntimeRunLedgerMode();
+  const promptMode = opts?.promptMode ?? resolveRuntimePromptMode();
+  const currentBranch = readCurrentRepoBranch(repoRoot);
+  const runLedgerId = autonomousRunLedgerId(repoRoot, currentBranch);
+  let ledgerAdapter: GateStateLedgerAdapter | undefined;
+  const store: GateStateStore = (() => {
+    if (runLedgerMode === "json") return new GateStateStore(stateRoot);
+    const ledger = new SqliteRunLedger(
+      path.resolve(stateRoot, "state", "run-ledger.sqlite")
+    );
+    ledgerAdapter = new GateStateLedgerAdapter(stateRoot, ledger, {
+      runId: runLedgerId,
+      ownerId: opts?.runLedgerOwnerId ?? `${process.pid}:${randomUUID()}`,
+      repoRoot,
+      branch: currentBranch,
+      readSource: runLedgerMode === "primary" ? "ledger" : "json",
+      writeTarget: "shadow",
+      jsonFallbackRead: runLedgerMode === "primary",
+    });
+    pi.logger.info(
+      `pi-oven: autonomous run ledger ${runLedgerMode} mode — ${ledgerAdapter.ledgerHealth().detail}`
+    );
+    return ledgerAdapter;
+  })();
   const injector = new RulesInjector();
 
   // -------------------------------------------------------------------------
   // Project/global `.pi-oven/config.json` remain the language + metadata store.
   // Setup readiness no longer trusts `setupCompletedAt`; session_start now reads
   // live routing + prerequisite facts through `collectSetupReadiness`.
-  const globalConfigPath = path.resolve(os.homedir(), ".pi-oven", "config.json");
+  const globalConfigPath = path.resolve(homePaths.piOvenConfigDir, "config.json");
   const projectConfigPath = path.resolve(repoRoot, ".pi-oven", "config.json");
 
   // Read config: GLOBAL language first, then PROJECT-LOCAL overrides.
@@ -1165,6 +1271,9 @@ export default function piOvenPi(
   }
 
   const isParentSession = !process.env.PI_BLOCKED_AGENT;
+  const workerRuntimeRole = isParentSession
+    ? undefined
+    : resolveWorkerRuntimeRole(process.env.PI_BLOCKED_AGENT);
   let skillKeywordState = createSkillKeywordLoaderState();
   let skillKeywordIndex = [] as ReturnType<typeof loadSkillKeywordIndexReport>["index"];
   let installedTopologyNotice: SetupChecklistNotice | null = null;
@@ -1233,7 +1342,7 @@ export default function piOvenPi(
     getEnv: () => process.env,
     getAutonomyResumeTarget: async () => buildAutonomyResumeTarget(repoRoot),
     isParentSession,
-    roots: { repoRoot, homeDir: os.homedir() },
+    roots: { repoRoot, homeDir: homePaths.homeDir },
     runtimeTraceState,
     onRuntimeContractUpdate: (update) => {
       syncRuntimeTrace(update.trace, update.verifierDepth);
@@ -1242,25 +1351,101 @@ export default function piOvenPi(
 
   pi.on("tool_call", async (event) => {
     try {
-      return await gateHandler(event as never);
+      const gateResult = await gateHandler(event as never);
+      if (
+        ledgerAdapter &&
+        stopGuardState.autonomousActive &&
+        !(gateResult as { block?: boolean } | undefined)?.block
+      ) {
+        const toolEvent = event as unknown as {
+          toolCallId: string;
+          toolName: string;
+          input: Record<string, unknown>;
+        };
+        const durableEffect = classifyDurableExternalToolEffect(
+          toolEvent.toolName,
+          toolEvent.input,
+          { repoRoot, homeDir: homePaths.homeDir }
+        );
+        if (durableEffect) {
+          const idempotencyKey = `tool:${toolEvent.toolCallId}`;
+          const existing = ledgerAdapter.readEffect(idempotencyKey);
+          if (existing) {
+            return {
+              block: true,
+              reason:
+                existing.status === "completed"
+                  ? `pi-oven: external mutation ${idempotencyKey} already has a completion receipt; duplicate execution blocked.`
+                  : `pi-oven: external mutation ${idempotencyKey} has ${existing.status} state; reconcile the live target before retry.`,
+            };
+          }
+          ledgerAdapter.beginEffect({
+            idempotencyKey,
+            kind: durableEffect.kind,
+            target: durableEffect.target,
+            intent: durableEffect.intent,
+          });
+        }
+      }
+      return gateResult;
     } catch (err) {
       pi.logger.warn(`pi-oven: gate handler self-deadline / fault — fail-closed: ${err}`);
       throw err;
     }
   });
 
+  if (ledgerAdapter) {
+    pi.on("tool_result", async (event) => {
+      const toolEvent = event as unknown as {
+        toolCallId: string;
+        toolName: string;
+        input: Record<string, unknown>;
+        content?: unknown;
+        isError?: boolean;
+      };
+      const idempotencyKey = `tool:${toolEvent.toolCallId}`;
+      if (!ledgerAdapter?.readEffect(idempotencyKey)) return;
+      if (toolEvent.isError) {
+        ledgerAdapter.markEffectAmbiguous(idempotencyKey, {
+          reason: "tool result reported an error after external mutation intent",
+        });
+        return;
+      }
+      const outputHash = createHash("sha256")
+        .update(JSON.stringify(toolEvent.content ?? null))
+        .digest("hex");
+      ledgerAdapter.completeEffect({
+        idempotencyKey,
+        status: "completed",
+        result: { outputHash },
+      });
+    });
+
+    pi.on("session_shutdown", async () => {
+      await ledgerAdapter?.close();
+    });
+  }
+
   pi.on("before_agent_start", async (event) => {
     try {
-      const promptMatchedSkills = isParentSession
-        ? matchSkillsForText(event.prompt ?? "", skillKeywordIndex)
-        : [];
-      const promptPruned =
-        promptMatchedSkills.length > 0
-          ? pruneMatchedSkillsForRuntime(promptMatchedSkills, event.prompt ?? "")
-          : null;
-      const effectiveMatchedSkills = promptPruned?.rootSkills ?? skillKeywordState.matchedSkills;
+      const promptSelection = selectSkillsForTurn({
+        latestUserText: event.prompt ?? "",
+        index: skillKeywordIndex,
+        maxImplicitRoots: DEFAULT_MAX_IMPLICIT_ROOTS,
+      });
+      const hasPromptSelection =
+        (promptSelection.explicit.length > 0 ||
+          promptSelection.implicitRoot.length > 0 ||
+          promptSelection.deferred.length > 0 ||
+          promptSelection.dropped.length > 0);
+      const promptRootSkills = [...promptSelection.explicit, ...promptSelection.implicitRoot];
+      const effectiveMatchedSkills = hasPromptSelection
+        ? promptRootSkills
+        : skillKeywordState.matchedSkills;
       const effectiveDeferredSkillObligations =
-        promptPruned?.deferredSkillObligations ?? skillKeywordState.deferredSkillObligations;
+        hasPromptSelection
+          ? promptSelection.deferred
+          : skillKeywordState.deferredSkillObligations;
 
       // Hoisted to the outer handler scope so the SAME boolean drives BOTH the
       // autonomous reminder block and the orchestrator-conduct injection below
@@ -1317,37 +1502,61 @@ export default function piOvenPi(
         injector.setReminder(reminders.length > 0 ? reminders.join(" ") : null);
       }
 
-      let systemPrompt = injector.applyToSystemPrompt(event.systemPrompt ?? []);
-      if (isParentSession) {
-        // Parent-only standing conduct block — placed FIRST (unshifted) so it
-        // reads before the discipline/keyword blocks. Reuses the SAME
-        // needsAutonomousReminder boolean to relax the WAIT/ASK rules under an
-        // active autonomous loop.
-        systemPrompt = applyOrchestratorConduct(systemPrompt, injector, {
-          isParentSession,
-          autonomousActive: needsAutonomousReminder,
+      if (!isParentSession) {
+        const workerRole = workerRuntimeRole!;
+        const selectedSkillTargets = [
+          ...effectiveMatchedSkills.map((skill) => skill.ownedReadTarget),
+          ...effectiveDeferredSkillObligations.map((skill) => skill.ownedReadTarget),
+        ];
+        const composition = injector.composeSystemPrompt({
+          systemPrompt: event.systemPrompt ?? [],
+          audience: "worker",
+          includeDiscipline: false,
+          includeLanguage: false,
+          includeProjectInstructions: false,
+          mode: promptMode,
+          additionalFragments: createWorkerContextFragments({
+            role: workerRole,
+            assignment: event.prompt ?? "",
+            selectedSkillTargets,
+            phase: injector.getPromptPhase(),
+          }),
         });
+        pi.logger.debug(
+          `pi-oven: prompt composition ${promptMode} receipt ${JSON.stringify(composition.receipt)}`
+        );
+        return { systemPrompt: composition.systemPrompt };
+      }
+
+      const additionalFragments: PromptFragment[] = [];
+      if (isParentSession) {
         const keywordPrompt = buildKeywordMatchedSkillsPrompt(
           effectiveMatchedSkills,
           effectiveDeferredSkillObligations
         );
-        if (
-          keywordPrompt !== null &&
-          !systemPrompt.some((entry) => entry.includes(KEYWORD_SKILL_DEDUP_KEY))
-        ) {
-          systemPrompt = [...systemPrompt, keywordPrompt];
+        if (keywordPrompt !== null) {
+          additionalFragments.push(promptFragment(
+            "keyword-skills",
+            KEYWORD_SKILL_DEDUP_KEY,
+            keywordPrompt,
+            { priority: 75, required: true }
+          ));
         }
-        if (
-          installedTopologyNotice &&
-          !systemPrompt.some((entry) => entry.includes("[WARN] installed topology:"))
-        ) {
-          systemPrompt = [...systemPrompt, installedTopologyNotice.message];
+        if (installedTopologyNotice) {
+          additionalFragments.push(promptFragment(
+            "installed-topology-notice",
+            "[WARN] installed topology:",
+            installedTopologyNotice.message,
+            { priority: 20, required: false }
+          ));
         }
-        if (
-          keywordIntegrityNotice &&
-          !systemPrompt.some((entry) => entry.includes("[WARN] keyword-skill integrity:"))
-        ) {
-          systemPrompt = [...systemPrompt, keywordIntegrityNotice.message];
+        if (keywordIntegrityNotice) {
+          additionalFragments.push(promptFragment(
+            "keyword-integrity-notice",
+            "[WARN] keyword-skill integrity:",
+            keywordIntegrityNotice.message,
+            { priority: 21, required: false }
+          ));
         }
         const hasPendingApprovalFlow =
           persistedApprovalFlow?.status === "pending" || persistedApprovalFlow?.active === true;
@@ -1356,18 +1565,36 @@ export default function piOvenPi(
           (effectiveMatchedSkills.length > 0 ||
             persistedDeepInterviewState !== undefined ||
             hasPendingApprovalFlow);
-        if (
-          shouldInjectDeepInterviewContract &&
-          !systemPrompt.some((entry) => entry.includes(DEEP_INTERVIEW_CONTRACT_DEDUP_KEY))
-        ) {
-          systemPrompt = [
-            ...systemPrompt,
+        if (shouldInjectDeepInterviewContract) {
+          additionalFragments.push(promptFragment(
+            "deep-interview-contract",
+            DEEP_INTERVIEW_CONTRACT_DEDUP_KEY,
             buildDeepInterviewContractPrompt(persistedDeepInterviewState, persistedApprovalFlow),
-          ];
+            { priority: 70, required: true }
+          ));
         }
       }
+      const composition = injector.composeSystemPrompt({
+        systemPrompt: event.systemPrompt ?? [],
+        audience: "parent",
+        autonomousActive: needsAutonomousReminder,
+        mode: promptMode,
+        additionalFragments,
+      });
+      const systemPrompt = applyOrchestratorConduct(composition.systemPrompt, injector, {
+        isParentSession,
+        autonomousActive: needsAutonomousReminder,
+      });
+      pi.logger.debug(
+        `pi-oven: prompt composition ${promptMode} receipt ${JSON.stringify(composition.receipt)}`
+      );
       return { systemPrompt };
     } catch (err) {
+      if (err instanceof ExplicitSkillSafetyCeilingError) {
+        pi.logger.warn(err.message);
+        throw err;
+      }
+      if (!isParentSession) throw err;
       pi.logger.debug(`pi-oven: before_agent_start inject skipped: ${err}`);
       return undefined;
     }
@@ -1450,6 +1677,25 @@ export default function piOvenPi(
 
     if (!isParentSession) return;
     try {
+      const ledgerResume = ledgerAdapter?.loadResume();
+      if (ledgerResume?.action === "manual-review") {
+        await store.mutate((current) => ({
+          ...current,
+          active: false,
+          version: current.version + 1,
+          blockedReason: {
+            kind: "ambiguous-effect",
+            message:
+              "pi-oven: autonomy paused — an external effect has an intent but no trustworthy completion receipt.",
+          },
+          nextAction: {
+            kind: "reconcile-external-effect",
+            message:
+              "Observe the actual repository or remote ref, then record complete/retry/manual-review before continuing.",
+          },
+          resumeTarget: buildAutonomyResumeTarget(repoRoot),
+        }));
+      }
       const stateView = await store.readState();
       if (stateView.kind === "OK" && stateView.state.resumeTarget) {
         const currentBranch = readCurrentRepoBranch(repoRoot);

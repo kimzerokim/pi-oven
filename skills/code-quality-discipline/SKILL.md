@@ -12,7 +12,7 @@ Fires on every code-write tool call — `edit`, `write`, `ast_grep_replace` — 
 
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
-Main does NOT do this skill's substantive work inline. Main's direct-action budget is narrow: 1–2 file simple edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`). Route by model-fit + role-fit (use these exact names): cleanup/refactor → `pi-oven:code-simplifier`; correctness/quality review → `pi-oven:code-reviewer`.
+Main does NOT do this skill's substantive work inline. Main's direct-action budget is narrow: 1–2 file simple edits ≤ 30 LoC, or operational commands (`git status`, `ls`, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline (see `large-task-delegation` + `subagent-driven-development`). Route by model-fit + role-fit (use these exact names): cleanup/refactor → `pov:code-simplifier`; correctness/quality review → `pov:code-reviewer`.
 
 ## Core principles
 
@@ -71,11 +71,11 @@ Deep rationale + examples: skill://pov:code-quality-discipline/references/princi
 
 In an omp session, push quality checks to specialised agents:
 
-- Severity-rated code review (SOLID, regression surface): dispatch `pi-oven:code-reviewer`.
-- Deletion-first simplification (behavior-preserving): dispatch `pi-oven:code-simplifier`.
-- Security audit when sensitive surfaces are touched (OWASP, supply chain): dispatch `pi-oven:security-reviewer`.
-- Quantitative metrics analysis when needed: dispatch `pi-oven:analyst`.
+- Severity-rated code review (SOLID, regression surface): dispatch `pov:code-reviewer`.
+- Deletion-first simplification (behavior-preserving): dispatch `pov:code-simplifier`.
+- Security audit when sensitive surfaces are touched (OWASP, supply chain): dispatch `pov:security-reviewer`.
+- Quantitative metrics analysis when needed: dispatch `pov:analyst`.
 
 Outside omp the main agent runs the same checklist inline.
 
-**Refactor-type routing.** DRY/YAGNI/KISS cleanup (duplication removal, local simplification) → `pi-oven:code-simplifier`. Architectural refactors (shallow→deep deepening, seam consolidation, coupling reduction) → the `improve-codebase-architecture` skill; its Step 0 classifies the intent and routes.
+**Refactor-type routing.** DRY/YAGNI/KISS cleanup (duplication removal, local simplification) → `pov:code-simplifier`. Architectural refactors (shallow→deep deepening, seam consolidation, coupling reduction) → the `improve-codebase-architecture` skill; its Step 0 classifies the intent and routes.

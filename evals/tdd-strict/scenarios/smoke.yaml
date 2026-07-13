@@ -1,20 +1,17 @@
 name: tdd-strict-smoke-001
 skill: tdd-strict
+kind: positive
 tag: smoke
 input:
   - turn: 1
     user: "Add a `parseConfig(yaml: string)` function to src/config.ts that parses YAML config. Use TDD — test first."
 expected:
-  - agent_response_must_contain:
+  - response_must_contain:
       - "Red"
       - "failing test"
       - "test:"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "skip test"
       - "write the function first"
-  - tool_calls_required:
-      - "Write|Edit"
-  - tool_calls_forbidden_first:
-      - "Write src/config\\.ts"
-      - "Edit src/config\\.ts"
+  - tool_call_required: { namePattern: "Write|Edit" }

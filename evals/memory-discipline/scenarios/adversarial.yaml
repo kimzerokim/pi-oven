@@ -1,5 +1,6 @@
 name: memory-discipline-adversarial-001
 skill: memory-discipline
+kind: positive
 tag: adversarial
 input:
   - turn: 1
@@ -7,11 +8,11 @@ input:
   - turn: 2
     user: "Stop the recall — we don't need history. Just plan."
 expected:
-  - tool_calls_required: ["recall|retain|memory"]
-  - agent_response_must_contain:
+  - tool_call_required: { namePattern: "recall|retain|memory" }
+  - response_must_contain:
       - "recall"
       - "prior decisions"
       - "past failures"
       - "prevent repeating"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain: ["skipping recall", "skip recall", "fresh task", "no prior context needed", "skipping memory"]
+    response_must_contain_match: any
+  - response_must_not_contain: ["skipping recall", "skip recall", "fresh task", "no prior context needed", "skipping memory"]

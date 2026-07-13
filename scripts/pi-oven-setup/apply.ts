@@ -12,31 +12,44 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveHomePaths } from "../lib/home-paths";
+import {
+  readTextFileSnapshot,
+  restoreTextFileSnapshot,
+  type TextFileSnapshot,
+} from "../lib/atomic-file";
 import { rewriteAllAgents } from "./agent-rewriter";
 import { runValidate } from "./validate";
 import {
-  setModelRoles,
+  buildDesiredGlobalOverrideRecord,
+  readConfigSnapshotStrict,
+  writeConfigSnapshot,
   setMemoryAndAsyncConfig,
-  setRetryFallbackChains,
-  setAgentModelOverrides,
   setToolEnablementConfig,
-  setPiOvenIncludedSkills,
+  SUBAGENT_RUNTIME_PREREQUISITES,
 } from "./config-yml";
 import {
-  setProjectAgentModelOverrides,
-  setProjectIncludedSkills,
-  setProjectModelRoles,
-  setProjectRetryFallbackChains,
+  buildProjectSetupSettings,
   projectSettingsPath,
+  serializeProjectSettings,
 } from "./project-settings";
+import {
+  buildSetupReceiptConfig,
+  globalConfigPath,
+  projectConfigPath,
+} from "./project-config";
+import {
+  applySetupTransaction,
+  isAbsentSnapshot,
+  resolveSetupTransactionStateDir,
+  type SetupTransactionFaultPoint,
+  type SetupTransactionResourceAdapter,
+  type SetupTransactionSnapshot,
+} from "./setup-transaction";
 import {
   collectStandaloneTruthSignals,
   formatStandaloneTruthSignals,
 } from "./standalone-truth-surface";
-import {
-  describeNativeWorkerRuntime,
-  resolveNativeWorkerRuntimeStatus,
-} from "../pi-oven-team";
 import {
   DEFAULT_FALLBACK_CHAINS,
   DEFAULT_ORCHESTRATOR,
@@ -64,6 +77,11 @@ export interface ApplyOptions {
   scope?: "global" | "project";
   /** Project root the project-scope writers target (default process.cwd()). */
   cwd?: string;
+  /** Injectable home for global journal/receipt isolation. */
+  homeDir?: string;
+  /** Deterministic transaction fault injection used by the fault matrix. */
+  transactionFault?: (point: SetupTransactionFaultPoint) => void | Promise<void>;
+  now?: () => Date;
 }
 
 function modelOverrideValue(entry: ModelEntry): string {
@@ -71,6 +89,48 @@ function modelOverrideValue(entry: ModelEntry): string {
 }
 
 const PLUGIN_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
+const GLOBAL_MEMORY_CONFIG: Record<string, SetupTransactionSnapshot> = {
+  "memory.backend": "mnemopi",
+  "mnemopi.noEmbeddings": true,
+  "mnemopi.llmMode": "none",
+  "async.enabled": true,
+};
+
+function parseJsonObjectSnapshot(snapshot: TextFileSnapshot, file: string): Record<string, unknown> {
+  if ("absent" in snapshot) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(snapshot.content);
+  } catch {
+    throw new Error(`present but unparsable JSON: ${file}`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`present but not a plain object: ${file}`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function asStringRecord(value: SetupTransactionSnapshot, key: string): Record<string, string> {
+  if (isAbsentSnapshot(value)) return {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${key} must be a record`);
+  }
+  const record: Record<string, string> = {};
+  for (const [name, entry] of Object.entries(value)) record[name] = String(entry);
+  return record;
+}
+
+function fileSnapshot(value: SetupTransactionSnapshot): TextFileSnapshot {
+  if (isAbsentSnapshot(value)) return value;
+  if (
+    typeof value !== "object" || value === null || Array.isArray(value) ||
+    typeof (value as { content?: unknown }).content !== "string"
+  ) {
+    throw new Error("Invalid journaled file snapshot");
+  }
+  return { content: (value as { content: string }).content };
+}
 
 /**
  * Apply the default profile:
@@ -92,34 +152,81 @@ export async function runApply(
   let workflowSkillLine = "";
   let scopeLine = "";
   let projectRemediationLine = "";
-  let nativeWorkerRuntimeLine = "";
-  let workerCeilingLine = "";
   const scope = opts.scope ?? "global";
+  let validateResult: Awaited<ReturnType<typeof runValidate>> | undefined;
 
   if (opts.agentsDir) {
     // Maintainer generate: rewrite agent files only, write no config keys.
     await rewriteAllAgents(opts.agentsDir, DEFAULT_PROFILE);
   } else {
+    const overrideRecord: Record<string, string> = {};
+    for (const role of ROLES) {
+      overrideRecord[`pov:${role}`] = modelOverrideValue(DEFAULT_PROFILE[role]);
+    }
+    const validateTransaction = async () => {
+      validateResult = await runValidate(DEFAULT_PROFILE, {
+        mode: opts.validateMode ?? "smoke",
+        spawnFn: opts.spawnFn,
+      });
+      return validateResult.ok
+        ? { ok: true as const }
+        : { ok: false as const, error: `unverified roles: ${validateResult.unverified.join(", ")}` };
+    };
+
     if (scope === "project") {
-      // PROJECT setup: write the model routing into <cwd>/.omp/settings.json
-      // (the omp project layer), which deep-merges OVER global. Setup writes
-      // all 24 per-role overrides here — agent-file frontmatter is the
-      // shipped plugin default, so a project that wants different models must
-      // carry explicit overrides for all 24 roles to actually diverge. NO global
-      // config-yml writer runs and the memory/async infra is NOT written
-      // (configure once globally).
       const cwd = opts.cwd ?? process.cwd();
-      const overrideRecord: Record<string, string> = {};
-      for (const role of ROLES) {
-        overrideRecord[`pov:${role}`] = modelOverrideValue(DEFAULT_PROFILE[role]);
-      }
-      await setProjectAgentModelOverrides(overrideRecord, { cwd });
-      await setProjectIncludedSkills({ cwd });
-      await setProjectModelRoles(
-        { default: DEFAULT_ORCHESTRATOR.default, title: DEFAULT_ORCHESTRATOR.title },
-        { cwd }
+      const settingsFile = projectSettingsPath(cwd);
+      const receiptFile = projectConfigPath(cwd);
+      const settingsOriginal = await readTextFileSnapshot(settingsFile);
+      const receiptOriginal = await readTextFileSnapshot(receiptFile);
+      const settings = buildProjectSetupSettings(
+        parseJsonObjectSnapshot(settingsOriginal, settingsFile),
+        {
+          overrides: overrideRecord,
+          modelRoles: {
+            default: DEFAULT_ORCHESTRATOR.default,
+            title: DEFAULT_ORCHESTRATOR.title,
+          },
+          fallbackChains: DEFAULT_FALLBACK_CHAINS,
+        }
       );
-      await setProjectRetryFallbackChains(DEFAULT_FALLBACK_CHAINS, { cwd });
+      const receipt = buildSetupReceiptConfig(
+        parseJsonObjectSnapshot(receiptOriginal, receiptFile),
+        (opts.now?.() ?? new Date()).toISOString()
+      );
+      const settingsResource = `file:${settingsFile}`;
+      const receiptResource = `file:${receiptFile}`;
+      const files = new Map([
+        [settingsResource, settingsFile],
+        [receiptResource, receiptFile],
+      ]);
+      const adapter: SetupTransactionResourceAdapter = {
+        read: async (resource) => readTextFileSnapshot(files.get(resource)!),
+        write: async (resource, value) => restoreTextFileSnapshot(files.get(resource)!, fileSnapshot(value)),
+      };
+      try {
+        await applySetupTransaction({
+          scope,
+          operation: "apply",
+          stateDir: resolveSetupTransactionStateDir({ scope, cwd }),
+          adapter,
+          desired: {
+            [settingsResource]: { content: serializeProjectSettings(settings) },
+          },
+          receipt: {
+            resource: receiptResource,
+            value: { content: `${JSON.stringify(receipt, null, 2)}\n` },
+          },
+          originals: {
+            [settingsResource]: settingsOriginal,
+            [receiptResource]: receiptOriginal,
+          },
+          validate: validateTransaction,
+          fault: opts.transactionFault,
+        });
+      } catch (error) {
+        if (!validateResult || validateResult.ok) throw error;
+      }
       const standaloneSignals = await collectStandaloneTruthSignals({
         pluginAssetPath: PLUGIN_ROOT,
         projectRoot: cwd,
@@ -132,60 +239,97 @@ export async function runApply(
         "Project scope kept ~/.omp/agent/config.yml untouched.\n" +
         formatStandaloneTruthSignals(standaloneSignals).join("\n") +
         "\n";
-      workerCeilingLine = "";
     } else {
-      // User setup (global): write the MAIN ORCHESTRATOR model pair (modelRoles
-      // default + title) in ONE atomic whole-record merge-write. omp's schema
-      // declares `modelRoles` as a record, so dotted `modelRoles.default` writes
-      // are rejected — setModelRoles read-merge-writes the whole record,
-      // preserving sibling roles.
-      await setModelRoles(
-        { default: DEFAULT_ORCHESTRATOR.default, title: DEFAULT_ORCHESTRATOR.title },
-        { spawnFn: opts.spawnFn }
-      );
-      await setRetryFallbackChains(DEFAULT_FALLBACK_CHAINS, { spawnFn: opts.spawnFn });
-
-      // Bulk-write all 24 per-role task.agentModelOverrides. Global persisted
-      // routing is canonical `pov:*`; successful writes also migrate any old-only
-      // `pi-oven:*` state in the same scope.
-      const overrideRecord: Record<string, string> = {};
-      for (const role of ROLES) {
-        overrideRecord[`pov:${role}`] = modelOverrideValue(DEFAULT_PROFILE[role]);
+      const homeDir = opts.homeDir ?? resolveHomePaths().homeDir;
+      const receiptFile = globalConfigPath(homeDir);
+      const receiptOriginal = await readTextFileSnapshot(receiptFile);
+      const configKeys = [
+        "modelRoles",
+        "retry.fallbackChains",
+        "task.agentModelOverrides",
+        "skills.includeSkills",
+        ...Object.keys(GLOBAL_MEMORY_CONFIG),
+        ...Object.keys(SUBAGENT_RUNTIME_PREREQUISITES),
+      ];
+      const originals: Record<string, SetupTransactionSnapshot> = {};
+      for (const key of configKeys) {
+        originals[`config:${key}`] = await readConfigSnapshotStrict(key, { spawnFn: opts.spawnFn });
       }
-      await setAgentModelOverrides(overrideRecord, { spawnFn: opts.spawnFn });
-      await setPiOvenIncludedSkills({ spawnFn: opts.spawnFn });
+      const currentModelRoles = asStringRecord(originals["config:modelRoles"]!, "modelRoles");
+      const currentOverrides = asStringRecord(
+        originals["config:task.agentModelOverrides"]!,
+        "task.agentModelOverrides"
+      );
+      const desired: Record<string, SetupTransactionSnapshot> = {
+        "config:modelRoles": { ...currentModelRoles, ...DEFAULT_ORCHESTRATOR },
+        "config:retry.fallbackChains": DEFAULT_FALLBACK_CHAINS,
+        "config:task.agentModelOverrides": buildDesiredGlobalOverrideRecord(
+          currentOverrides,
+          overrideRecord
+        ),
+        "config:skills.includeSkills": ["pov:*"],
+        ...Object.fromEntries(
+          Object.entries(GLOBAL_MEMORY_CONFIG).map(([key, value]) => [`config:${key}`, value])
+        ),
+        ...Object.fromEntries(
+          Object.entries(SUBAGENT_RUNTIME_PREREQUISITES).map(([key, value]) => [
+            `config:${key}`,
+            value,
+          ])
+        ),
+      };
+      const receiptResource = `file:${receiptFile}`;
+      const receipt = buildSetupReceiptConfig(
+        parseJsonObjectSnapshot(receiptOriginal, receiptFile),
+        (opts.now?.() ?? new Date()).toISOString()
+      );
+      originals[receiptResource] = receiptOriginal;
+      const adapter: SetupTransactionResourceAdapter = {
+        read: async (resource) =>
+          resource.startsWith("config:")
+            ? readConfigSnapshotStrict(resource.slice("config:".length), { spawnFn: opts.spawnFn })
+            : readTextFileSnapshot(receiptFile),
+        write: async (resource, value) => {
+          if (resource.startsWith("config:")) {
+            await writeConfigSnapshot(resource.slice("config:".length), value, { spawnFn: opts.spawnFn });
+          } else {
+            await restoreTextFileSnapshot(receiptFile, fileSnapshot(value));
+          }
+        },
+      };
+      try {
+        await applySetupTransaction({
+          scope,
+          operation: "apply",
+          stateDir: resolveSetupTransactionStateDir({ scope, homeDir }),
+          adapter,
+          desired,
+          receipt: {
+            resource: receiptResource,
+            value: { content: `${JSON.stringify(receipt, null, 2)}\n` },
+          },
+          originals,
+          validate: validateTransaction,
+          fault: opts.transactionFault,
+        });
+      } catch (error) {
+        if (!validateResult || validateResult.ok) throw error;
+      }
       workflowSkillLine =
         '✓ workflow-skill ownership: skills.includeSkills = ["pov:*"] written to ~/.omp/agent/config.yml (workflow skills only; populated ~/.claude/skills remains explicitly non-owning)\n';
-
-      // Write mnemopi memory backend + async.enabled for native memory/irc.
-      await setMemoryAndAsyncConfig({ spawnFn: opts.spawnFn });
       memoryConfigLine =
         "✓ memory: mnemopi backend (noEmbeddings, llmMode=none) + async.enabled — native retain/recall/reflect + irc enabled for subagent coordination\n";
-      // Enable omp's gated tools so the agents' tool mandates have teeth
-      // (inspect_image defaults false; the rest are written defensively). Global
-      // scope only — project scope writes routing files, never `omp config set`.
-      await setToolEnablementConfig({ spawnFn: opts.spawnFn });
       toolsEnabledLine =
         "✓ tools enabled: inspect_image, web_search, lsp, ast_grep, browser, debug\n";
-      const nativeWorkerRuntime = await resolveNativeWorkerRuntimeStatus({
-        pluginRoot: PLUGIN_ROOT,
-        projectRoot: opts.cwd ?? process.cwd(),
-      });
-      nativeWorkerRuntimeLine =
-        `✓ native worker runtime: ${describeNativeWorkerRuntime(nativeWorkerRuntime)}\n` +
-        `✓ runtime trace primitives: ${nativeWorkerRuntime.tracePrimitives.join(", ")}\n` +
-        `✓ verifier depth policy: ${nativeWorkerRuntime.verifierDepth.deepWhen} (deep hard cap ${nativeWorkerRuntime.verifierDepth.deepAutoContinueHardCap}; light path = ${nativeWorkerRuntime.verifierDepth.lightWhen})\n`;
-      workerCeilingLine =
-        `✓ native worker ceiling: nativeWorkers.maxWorkers=${nativeWorkerRuntime.maxWorkers} from ${nativeWorkerRuntime.maxWorkersConfigPath} (${nativeWorkerRuntime.maxWorkersSource})\n`;
     }
   }
 
-  // Validate
-  const validateMode = opts.validateMode ?? "smoke";
-  const validateResult = await runValidate(DEFAULT_PROFILE, {
-    mode: validateMode,
-    spawnFn: opts.spawnFn,
-  });
+  if (!validateResult) {
+    validateResult = await runValidate(DEFAULT_PROFILE, {
+      mode: opts.validateMode ?? "smoke",
+      spawnFn: opts.spawnFn,
+    });
+  }
 
   if (!validateResult.ok) {
     const unverifiedList = validateResult.unverified.join(", ");
@@ -210,10 +354,8 @@ export async function runApply(
       workflowSkillLine +
       memoryConfigLine +
       toolsEnabledLine +
-      nativeWorkerRuntimeLine +
-      workerCeilingLine +
       "Configuration boundary: setup/status are visibility/guard layers only; runtime records current-session provider-family drift as diagnostics, not routing policy.\n" +
-      "Fan-out contract: dispatch dependency-ready work in the widest safe wave (default target 8-12 siblings). The vendored pi-oven launcher enforces nativeWorkers.maxWorkers when its control path is present, and setup/status/doctor surface any degraded runtime state explicitly.\n" +
+      "Fan-out contract: dispatch dependency-ready work in the widest safe wave (default target 8-12 siblings). OMP task owns dispatch; async.enabled, task.maxConcurrency, and provider/runtime admission determine actual concurrency.\n" +
       `Setup complete.\n`,
   };
 }

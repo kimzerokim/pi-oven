@@ -1,288 +1,331 @@
-import type { Scenario, Verdict } from "./scenario-schema";
-
-const REQUIRED_FIELDS: Array<keyof Scenario> = ["name", "skill", "tag", "input", "expected"];
+import {
+  ScenarioSchema,
+  type Scenario,
+  type Verdict,
+} from "./scenario-schema";
+import type {
+  EvidenceEvent,
+  ModelReceipt,
+  UsageDelta,
+} from "./omp-eval-event-adapter";
 
 export function parseScenario(yamlText: string): Scenario {
-  const obj = Bun.YAML.parse(yamlText) as Partial<Scenario>;
-  for (const field of REQUIRED_FIELDS) {
-    if (obj[field] === undefined) {
-      throw new Error(`Scenario missing required field: ${field}`);
-    }
-  }
-  return obj as Scenario;
+  return ScenarioSchema.parse(Bun.YAML.parse(yamlText));
 }
 
-/** Minimal event shapes the runner cares about.
- *  Real SDK emits AgentSessionEvent; we only inspect these two variants.
- */
-export type RunnerEvent =
-  | { type: "tool_execution_start"; toolName: string; toolCallId: string }
-  | { type: "message_update"; delta: string }
-  | { type: "message_end" }
-  | { type: string };  // catch-all for other event types
+/** Stable runner-facing event type. Raw OMP SDK events are converted by the adapter. */
+export type RunnerEvent = EvidenceEvent;
 
-/** Contract that mirrors real AgentSession subscribe/prompt API.
- *  Real SDK: session.subscribe(listener) returns unsubscribe fn; session.prompt() returns Promise<void>.
- *  The optional options.signal is wired to an AbortController so the in-flight
- *  turn can be cancelled when the per-turn timeout fires.
- */
 export interface SessionLike {
-  subscribe(listener: (event: RunnerEvent) => void): () => void;
+  subscribe(listener: (event: EvidenceEvent) => void): () => void;
   prompt(message: string, options?: { signal?: AbortSignal }): Promise<void>;
 }
 
-/** Options passed to runScenario to control runner behaviour. */
 export interface RunnerOptions {
-  /** Max ms to wait for any single turn's terminal event. Default: 180_000 ms.
-   *  Reasoning models doing read-heavy exploration routinely exceed 90s before
-   *  emitting their final text; 90s truncated turns mid-work (content=""). */
   turnTimeoutMs?: number;
-  /** Max ms for the entire scenario wall-clock. Default: 5 * turnTimeoutMs. */
   scenarioTimeoutMs?: number;
-  /** Max number of turns to execute per scenario. Default: unbounded. */
   maxTurns?: number;
 }
 
-/** Terminal event types: anything that ends a turn (success OR failure path). */
-const TERMINAL_EVENTS = new Set(["message_end", "error", "abort", "session_error", "stream_error"]);
-
-/** Per-turn aggregated result collected via subscribe(). */
 interface TurnBuffer {
-  content: string;
-  toolCalls: string[];  // toolName values in invocation order
-  timedOut?: boolean;
+  events: EvidenceEvent[];
+  timedOut: boolean;
+  infrastructureError?: string;
 }
 
+const DEFAULT_TURN_TIMEOUT_MS = 180_000;
+
+function abortReasonCode(signal: AbortSignal): string {
+  const reason = signal.reason;
+  if (reason instanceof Error && reason.message) return reason.message;
+  return typeof reason === "string" && reason ? reason : "aborted";
+}
+
+/**
+ * Run one prompt while the scenario-owned AbortController owns cancellation.
+ * Every timer, listener, and SDK subscription is released in `finally`.
+ */
 async function runTurn(
   session: SessionLike,
   userMessage: string,
-  turnTimeoutMs: number
+  turnTimeoutMs: number,
+  controller: AbortController,
 ): Promise<TurnBuffer> {
-  const buf: TurnBuffer = { content: "", toolCalls: [] };
-
-  // Per-turn AbortController: aborted when the timeout fires, so the in-flight
-  // session.prompt() (which accepts signal) is actually cancelled — not just
-  // ignored by a dangling setTimeout that only guards terminalPromise.
-  const controller = new AbortController();
-
-  const terminalPromise = new Promise<void>((resolve) => {
-    let done = false;
-    const timeoutHandle = setTimeout(() => {
-      if (!done) {
-        done = true;
-        buf.timedOut = true;
-        controller.abort();   // cancel the in-flight prompt()
-        unsubscribe();
-        resolve();
-      }
-    }, turnTimeoutMs);
-
-    const unsubscribe = session.subscribe((event) => {
-      if (event.type === "tool_execution_start") {
-        const e = event as { type: "tool_execution_start"; toolName: string };
-        buf.toolCalls.push(e.toolName);
-      } else if (event.type === "message_update") {
-        const e = event as { type: "message_update"; delta: string };
-        buf.content += e.delta;
-      }
-      // Resolve on message_end OR any other terminal/error/abort event
-      if (TERMINAL_EVENTS.has(event.type) && !done) {
-        done = true;
-        clearTimeout(timeoutHandle);
-        unsubscribe();
-        resolve();
-      }
-    });
+  const buffer: TurnBuffer = { events: [], timedOut: false };
+  let unsubscribe: () => void = () => {};
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let settle!: () => void;
+  const terminal = new Promise<void>((resolve) => {
+    settle = resolve;
   });
 
-  // Race prompt() against the timeout: if prompt() is a blocking real SDK call
-  // the AbortController signal aborts it; if it's a mock that ignores signal the
-  // terminalPromise timeout still fires and resolves the race.
-  // Errors from prompt() (e.g. AbortError when signal fires) are swallowed —
-  // a timed-out turn is recorded via buf.timedOut, not thrown.
-  await Promise.race([
-    session.prompt(userMessage, { signal: controller.signal }).catch(() => {}),
-    terminalPromise,
-  ]);
-  // Ensure terminalPromise is also awaited so subscription cleanup runs
-  await terminalPromise;
-  return buf;
+  const onAbort = () => {
+    if (abortReasonCode(controller.signal) === "turn_timeout") buffer.timedOut = true;
+    settle();
+  };
+
+  try {
+    unsubscribe = session.subscribe((event) => {
+      buffer.events.push(event);
+      if (event.type === "terminal_error") {
+        buffer.infrastructureError = event.code;
+        settle();
+      } else if (event.type === "turn_end") {
+        settle();
+      }
+    });
+    controller.signal.addEventListener("abort", onAbort, { once: true });
+    timeout = setTimeout(() => {
+      if (!controller.signal.aborted) controller.abort(new Error("turn_timeout"));
+    }, turnTimeoutMs);
+
+    void session.prompt(userMessage, { signal: controller.signal }).catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        buffer.infrastructureError = error instanceof Error ? error.message : String(error);
+      }
+      settle();
+    });
+    await terminal;
+    return buffer;
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+    controller.signal.removeEventListener("abort", onAbort);
+    unsubscribe();
+  }
+}
+
+function normalize(value: string): string {
+  return value.toLocaleLowerCase("en-US");
+}
+
+function evaluateResponse(
+  scenario: Scenario,
+  response: string,
+  failures: string[],
+  observations: string[],
+  suppressMissing: boolean,
+): void {
+  const haystack = normalize(response);
+  for (const expectation of scenario.expected) {
+    if (expectation.response_must_contain !== undefined) {
+      const matches = expectation.response_must_contain.map((phrase) =>
+        haystack.includes(normalize(phrase)),
+      );
+      const passed = expectation.response_must_contain_match === "any"
+        ? matches.some(Boolean)
+        : matches.every(Boolean);
+      if (!passed && !suppressMissing) {
+        const missing = expectation.response_must_contain.filter((_, index) => !matches[index]);
+        failures.push(
+          `response_must_contain(${expectation.response_must_contain_match ?? "all"}): missing ${JSON.stringify(missing)}`,
+        );
+      }
+    }
+
+    for (const phrase of expectation.response_must_not_contain ?? []) {
+      if (haystack.includes(normalize(phrase))) {
+        failures.push(`response_must_not_contain: found forbidden ${JSON.stringify(phrase)}`);
+      }
+    }
+
+    if (expectation.observe_response_contains !== undefined) {
+      for (const phrase of expectation.observe_response_contains) {
+        observations.push(
+          `observe_response_contains: ${JSON.stringify(phrase)} ${haystack.includes(normalize(phrase)) ? "HIT" : "MISS"}`,
+        );
+      }
+    }
+  }
+}
+
+function isDeepSubset(expected: unknown, actual: unknown): boolean {
+  if (Object.is(expected, actual)) return true;
+  if (Array.isArray(expected)) {
+    return Array.isArray(actual) &&
+      expected.length === actual.length &&
+      expected.every((item, index) => isDeepSubset(item, actual[index]));
+  }
+  if (expected !== null && typeof expected === "object") {
+    if (actual === null || typeof actual !== "object" || Array.isArray(actual)) return false;
+    return Object.entries(expected as Record<string, unknown>).every(([key, value]) =>
+      Object.prototype.hasOwnProperty.call(actual, key) &&
+      isDeepSubset(value, (actual as Record<string, unknown>)[key]),
+    );
+  }
+  return false;
+}
+
+function toolRequirementMatches(
+  requirement: { namePattern: string; args?: unknown },
+  events: EvidenceEvent[],
+): boolean {
+  const successfulEnds = new Map(
+    events
+      .filter(
+        (event): event is Extract<EvidenceEvent, { type: "tool_end" }> =>
+          event.type === "tool_end" && event.outcome === "success",
+      )
+      .map((event) => [event.callId, event]),
+  );
+  const namePattern = new RegExp(requirement.namePattern, "i");
+  return events.some((event) => {
+    if (event.type !== "tool_start" || !namePattern.test(event.name)) return false;
+    const end = successfulEnds.get(event.callId);
+    if (!end || end.name !== event.name) return false;
+    return requirement.args === undefined || isDeepSubset(requirement.args, event.args);
+  });
+}
+
+function evaluateTools(
+  scenario: Scenario,
+  events: EvidenceEvent[],
+  failures: string[],
+  observations: string[],
+  suppressMissing: boolean,
+): void {
+  for (const expectation of scenario.expected) {
+    if (expectation.tool_call_required !== undefined) {
+      if (!toolRequirementMatches(expectation.tool_call_required, events) && !suppressMissing) {
+        failures.push(
+          `tool_call_required: no successfully completed tool matched ${JSON.stringify(expectation.tool_call_required)}`,
+        );
+      }
+    }
+    if (expectation.observe_tool_call !== undefined) {
+      observations.push(
+        `observe_tool_call: ${expectation.observe_tool_call.namePattern} ${toolRequirementMatches(expectation.observe_tool_call, events) ? "HIT" : "MISS"}`,
+      );
+    }
+  }
+}
+
+function canonicalSkillName(value: string): string {
+  const trimmed = value.trim().toLocaleLowerCase("en-US");
+  return trimmed.startsWith("pov:") ? trimmed : `pov:${trimmed}`;
+}
+
+function evaluateSkillActivations(
+  scenario: Scenario,
+  events: EvidenceEvent[],
+  failures: string[],
+  suppressMissing: boolean,
+): void {
+  const receipts = new Set(
+    events
+      .filter(
+        (event): event is Extract<EvidenceEvent, { type: "skill_activation" }> =>
+          event.type === "skill_activation",
+      )
+      .map((event) => canonicalSkillName(event.skill)),
+  );
+  for (const expectation of scenario.expected) {
+    if (
+      expectation.skill_activation_required !== undefined &&
+      !receipts.has(canonicalSkillName(expectation.skill_activation_required)) &&
+      !suppressMissing
+    ) {
+      failures.push(
+        `skill_activation_required: exact receipt for ${JSON.stringify(expectation.skill_activation_required)} not observed`,
+      );
+    }
+  }
+}
+
+function zeroUsage(): UsageDelta {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+}
+
+function collectUsage(events: EvidenceEvent[]): {
+  usage: UsageDelta;
+  modelReceipts: ModelReceipt[];
+} {
+  const usage = zeroUsage();
+  const modelReceipts: ModelReceipt[] = [];
+  const seenModels = new Set<string>();
+  for (const event of events) {
+    if ((event.type === "assistant_end" || event.type === "tool_end") && event.usage) {
+      usage.input += event.usage.input;
+      usage.output += event.usage.output;
+      usage.cacheRead += event.usage.cacheRead;
+      usage.cacheWrite += event.usage.cacheWrite;
+      usage.cost += event.usage.cost;
+    }
+    if (event.type === "assistant_end" && event.model) {
+      const key = `${event.model.provider}\u0000${event.model.model}`;
+      if (!seenModels.has(key)) {
+        seenModels.add(key);
+        modelReceipts.push(event.model);
+      }
+    }
+  }
+  return { usage, modelReceipts };
 }
 
 export async function runScenario(
   scenario: Scenario,
   session: SessionLike,
-  options?: RunnerOptions
+  options: RunnerOptions = {},
 ): Promise<Verdict> {
-  const turnTimeoutMs = scenario.turn_timeout_ms ?? options?.turnTimeoutMs ?? 180_000;
-  const scenarioTimeoutMs = scenario.scenario_timeout_ms ?? options?.scenarioTimeoutMs ?? 5 * turnTimeoutMs;
-  const maxTurns = options?.maxTurns;
-  const t0 = performance.now();
+  const startedAt = performance.now();
+  const turnTimeoutMs = scenario.turn_timeout_ms ?? options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
+  const scenarioTimeoutMs =
+    scenario.scenario_timeout_ms ?? options.scenarioTimeoutMs ?? turnTimeoutMs * 5;
+  const controller = new AbortController();
+  const allEvents: EvidenceEvent[] = [];
   const failures: string[] = [];
   const observations: string[] = [];
+  let timedOut = false;
+  let infrastructureError = false;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
 
-  // Per-scenario wall-clock deadline: resolves to a sentinel after scenarioTimeoutMs
-  let scenarioTimedOut = false;
-  const scenarioDeadlinePromise = new Promise<"scenario_deadline">((resolve) =>
-    setTimeout(() => {
-      scenarioTimedOut = true;
-      resolve("scenario_deadline");
-    }, scenarioTimeoutMs)
-  );
+  try {
+    deadline = setTimeout(() => {
+      if (!controller.signal.aborted) controller.abort(new Error("scenario_timeout"));
+    }, scenarioTimeoutMs);
 
-  // Aggregate across all turns; evaluations run against the LAST turn's buffer
-  let lastBuf: TurnBuffer = { content: "", toolCalls: [] };
-  let turnIndex = 0;
-  for (const turn of scenario.input) {
-    if (scenarioTimedOut) break;
-    if (maxTurns !== undefined && turnIndex >= maxTurns) break;
-    turnIndex++;
-
-    const turnResult = await Promise.race([
-      runTurn(session, turn.user, turnTimeoutMs),
-      scenarioDeadlinePromise,
-    ]);
-
-    if (turnResult === "scenario_deadline") {
-      scenarioTimedOut = true;
-      break;
+    let turnCount = 0;
+    for (const turn of scenario.input) {
+      if (controller.signal.aborted) break;
+      if (options.maxTurns !== undefined && turnCount >= options.maxTurns) break;
+      turnCount += 1;
+      const buffer = await runTurn(session, turn.user, turnTimeoutMs, controller);
+      allEvents.push(...buffer.events);
+      if (buffer.infrastructureError) {
+        infrastructureError = true;
+        failures.push(`infrastructure_error: ${buffer.infrastructureError}`);
+        break;
+      }
+      if (buffer.timedOut) {
+        timedOut = true;
+        observations.push(`timeout: turn exceeded ${turnTimeoutMs}ms`);
+        break;
+      }
     }
 
-    lastBuf = turnResult;
-    observations.push(`turn ${turn.turn}: tools=[${lastBuf.toolCalls.join(",")}] content="${lastBuf.content.slice(0, 80)}"`);
-    if (lastBuf.timedOut) break;  // timed-out turn: stop scenario, don't run subsequent turns
+    if (controller.signal.aborted && abortReasonCode(controller.signal) === "scenario_timeout") {
+      timedOut = true;
+      failures.push(`scenario_timeout: scenario exceeded ${scenarioTimeoutMs}ms wall-clock cap`);
+    }
+  } finally {
+    if (deadline !== undefined) clearTimeout(deadline);
   }
 
-  if (scenarioTimedOut) {
-    failures.push(`scenario_timeout: scenario exceeded ${scenarioTimeoutMs}ms wall-clock cap`);
+  const response = allEvents
+    .filter((event): event is Extract<EvidenceEvent, { type: "assistant_end" }> =>
+      event.type === "assistant_end",
+    )
+    .map((event) => event.text)
+    .join("\n");
+  const measurementIncomplete = timedOut || infrastructureError;
+  evaluateResponse(scenario, response, failures, observations, measurementIncomplete);
+  evaluateTools(scenario, allEvents, failures, observations, measurementIncomplete);
+  evaluateSkillActivations(scenario, allEvents, failures, measurementIncomplete);
+
+  const inconclusive = timedOut && allEvents.length === 0;
+  if (timedOut && !failures.some((failure) => failure.startsWith("scenario_timeout"))) {
+    failures.push(`turn_timeout: turn exceeded ${turnTimeoutMs}ms`);
   }
-
-  // D1: Compute inconclusive and liveness BEFORE the expectation loop.
-  // inconclusive: the last turn timed out AND produced no content — measurement
-  // incomplete, NOT a skill failure. Distinct from "liveness failure" (no output
-  // without a timeout).
-  const inconclusive = lastBuf.timedOut === true && lastBuf.content.length === 0;
-  const producedOutput = lastBuf.content.length > 0 || lastBuf.toolCalls.length > 0;
-
-  if (inconclusive) {
-    observations.push(`timeout: turn exceeded ${scenario.turn_timeout_ms ?? options?.turnTimeoutMs ?? 180_000}ms (inconclusive)`);
-  }
-
-  for (const exp of scenario.expected) {
-    // 1. skill_triggered — liveness/negative-gate (D1 contract).
-    //    false: HARD GATE — fails when any activation evidence is observed.
-    //    true or string: liveness check — fails when no activity produced AND not inconclusive.
-    //    string form: DEPRECATED — treated as liveness (true).
-    if (exp.skill_triggered !== undefined) {
-      const anyTriggered = lastBuf.toolCalls.length > 0 || lastBuf.content.length > 0;
-      if (exp.skill_triggered === false && anyTriggered) {
-        // HARD GATE: expected no activation, but got some
-        failures.push(`skill_triggered: expected no activation evidence, but activation was observed`);
-      } else if (exp.skill_triggered !== false && !anyTriggered && !inconclusive) {
-        // Liveness check: expected some activation; not inconclusive (timeout with no output
-        // is inconclusive — don't blame as a gate failure)
-        failures.push(`liveness: no skill activation evidence`);
-      }
-    }
-
-    // 1b. skill_read_required — soft-by-default telemetry (D1 contract).
-    //     Under D1, reading the skill body is the model's discretion; behavior
-    //     is the gate. A missing read is a non-blocking observation ("soft").
-    //     Use mode:"hard" only when loading the body is genuinely load-bearing.
-    if (exp.skill_read_required !== undefined) {
-      const name = exp.skill_read_required;
-      const uri = `skill://${name}`;
-      const read = lastBuf.toolCalls.some((n) => n.includes(uri));
-      const mode = exp.skill_read_required_mode ?? "soft";
-      if (read) {
-        observations.push(`skill_read: ${uri} read ✓`);
-      } else if (mode === "hard") {
-        failures.push(`skill_read_required(hard): ${uri} not read (no matching tool call found)`);
-      } else {
-        observations.push(`skill_read: ${uri} NOT read (soft — behavior is the gate)`);
-      }
-    }
-
-    // 2. agent_response_must_contain — TELEMETRY (D1 contract).
-    //    Hits and misses are recorded as observations; NEVER pushed to failures.
-    if (exp.agent_response_must_contain !== undefined) {
-      const raw = exp.agent_response_must_contain;
-      let phrases: string[];
-      if (Array.isArray(raw)) {
-        phrases = raw;
-      } else if (typeof raw === "string") {
-        phrases = [raw];
-      } else {
-        observations.push(
-          `response_contains[telemetry]: invalid shape — expected string[] but got ${JSON.stringify(raw)}; fix the scenario YAML`
-        );
-        phrases = null as unknown as string[];
-      }
-      if (phrases !== null) {
-        const matchMode = exp.agent_response_must_contain_match ?? "all";
-        if (matchMode === "any") {
-          const anyFound = phrases.some((phrase) => lastBuf.content.includes(phrase));
-          if (anyFound) {
-            observations.push(`response_contains[telemetry]: matched (any) in ${JSON.stringify(phrases)}`);
-          } else {
-            observations.push(`response_contains[telemetry]: MISS (any) — none of ${JSON.stringify(phrases)} found`);
-          }
-        } else {
-          for (const phrase of phrases) {
-            if (lastBuf.content.includes(phrase)) {
-              observations.push(`response_contains[telemetry]: matched "${phrase}"`);
-            } else {
-              observations.push(`response_contains[telemetry]: MISS "${phrase}"`);
-            }
-          }
-        }
-      }
-    }
-
-    // 3. agent_response_must_not_contain — HARD GATE (D1 contract).
-    //    The primary omp-native violation detector (e.g. legacy foreign namespace refs, "omo:").
-    if (exp.agent_response_must_not_contain) {
-      for (const phrase of exp.agent_response_must_not_contain) {
-        if (lastBuf.content.includes(phrase)) {
-          failures.push(`agent_response_must_not_contain: found forbidden "${phrase}"`);
-        }
-      }
-    }
-
-    // 4. tool_calls_required — TELEMETRY (D1 contract).
-    //    Each pattern records a hit (✓) or MISS observation; NEVER pushed to failures.
-    if (exp.tool_calls_required) {
-      for (const pattern of exp.tool_calls_required) {
-        const re = new RegExp(pattern);
-        const matched = lastBuf.toolCalls.some((n) => re.test(n));
-        if (matched) {
-          observations.push(`tool_required[telemetry]: ${pattern} ✓`);
-        } else {
-          observations.push(`tool_required[telemetry]: ${pattern} MISS`);
-        }
-      }
-    }
-
-    // 5. tool_calls_forbidden_first — HARD GATE (D1 contract).
-    //    The FIRST tool call must not match any forbidden pattern.
-    if (exp.tool_calls_forbidden_first && lastBuf.toolCalls.length > 0) {
-      const first = lastBuf.toolCalls[0];
-      for (const pattern of exp.tool_calls_forbidden_first) {
-        if (new RegExp(pattern).test(first)) {
-          failures.push(`tool_calls_forbidden_first: first tool "${first}" matched forbidden pattern "${pattern}"`);
-        }
-      }
-    }
-  }
-
-  // Generic liveness gate: if the turn produced no content and no tool calls and
-  // did NOT time out, that's a liveness failure (the agent was silent with no excuse).
-  // Skip when any expectation explicitly expects no activation (skill_triggered===false),
-  // because silence is the correct outcome in that case.
-  const expectsNoActivation = scenario.expected.some((e) => e.skill_triggered === false);
-  if (!inconclusive && !producedOutput && !scenarioTimedOut && !expectsNoActivation) {
-    failures.push(`liveness: produced no content and no tool calls`);
-  }
+  const { usage, modelReceipts } = collectUsage(allEvents);
 
   return {
     scenario: scenario.name,
@@ -291,8 +334,14 @@ export async function runScenario(
     inconclusive,
     failures,
     observations,
-    latency_ms: Math.round(performance.now() - t0),
-    token_in: 0,   // token counting requires model event not yet standardised
-    token_out: 0,
+    latency_ms: Math.round(performance.now() - startedAt),
+    token_in: usage.input,
+    token_out: usage.output,
+    cache_read: usage.cacheRead,
+    cache_write: usage.cacheWrite,
+    cost: usage.cost,
+    timed_out: timedOut,
+    infrastructure_error: infrastructureError,
+    model_receipts: modelReceipts,
   };
 }

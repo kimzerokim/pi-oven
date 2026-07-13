@@ -7,6 +7,7 @@ import {
 } from "../../../.omp/extensions/pi-oven-runtime/gate";
 import { normalizeCommand } from "../../../.omp/extensions/pi-oven-runtime/git-normalize";
 import { fingerprintExternalExecSecret } from "../../../.omp/extensions/pi-oven-runtime/gate-state";
+import { evaluateCapabilityPolicy } from "../../../.omp/extensions/pi-oven-runtime/capability-policy";
 
 
 // ---------------------------------------------------------------------------
@@ -550,6 +551,67 @@ describe("decideGate — external execution consent", () => {
     expect(r.block).toBe(true);
     expect(r.reason).toMatch(/inline secret/i);
   });
+
+  it("explains each rejected inline credential shape through the public decision", () => {
+    const temporary =
+      "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 printf ok";
+    const cases: Array<{
+      command: string;
+      externalExecConsent?: TestConsent;
+      reason: RegExp;
+    }> = [
+      { command: "API_TOKEN=abc123 printf ok", reason: /Pasted credentials stay forbidden/i },
+      {
+        command:
+          "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret AWS_SESSION_TOKEN=session123 printf ok",
+        externalExecConsent: tempConsent("read"),
+        reason: /Permanent AWS access keys/i,
+      },
+      {
+        command: "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE AWS_SECRET_ACCESS_KEY=secret printf ok",
+        externalExecConsent: tempConsent("read"),
+        reason: /require AWS_SESSION_TOKEN/i,
+      },
+      { command: temporary, reason: /require matching latest-message consent/i },
+      {
+        command: temporary,
+        externalExecConsent: tempConsent("read", { accessKeyId: "ASIAOTHER" }),
+        reason: /match the latest consented access key id/i,
+      },
+      {
+        command: temporary,
+        externalExecConsent: tempConsent("read", {
+          sessionTokenFingerprint: fingerprintExternalExecSecret("other-session"),
+        }),
+        reason: /match the latest consented session token/i,
+      },
+      {
+        command: temporary,
+        externalExecConsent: tempConsent("read", { secretAccessKeyFingerprint: undefined }),
+        reason: /consent that includes the same secret access key/i,
+      },
+      {
+        command: temporary,
+        externalExecConsent: tempConsent("read", {
+          secretAccessKeyFingerprint: fingerprintExternalExecSecret("other-secret"),
+        }),
+        reason: /match the latest consented secret access key/i,
+      },
+      {
+        command: temporary,
+        externalExecConsent: tempConsent("read", { expiresAt: Date.now() - 1 }),
+        reason: /expired or incomplete/i,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const result = decideGate(
+        input(testCase.command, { externalExecConsent: testCase.externalExecConsent })
+      );
+      expect(result.block).toBe(true);
+      expect(result.reason).toMatch(testCase.reason);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -557,6 +619,75 @@ describe("decideGate — external execution consent", () => {
 // ---------------------------------------------------------------------------
 
 describe("decideGate — code-write branch-contract and skill-read gate", () => {
+  it("fails closed on denied capabilities and unmediated non-bash external mutations", () => {
+    const denied = decideGate(
+      input("", {
+        capabilityPolicy: { block: true, policyVersion: 1 },
+      })
+    );
+    expect(denied.block).toBe(true);
+    expect(denied.reason).toMatch(/capability policy denied/i);
+
+    const retainPolicy = evaluateCapabilityPolicy({
+      toolName: "retain",
+      input: { items: [{ content: "fact" }] },
+      mode: "autonomous",
+      audience: "parent",
+    });
+    const retain = decideGate(
+      input("", { toolName: "retain", capabilityPolicy: retainPolicy })
+    );
+    expect(retain.block).toBe(true);
+    expect(retain.reason).toMatch(/external mutation.*no exact existing consent proof/i);
+  });
+
+  it("applies skill-state proof to local mutations and capability-classified code writes", () => {
+    const todoPolicy = evaluateCapabilityPolicy({
+      toolName: "todo_write",
+      input: {},
+      mode: "autonomous",
+      audience: "parent",
+    });
+    const missing = decideGate(
+      input("", {
+        toolName: "todo_write",
+        capabilityPolicy: todoPolicy,
+        requiredSkills: ["pov:autonomous-loop"],
+        ownedSkillReadTargets: [],
+      })
+    );
+    expect(missing.block).toBe(true);
+    expect(missing.reason).toMatch(/local mutation.*skill state proof is incomplete/i);
+
+    const target = "/plugin/skills/autonomous-loop/SKILL.md";
+    const allowed = decideGate(
+      input("", {
+        toolName: "todo_write",
+        capabilityPolicy: todoPolicy,
+        requiredSkills: ["pov:autonomous-loop"],
+        ownedSkillReadTargets: [target],
+        skillReads: [target],
+      })
+    );
+    expect(allowed.block).toBe(false);
+
+    const patchPolicy = evaluateCapabilityPolicy({
+      toolName: "apply_patch",
+      input: {},
+      mode: "autonomous",
+      audience: "parent",
+    });
+    const codeWrite = decideGate(
+      input("", {
+        toolName: "apply_patch",
+        capabilityPolicy: patchPolicy,
+        branchContract: { kind: "ABSENT" },
+      })
+    );
+    expect(codeWrite.block).toBe(true);
+    expect(codeWrite.reason).toMatch(/branch-contract/i);
+  });
+
   it("blocks code-write when the autonomous branch-contract marker is absent", () => {
     const r = decideGate(
       input("", {
@@ -594,6 +725,28 @@ describe("decideGate — code-write branch-contract and skill-read gate", () => 
       })
     );
     expect(r.block).toBe(false);
+  });
+
+  it("allows an absolute bootstrap marker path and blocks a corrupt marker for other writes", () => {
+    const bootstrap = decideGate(
+      input("", {
+        toolName: "write",
+        targetPath: `/tmp/project/${BRANCH_CONTRACT_BOOTSTRAP_TARGET}`,
+        branchContract: { kind: "CORRUPT" },
+      })
+    );
+    expect(bootstrap.block).toBe(false);
+
+    const blocked = decideGate(
+      input("", {
+        toolName: "edit",
+        targetPath: "src/example.ts",
+        branchContract: { kind: "CORRUPT" },
+      })
+    );
+    expect(blocked.block).toBe(true);
+    expect(blocked.reason).toMatch(/unreadable|fail-closed/i);
+    expect(blocked.autonomyStopBoundary?.nextAction.kind).toBe("write-branch-contract");
   });
 
   it("treats ast_edit as a code-write tool subject to the same branch-contract gate", () => {
@@ -681,6 +834,71 @@ describe("decideGate — brainstorming mutation guard", () => {
     kind: "OK" as const,
     contract: { destination: "worktree", branch: "feature/ws5", pr_mode: "draft" },
   };
+
+  function approvalDecision(
+    selected: string | undefined,
+    displayLabel?: string,
+    rounds: Array<{ stage: string; selected?: string }> = []
+  ) {
+    return decideGate(
+      input("", {
+        toolName: "write",
+        targetPath: "src/example.ts",
+        branchContract,
+        deepInterview: {
+          version: 2,
+          interviewId: "di-compat",
+          active: true,
+          phase: "handoff",
+          state: {
+            rounds,
+            establishedFacts: [],
+            ontologySnapshots: [],
+            milestone: "converged",
+          },
+        } as never,
+        approvalFlow: {
+          version: 1,
+          active: false,
+          status: "rejected",
+          source: "brainstorming",
+          resolved: { selected, displayLabel },
+        } as never,
+      })
+    );
+  }
+
+  it("honors every documented legacy approval spelling after normalization", () => {
+    for (const selected of [
+      "approve",
+      "approved",
+      "proceed",
+      "continue",
+      "continue execution",
+      "go ahead",
+      "승인",
+      "계속",
+      "계속 진행",
+      "이대로 진행",
+      "승인 plan으로 진행",
+      "승인 plan 으로 진행",
+    ]) {
+      expect(approvalDecision(selected).block).toBe(false);
+    }
+    expect(approvalDecision(undefined, " APPROVED ").block).toBe(false);
+    expect(
+      approvalDecision("unknown", undefined, [
+        { stage: "round", selected: "approve" },
+        { stage: "approval", selected: "continue" },
+      ]).block
+    ).toBe(false);
+  });
+
+  it("keeps choice-review and per-role override selections pending", () => {
+    expect(approvalDecision("ask_about_these_choices").block).toBe(true);
+    expect(approvalDecision("override/per_role").block).toBe(true);
+    expect(approvalDecision("   ").block).toBe(true);
+  });
 
   it("blocks code-write while deep-interview is actively converging", () => {
     const r = decideGate(

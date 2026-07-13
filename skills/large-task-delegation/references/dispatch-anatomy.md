@@ -94,34 +94,45 @@ On BLOCKED: final message = "BLOCKED: <reason>. Queue entry: <Q-code>." Do not c
 
 ## Parallel dispatch wave shape
 
-```typescript
-// Wave 1 — file-scope-disjoint tasks fire simultaneously
+<!-- pi-oven-contract:task-example -->
+```ts
+// Wave 1 — same-role, file-scope-disjoint work shares one call.
 task({
-  prompt: "<executor prompt for module A>",
-  // omit model — executor routing stays inside the current session provider family
-  run_in_background: true,
-});
-task({
-  prompt: "<executor prompt for module B>",
-  // omit model — executor routing stays inside the current session provider family
-  run_in_background: true,
+  agent: "pov:executor",
+  tasks: [
+    {
+      id: "module-a",
+      description: "Implement module A",
+      assignment: "<executor assignment for module A>",
+    },
+    {
+      id: "module-b",
+      description: "Implement module B",
+      assignment: "<executor assignment for module B>",
+    },
+  ],
 });
 // Launch the whole dependency-ready wave. 8-12 disjoint tasks is the
-// default planning target; actual simultaneous workers may be lower until the
-// pi-oven native runtime path owns the configured ceiling. Same file region =
-// do NOT parallelize.
+// default planning target. Actual simultaneous workers depend on OMP
+// async.enabled and task.maxConcurrency. Same file region = do NOT parallelize.
+```
 
-// Wave 2 — only after Wave 1 subagents return
+<!-- pi-oven-contract:task-example -->
+```ts
+// Wave 2 — a separate role call, only after Wave 1 returns.
 task({
-  prompt: "<critic/verifier prompt referencing Wave 1 output>",
-  // omit model — review inherits current-session routing; high-risk verification may widen only within that same provider family
-  run_in_background: true,
+  agent: "pov:verifier",
+  tasks: [{
+    id: "verify-wave-1",
+    description: "Verify the Wave 1 implementation",
+    assignment: "Review the Wave 1 output against its acceptance criteria and return a verdict with evidence.",
+  }],
 });
 ```
 
 Rules:
 - Fire all wave-N tasks in a single response turn.
-- `run_in_background: true` on every dispatch — main gets notified on completion.
+- OMP owns scheduling through `async.enabled` and `task.maxConcurrency`; async-disabled sessions may execute ready items sequentially.
 - Same file region = sequential ownership; do not split one file across parallel agents.
 - After each wave: `git log` + `git diff` inspection before launching wave N+1.
 
@@ -130,16 +141,16 @@ Rules:
 ## 5 anti-patterns
 
 **Anti-pattern 1 — Main does 6+ Edits directly**
-Main calls edit/write on 6 files in one turn. This is a meta-gap: context saturation degrades the edit quality, and no verifier reviews the work. Fix: dispatch `pi-oven:executor` with all 6 files in scope; main reviews the diff while keeping routing inside the current session provider family.
+Main calls edit/write on 6 files in one turn. This is a meta-gap: context saturation degrades the edit quality, and no verifier reviews the work. Fix: dispatch `pov:executor` with all 6 files in scope; main reviews the diff while keeping routing inside the current session provider family.
 
 **Anti-pattern 2 — Main reads 7+ files for preparation**
-Main calls read on 7+ files before writing a plan. Fix: dispatch `pi-oven:explorer` to read and summarise; main receives a ≤200-word evidence summary and the survey report path.
+Main calls read on 7+ files before writing a plan. Fix: dispatch `pov:explorer` to read and summarise; main receives a ≤200-word evidence summary and the survey report path.
 
 **Anti-pattern 3 — Raw file contents flow into main context**
 Main receives full file dumps from a subagent via return value. Fix: subagent writes findings to `docs/harness/surveys/` and returns only the report path + evidence summary. Main reads the summary, not the raw files.
 
 **Anti-pattern 4 — Large refactor without dispatch**
-User says "refactor the auth module" (5 files, ~300 LoC). Main starts editing inline. Fix: scope estimation first (`[scope] est. 5 files / ~300 LoC → pi-oven:executor`), then dispatch with frozen plan inside the current session provider family.
+User says "refactor the auth module" (5 files, ~300 LoC). Main starts editing inline. Fix: scope estimation first (`[scope] est. 5 files / ~300 LoC → pov:executor`), then dispatch with frozen plan inside the current session provider family.
 
 **Anti-pattern 5 — named-model workflow pinning in dispatch**
 Dispatch hardcodes a named model or provider-specific tier for routine routing. This drifts from the parent session and bakes workflow policy into the prompt. Fix: omit `model` by default, inherit the current-session provider family, and widen only for high-risk review/verification inside that same provider family.

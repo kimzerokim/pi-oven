@@ -1,6 +1,7 @@
 {
   "name": "pi-oven",
   "version": "0.2.4",
+  "packageManager": "bun@1.3.14",
   "private": true,
   "description": "Curated omp workflow + discipline layer (4-source successor)",
   "type": "module",
@@ -12,20 +13,28 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "build": "bun build .omp/extensions/pi-oven.ts --outdir dist --target bun --format esm --external '@oh-my-pi/*'",
+    "build": "bun build .omp/extensions/pi-oven.ts --outdir dist --target bun --format esm --external '@oh-my-pi/*' --external zod --external 'zod/*'",
     "eval": "bun scripts/run-eval.ts",
     "bench:runtime": "bun scripts/bench-runtime-injection.ts",
-    "lint:agents": "bun scripts/lint-agents.ts",
-    "lint:skills": "bun scripts/lint-skills.ts && bun --silent scripts/lint-doc-evidence.ts docs/harness/surveys/2026-07-05-pi-oven-remediation-detailed-survey.md docs/research/2026-07-05-pi-oven-codex-only-routing-research.md",
+    "contract:check": "bun scripts/pi-oven-contract/check.ts",
+    "contract:generate": "bun scripts/pi-oven-contract/generate.ts",
+    "test:hermetic": "bun scripts/run-hermetic-tests.ts",
+    "test:contract": "bun test tests/plugin/runtime-contract-static.test.ts tests/extensions/pi-oven-runtime/runtime-contract.test.ts",
+    "check:coverage": "bun scripts/check-coverage.ts",
+    "lint:agents": "bun run contract:check && bun scripts/lint-agents.ts",
+    "lint:skills": "bun run contract:check && bun scripts/lint-skills.ts && bun --silent scripts/lint-doc-evidence.ts docs/harness/surveys/2026-07-05-pi-oven-remediation-detailed-survey.md docs/research/2026-07-05-pi-oven-codex-only-routing-research.md",
     "lint:doc-evidence": "bun --silent scripts/lint-doc-evidence.ts",
-    "release:pi-oven": "bun scripts/pi-oven-release/index.ts"
+    "release:pi-oven": "bun scripts/pi-oven-release/index.ts",
+    "release:contract": "bun scripts/pi-oven-release/release-contract.ts"
   },
   "dependencies": {
-    "@oh-my-pi/pi-coding-agent": "*"
+    "@oh-my-pi/pi-coding-agent": "15.5.3",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "bun-types": "*",
-    "typescript": "^5.5.0"
+    "bun-types": "1.3.14",
+    "fast-check": "4.9.0",
+    "typescript": "5.9.3"
   },
   "omp": {
     "extensions": [

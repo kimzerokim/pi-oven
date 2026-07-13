@@ -26,11 +26,13 @@ import {
   normalizeLanguage,
   setProjectLanguage,
   setGlobalLanguage,
-  seedProjectNativeWorkerMax,
-  seedGlobalNativeWorkerMax,
   markSetupComplete,
   markSetupCompleteGlobal,
 } from "./pi-oven-setup/project-config";
+import {
+  formatSetupTransactionHealth,
+  recoverSetupTransactionsOnStartup,
+} from "./pi-oven-setup/setup-transaction";
 
 // ---------------------------------------------------------------------------
 // Parse CLI args
@@ -79,23 +81,54 @@ const scope = rawScope as "global" | "project";
 const agentsDir = process.env.PI_OVEN_AGENTS_DIR ?? undefined;
 
 const mockSpawn = process.env.PI_OVEN_MOCK_SPAWN === "1";
+const mockConfig = new Map<string, unknown>();
+const mockAbsent = new Set<string>();
 const spawnFn = mockSpawn
   ? (_cmd: string, args: string[]) => {
       // Return valid JSON for `omp config get <key> --json`
       if (args[0] === "config" && args[1] === "get") {
+        const key = args[2];
+        if (mockAbsent.has(key)) {
+          return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("missing key") };
+        }
         // disabledProviders, skills.includeSkills, and skills.ignoredSkills are
         // ARRAY-typed settings; everything else is a record.
-        if (
-          args[2] === "disabledProviders" ||
-          args[2] === "skills.includeSkills" ||
-          args[2] === "skills.ignoredSkills"
-        ) {
-          const value = args[2] === "skills.includeSkills" ? ["pov:*"] : [];
-          const payload = JSON.stringify({ key: args[2], value, type: "array", description: "" });
+        const arrayKey =
+          key === "disabledProviders" ||
+          key === "skills.includeSkills" ||
+          key === "skills.ignoredSkills";
+        const value = mockConfig.has(key)
+          ? mockConfig.get(key)
+          : arrayKey
+            ? key === "skills.includeSkills" ? ["pov:*"] : []
+            : {};
+        if (arrayKey) {
+          const payload = JSON.stringify({ key, value, type: "array", description: "" });
           return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
         }
-        const payload = JSON.stringify({ key: args[2], value: {}, type: "record", description: "" });
+        const type = typeof value === "object" ? "record" : typeof value;
+        const payload = JSON.stringify({ key, value, type, description: "" });
         return { exitCode: 0, stdout: Buffer.from(payload), stderr: Buffer.from("") };
+      }
+      if (args[0] === "config" && args[1] === "set") {
+        try {
+          mockConfig.set(args[2], JSON.parse(args[3]));
+        } catch {
+          mockConfig.set(args[2], args[3]);
+        }
+        mockAbsent.delete(args[2]);
+        return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+      }
+      if (args[0] === "config" && args[1] === "reset") {
+        const defaults: Record<string, unknown> = {
+          "skills.includeSkills": [],
+          modelRoles: {},
+          "retry.fallbackChains": {},
+          setupVersion: 0,
+        };
+        mockConfig.set(args[2], defaults[args[2]] ?? {});
+        mockAbsent.delete(args[2]);
+        return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
       }
       // Return a minimal `omp models` fixture for model-id validation / auth detection
       if (args[0] === "models") {
@@ -116,6 +149,15 @@ const spawnFn = mockSpawn
       return { exitCode: 0, stdout: Buffer.from("ok"), stderr: Buffer.from("") };
     }
   : undefined;
+
+const startupTransactions = await recoverSetupTransactionsOnStartup({ spawnFn });
+if (
+  !values.status &&
+  startupTransactions.some(({ health }) => health.state !== "healthy")
+) {
+  process.stderr.write(`${formatSetupTransactionHealth(startupTransactions).join("\n")}\n`);
+  process.exit(1);
+}
 
 // --no-validate takes precedence over --validate flag
 const rawValidateMode = process.env.PI_OVEN_VALIDATE_MODE ?? (values["no-validate"] ? "none" : (values.validate as string));
@@ -216,11 +258,7 @@ if (
 // ---------------------------------------------------------------------------
 
 let result: { exitCode: number; output: string };
-// Whether the selected dispatch path actually records MODEL ROUTING (default
-// --apply / --profile / --import / standalone --override). Successful routing
-// writes still refresh the setup receipt metadata, but readiness now comes from
-// live routing + prerequisite state — never this receipt alone.
-let markRouting = false;
+let legacyRoutingReceipt = false;
 
 if (repairPrereqs) {
   result = await runRepairPrereqs({ spawnFn });
@@ -243,7 +281,7 @@ if (repairPrereqs) {
   result = await runReset({ spawnFn, full: Boolean(values.full), scope });
 } else if (values.import !== undefined) {
   result = await runImport(values.import as string, { spawnFn, scope });
-  markRouting = true;
+  legacyRoutingReceipt = true;
 } else if (values.profile || values.apply) {
   result = await runApply({
     profile: values.profile as string | undefined,
@@ -252,7 +290,6 @@ if (repairPrereqs) {
     agentsDir,
     scope,
   });
-  markRouting = true;
 } else if (hasOverride) {
   // Standalone --override (no other action flag)
   const overrideResult = await runOverride({ entries: overrideEntries, spawnFn, scope });
@@ -261,7 +298,7 @@ if (repairPrereqs) {
     process.stderr.write(result.output);
     process.exit(result.exitCode);
   }
-  markRouting = true;
+  legacyRoutingReceipt = true;
 } else if (explicitValidate) {
   const validateResult = await runValidate(DEFAULT_PROFILE, {
     mode: validateMode,
@@ -291,15 +328,12 @@ if (repairPrereqs) {
 // Output + exit
 // ---------------------------------------------------------------------------
 
-// Refresh the setup receipt metadata only for a SUCCESSFUL model-routing path
-// (default --apply / --profile / --import / standalone --override). Readiness
-// is derived elsewhere from live routing + prerequisite facts.
-if (markRouting && result.exitCode === 0) {
+// Apply/reset own their receipt inside the journaled transaction. Import and
+// standalone override retain their legacy receipt until those commands migrate.
+if (legacyRoutingReceipt && result.exitCode === 0) {
   if (scope === "project") {
-    await seedProjectNativeWorkerMax();
     await markSetupComplete();
   } else {
-    await seedGlobalNativeWorkerMax();
     await markSetupCompleteGlobal();
   }
 }

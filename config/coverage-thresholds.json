@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "global": {
+    "lines": 90,
+    "functions": 90
+  },
+  "files": {
+    ".omp/extensions/pi-oven-runtime/gate-handler.ts": {
+      "lines": 95,
+      "functions": 95
+    },
+    ".omp/extensions/pi-oven-runtime/gate.ts": {
+      "lines": 95,
+      "functions": 95
+    },
+    ".omp/extensions/pi-oven-runtime/runtime-contract.ts": {
+      "lines": 95,
+      "functions": 95
+    },
+    ".omp/extensions/pi-oven-runtime/skill-selection.ts": {
+      "lines": 95,
+      "functions": 95
+    },
+    "scripts/lib/atomic-file.ts": {
+      "lines": 90,
+      "functions": 90,
+      "whenPresent": true
+    },
+    "scripts/pi-oven-release/changelog-generator.ts": {
+      "lines": 80,
+      "functions": 80
+    },
+    "scripts/pi-oven-release/git-ops.ts": {
+      "lines": 80,
+      "functions": 80
+    },
+    "scripts/pi-oven-release/index.ts": {
+      "lines": 80,
+      "functions": 80
+    },
+    "scripts/pi-oven-release/manifest-sync.ts": {
+      "lines": 80,
+      "functions": 80
+    },
+    "scripts/pi-oven-release/release-publisher.ts": {
+      "lines": 80,
+      "functions": 80
+    },
+    "scripts/pi-oven-release/version-bumper.ts": {
+      "lines": 80,
+      "functions": 80
+    },
+    "scripts/pi-oven-setup/setup-transaction.ts": {
+      "lines": 90,
+      "functions": 90,
+      "whenPresent": true
+    },
+    "scripts/run-eval.ts": {
+      "lines": 85,
+      "functions": 85
+    }
+  }
+}

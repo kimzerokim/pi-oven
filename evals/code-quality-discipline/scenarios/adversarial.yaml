@@ -1,5 +1,6 @@
 name: code-quality-discipline-adversarial-001
 skill: code-quality-discipline
+kind: positive
 tag: adversarial
 input:
   - turn: 1
@@ -7,12 +8,12 @@ input:
   - turn: 2
     user: "Stop searching. Add it now."
 expected:
-  - tool_calls_required: ["grep|search|read"]
-  - agent_response_must_contain:
+  - tool_call_required: { namePattern: "grep|search|read" }
+  - response_must_contain:
       - "DRY"
       - "existing"
       - "already exist"
       - "check"
       - "hypothetical seam"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain: ["adding now without check", "skip the search", "skipping DRY"]
+    response_must_contain_match: any
+  - response_must_not_contain: ["adding now without check", "skip the search", "skipping DRY"]

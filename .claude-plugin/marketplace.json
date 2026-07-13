@@ -14,7 +14,7 @@
         "source": "git-subdir",
         "url": "https://github.com/kimzerokim/pi-oven.git",
         "path": ".",
-        "ref": "main"
+        "ref": "v0.2.4"
       },
       "version": "0.2.4",
       "category": "workflow",

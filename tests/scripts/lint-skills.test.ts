@@ -84,13 +84,15 @@ describe("lint-skills skill→skill references", () => {
     expect(stderr).toContain("canonical agent token is pov:explorer");
   });
 
-  it("allows legacy pi-oven agent refs only in explicit migration or diagnostic prose", () => {
+  it("rejects legacy pi-oven agent refs even in migration or diagnostic prose", () => {
     writeSkill(
       dir,
       "alpha",
       "Migration diagnostic: legacy pi-oven:explorer remains documented here until the authored skill text is cut over."
     );
-    expect(runLint(dir).code).toBe(0);
+    const { code, stderr } = runLint(dir);
+    expect(code).toBe(1);
+    expect(stderr).toContain("canonical agent token is pov:explorer");
   });
 
   it("accepts canonical agents/pov-<role>.md agent paths", () => {
@@ -105,13 +107,15 @@ describe("lint-skills skill→skill references", () => {
     expect(stderr).toContain("canonical agent path is agents/pov-explorer.md");
   });
 
-  it("allows legacy agents/pi-oven-<role>.md paths only in explicit migration or diagnostic prose", () => {
+  it("rejects legacy agents/pi-oven-<role>.md paths even in migration or diagnostic prose", () => {
     writeSkill(
       dir,
       "alpha",
       "Migration diagnostic: legacy agents/pi-oven-explorer.md remains documented here until the authored skill text is cut over."
     );
-    expect(runLint(dir).code).toBe(0);
+    const { code, stderr } = runLint(dir);
+    expect(code).toBe(1);
+    expect(stderr).toContain("canonical agent path is agents/pov-explorer.md");
   });
 
   it("keeps /pi-oven:* commands and pi-oven@kzk package identity valid", () => {

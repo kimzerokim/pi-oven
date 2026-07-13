@@ -116,7 +116,6 @@ export function classifyMutationScope(path: string | null | undefined): RuntimeM
   const normalized = normalizePath(path.trim());
 
   if (normalized.startsWith(".omp/extensions/pi-oven-runtime/")) return "runtime_contract";
-  if (normalized.startsWith("scripts/pi-oven-team/")) return "team_runtime";
   if (normalized.startsWith("scripts/pi-oven-setup/")) return "setup_surface";
   if (normalized.startsWith("agents/")) return "agent_surface";
   if (normalized.startsWith("evals/")) return "eval_surface";
@@ -275,4 +274,3 @@ export function attachFailurePath(
     failurePath,
   };
 }
-

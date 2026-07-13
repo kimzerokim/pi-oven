@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
@@ -21,13 +21,16 @@ process.env.HOME = MODULE_HOME;
 const { GateStateStore, fingerprintExternalExecSecret } = await import(
   "../../../.omp/extensions/pi-oven-runtime/gate-state"
 );
-const { default: piOvenPi } = await import("../../../.omp/extensions/pi-oven");
+const { default: piOvenPi, autonomousRunLedgerId } = await import("../../../.omp/extensions/pi-oven");
+const { SqliteRunLedger } = await import(
+  "../../../.omp/extensions/pi-oven-runtime/sqlite-run-ledger"
+);
 
 type ShippedSkillName = (typeof SHIPPED_SKILL_NAMES)[number];
 type ShippedSkillPath = (typeof SHIPPED_SKILL_PATHS)[number];
 // ---------------------------------------------------------------------------
 // AC4 — no regression + correctness: the extension entrypoint still wires the
-// baseline behaviors (validateAgentRegistry at load, session_start capture)
+// baseline behaviors (assertAgentRegistry at load, session_start capture)
 // AND registers the new Plan-3 runtime handlers (tool_call, before_agent_start,
 // session.compacting, session_before_compact, turn_start, turn_end).
 //
@@ -241,6 +244,52 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(pi.events).toContain("turn_end");
   });
 
+  it("resolves user-scoped paths again for each extension invocation", async () => {
+    const originalHome = process.env.HOME;
+    const firstHome = join(MODULE_HOME, "late-bound-a");
+    const secondHome = join(MODULE_HOME, "late-bound-b");
+    const relativeCapture = join(".omp", "plugins", "pi-oven-session-model.json");
+
+    try {
+      process.env.HOME = firstHome;
+      const firstPi = makeFakePi();
+      piOvenPi(firstPi as never);
+      await firstPi.handlers["session_start"](
+        { type: "session_start" },
+        { getModel: () => "openai-codex/gpt-5.5" }
+      );
+
+      process.env.HOME = secondHome;
+      const secondPi = makeFakePi();
+      piOvenPi(secondPi as never);
+      await secondPi.handlers["session_start"](
+        { type: "session_start" },
+        { getModel: () => "openai-codex/gpt-5.4" }
+      );
+
+      expect(JSON.parse(readFileSync(join(firstHome, relativeCapture), "utf-8")).model).toBe(
+        "openai-codex/gpt-5.5"
+      );
+      expect(JSON.parse(readFileSync(join(secondHome, relativeCapture), "utf-8")).model).toBe(
+        "openai-codex/gpt-5.4"
+      );
+    } finally {
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+    }
+  });
+
+  it("does not wire tool_call when the agent registry assertion fails", () => {
+    tempDir = makeTempDir();
+    const agentsDir = join(tempDir, "agents");
+    cpSync(join(__dirname, "../../..", "agents"), agentsDir, { recursive: true });
+    rmSync(join(agentsDir, "pov-executor.md"));
+    const pi = makeFakePi();
+
+    expect(() => piOvenPi(pi as never, { pluginRoot: tempDir! })).toThrow(/missing-role/);
+    expect(pi.events).not.toContain("tool_call");
+  });
+
   it("still sets the pi-oven label and logs loaded (baseline preserved)", () => {
     const pi = makeFakePi();
     piOvenPi(pi as never);
@@ -257,6 +306,47 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     };
     expect(res.systemPrompt.some((s) => s.includes("pi-oven:discipline-rules@v1"))).toBe(true);
     expect(res.systemPrompt).toContain("base");
+  });
+
+  it("both prompt modes give workers the compact namespace, exact-skill, and safety contract", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+    writeFileSync(
+      join(tempDir, "CLAUDE.md"),
+      "# Project\nRelease ritual: NEVER SEND THIS TO A WORKER\n",
+      "utf8"
+    );
+    const previousBlockedAgent = process.env.PI_BLOCKED_AGENT;
+    process.env.PI_BLOCKED_AGENT = "pov:executor";
+    try {
+      for (const promptMode of ["compositor", "legacy"] as const) {
+        const pi = makeFakePi();
+        piOvenPi(pi as never, { pluginRoot: join(__dirname, "../../.."), promptMode });
+        const result = await pi.handlers["before_agent_start"]({
+          type: "before_agent_start",
+          prompt: "Test first, then implement the parser fix and verify it.",
+          systemPrompt: ["base-worker"],
+        }) as { systemPrompt: string[] };
+        const prompt = result.systemPrompt.join("\n");
+        expect(prompt).toContain("base-worker");
+        expect(prompt).toContain("pov:executor");
+        expect(prompt).toContain("Test first, then implement the parser fix and verify it.");
+        expect(prompt).toContain("skills/tdd-strict/SKILL.md");
+        expect(prompt).toMatch(/branch contract|write safety/i);
+        expect(prompt).toMatch(/verify|verification/i);
+        expect(prompt).not.toContain("NEVER SEND THIS TO A WORKER");
+        expect(prompt).not.toContain("Release ritual");
+        expect(prompt).not.toContain("pi-oven:discipline-rules@v1");
+        expect(
+          pi.logs.some((entry) =>
+            entry.msg.includes(`prompt composition ${promptMode} receipt`)
+          )
+        ).toBe(true);
+      }
+    } finally {
+      if (previousBlockedAgent === undefined) delete process.env.PI_BLOCKED_AGENT;
+      else process.env.PI_BLOCKED_AGENT = previousBlockedAgent;
+    }
   });
 
   it("session.compacting handler returns preserveData carrying the discipline key", async () => {
@@ -280,6 +370,53 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       input: { command: "ls -la" },
     })) as { block?: boolean } | void;
     expect(res?.block ?? false).toBe(false);
+  });
+
+  it("ledger-primary wires autonomous external tool intent to a completion receipt", async () => {
+    tempDir = makeTempDir();
+    process.chdir(tempDir);
+    const ledgerRepoRoot = process.cwd();
+    await new GateStateStore(join(tempDir, ".pi-oven")).writeState({
+      active: true,
+      gateCache: { commit: "PASS", regression: "PASS" },
+      version: 1,
+      schemaVersion: 1,
+    });
+    const pi = makeFakePi();
+    piOvenPi(pi as never, { runLedgerMode: "primary", runLedgerOwnerId: "test-session" });
+    await pi.handlers["turn_start"](
+      { type: "turn_start" },
+      { sessionManager: { getBranch: () => [userTextMessage("u-ledger", "계속 진행해줘")] } }
+    );
+    const toolCall = {
+      type: "tool_call",
+      toolCallId: "commit-call-1",
+      toolName: "bash",
+      input: { command: "git commit -m ledger-test" },
+    };
+    const previousBypass = process.env.PI_OVEN_GATE_BYPASS;
+    process.env.PI_OVEN_GATE_BYPASS = "1";
+    try {
+      expect(await pi.handlers["tool_call"](toolCall)).toMatchObject({ block: false });
+    } finally {
+      if (previousBypass === undefined) delete process.env.PI_OVEN_GATE_BYPASS;
+      else process.env.PI_OVEN_GATE_BYPASS = previousBypass;
+    }
+    await pi.handlers["tool_result"]({
+      ...toolCall,
+      type: "tool_result",
+      content: [{ type: "text", text: "[main abc123] ledger-test" }],
+      isError: false,
+    });
+    await pi.handlers["session_shutdown"]({ type: "session_shutdown" });
+
+    const ledger = new SqliteRunLedger(join(tempDir, ".pi-oven", "state", "run-ledger.sqlite"));
+    const receipt = ledger.readEffect(
+      autonomousRunLedgerId(ledgerRepoRoot, "(unknown)"),
+      "tool:commit-call-1"
+    );
+    expect(receipt).toMatchObject({ status: "completed", kind: "git-commit", target: "HEAD" });
+    ledger.close();
   });
 
   it("turn_end queues hidden continuation when autonomous polite-stop is detected", async () => {
@@ -1270,7 +1407,10 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       type: "tool_call",
       toolCallId: "t1",
       toolName: "task",
-      input: { agent: "explorer" },
+      input: {
+        agent: "explorer",
+        tasks: [{ id: "survey", description: "survey", assignment: "survey" }],
+      },
     };
     const bareResult = (await onToolCall(bareTaskEvent)) as { block?: boolean } | void;
     expect(bareResult?.block ?? false).toBe(false);
@@ -1280,7 +1420,10 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
       type: "tool_call",
       toolCallId: "t2",
       toolName: "task",
-      input: { agent: "kzk:explorer" },
+      input: {
+        agent: "kzk:explorer",
+        tasks: [{ id: "survey", description: "survey", assignment: "survey" }],
+      },
     };
     const foreignResult = (await onToolCall(foreignTaskEvent)) as { block?: boolean } | void;
     expect(foreignResult?.block ?? false).toBe(false);

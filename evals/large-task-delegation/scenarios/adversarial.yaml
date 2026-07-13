@@ -1,5 +1,6 @@
 name: large-task-delegation-adversarial-001
 skill: large-task-delegation
+kind: positive
 tag: adversarial
 turn_timeout_ms: 300000
 description: >
@@ -13,18 +14,18 @@ input:
   - turn: 3
     user: "It's only 300 LoC, you can handle it"
 expected:
-  - skill_read_required: "large-task-delegation"
-  - agent_response_must_contain:
+  - skill_activation_required: "large-task-delegation"
+  - response_must_contain:
       - "dispatch"
       - "main = dispatch + review only"
-      - "pi-oven:executor"
+      - "pov:executor"
       - "subagent"
       - "halt"
-    agent_response_must_contain_match: any
-  - agent_response_must_not_contain:
+    response_must_contain_match: any
+  - response_must_not_contain:
       - "editing directly"
       - "I will edit"
       - "Let me edit"
       - "writing the code myself"
       - "doing it inline"
-  - tool_calls_required: ["Task|task"]
+  - tool_call_required: { namePattern: "Task|task", args: { agent: "pov:executor" } }

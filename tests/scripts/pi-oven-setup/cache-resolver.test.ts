@@ -88,6 +88,33 @@ describe("resolveCacheAgentsDir", () => {
     const result = await resolveCacheAgentsDir(tempDir);
     expect(result).toBe(latestAgentsDir);
   });
+
+  it("does not retain the default cache root after HOME changes", async () => {
+    const originalHome = process.env.HOME;
+    const originalConfigDir = process.env.PI_CONFIG_DIR;
+    const firstHome = makeTempDir();
+    const secondHome = makeTempDir();
+    const firstRoot = join(firstHome, ".omp", "plugins", "cache", "plugins");
+    const secondRoot = join(secondHome, ".omp", "plugins", "cache", "plugins");
+    const firstAgents = makeFakeCacheEntry(firstRoot, "1.0.0", 1);
+    const secondAgents = makeFakeCacheEntry(secondRoot, "2.0.0", 1);
+
+    try {
+      process.env.PI_CONFIG_DIR = ".omp";
+      process.env.HOME = firstHome;
+      expect(await resolveCacheAgentsDir()).toBe(firstAgents);
+
+      process.env.HOME = secondHome;
+      expect(await resolveCacheAgentsDir()).toBe(secondAgents);
+    } finally {
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+      if (originalConfigDir === undefined) delete process.env.PI_CONFIG_DIR;
+      else process.env.PI_CONFIG_DIR = originalConfigDir;
+      rmSync(firstHome, { recursive: true, force: true });
+      rmSync(secondHome, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("resolveCachePluginRoot", () => {

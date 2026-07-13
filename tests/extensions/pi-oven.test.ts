@@ -1,13 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, readdirSync } from "fs";
+import { cpSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 import { join, resolve } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import type {
-  AgentFileEntry,
-  SessionModelCapture,
-} from "../../.omp/extensions/pi-oven";
+import type { SessionModelCapture } from "../../.omp/extensions/pi-oven";
 import {
   RulesInjector,
   ORCHESTRATOR_CONDUCT_DEDUP_KEY,
@@ -19,8 +16,8 @@ import { SHIPPED_SKILL_PATHS } from "../../scripts/pi-oven-setup/shipped-skill-r
 
 const ext = await import("../../.omp/extensions/pi-oven");
 const {
-  validateAgentRegistry,
-  getAllowedPrefixes,
+  inspectAgentRegistry,
+  assertAgentRegistry,
   captureSessionModel,
   resolveSessionProviderFamily,
   buildRuntimeKeywordIntegrityNotice,
@@ -56,23 +53,6 @@ function writeAgent(
     join(dir, filename),
     ["---", `name: ${name}`, ...modelLines, "---", "# Agent"].join("\n")
   );
-}
-
-function readShippedAgentEntries(): AgentFileEntry[] {
-  return readdirSync(SHIPPED_AGENTS_DIR)
-    .filter((file) => file.startsWith("pov-") && file.endsWith(".md"))
-    .map((file) => {
-      const content = readFileSync(join(SHIPPED_AGENTS_DIR, file), "utf-8");
-      const match = content.match(/^model:\s*\n((?:\s+- .+\n?)+)/m);
-      expect(match).not.toBeNull();
-      return {
-        modelArray: match![1]
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => line.replace(/^- /, "").trim()),
-      };
-    });
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +121,7 @@ describe("session-start truth-signal routing", () => {
     expect(shouldNotifySessionStartTruthSignal("workflow-skill ownership")).toBe(true);
     expect(shouldNotifySessionStartTruthSignal("bootstrap parity track")).toBe(true);
     expect(shouldNotifySessionStartTruthSignal("dual plugin surface")).toBe(false);
-    expect(shouldNotifySessionStartTruthSignal("native worker runtime")).toBe(false);
+    expect(shouldNotifySessionStartTruthSignal("task dispatch")).toBe(false);
   });
 
   it("emits the session-start setup notice only once per repo/session key", () => {
@@ -192,187 +172,63 @@ describe("session-start truth-signal routing", () => {
 
 
 // ---------------------------------------------------------------------------
-// validateAgentRegistry
-// ---------------------------------------------------------------------------
+// Exact fail-closed agent registry
 
-describe("validateAgentRegistry", () => {
+describe("exact agent registry contract", () => {
   let tempDir: string;
-  let errors: string[];
-  let logger: { error(msg: string): void };
 
   beforeEach(() => {
     tempDir = makeTempDir();
-    errors = [];
-    logger = { error(msg: string) { errors.push(msg); } };
+    cpSync(SHIPPED_AGENTS_DIR, tempDir, { recursive: true });
   });
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("no error logged when agent registry uses the codex-only default prefix", () => {
-    writeAgent(tempDir, "pov-coder.md", [
-      "openai-codex/gpt-5.4",
-    ]);
-    validateAgentRegistry(tempDir, logger);
-    expect(errors).toHaveLength(0);
+  it("accepts exactly the 24 shipped roles", () => {
+    const report = inspectAgentRegistry(tempDir);
+    expect(report.ok).toBe(true);
+    expect(report.roles).toHaveLength(24);
+    expect(report.issues).toEqual([]);
+    expect(() => assertAgentRegistry(tempDir)).not.toThrow();
   });
 
-  it("error logged when agent has no model field, message starts with 'DEFAULT_PROFILE guarantee broken'", () => {
-    writeFileSync(
-      join(tempDir, "pov-nomodel.md"),
-      [
-        "---",
-        "name: pov:nomodel",
-        "description: missing model",
-        "---",
-        "# Agent",
-      ].join("\n")
+  it("reports a missing role", () => {
+    rmSync(join(tempDir, "pov-executor.md"));
+    const report = inspectAgentRegistry(tempDir);
+    expect(report.ok).toBe(false);
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ code: "missing-role", role: "executor" })
     );
-    validateAgentRegistry(tempDir, logger);
-    expect(errors.length).toBeGreaterThan(0);
-    expect(errors[0]).toMatch(/^DEFAULT_PROFILE guarantee broken/);
   });
 
-  it("error logged when agent has non-whitelisted provider", () => {
-    writeFileSync(
-      join(tempDir, "pov-cerebras.md"),
-      [
-        "---",
-        "name: pov:cerebras",
-        "model: cerebras/foo",
-        "---",
-      ].join("\n")
+  it("reports an unknown canonical filename", () => {
+    writeAgent(tempDir, "pov-phantom.md", "openai-codex/gpt-5.4", "pov:phantom");
+    const report = inspectAgentRegistry(tempDir);
+    expect(report.ok).toBe(false);
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ code: "unknown-role", file: "pov-phantom.md" })
     );
-    validateAgentRegistry(tempDir, logger);
-    expect(errors.length).toBeGreaterThan(0);
-    const msg = errors[0];
-    expect(msg).toContain("cerebras/foo");
   });
 
-  it("anthropic/ shipped frontmatter is flagged as release-default drift", () => {
-    writeFileSync(
-      join(tempDir, "pov-opus.md"),
-      [
-        "---",
-        "name: pov:opus",
-        "model: anthropic/claude-opus-4-8",
-        "---",
-      ].join("\n")
+  it("reports a markdown filename that does not use the canonical prefix", () => {
+    writeAgent(tempDir, "phantom.md", "openai-codex/gpt-5.4", "pov:phantom");
+    const report = inspectAgentRegistry(tempDir);
+    expect(report.ok).toBe(false);
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ code: "unknown-role", file: "phantom.md" })
     );
-    validateAgentRegistry(tempDir, logger);
-    expect(errors.length).toBeGreaterThan(0);
-    expect(errors.some((msg) => msg.includes("anthropic/claude-opus-4-8"))).toBe(true);
   });
 
-  it("empty agents dir produces no errors", () => {
-    validateAgentRegistry(tempDir, logger);
-    expect(errors).toHaveLength(0);
-  });
-
-  it("non-agent markdown files are ignored", () => {
-    writeFileSync(
-      join(tempDir, "other-agent.md"),
-      [
-        "---",
-        "description: no model here",
-        "---",
-        "# Other",
-      ].join("\n")
+  it("reports legacy and canonical files for one role as a duplicate", () => {
+    cpSync(join(tempDir, "pov-executor.md"), join(tempDir, "pi-oven-executor.md"));
+    const report = inspectAgentRegistry(tempDir);
+    expect(report.ok).toBe(false);
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ code: "duplicate-role", role: "executor" })
     );
-    validateAgentRegistry(tempDir, logger);
-    expect(errors).toHaveLength(0);
-  });
-
-  it("rejects a legacy pi-oven frontmatter name on a canonical pov filename", () => {
-    writeAgent(
-      tempDir,
-      "pov-executor.md",
-      ["openai-codex/gpt-5.4", "alternate-provider/gpt-5.4"],
-      "pi-oven:executor"
-    );
-    validateAgentRegistry(tempDir, logger);
-    expect(
-      errors.some((msg) => msg.includes("agent namespace drift") && msg.includes('"pi-oven:executor"'))
-    ).toBe(true);
-  });
-
-  it("rejects a legacy pi-oven filename even when the frontmatter name is canonical", () => {
-    writeAgent(
-      tempDir,
-      "pi-oven-executor.md",
-      ["openai-codex/gpt-5.4", "alternate-provider/gpt-5.4"],
-      "pov:executor"
-    );
-    validateAgentRegistry(tempDir, logger);
-    expect(
-      errors.some((msg) => msg.includes("agent namespace drift") && msg.includes("pi-oven-executor.md"))
-    ).toBe(true);
-  });
-
-  it("accepts the current shipped pov agents dir", () => {
-    validateAgentRegistry(SHIPPED_AGENTS_DIR, logger);
-    expect(errors).toHaveLength(0);
-  });
-
-  // Phase 4: codex-only shipped-registry baseline tests
-
-  it("mixed anthropic + opencode entries are rejected because the shipped allowlist stays codex-only", () => {
-    writeAgent(tempDir, "pov-executor.md", [
-      "anthropic/claude-sonnet-4-6",
-      "alternate-provider/claude-sonnet-4-6",
-    ]);
-    writeAgent(tempDir, "pov-explorer.md", [
-      "alternate-provider/glm-5",
-      "alternate-provider/claude-haiku-4-5",
-    ]);
-    validateAgentRegistry(tempDir, logger);
-    expect(errors.length).toBeGreaterThan(0);
-    expect(errors.some((msg) => msg.includes("anthropic/claude-sonnet-4-6"))).toBe(true);
-    expect(
-      errors.some((msg) =>
-        msg.includes('missing required "openai-codex/" model')
-      )
-    ).toBe(true);
-  });
-
-  it("all-alternate-provider registries fail because release-default routing requires an openai-codex primary", () => {
-    writeAgent(tempDir, "pov-explorer.md", [
-      "alternate-provider/glm-5",
-      "alternate-provider/claude-haiku-4-5",
-    ]);
-    writeAgent(tempDir, "pov-writer.md", [
-      "alternate-provider/claude-haiku-4-5",
-      "alternate-provider/claude-sonnet-4-6",
-    ]);
-    validateAgentRegistry(tempDir, logger);
-    expect(errors.some((msg) => msg.includes('missing required "openai-codex/" model'))).toBe(true);
-  });
-
-  it("agent file with google/ prefix triggers WHITELIST VIOLATION regardless of other agents", () => {
-    writeAgent(tempDir, "pov-executor.md", [
-      "openai-codex/gpt-5.4",
-      "alternate-provider/gpt-5.4",
-    ]);
-    writeAgent(tempDir, "pov-bad.md", ["google/gemini-flash"]);
-    validateAgentRegistry(tempDir, logger);
-    expect(errors.length).toBeGreaterThan(0);
-    expect(errors[0]).toContain("google/gemini-flash");
-    expect(errors[0]).toContain("WHITELIST VIOLATION");
-  });
-
-  it("getAllowedPrefixes stays pinned to the release-default codex baseline", () => {
-    const entries: AgentFileEntry[] = [
-      { modelArray: ["alternate-provider/glm-5", "alternate-provider/claude-haiku-4-5"] },
-      { modelArray: ["anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-4-5"] },
-    ];
-    const prefixes = getAllowedPrefixes(entries);
-    expect(prefixes).toEqual(["openai-codex"]);
-  });
-
-  it("shipped release-default registry no longer needs anthropic in allowed prefixes", () => {
-    const prefixes = getAllowedPrefixes(readShippedAgentEntries());
-    expect(prefixes).toEqual(["openai-codex"]);
+    expect(() => assertAgentRegistry(tempDir)).toThrow(/duplicate-role/);
   });
 });
 

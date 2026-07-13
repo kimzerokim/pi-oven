@@ -1,15 +1,16 @@
 name: fresh-verifier-regression-001
 skill: fresh-verifier
+kind: positive
 tag: regression
 input:
   - turn: 1
     user: "최종 검증 해줘 — cycle complete, verify before exit on the deep path after a material edit"
 expected:
-  - skill_read_required: "fresh-verifier"
-  - agent_response_must_contain:
+  - skill_activation_required: "fresh-verifier"
+  - response_must_contain:
       - "VERDICT:"
-      - "pi-oven:verifier"
+      - "pov:verifier"
       - "deep"
       - "material-edit revalidation"
       - "Q-COMPLETION-SELF-VERIFY"
-  - tool_calls_required: ["task"]
+  - tool_call_required: { namePattern: "task", args: { agent: "pov:verifier" } }

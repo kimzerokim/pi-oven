@@ -429,68 +429,13 @@ describe("exitCodeFor", () => {
 });
 
 describe("renderReport", () => {
-  it("appends standalone truth-surface signals with the shared remediation wording", () => {
-    const report = renderReport(
-      [mk("PASS")],
-      [
-        {
-          level: "WARN",
-          name: "project-scope remediation",
-          detail:
-            "project routing is active in /tmp/project/.omp/settings.json (24 roles), but the machine-global subagent prerequisites are missing: task.enableLsp, inspect_image.enabled, web_search.enabled.",
-          fix:
-            "Run /pi-oven:setup --repair-prereqs on this machine to restore those prerequisites. Project scope does not write ~/.omp/agent/config.yml.",
-        },
-        {
-          level: "INFO",
-          name: "control-plane front door",
-          detail:
-            "automatic pi-oven routing enters gated lanes only through explicit capability proofs: `requiredSkills`, exact plugin-owned SKILL.md reads, the branch contract, and external execution consent where relevant.",
-        },
-        {
-          level: "INFO",
-          name: "workflow-skill ownership",
-          detail:
-            'classification: owned-surface active. workflow-skill surface is on the healthy single pov surface via skills.includeSkills = ["pov:*"] from ~/.omp/agent/config.yml (machine-global layer). This preserves the populated Claude workflow-skill source for other users instead of deleting it, and it applies only to workflow skills — not commands, agents, hooks, or MCP. Empty ~/.claude/skills is not the target state; populated Claude user workflow skills should remain intact for other users.',
-        },
-        {
-          level: "INFO",
-          name: "bootstrap parity track",
-          detail:
-            "Secondary OMP/architecture track only: bootstrap-level gajae parity remains open. Task 1 ownership success comes from the effective workflow-skill filter plus runtime capability proofs; matching gajae-style bootstrap exclusivity is visible here but is not a blocker yet.",
-        },
-        {
-          level: "INFO",
-          name: "native worker runtime",
-          detail:
-            "Only temporary adapter boundary remains: vendored launcher scripts/pi-oven-team/index.ts → scripts/pi-oven-team/runtime-v2.ts is ACTIVE; pi-oven owns native worker startup and scale decisions through this path.",
-        },
-        {
-          level: "INFO",
-          name: "native worker ceiling",
-          detail:
-            "dependency-ready wave target remains 8-12 siblings. Effective native worker ceiling is nativeWorkers.maxWorkers=100 from ~/.pi-oven/config.json (machine-global config); the vendored pi-oven launcher enforces this ceiling while that temporary adapter boundary remains.",
-        },
-      ]
-    );
+  it("renders only PASS/WARN/FAIL for the legacy eleven checks", () => {
+    const report = renderReport([mk("PASS"), mk("WARN"), mk("FAIL")]);
 
-    expect(report).toContain("Standalone truth surface:");
-    expect(report).toContain("[WARN] project-scope remediation:");
-    expect(report).toContain("task.enableLsp");
-    expect(report).toContain("[INFO] control-plane front door:");
-    expect(report).toContain("requiredSkills");
-    expect(report).toContain("[INFO] workflow-skill ownership:");
-    expect(report).toContain("classification: owned-surface active");
-    expect(report).toContain("healthy single pov surface");
-    expect(report).toContain('skills.includeSkills = ["pov:*"]');
-    expect(report).toContain("Empty ~/.claude/skills is not the target state");
-    expect(report).toContain("[INFO] bootstrap parity track:");
-    expect(report).toContain("gajae parity");
-    expect(report).toContain("[INFO] native worker runtime:");
-    expect(report).toContain("Only temporary adapter boundary remains");
-    expect(report).toContain("scripts/pi-oven-team/index.ts");
-    expect(report).toContain("[INFO] native worker ceiling:");
-    expect(report).toContain("nativeWorkers.maxWorkers=100");
+    expect(report).toContain("[PASS] x:");
+    expect(report).toContain("[WARN] x:");
+    expect(report).toContain("[FAIL] x:");
+    expect(report).not.toContain("[INFO]");
   });
 });
 
@@ -510,8 +455,6 @@ describe("gather", () => {
 
     writePluginSkillsManifest(pluginRoot, ["./skills/foo/SKILL.md"]);
     writeShippedSkill(pluginRoot, "foo");
-    mkdirSync(join(pluginRoot, "agents"), { recursive: true });
-    writeFileSync(join(pluginRoot, "agents", "pov-executor.md"), "---\nname: pov:executor\n", "utf-8");
     mkdirSync(join(pluginRoot, "scripts"), { recursive: true });
     writeFileSync(join(pluginRoot, "scripts", "run-eval.ts"), "// runner\n", "utf-8");
     mkdirSync(join(pluginRoot, "evals", "foo", "scenarios"), { recursive: true });
@@ -554,7 +497,7 @@ describe("gather", () => {
 
     expect(facts.skills.skillMdCount).toBe(4);
     expect(facts.skills.pluginSkillsCount).toBe(1);
-    expect(facts.agents.agentCount).toBe(1);
+    expect(facts.agents.agentCount).toBe(24);
     expect(facts.agents.legacyAgentCount).toBe(0);
     expect(facts.agents.namespaceDrift).toEqual([]);
     expect(facts.evalRunner.runnerPresent).toBe(true);

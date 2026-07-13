@@ -1,0 +1,88 @@
+{
+  "$id": "https://github.com/kimzerokim/pi-oven/contracts/task-dispatch.schema.json",
+  "title": "pi-oven canonical OMP task dispatch",
+  "description": "Generated from the pi-oven RuntimeContract TaskDispatchSchema.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "string",
+      "enum": [
+        "pov:executor",
+        "pov:explorer",
+        "pov:verifier",
+        "pov:critic",
+        "pov:planner",
+        "pov:code-reviewer",
+        "pov:debugger",
+        "pov:test-engineer",
+        "pov:security-reviewer",
+        "pov:writer",
+        "pov:designer",
+        "pov:code-simplifier",
+        "pov:qa-tester",
+        "pov:git-master",
+        "pov:document-specialist",
+        "pov:tracer",
+        "pov:analyst",
+        "pov:architect",
+        "pov:librarian",
+        "pov:multimodal-looker",
+        "pov:oracle",
+        "pov:metis",
+        "pov:deep-researcher",
+        "pov:data-runner"
+      ]
+    },
+    "context": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tasks": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "assignment": {
+            "type": "string",
+            "minLength": 1
+          },
+          "blockedBy": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "assignment"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "isolated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "agent",
+    "tasks"
+  ],
+  "additionalProperties": false
+}

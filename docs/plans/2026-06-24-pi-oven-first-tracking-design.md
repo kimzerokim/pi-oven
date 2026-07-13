@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Design — pi-oven-first agent and skill ownership
 
 > Status: LOCKED (brainstorming-confirmed).

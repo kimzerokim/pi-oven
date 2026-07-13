@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Plan: skill/agent omp-tool wiring + subagent-driven research + runtime chain enforcement
 
 Branch: `feature/skill-chain-enforcement` (direct commits, push needs explicit consent).

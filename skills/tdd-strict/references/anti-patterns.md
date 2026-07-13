@@ -33,9 +33,9 @@ The Iron Law has three clauses:
    Q-TDD-MAIN | PENDING
    Task: <description>
    Planned test path(s): <paths>
-   Tentative default: dispatch fresh sonnet executor
+   Tentative default: dispatch a fresh pov:executor
    ```
-3. Dispatch fresh sonnet subagent with the full TDD task (Red + Green + Refactor).
+3. Dispatch a fresh `pov:executor` with the full TDD task (Red + Green + Refactor).
 4. Main waits for subagent completion signal before continuing the broader autonomous cycle.
 5. After subagent reports completion, main performs a review pass only — it does not re-enter the implementation.
 

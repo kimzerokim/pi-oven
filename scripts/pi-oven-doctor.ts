@@ -22,6 +22,7 @@ import { promises as fs } from "node:fs";
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { loadSkillKeywordIndexReport } from "../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
+import { SUPPORTED_OMP_VERSION } from "../.omp/extensions/pi-oven-runtime/runtime-contract";
 import { detectAuth, type AuthStatus } from "./pi-oven-setup/auth-detect";
 import { compareSemver } from "./pi-oven-setup/cache-resolver";
 import {
@@ -33,10 +34,9 @@ import { EXPECTED_AGENT_COUNT } from "./pi-oven-setup/profiles";
 import { SHIPPED_SKILL_PATHS } from "./pi-oven-setup/shipped-skill-registry";
 import {
   AGENT_NAMESPACE_DRIFT_LABEL,
-  collectStandaloneTruthSignals,
-  formatStandaloneTruthSignals,
+  collectRuntimeTruthSurface,
+  formatRuntimeTruthSurface,
   HEALTHY_SINGLE_POV_SURFACE_LABEL,
-  type StandaloneTruthSignal,
 } from "./pi-oven-setup/standalone-truth-surface";
 // ---------------------------------------------------------------------------
 // Types
@@ -127,7 +127,7 @@ export interface DoctorFacts {
   memory: MemoryFact;
 }
 
-export const MIN_OMP_VERSION = "15.0.0";
+export const MIN_OMP_VERSION = SUPPORTED_OMP_VERSION;
 
 // ---------------------------------------------------------------------------
 // PURE evaluators — no I/O, unit-testable
@@ -799,10 +799,7 @@ export function runChecks(facts: DoctorFacts): CheckResult[] {
   ];
 }
 
-export function renderReport(
-  checks: CheckResult[],
-  standaloneSignals: StandaloneTruthSignal[] = []
-): string {
+export function renderReport(checks: CheckResult[], includeSummary = true): string {
   const icon: Record<CheckStatus, string> = { PASS: "PASS", WARN: "WARN", FAIL: "FAIL" };
   const lines: string[] = [];
   lines.push("pi-oven doctor — install health");
@@ -811,14 +808,57 @@ export function renderReport(
     lines.push(`[${icon[c.status]}] ${c.name}: ${c.detail}`);
     if (c.fix && c.status !== "PASS") lines.push(`       fix: ${c.fix}`);
   }
-  if (standaloneSignals.length > 0) {
+  if (includeSummary) {
+    const r = rollup(checks);
     lines.push("");
-    lines.push(...formatStandaloneTruthSignals(standaloneSignals));
+    lines.push(`Summary: ${r.pass} PASS / ${r.warn} WARN / ${r.fail} FAIL — overall ${r.overall}`);
   }
-  const r = rollup(checks);
-  lines.push("");
-  lines.push(`Summary: ${r.pass} PASS / ${r.warn} WARN / ${r.fail} FAIL — overall ${r.overall}`);
   return lines.join("\n");
+}
+
+export interface BuildDoctorReportOptions {
+  facts: DoctorFacts;
+  pluginRoot: string;
+  projectRoot: string;
+  homeDir?: string;
+  liveCanaryReceiptPath?: string;
+  spawnFn?: (cmd: string, args: string[]) => {
+    exitCode: number | null;
+    stdout?: Buffer;
+    stderr?: Buffer;
+  };
+}
+
+/** Compose the user-facing doctor result from the same runtime truth source as setup status. */
+export async function buildDoctorReport(
+  options: BuildDoctorReportOptions,
+): Promise<{ exitCode: number; output: string }> {
+  const checks = runChecks(options.facts);
+  const runtimeTruth = await collectRuntimeTruthSurface({
+    pluginAssetPath: options.pluginRoot,
+    projectRoot: options.projectRoot,
+    homeDir: options.homeDir,
+    liveCanaryReceiptPath: options.liveCanaryReceiptPath,
+    spawnFn: options.spawnFn,
+  });
+  const failed = runtimeTruth.checks.some(({ status }) => status === "FAIL");
+  const statuses = [
+    ...checks.map(({ status }) => status),
+    ...runtimeTruth.checks.map(({ status }) => status),
+  ];
+  const count = (status: string) => statuses.filter((candidate) => candidate === status).length;
+  const overall = failed || checks.some(({ status }) => status === "FAIL")
+    ? "FAIL"
+    : statuses.some((status) => status === "WARN" || status === "NOT RUN")
+      ? "WARN"
+      : "PASS";
+  const summary =
+    `Summary: ${count("PASS")} PASS / ${count("WARN")} WARN / ${count("FAIL")} FAIL / ` +
+    `${count("NOT RUN")} NOT RUN — overall ${overall}`;
+  return {
+    exitCode: failed ? 1 : exitCodeFor(checks),
+    output: `${renderReport(checks, false)}\n\n${formatRuntimeTruthSurface(runtimeTruth)}\n\n${summary}\n`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -829,11 +869,7 @@ if (import.meta.main) {
   const pluginRoot = path.resolve(import.meta.dir, "..");
   const projectRoot = process.env.PI_OVEN_DOCTOR_PROJECT_ROOT ?? process.cwd();
   const facts = await gather(pluginRoot, projectRoot);
-  const checks = runChecks(facts);
-  const standaloneSignals = await collectStandaloneTruthSignals({
-    pluginAssetPath: pluginRoot,
-    projectRoot,
-  });
-  process.stdout.write(renderReport(checks, standaloneSignals) + "\n");
-  process.exit(exitCodeFor(checks));
+  const result = await buildDoctorReport({ facts, pluginRoot, projectRoot });
+  process.stdout.write(result.output);
+  process.exit(result.exitCode);
 }

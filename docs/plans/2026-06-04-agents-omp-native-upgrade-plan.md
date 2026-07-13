@@ -1,3 +1,5 @@
+> Historical; do not copy runtime syntax examples from this document.
+
 # Implementation Plan: pi-oven omp-Native Agent Upgrade
 
 > Status: READY for executor dispatch (TDD-strict).

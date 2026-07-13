@@ -1,3 +1,6 @@
+> Historical architecture; implementation removed in vNext; OMP task is current dispatch seam
+> Superseded by [the runtime contract remediation implementation plan](../plans/2026-07-13-pi-oven-runtime-contract-remediation-implementation-plan.md).
+
 # 2026-07-05 pi-oven remediation design
 
 ## Document status

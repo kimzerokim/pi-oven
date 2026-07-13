@@ -8,7 +8,7 @@ description: "Read this skill when writing or editing source code in autonomous 
 
 ## Dispatch discipline (main orchestrates, subagents do the work)
 
-Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1-2 simple file edits (≤ 30 LoC) or operational commands (git status, ls, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline. Match the agent to the work (model-fit + role-fit is first-class): red/green implementation → `pi-oven:executor`; coverage + integration tests → `pi-oven:test-engineer`. In autonomous mode the TDD Red phase requires a FRESH dispatch — main must never write the failing test itself. See `large-task-delegation` + `subagent-driven-development`.
+Do NOT do this skill's substantive work in the main context. Main's direct-action budget is narrow: 1-2 simple file edits (≤ 30 LoC) or operational commands (git status, ls, install). ANY multi-file change, 3+ file reads, 200+ LoC, or multi-step investigation/implementation MUST be dispatched to a subagent — main only dispatches, synthesizes, and reviews, never implements inline. Match the agent to the work (model-fit + role-fit is first-class): red/green implementation → `pov:executor`; coverage + integration tests → `pov:test-engineer`. In autonomous mode the TDD Red phase requires a FRESH dispatch — main must never write the failing test itself. See `large-task-delegation` + `subagent-driven-development`.
 
 ## When to use
 
@@ -64,8 +64,8 @@ No other exemptions are recognized. "It's small" and "it's obvious" are not vali
 2. Append a `Q-TDD-MAIN` entry to `docs/harness/user-queue.md` (or `<cwd>/.pi-oven/state/queue.md` if the harness queue is not present) with:
    - The task description.
    - The planned test file path(s).
-   - Tentative default: dispatch fresh sonnet executor.
-3. Dispatch a fresh sonnet subagent with the TDD Red task. Main resumes after the subagent completes Green + Refactor and reports back.
+   - Tentative default: dispatch a fresh `pov:executor`.
+3. Dispatch a fresh `pov:executor` with the TDD Red task. Main resumes after the subagent completes Green + Refactor and reports back.
 
 **Rationale**: main in autonomous mode is the orchestrator. Entering TDD Red directly conflates orchestration with implementation. A fresh executor maintains clean separation and prevents main from silently self-verifying its own test authorship.
 
@@ -88,9 +88,9 @@ Deeper rationale: skill://pov:tdd-strict/references/anti-patterns.md
 
 In an omp session, run TDD via dedicated agents instead of inline:
 
-- Red phase (test design + failing test): dispatch `pi-oven:test-engineer`.
-- Green phase (minimal implementation that makes the test pass): dispatch `pi-oven:executor`.
-- Refactor verification (behavior preserved, test still green): dispatch `pi-oven:verifier`.
-- Diagnose a stubbornly failing test: dispatch `pi-oven:debugger`.
+- Red phase (test design + failing test): dispatch `pov:test-engineer`.
+- Green phase (minimal implementation that makes the test pass): dispatch `pov:executor`.
+- Refactor verification (behavior preserved, test still green): dispatch `pov:verifier`.
+- Diagnose a stubbornly failing test: dispatch `pov:debugger`.
 
-If two consecutive green attempts fail, escalate to `pi-oven:oracle` for a strategic re-think before continuing.
+If two consecutive green attempts fail, escalate to `pov:oracle` for a strategic re-think before continuing.

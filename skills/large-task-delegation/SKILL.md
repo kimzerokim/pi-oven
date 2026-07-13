@@ -23,10 +23,10 @@ Main MUST NOT edit files, read 5+ files inline, or execute multi-stage workflows
 Main's role is exactly: **scope estimation → dispatch → three-stage review → commit gate**.
 All reads, writes, and test execution happen inside subagents.
 
-**Match the agent to the work (model-fit + role-fit is first-class):** implementation → `pi-oven:executor`; review lane → `pi-oven:code-reviewer` / `pi-oven:critic` / `pi-oven:verifier`.
+**Match the agent to the work (model-fit + role-fit is first-class):** implementation → `pov:executor`; review lane → `pov:code-reviewer` / `pov:critic` / `pov:verifier`.
 
-If mid-execution main reads 5+ files → halt immediately, re-route via `pi-oven:explorer` subagent.
-If mid-execution scope expands to 3+ files → halt, restart with `pi-oven:executor` dispatch.
+If mid-execution main reads 5+ files → halt immediately, re-route via `pov:explorer` subagent.
+If mid-execution scope expands to 3+ files → halt, restart with `pov:executor` dispatch.
 
 User override accepted with one line ("just do it from main" / "just proceed"). Hard rules survive the override:
 mid-execution 5+ file reads → halt + re-route regardless of prior override.
@@ -35,36 +35,36 @@ mid-execution 5+ file reads → halt + re-route regardless of prior override.
 
 | Phase | Subagent type | Dispatch note |
 |---|---|---|
-| Deep read / file search | `pi-oven:explorer` | Choose deep vs targeted investigation within the current session provider family |
-| Plan authoring | `pi-oven:planner` | Omit `model`; inherit current session routing |
-| Critic / code review | `pi-oven:critic` | Omit `model`; review stays inside the current session provider family |
-| Semantic verification | `pi-oven:verifier` | Omit `model`; high-risk verification may widen only within the current session provider family |
-| Implementation (substantive) | `pi-oven:executor` | Use the standard implementation tier from the current session provider family |
-| Implementation (mechanical) | `pi-oven:executor` | Use the cheapest adequate implementation tier from the current session provider family |
-| Documentation | `pi-oven:writer` | Use the standard authoring tier from the current session provider family |
-| External / SOTA research | `pi-oven:deep-researcher` | Omit `model`; inherit current session routing |
-| REPL data execution / empirical validation | `pi-oven:data-runner` | Omit `model`; inherit current session routing |
+| Deep read / file search | `pov:explorer` | Choose deep vs targeted investigation within the current session provider family |
+| Plan authoring | `pov:planner` | Omit `model`; inherit current session routing |
+| Critic / code review | `pov:critic` | Omit `model`; review stays inside the current session provider family |
+| Semantic verification | `pov:verifier` | Omit `model`; high-risk verification may widen only within the current session provider family |
+| Implementation (substantive) | `pov:executor` | Use the standard implementation tier from the current session provider family |
+| Implementation (mechanical) | `pov:executor` | Use the cheapest adequate implementation tier from the current session provider family |
+| Documentation | `pov:writer` | Use the standard authoring tier from the current session provider family |
+| External / SOTA research | `pov:deep-researcher` | Omit `model`; inherit current session routing |
+| REPL data execution / empirical validation | `pov:data-runner` | Omit `model`; inherit current session routing |
 
 Do not hardcode named models in dispatch prompts. Omit `model` for critic/verifier/planner/deep-researcher/data-runner unless the task explicitly requires a specific tier inside the current session provider family; high-risk review widening stays inside that family.
 
 ## Sub-flow routing for specialized work types
 
-Within a large task, route by work type before dispatching `pi-oven:executor` directly:
+Within a large task, route by work type before dispatching `pov:executor` directly:
 
 - Investigation reveals a root-cause bug → route via `systematic-debugging` (tracer/debugger) before fixing.
 - Scope is refactoring or architecture → route via `improve-codebase-architecture` (survey/candidates) before implementing.
-- Otherwise → dispatch `pi-oven:executor` directly.
+- Otherwise → dispatch `pov:executor` directly.
 
 ## Parallel dispatch
 
 Fire file-scope-disjoint tasks simultaneously: batch the widest clean wave you can describe instead of dribbling out independent tasks one at a time.
 
 - Default packing target: 8-12 parallel subagents per dependency-safe wave when scopes are disjoint and prompts are self-contained
-- This is pi-oven's batching target, not a guaranteed live-worker count. If omp/runtime/provider admits fewer concurrently, that smaller ceiling wins until the native runtime path is active; once it is, `nativeWorkers.maxWorkers` becomes the pi-oven-owned ceiling without overriding runtime availability
+- This is pi-oven's batching target, not a guaranteed live-worker count. OMP owns scheduling through `async.enabled` and `task.maxConcurrency`; provider/runtime admission may impose a smaller actual ceiling.
 - Same file region, shared generated artifact, or review dependency = sequential
 - Git push race → subagent handles with `git fetch && rebase && push`
 
-**irc coordination (parallel executor waves):** When two or more `pi-oven:executor` subagents are running in the same wave, use irc to coordinate before they write. At wave start, each executor calls `irc({op:"list"})` to see which files siblings have claimed. Before touching a file, an executor sends `irc({op:"send", to:"<sibling-name>", message:"claiming <file-path> — confirm no overlap"})` and awaits the reply. If a collision is detected, the later executor halts and reports back to main for re-sequencing. irc is auto-injected — do not add it to tools: frontmatter.
+**irc coordination (parallel executor waves):** When two or more `pov:executor` subagents are running in the same wave, use irc to coordinate before they write. At wave start, each executor calls `irc({op:"list"})` to see which files siblings have claimed. Before touching a file, an executor sends `irc({op:"send", to:"<sibling-name>", message:"claiming <file-path> — confirm no overlap"})` and awaits the reply. If a collision is detected, the later executor halts and reports back to main for re-sequencing. irc is auto-injected — do not add it to tools: frontmatter.
 
 ## Memory — recall before dispatch, retain after
 
@@ -98,9 +98,9 @@ Every dispatch prompt must include all of the following sections (60-150 lines f
 
 ## Step 0b = deep-researcher and data-runner augmentation
 
-When the task involves unfamiliar external libraries, SOTA techniques, or academic patterns, dispatch `pi-oven:deep-researcher` before the executor wave. Feed its synthesis (citations + key findings) into the executor dispatch prompt's **Task body**. This runs in parallel with Step 0 survey when the domain is known; runs first when the domain is novel.
+When the task involves unfamiliar external libraries, SOTA techniques, or academic patterns, dispatch `pov:deep-researcher` before the executor wave. Feed its synthesis (citations + key findings) into the executor dispatch prompt's **Task body**. This runs in parallel with Step 0 survey when the domain is known; runs first when the domain is novel.
 
-When the task involves empirical metrics, performance baselines, or numeric validation, dispatch `pi-oven:data-runner` after the executor wave completes but before the review stage. `pi-oven:data-runner` runs REPL-based validation and returns numeric evidence that the review lane can evaluate against spec claims.
+When the task involves empirical metrics, performance baselines, or numeric validation, dispatch `pov:data-runner` after the executor wave completes but before the review stage. `pov:data-runner` runs REPL-based validation and returns numeric evidence that the review lane can evaluate against spec claims.
 
 ## Step 0 = codebase-survey precondition
 
@@ -114,7 +114,7 @@ Halt entry if survey skipped: `Q-SURVEY-MISSING`.
 
 ## Override handling
 
-User override ("just do it from main", "proceed with haiku", "write the spec first") accepted immediately.
+User override ("just do it from main", "use a fresh lightweight worker", "write the spec first") accepted immediately.
 Hard rules that survive any override:
 - Mid-execution 5+ file reads → halt + re-route
 - Mid-execution scope expands to 3+ files → halt + re-route

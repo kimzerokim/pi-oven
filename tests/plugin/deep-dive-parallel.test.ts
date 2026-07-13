@@ -5,17 +5,18 @@ import path from "node:path";
 const SKILL_PATH = path.resolve(__dirname, "../../skills/deep-dive/SKILL.md");
 
 describe("deep-dive skill: parallel dispatch (AC#10)", () => {
-  it("SKILL.md dispatch section contains both 'run_in_background' and 'parallel'", async () => {
+  it("batches same-role trace lanes and separates heterogeneous agents", async () => {
     const content = await readFile(SKILL_PATH, "utf-8");
 
-    // Locate the dispatch description section (Phase 3 instructions)
-    // The section describes firing all 3 task() calls in parallel with run_in_background: true
-    expect(content).toContain("run_in_background");
-    expect(content).toContain("parallel");
+    expect(content).toContain('one `task` call with `agent: "pov:tracer"`');
+    expect(content).toContain('a separate `task` call with `agent: "pov:deep-researcher"`');
+    expect(content).toContain("A single call cannot mix heterogeneous agents");
   });
 
-  it("SKILL.md references 'run_in_background: true' in the parallel dispatch instruction", async () => {
+  it("uses native async semantics without the deprecated background flag", async () => {
     const content = await readFile(SKILL_PATH, "utf-8");
-    expect(content).toContain("run_in_background: true");
+    expect(content).not.toContain("run_in_background");
+    expect(content).toContain("OMP may execute the calls concurrently when async is enabled");
+    expect(content).toContain("concurrency is not guaranteed when it is disabled");
   });
 });

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { isAbsolute, relative, resolve } from "node:path";
+import { resolveHomePaths } from "../lib/home-paths";
 
 export interface ManifestSyncOptions {
   version: string;
@@ -38,7 +38,6 @@ const VERSION_FILES = [
   ".claude-plugin/marketplace.json",
 ] as const;
 const LABEL_FILE = ".omp/extensions/pi-oven.ts";
-const INSTALLED_CACHE_ROOT = resolve(homedir(), ".omp/plugins/cache/plugins");
 
 function readJson(path: string): unknown {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -55,7 +54,7 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function updateMarketplaceVersion(raw: unknown, version: string): { changed: boolean; next: unknown } {
+function readMarketplacePlugin(raw: unknown): Record<string, unknown> {
   const root = assertObject(raw, ".claude-plugin/marketplace.json");
   const plugins = root.plugins;
   if (!Array.isArray(plugins) || plugins.length === 0) {
@@ -66,20 +65,33 @@ function updateMarketplaceVersion(raw: unknown, version: string): { changed: boo
     throw new Error("marketplace.json.plugins[0] must be an object");
   }
   const plugin = first as Record<string, unknown>;
+  return plugin;
+}
+
+function updateMarketplaceRelease(raw: unknown, version: string): { changed: boolean; next: unknown } {
+  const root = assertObject(raw, ".claude-plugin/marketplace.json");
+  const plugin = readMarketplacePlugin(root);
   const prev = plugin.version;
   if (typeof prev !== "string") {
     throw new Error("marketplace.json.plugins[0].version must be a string");
   }
-  if (prev === version) {
+  const source = assertObject(plugin.source, ".claude-plugin/marketplace.json.plugins[0].source");
+  const ref = source.ref;
+  if (typeof ref !== "string") {
+    throw new Error("marketplace.json.plugins[0].source.ref must be a string");
+  }
+  const expectedRef = `v${version}`;
+  if (prev === version && ref === expectedRef) {
     return { changed: false, next: raw };
   }
   plugin.version = version;
+  source.ref = expectedRef;
   return { changed: true, next: root };
 }
 
 function isInstalledCachePath(root: string): boolean {
   const resolvedRoot = resolve(root);
-  const rel = relative(INSTALLED_CACHE_ROOT, resolvedRoot);
+  const rel = relative(resolveHomePaths().ompPluginCacheDir, resolvedRoot);
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
@@ -133,11 +145,8 @@ export function readCurrentVersionFromSoT(): string {
     throw new Error(".claude-plugin/plugin.json version must be a string");
   }
 
-  const marketplace = readJson(".claude-plugin/marketplace.json");
-  const { next } = updateMarketplaceVersion(marketplace, packageVersion);
-  const root = assertObject(next, ".claude-plugin/marketplace.json");
-  const plugins = root.plugins as unknown[];
-  const marketVersion = (plugins[0] as Record<string, unknown>).version;
+  const marketplacePlugin = readMarketplacePlugin(readJson(".claude-plugin/marketplace.json"));
+  const marketVersion = marketplacePlugin.version;
 
   if (typeof marketVersion !== "string") {
     throw new Error(".claude-plugin/marketplace.json plugins[0].version must be a string");
@@ -149,13 +158,24 @@ export function readCurrentVersionFromSoT(): string {
     );
   }
 
+  const source = assertObject(
+    marketplacePlugin.source,
+    ".claude-plugin/marketplace.json.plugins[0].source",
+  );
+  const marketplaceRef = source.ref;
+  if (marketplaceRef !== `v${packageVersion}`) {
+    throw new Error(
+      `Immutable marketplace ref mismatch: expected v${packageVersion}, got ${String(marketplaceRef)}`,
+    );
+  }
+
   return packageVersion;
 }
 
 function syncVersionFile(path: string, version: string, dryRun: boolean): boolean {
   if (path === ".claude-plugin/marketplace.json") {
     const current = readJson(path);
-    const { changed, next } = updateMarketplaceVersion(current, version);
+    const { changed, next } = updateMarketplaceRelease(current, version);
     if (changed && !dryRun) {
       writeJson(path, next);
     }

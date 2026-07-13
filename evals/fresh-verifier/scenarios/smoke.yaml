@@ -1,15 +1,16 @@
 name: fresh-verifier-smoke-001
 skill: fresh-verifier
+kind: positive
 tag: smoke
 input:
   - turn: 1
     user: "Cycle complete. Verify before exit on the light path."
 expected:
-  - skill_read_required: "fresh-verifier"
-  - agent_response_must_contain:
+  - skill_activation_required: "fresh-verifier"
+  - response_must_contain:
       - "VERDICT:"
-      - "pi-oven:verifier"
+      - "pov:verifier"
       - "light"
       - "fresh"
-    agent_response_must_contain_match: any
-  - tool_calls_required: ["task"]
+    response_must_contain_match: any
+  - tool_call_required: { namePattern: "task", args: { agent: "pov:verifier" } }

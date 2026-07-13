@@ -1,20 +1,21 @@
 name: spec-and-review-regression-001
 skill: spec-and-review
+kind: positive
 tag: regression
 input:
   - turn: 1
     user: "spec 잡자 for the new export feature. A survey report for this topic was already referenced earlier in this session."
 expected:
-  - skill_read_required: "spec-and-review"
-  - agent_response_must_contain:
+  - skill_activation_required: "spec-and-review"
+  - response_must_contain:
       - "brainstorm"
       - "브레인스토밍"
       - "Draft"
       - "Cycle 1"
-    agent_response_must_contain_match: any
-  - agent_response_must_contain:
+    response_must_contain_match: any
+  - response_must_contain:
       - "BLOCKER"
       - "🔴"
       - "Gate"
       - "PASS"
-    agent_response_must_contain_match: any
+    response_must_contain_match: any

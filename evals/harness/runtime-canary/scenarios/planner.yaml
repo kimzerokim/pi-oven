@@ -1,0 +1,12 @@
+name: runtime-canary-planner
+skill: large-task-delegation
+kind: positive
+tag: canary
+turn_timeout_ms: 120000
+scenario_timeout_ms: 120000
+input:
+  - turn: 1
+    user: "Large task delegation canary: delegate exactly one bounded planning task to pov:planner with the OMP task tool. Wait for completion."
+expected:
+  - skill_activation_required: "large-task-delegation"
+  - tool_call_required: { namePattern: "^task$", args: { agent: "pov:planner" } }

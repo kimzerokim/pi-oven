@@ -28,7 +28,7 @@
     "release:contract": "bun scripts/pi-oven-release/release-contract.ts"
   },
   "dependencies": {
-    "@oh-my-pi/pi-coding-agent": "15.5.3",
+    "@oh-my-pi/pi-coding-agent": "16.4.8",
     "zod": "4.4.3"
   },
   "devDependencies": {

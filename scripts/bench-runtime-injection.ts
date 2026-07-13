@@ -5,6 +5,8 @@ import path from "node:path";
 import { loadSkillKeywordIndex } from "../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
 import {
   DEFAULT_RUNTIME_BENCHMARK_FIXTURES,
+  RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE,
+  RUNTIME_BENCHMARK_CURRENT_PROMPT_MODE,
   captureRuntimeBenchmarkBaseline,
   exitCodeForBenchmarkReport,
   resolveRuntimeBenchmarkSource,
@@ -60,13 +62,20 @@ const commonOptions = {
 };
 
 if (process.argv.includes("--capture-baseline")) {
-  const baseline = await captureRuntimeBenchmarkBaseline(commonOptions);
+  const baseline = await captureRuntimeBenchmarkBaseline({
+    ...commonOptions,
+    promptMode: RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE,
+  });
   process.stdout.write(`${JSON.stringify(baseline, null, 2)}\n`);
 } else {
   const baseline = JSON.parse(
     readFileSync(path.join(repoRoot, BASELINE_PATH), "utf8")
   ) as RuntimeBenchmarkBaseline;
-  const report = await runRuntimeBenchmark({ ...commonOptions, baseline });
+  const report = await runRuntimeBenchmark({
+    ...commonOptions,
+    promptMode: RUNTIME_BENCHMARK_CURRENT_PROMPT_MODE,
+    baseline,
+  });
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   process.exitCode = exitCodeForBenchmarkReport(report);
 }

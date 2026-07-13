@@ -7,9 +7,11 @@ import {
   type PromptFragment,
 } from "../../../.omp/extensions/pi-oven-runtime/prompt-compositor";
 import {
+  createWorkerContextFragments,
   composeWorkerContextCapsule,
 } from "../../../.omp/extensions/pi-oven-runtime/context-capsule";
 import {
+  RulesInjector,
   resolveRuntimePromptMode,
 } from "../../../.omp/extensions/pi-oven-runtime/rules-injector";
 
@@ -129,6 +131,53 @@ describe("worker context capsule", () => {
     expect(prompt).toMatch(/verify|verification/i);
     expect(prompt).not.toMatch(/release ritual|release:pi-oven|Current: v/i);
     expect(result.receipt.fragments.every((entry) => entry.included)).toBe(true);
+  });
+
+  test("legacy worker rollback restores the exact pre-capsule full injector surface", () => {
+    const injector = new RulesInjector();
+    injector.setLanguage("en");
+    injector.setProjectInstructions("repository-specific contract");
+    const capsule = createWorkerContextFragments({
+      role: "pov:executor",
+      assignment: "Implement the ledger status endpoint.",
+      selectedSkillTargets: ["/plugin/skills/tdd-strict/SKILL.md"],
+      phase: "mutate",
+    });
+
+    const legacy = injector.composeSystemPrompt({
+      systemPrompt: [],
+      audience: "worker",
+      includeDiscipline: false,
+      includeLanguage: false,
+      includeProjectInstructions: false,
+      additionalFragments: capsule,
+      mode: "legacy",
+    });
+    const compositor = injector.composeSystemPrompt({
+      systemPrompt: [],
+      audience: "worker",
+      includeDiscipline: false,
+      includeLanguage: false,
+      includeProjectInstructions: false,
+      additionalFragments: capsule,
+      mode: "compositor",
+    });
+    const legacyPrompt = legacy.systemPrompt.join("\n");
+    const compositorPrompt = compositor.systemPrompt.join("\n");
+
+    expect(legacyPrompt).toContain("pi-oven runtime discipline");
+    expect(legacyPrompt).toContain("pi-oven response language");
+    expect(legacyPrompt).toContain("repository-specific contract");
+    expect(legacyPrompt).not.toContain("pov:executor");
+    expect(legacyPrompt).not.toContain("/plugin/skills/tdd-strict/SKILL.md");
+    expect(legacyPrompt).not.toMatch(/## Runtime safety/i);
+    expect(compositorPrompt).not.toContain("repository-specific contract");
+    expect(compositorPrompt).toContain("pov:executor");
+    expect(compositorPrompt).toContain("/plugin/skills/tdd-strict/SKILL.md");
+    expect(compositorPrompt).toMatch(/runtime safety/i);
+    expect(legacy.receipt.includedBytes).toBeGreaterThan(
+      compositor.receipt.includedBytes
+    );
   });
 });
 

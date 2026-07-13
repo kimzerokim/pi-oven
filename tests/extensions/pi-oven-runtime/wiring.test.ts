@@ -308,7 +308,7 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
     expect(res.systemPrompt).toContain("base");
   });
 
-  it("both prompt modes give workers the compact namespace, exact-skill, and safety contract", async () => {
+  it("keeps compositor workers compact and legacy workers on the pre-capsule rollback surface", async () => {
     tempDir = makeTempDir();
     process.chdir(tempDir);
     writeFileSync(
@@ -329,14 +329,22 @@ describe("piOvenPi entrypoint wiring (AC4)", () => {
         }) as { systemPrompt: string[] };
         const prompt = result.systemPrompt.join("\n");
         expect(prompt).toContain("base-worker");
-        expect(prompt).toContain("pov:executor");
-        expect(prompt).toContain("Test first, then implement the parser fix and verify it.");
-        expect(prompt).toContain("skills/tdd-strict/SKILL.md");
-        expect(prompt).toMatch(/branch contract|write safety/i);
-        expect(prompt).toMatch(/verify|verification/i);
-        expect(prompt).not.toContain("NEVER SEND THIS TO A WORKER");
-        expect(prompt).not.toContain("Release ritual");
-        expect(prompt).not.toContain("pi-oven:discipline-rules@v1");
+        if (promptMode === "compositor") {
+          expect(prompt).toContain("pov:executor");
+          expect(prompt).toContain("Test first, then implement the parser fix and verify it.");
+          expect(prompt).toContain("skills/tdd-strict/SKILL.md");
+          expect(prompt).toMatch(/branch contract|write safety/i);
+          expect(prompt).toMatch(/verify|verification/i);
+          expect(prompt).not.toContain("NEVER SEND THIS TO A WORKER");
+          expect(prompt).not.toContain("Release ritual");
+          expect(prompt).not.toContain("pi-oven:discipline-rules@v1");
+        } else {
+          expect(prompt).toContain("NEVER SEND THIS TO A WORKER");
+          expect(prompt).toContain("Release ritual");
+          expect(prompt).toContain("pi-oven:discipline-rules@v1");
+          expect(prompt).not.toContain("pov:executor");
+          expect(prompt).not.toContain("skills/tdd-strict/SKILL.md");
+        }
         expect(
           pi.logs.some((entry) =>
             entry.msg.includes(`prompt composition ${promptMode} receipt`)

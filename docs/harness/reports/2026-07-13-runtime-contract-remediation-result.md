@@ -29,7 +29,7 @@ All one-release rollback boundaries were exercised:
 - RuntimeContract compatibility reader: legacy routing was visible and migration-safe.
 - Setup transaction: compensation restored originals; compare-and-swap rollback preserved concurrent edits and emitted a manual recovery diff.
 - Ledger JSON fallback: ledger-primary read fell back to JSON, while JSON-only rollback writes did not touch SQLite.
-- Prompt legacy flag: compositor and `PI_OVEN_PROMPT_MODE=legacy` both retained required safety fragments.
+- Prompt legacy flag: compositor retained the compact role/assignment/skill/safety capsule, while `PI_OVEN_PROMPT_MODE=legacy` restored full pre-capsule runtime, language, and corrected project-instruction injection.
 - Immutable release version: exact tag/version/ref parity passed and a post-tag version mutation was rejected.
 
 ## Contract and eval evidence

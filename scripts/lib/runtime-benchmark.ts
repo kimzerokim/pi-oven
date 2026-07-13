@@ -16,7 +16,10 @@ import {
   buildKeywordMatchedSkillsPrompt,
   matchSkillsForText,
 } from "../../.omp/extensions/pi-oven-runtime/skill-keyword-loader";
-import { RulesInjector } from "../../.omp/extensions/pi-oven-runtime/rules-injector";
+import {
+  RulesInjector,
+  type RuntimePromptMode,
+} from "../../.omp/extensions/pi-oven-runtime/rules-injector";
 import {
   DEFAULT_MAX_IMPLICIT_ROOTS,
   hasExplicitSkillAlias,
@@ -126,6 +129,10 @@ export interface PromptMeasurement {
 }
 
 export const RUNTIME_BENCHMARK_VERSION = 1;
+export const RUNTIME_BENCHMARK_MEASUREMENT_SEMANTICS =
+  "runtime-worker-context-and-warmed-gate-paths@1";
+export const RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE = "legacy" as const;
+export const RUNTIME_BENCHMARK_CURRENT_PROMPT_MODE = "compositor" as const;
 export { RUNTIME_CONTRACT_VERSION } from "../../.omp/extensions/pi-oven-runtime/runtime-contract";
 import { RUNTIME_CONTRACT_VERSION } from "../../.omp/extensions/pi-oven-runtime/runtime-contract";
 
@@ -234,6 +241,8 @@ export interface RuntimeBenchmarkBaseline extends RuntimeBenchmarkEnvironment {
   benchmarkVersion: number;
   contractVersion: string;
   generatedAt: string;
+  promptMode: typeof RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE;
+  measurementSemantics: typeof RUNTIME_BENCHMARK_MEASUREMENT_SEMANTICS;
   fixtureHash: string;
   selectionReceipt: Record<string, ReturnType<typeof semanticReceipt>>;
   performance: {
@@ -269,6 +278,8 @@ export interface RuntimeBenchmarkReport {
   };
   metadata: {
     contractVersion: string;
+    promptMode: RuntimePromptMode;
+    measurementSemantics: typeof RUNTIME_BENCHMARK_MEASUREMENT_SEMANTICS;
     source: RuntimeBenchmarkSource;
     bunVersion: string;
     ompVersion: string;
@@ -285,6 +296,7 @@ interface RuntimeBenchmarkOptions {
   projectInstructions: string | null;
   language: string | null;
   environment: RuntimeBenchmarkEnvironment;
+  promptMode: RuntimePromptMode;
   warmupIterations?: number;
   measurementIterations?: number;
   generatedAt?: string;
@@ -485,6 +497,7 @@ export function measurePromptFragments(input: {
   fixture: RuntimeBenchmarkFixture;
   projectInstructions: string | null;
   language: string | null;
+  promptMode: RuntimePromptMode;
 }): PromptMeasurement {
   const receipt = selectSkillsForTurn({
     latestUserText: input.fixture.text,
@@ -532,6 +545,7 @@ export function measurePromptFragments(input: {
     audience: "parent",
     autonomousActive,
     additionalFragments: parentAdditional,
+    mode: input.promptMode,
   });
   const selectedSkillTargets = [...selectedRoots, ...receipt.deferred]
     .map((candidate) => candidate.ownedReadTarget);
@@ -547,6 +561,7 @@ export function measurePromptFragments(input: {
       selectedSkillTargets,
       phase: "mutate",
     }),
+    mode: input.promptMode,
   });
 
   const fragments: PromptFragmentMeasurement[] = [];
@@ -659,6 +674,7 @@ async function collectRuntimeBenchmarkEvidence(
       fixture,
       projectInstructions: options.projectInstructions,
       language: options.language,
+      promptMode: options.promptMode,
     })
   );
   const gates = await benchmarkGatePaths({
@@ -704,6 +720,11 @@ function findReadOnlyGate(gates: GatePathMeasurement[]): GatePathMeasurement {
 export async function captureRuntimeBenchmarkBaseline(
   options: RuntimeBenchmarkOptions
 ): Promise<RuntimeBenchmarkBaseline> {
+  if (options.promptMode !== RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE) {
+    throw new Error(
+      `runtime benchmark baseline capture requires promptMode=${RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE}`
+    );
+  }
   const evidence = await collectRuntimeBenchmarkEvidence(options);
   if (!correctnessAccepted(evidence.correctness)) {
     throw new Error(
@@ -719,6 +740,8 @@ export async function captureRuntimeBenchmarkBaseline(
     benchmarkVersion: RUNTIME_BENCHMARK_VERSION,
     contractVersion: RUNTIME_CONTRACT_VERSION,
     generatedAt: options.generatedAt ?? new Date().toISOString(),
+    promptMode: RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE,
+    measurementSemantics: RUNTIME_BENCHMARK_MEASUREMENT_SEMANTICS,
     ...options.environment,
     fixtureHash: evidence.fixtureHash,
     selectionReceipt: evidence.selectionReceipt,
@@ -840,6 +863,8 @@ export async function runRuntimeBenchmark(
     },
     metadata: {
       contractVersion: RUNTIME_CONTRACT_VERSION,
+      promptMode: options.promptMode,
+      measurementSemantics: RUNTIME_BENCHMARK_MEASUREMENT_SEMANTICS,
       ...options.environment,
       fixtureHash: evidence.fixtureHash,
       selectionReceipt: evidence.selectionReceipt,
@@ -847,6 +872,8 @@ export async function runRuntimeBenchmark(
         benchmarkVersion: options.baseline.benchmarkVersion,
         contractVersion: options.baseline.contractVersion,
         generatedAt: options.baseline.generatedAt,
+        promptMode: options.baseline.promptMode,
+        measurementSemantics: options.baseline.measurementSemantics,
         source: options.baseline.source,
         bunVersion: options.baseline.bunVersion,
         ompVersion: options.baseline.ompVersion,

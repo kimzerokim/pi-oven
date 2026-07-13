@@ -36,11 +36,11 @@ Global setup also enables the omp facilities required by agent contracts: image 
 
 Parent prompt composition may include orchestrator conduct, discipline, language, project instructions, selected-skill obligations, and phase-specific contracts. Project instructions are parent-only and deduplicated.
 
-Workers receive a compact context capsule containing only the canonical roster/namespace invariant, exact role and assignment, exact selected skill read targets, and relevant branch/write/verification safety. Never restore injection of the root `CLAUDE.md` or release instructions into workers.
+In the default `compositor` mode, workers receive a compact context capsule containing only the canonical roster/namespace invariant, exact role and assignment, exact selected skill read targets, and relevant branch/write/verification safety. Do not add the root `CLAUDE.md` or release instructions to this healthy path.
 
 Every fragment needs a stable id, dedup key, audience, phase, priority, and required flag. Required safety fragments are not discarded to meet a byte budget; only optional fragments may be dropped, and the composition receipt must make the reason, hash, and byte count reproducible.
 
-For the one-release rollback window, `PI_OVEN_PROMPT_MODE=legacy` selects the unbudgeted legacy injector. The default and healthy path is `compositor`; an unset, empty, or explicit `compositor` value uses it. Both modes retain parent/worker audience separation and the exact worker namespace, assignment, skill-target, and safety capsule. Remove the legacy path after the compatibility release rather than making it a permanent profile.
+For the one-release rollback window, `PI_OVEN_PROMPT_MODE=legacy` restores the exact pre-capsule worker surface: existing prompt plus full runtime discipline, language when configured, and the current corrected project instructions. It intentionally does not inject the compositor's role/assignment/selected-skill/safety capsule. The default and healthy path is `compositor`; an unset, empty, or explicit `compositor` value uses it. Remove the legacy path after the compatibility release rather than making it a permanent profile.
 
 After prompt changes, run:
 

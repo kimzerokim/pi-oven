@@ -401,6 +401,7 @@ export class RulesInjector {
     includeDiscipline?: boolean;
     includeLanguage?: boolean;
     includeProjectInstructions?: boolean;
+    includeProjectInstructionsForWorker?: boolean;
   }): PromptFragment[] {
     const fragments: PromptFragment[] = [];
     if (opts.audience === "parent" && opts.autonomousActive !== undefined) {
@@ -441,13 +442,13 @@ export class RulesInjector {
     }
     const project = this.buildProjectInstructionsBlock();
     if (
-      opts.audience === "parent" &&
+      (opts.audience === "parent" || opts.includeProjectInstructionsForWorker === true) &&
       opts.includeProjectInstructions !== false &&
       project !== null
     ) {
       fragments.push({
         id: "project-instructions",
-        audience: "parent",
+        audience: opts.audience,
         phase: "always",
         priority: 80,
         required: true,
@@ -470,17 +471,28 @@ export class RulesInjector {
     additionalFragments?: PromptFragment[];
     mode?: RuntimePromptMode;
   }): { systemPrompt: string[]; receipt: PromptCompositionReceipt } {
+    const mode = opts.mode ?? resolveRuntimePromptMode();
+    const legacyWorker = mode === "legacy" && opts.audience === "worker";
     const input = {
       audience: opts.audience,
       phase: opts.phase ?? this.getPromptPhase(),
       maxBytes: opts.maxBytes ?? (opts.audience === "worker" ? 8_192 : 64 * 1_024),
       existing: opts.systemPrompt,
       fragments: [
-        ...this.buildRuntimeFragments(opts),
-        ...(opts.additionalFragments ?? []),
+        ...this.buildRuntimeFragments(
+          legacyWorker
+            ? {
+                ...opts,
+                includeDiscipline: true,
+                includeLanguage: true,
+                includeProjectInstructions: true,
+                includeProjectInstructionsForWorker: true,
+              }
+            : opts
+        ),
+        ...(legacyWorker ? [] : (opts.additionalFragments ?? [])),
       ],
     };
-    const mode = opts.mode ?? resolveRuntimePromptMode();
     const result = mode === "legacy"
       ? legacyPromptComposition(input)
       : composeRuntimePrompt(input);

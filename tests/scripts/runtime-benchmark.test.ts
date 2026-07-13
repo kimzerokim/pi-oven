@@ -7,6 +7,8 @@ import {
   exitCodeForBenchmarkReport,
   hashRuntimeBenchmarkFixtures,
   measurePromptFragments,
+  RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE,
+  RUNTIME_BENCHMARK_CURRENT_PROMPT_MODE,
   RUNTIME_BENCHMARK_VERSION,
   RUNTIME_CONTRACT_VERSION,
   resolveRuntimeBenchmarkSource,
@@ -199,6 +201,7 @@ describe("runtime benchmark correctness gates", () => {
       },
       projectInstructions: "repository-local instructions",
       language: "en",
+      promptMode: RUNTIME_BENCHMARK_CURRENT_PROMPT_MODE,
     });
 
     expect(measurement.fragments.find((fragment) => fragment.id === "keyword-skills")?.audiences)
@@ -216,6 +219,70 @@ describe("runtime benchmark correctness gates", () => {
         Math.ceil(expectedBytes / 4)
       );
     }
+  });
+
+  it("measures the production legacy worker surface as the pre-compositor denominator", () => {
+    const input = {
+      index: [skill("autonomous-loop", "full auto", 0)],
+      fixture: {
+        name: "worst-multi-skill-autonomous",
+        text: "full auto",
+        requiredSkills: ["pov:autonomous-loop"],
+        forbiddenSkills: [],
+      },
+      projectInstructions: "project contract\n".repeat(500),
+      language: "en",
+    };
+    const legacy = measurePromptFragments({
+      ...input,
+      promptMode: RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE,
+    });
+    const compositor = measurePromptFragments({
+      ...input,
+      promptMode: RUNTIME_BENCHMARK_CURRENT_PROMPT_MODE,
+    });
+
+    expect(
+      legacy.fragments.find((fragment) => fragment.id === "project-instructions")
+        ?.audiences
+    ).toContain("worker");
+    expect(legacy.fragments.some((fragment) => fragment.id === "worker-safety-core"))
+      .toBe(false);
+    expect(compositor.fragments).toContainEqual(
+      expect.objectContaining({ id: "worker-safety-core", audiences: ["worker"] })
+    );
+    expect(
+      legacy.totals.worker.bytes / compositor.totals.worker.bytes
+    ).toBeGreaterThan(2);
+  });
+
+  it("requires explicit legacy mode for baseline capture", async () => {
+    await expect(
+      captureRuntimeBenchmarkBaseline({
+        index: [skill("autonomous-loop", "full auto", 0)],
+        fixtures: [
+          {
+            name: "worst-multi-skill-autonomous",
+            text: "full auto",
+            requiredSkills: ["pov:autonomous-loop"],
+            forbiddenSkills: [],
+          },
+        ],
+        projectInstructions: null,
+        language: null,
+        environment: {
+          source: {
+            kind: "commit",
+            commitSha: "0123456789abcdef0123456789abcdef01234567",
+          },
+          bunVersion: "1.3.14",
+          ompVersion: "15.5.3",
+        },
+        promptMode: RUNTIME_BENCHMARK_CURRENT_PROMPT_MODE,
+        warmupIterations: 0,
+        measurementIterations: 1,
+      })
+    ).rejects.toThrow("promptMode=legacy");
   });
 
   it("makes correctness failure reject byte savings and exit one", async () => {
@@ -239,6 +306,7 @@ describe("runtime benchmark correctness gates", () => {
       projectInstructions: "baseline instructions",
       language: "en",
       environment,
+      promptMode: RUNTIME_BENCHMARK_BASELINE_PROMPT_MODE,
       warmupIterations: 0,
       measurementIterations: 1,
       generatedAt: "2026-07-13T00:00:00.000Z",
@@ -251,6 +319,7 @@ describe("runtime benchmark correctness gates", () => {
       projectInstructions: "small",
       language: null,
       environment,
+      promptMode: RUNTIME_BENCHMARK_CURRENT_PROMPT_MODE,
       baseline,
       warmupIterations: 0,
       measurementIterations: 1,

@@ -231,6 +231,7 @@ function provePromptRollback(): void {
   invariant(resolveRuntimePromptMode("compositor") === "compositor", "compositor flag rejected");
   invariant(resolveRuntimePromptMode("legacy") === "legacy", "legacy flag rejected");
   const injector = new RulesInjector();
+  injector.setProjectInstructions("rehearsal legacy project contract");
   const fragment = {
     id: "rehearsal-safety",
     audience: "both" as const,
@@ -240,16 +241,41 @@ function provePromptRollback(): void {
     dedupKey: "pi-oven:rehearsal-safety",
     render: () => "pi-oven:rehearsal-safety required",
   };
-  for (const mode of ["compositor", "legacy"] as const) {
-    const result = injector.composeSystemPrompt({
-      systemPrompt: [],
-      audience: "worker",
-      includeDiscipline: false,
-      additionalFragments: [fragment],
-      mode,
-    });
-    invariant(result.systemPrompt.some((line) => line.includes(fragment.dedupKey)), `${mode} dropped required safety`);
-  }
+  const compositor = injector.composeSystemPrompt({
+    systemPrompt: [],
+    audience: "worker",
+    includeDiscipline: false,
+    additionalFragments: [fragment],
+    mode: "compositor",
+  });
+  invariant(
+    compositor.systemPrompt.some((line) => line.includes(fragment.dedupKey)),
+    "compositor dropped required worker safety"
+  );
+  invariant(
+    !compositor.systemPrompt.some((line) => line.includes("rehearsal legacy project contract")),
+    "compositor leaked project instructions to worker"
+  );
+
+  const legacy = injector.composeSystemPrompt({
+    systemPrompt: [],
+    audience: "worker",
+    includeDiscipline: false,
+    additionalFragments: [fragment],
+    mode: "legacy",
+  });
+  invariant(
+    legacy.systemPrompt.some((line) => line.includes("pi-oven:discipline-rules@v1")),
+    "legacy worker omitted full runtime discipline"
+  );
+  invariant(
+    legacy.systemPrompt.some((line) => line.includes("rehearsal legacy project contract")),
+    "legacy worker omitted full project instructions"
+  );
+  invariant(
+    !legacy.systemPrompt.some((line) => line.includes(fragment.dedupKey)),
+    "legacy worker unexpectedly used the compositor capsule"
+  );
 }
 
 function prepareCandidateDoctorEnvironment(packageRoot: string, home: string): {
@@ -718,7 +744,7 @@ export async function runReleaseRehearsal(
       { name: "compatibility-reader", status: compatibilityReaderPassed ? "PASS" : "FAIL", evidence: "legacy pi-oven:* routing remained readable and advertised canonical rewrite" },
       { name: "setup-journal", status: setupRollbackPassed ? "PASS" : "FAIL", evidence: "validation compensation restored originals; CAS preserved concurrent edits with a manual diff" },
       { name: "ledger-json-fallback", status: "PASS", evidence: "ledger-primary read fell back to JSON and JSON-only writes did not touch the ledger" },
-      { name: "prompt-legacy-flag", status: "PASS", evidence: "compositor and one-release legacy mode both retained required safety fragments" },
+      { name: "prompt-legacy-flag", status: "PASS", evidence: "compositor retained the compact worker capsule; one-release legacy restored full pre-capsule runtime and project injection" },
       { name: "immutable-release-version", status: "PASS", evidence: "exact tag/version/ref passed and post-tag version mutation was rejected" },
     ];
 
